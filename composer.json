@@ -1,0 +1,61 @@
+{
+    "name": "inly/core-web",
+    "description": "Core snapshots, the Core API client, Core's signed pings and snapshot sitemaps for Statamic websites fed by an Inly Core backoffice.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "inly",
+        "core",
+        "statamic",
+        "snapshots"
+    ],
+    "homepage": "https://github.com/InlyTechnology/core-web",
+    "support": {
+        "issues": "https://github.com/InlyTechnology/core-web/issues",
+        "source": "https://github.com/InlyTechnology/core-web"
+    },
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/cache": "^12.0|^13.0",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/queue": "^12.0|^13.0",
+        "illuminate/routing": "^12.0|^13.0",
+        "statamic/cms": "^6.31"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0|^11.0",
+        "phpunit/phpunit": "^11.5|^12.0",
+        "laravel/pint": "^1.27"
+    },
+    "autoload": {
+        "psr-4": {
+            "Inly\\CoreWeb\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Inly\\CoreWeb\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Inly\\CoreWeb\\CoreWebServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "@php vendor/bin/phpunit",
+        "format": "@php vendor/bin/pint"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pixelfear/composer-dist-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
