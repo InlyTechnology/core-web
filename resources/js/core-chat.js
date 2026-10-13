@@ -40,7 +40,8 @@ export default function coreChat({ endpoint, subject = null, cookie = null } = {
             const ok = await this.call('POST', '/messages', { message, subject })
 
             if (!ok) {
-                this.messages = this.messages.filter((m) => m !== optimistic)
+                // By id: Alpine hands back a reactive proxy of each message, never the object pushed.
+                this.messages = this.messages.filter((m) => m.id !== optimistic.id)
             }
 
             return ok
