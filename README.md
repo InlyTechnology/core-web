@@ -34,10 +34,38 @@ AI chat, …).
 composer require inly/core-web
 ```
 
-The service provider is auto-discovered, and the defaults read the env names
-below, so a site publishes the config (`--tag=core-web-config`) only to change
-something that is not an env value. Requirements: PHP 8.3+, Laravel 12 or
-13, Statamic 6.31+.
+The service provider is auto-discovered and the defaults read the env names
+below. Requirements: PHP 8.3+, Laravel 12 or 13, Statamic 6.31+.
+
+## Features
+
+Installed, the package does nothing: every feature is off until the site
+switches it on, and a feature that is off registers no route, schedule,
+middleware, command, tag or cache store. That is what lets every new site
+install it whether or not it shows Core data yet.
+
+| Feature | Switch | What it registers |
+|---|---|---|
+| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
+
+The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
+container binding, and registers nothing.
+
+A site switches a feature on in its own `config/core-web.php`. That file needs
+only the keys it changes, since every top-level key it leaves out keeps the
+package's default:
+
+```php
+<?php
+
+return [
+    'features' => ['snapshots' => true],
+];
+```
+
+Publish the whole file (`--tag=core-web-config`) only to change more than
+that. A published file overrides each top-level key whole, so one copied from
+an earlier version still needs a `features` key of its own.
 
 ## Configuration
 
@@ -59,6 +87,7 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 
 | Key | Default | Meaning |
 |---|---|---|
+| `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |

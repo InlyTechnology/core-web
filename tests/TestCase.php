@@ -10,6 +10,9 @@ abstract class TestCase extends AddonTestCase
 {
     protected string $addonServiceProvider = CoreWebServiceProvider::class;
 
+    /** @var list<string> */
+    protected array $features = ['snapshots'];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -30,5 +33,9 @@ abstract class TestCase extends AddonTestCase
         $app['config']->set('cache.default', 'array');
         $app['config']->set('queue.default', 'sync');
         $app['config']->set('statamic.editions.pro', true);
+
+        foreach ($this->features as $feature) {
+            $app['config']->set("core-web.features.{$feature}", true);
+        }
     }
 }

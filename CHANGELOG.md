@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.4.0 (2026-10-13)
+
+- **Dormant until switched on**: installing the package no longer registers
+  anything. Each feature has a switch under `features` in the config, off by
+  default, and a feature that is off adds no route, schedule, middleware,
+  command, tag or cache store. `features.snapshots` switches on what the
+  package did before: the `snapshots` store, `core:warm` and its schedule, the
+  degraded guard, the ping route and the snapshot sitemaps. The Core client
+  needs no switch. `CoreWebServiceProvider::enabled($feature)` answers whether
+  a feature is on. See README § Features.
+
+### Upgrade notes
+
+- **A site that shows Core snapshots breaks until it switches them on**:
+  every page that reads a snapshot throws "Core snapshots are switched off",
+  and pings, `core:warm`, its schedule and the snapshot sitemaps are gone.
+  Find it: the site registers snapshots (`grep -rn "SnapshotRegistry" app/`)
+  or its robots view uses `{{ core_sitemaps }}`. Migrate: add
+  `config/core-web.php` holding
+  `return ['features' => ['snapshots' => true]];`, or, when the site
+  publishes the whole file, add that `features` key to it; then let the
+  deploy rebuild its config and route caches (`optimize`). Verify:
+  `php artisan route:list --name=api.core.objects` lists the ping route and
+  `php artisan schedule:list` lists `core:warm`.
+
 ## v0.3.0 (2026-10-12)
 
 - **Own repository**: the package moves to its own public repository and is

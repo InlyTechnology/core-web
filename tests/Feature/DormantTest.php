@@ -1,0 +1,99 @@
+<?php
+
+namespace Inly\CoreWeb\Tests\Feature;
+
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Routing\Router;
+use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Snapshots\SnapshotStore;
+use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
+use Inly\CoreWeb\Tests\TestCase;
+use LogicException;
+use Statamic\Tags\Loader as TagLoader;
+use Statamic\Tags\TagNotFoundException;
+
+class DormantTest extends TestCase
+{
+    protected array $features = [];
+
+    public function test_every_feature_is_off_by_default(): void
+    {
+        $this->assertSame(['snapshots' => false], config('core-web.features'));
+    }
+
+    public function test_no_route_is_registered(): void
+    {
+        $routes = collect(app(Router::class)->getRoutes()->getRoutes())
+            ->filter(fn ($route) => str_starts_with($route->getActionName(), 'Inly\\CoreWeb\\'));
+
+        $this->assertCount(0, $routes);
+    }
+
+    public function test_nothing_is_scheduled(): void
+    {
+        $events = collect(app(Schedule::class)->events())->filter(fn (Event $event) => str_contains((string) $event->command, 'core:warm'));
+
+        $this->assertCount(0, $events);
+    }
+
+    public function test_no_middleware_joins_statamic_s_group(): void
+    {
+        $this->assertNotContains(UncacheableWhileDegraded::class, app(Router::class)->getMiddlewareGroups()['statamic.web'] ?? []);
+    }
+
+    public function test_no_command_is_registered(): void
+    {
+        $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
+    }
+
+    public function test_no_tag_is_registered(): void
+    {
+        $registered = true;
+
+        try {
+            app(TagLoader::class)->load('core_sitemaps', ['parser' => null, 'params' => [], 'content' => '', 'context' => [], 'tag' => 'core_sitemaps', 'tag_method' => 'index']);
+        } catch (TagNotFoundException) {
+            $registered = false;
+        }
+
+        $this->assertFalse($registered);
+    }
+
+    public function test_no_cache_store_is_added(): void
+    {
+        $this->assertFalse(config()->has('cache.stores.snapshots'));
+    }
+
+    public function test_the_core_client_needs_no_switch(): void
+    {
+        config(['core-web.client.base_url' => 'https://core.test', 'core-web.client.client_id' => 'web', 'core-web.client.client_secret' => 'secret']);
+
+        $this->assertTrue(app(CoreClient::class)->configured());
+    }
+
+    public function test_reading_snapshots_while_switched_off_names_the_switch(): void
+    {
+        config(['core-web.snapshots.store' => 'snapshots']);
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('core-web.features.snapshots');
+
+        app(SnapshotStore::class);
+    }
+
+    public function test_a_switch_set_from_env_counts(): void
+    {
+        foreach (['1', 'true', 'on', true] as $on) {
+            config(['core-web.features.snapshots' => $on]);
+            $this->assertTrue(CoreWebServiceProvider::enabled('snapshots'), var_export($on, true));
+        }
+
+        foreach (['0', 'false', '', null, false] as $off) {
+            config(['core-web.features.snapshots' => $off]);
+            $this->assertFalse(CoreWebServiceProvider::enabled('snapshots'), var_export($off, true));
+        }
+    }
+}
