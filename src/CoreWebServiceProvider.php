@@ -18,8 +18,10 @@ use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
 /**
- * The snapshot store and registry, the Core client, the ping endpoint and the
- * snapshot sitemaps. An app registers its snapshots by extending the registry:
+ * Dormant until a site switches a feature on (core-web.features): with every
+ * switch off it adds no route, schedule, middleware, command, tag or cache
+ * store. The `snapshots` feature is the snapshot pipeline with its pings and
+ * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
  */
 class CoreWebServiceProvider extends ServiceProvider
@@ -27,7 +29,13 @@ class CoreWebServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/core-web.php', 'core-web');
-        $this->mergeSnapshotStore();
+
+        // Before any provider boots, once the app's config (and a test's environment) is in place.
+        $this->app->booting(function (): void {
+            if (self::enabled('snapshots')) {
+                $this->mergeSnapshotStore();
+            }
+        });
 
         $this->app->singleton(SnapshotRegistry::class);
 
@@ -49,6 +57,19 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
 
+        if (self::enabled('snapshots')) {
+            $this->bootSnapshots();
+        }
+    }
+
+    /** Whether the site switched a feature on in core-web.features. */
+    public static function enabled(string $feature): bool
+    {
+        return config("core-web.features.{$feature}") === true;
+    }
+
+    private function bootSnapshots(): void
+    {
         $this->loadRoutesFrom(__DIR__.'/../routes/core-web.php');
 
         // Not console-only: a ping's refresh job calls it from a sync queue inside a web request too.
