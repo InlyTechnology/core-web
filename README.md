@@ -487,9 +487,7 @@ Errors are `{error: …}`:
 | `unavailable` | 503 | Core failed or is unreachable, and when Core's rules for the agent's context refuse what the site's `ChatContext` built (a site bug); both are reported |
 
 Core says a conversation is used up with a 429 like its rate limits; the
-relay tells them apart by the answer's `code` (`conversation_exhausted`),
-or, from a Core that sends none, by the refusal's text in English or
-Swedish.
+relay tells them apart by the answer's `code` (`conversation_exhausted`).
 
 The access token never reaches the browser **as long as the session lives
 on the server** (`file`, `database`, `redis`, …). With the `cookie` session

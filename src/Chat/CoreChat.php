@@ -22,11 +22,6 @@ class CoreChat
 
     public const EXHAUSTED_CODE = 'conversation_exhausted';
 
-    private const EXHAUSTED_MESSAGES = [
-        'This conversation has reached its limit. Please start a new one.',
-        'Den här konversationen har nått sin gräns. Starta en ny.',
-    ];
-
     public function __construct(
         protected CoreClient $client,
         protected string $visitor,
@@ -140,19 +135,10 @@ class CoreChat
         return is_array($payload) ? $payload : [];
     }
 
-    /**
-     * Core answers a spent conversation budget with a 429 like its rate limits, told apart only by `code`, or, from a
-     * Core that sends none, by the refusal's text in the languages Core ships.
-     */
+    /** Core answers a spent conversation budget with a 429 like its rate limits, told apart only by `code`. */
     protected static function exhausted(Response $response): bool
     {
-        if ($response->json('code') === self::EXHAUSTED_CODE) {
-            return true;
-        }
-
-        $message = $response->json('message');
-
-        return is_string($message) && in_array(trim($message), self::EXHAUSTED_MESSAGES, true);
+        return $response->json('code') === self::EXHAUSTED_CODE;
     }
 
     protected function path(string $agent, string $suffix): string

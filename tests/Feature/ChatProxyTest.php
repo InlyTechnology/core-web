@@ -246,22 +246,14 @@ class ChatProxyTest extends TestCase
 
     public function test_a_conversation_that_spent_its_budget_is_forgotten(): void
     {
-        $answers = [
-            'code' => ['code' => 'conversation_exhausted', 'message' => 'Anything'],
-            'english' => ['message' => 'This conversation has reached its limit. Please start a new one.'],
-            'swedish' => ['message' => 'Den här konversationen har nått sin gräns. Starta en ny.'],
-        ];
+        $this->fakeChat(['core.test/api/app/chat/assistant/conversations/*/messages' => Http::response(['code' => 'conversation_exhausted', 'message' => 'Anything'], 429)]);
 
-        foreach ($answers as $case => $body) {
-            $this->fakeChat(['core.test/api/app/chat/assistant/conversations/*/messages' => Http::response($body, 429)]);
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42'])
+            ->assertStatus(429)
+            ->assertExactJson(['error' => 'exhausted'])
+            ->assertHeaderMissing('Retry-After');
 
-            $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => $case])
-                ->assertStatus(429)
-                ->assertExactJson(['error' => 'exhausted'])
-                ->assertHeaderMissing('Retry-After');
-
-            $this->assertNull(session('core_web_chat.assistant'), $case);
-        }
+        $this->assertNull(session('core_web_chat.assistant'));
     }
 
     public function test_a_rate_limit_passes_core_s_wait_through_and_keeps_the_conversation(): void
