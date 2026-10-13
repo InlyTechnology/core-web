@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **`core:pull`**: fills the local snapshots from another Core, production as
+  a rule, through a read-only client of its own (`CORE_PULL_URL`,
+  `CORE_PULL_CLIENT_ID`, `CORE_PULL_CLIENT_SECRET`), so a local site renders
+  the live site's data without a local Core. The copies are pinned: no
+  `core:warm`, ping or render replaces them until the next pull or
+  `core:pull --release`. Never runs in production. Part of
+  `features.snapshots`. `SnapshotStore` gains `pinning()`, `pinned()`,
+  `pinnedNow()` and `release()`. See README § Pulling production data.
+
 ## v0.4.0 (2026-10-13)
 
 - **Dormant until switched on**: installing the package no longer registers

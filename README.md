@@ -46,7 +46,7 @@ install it whether or not it shows Core data yet.
 
 | Feature | Switch | What it registers |
 |---|---|---|
-| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
+| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -77,6 +77,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
+| `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` / `CORE_PULL_CLIENT_SECRET` | `pull.base_url` / `pull.client_id` / `pull.client_secret` | Local only: the Core `core:pull` reads from and its read-only client (see [Pulling production data](#pulling-production-data)) |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret Core signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). **Empty rejects every ping**; there is no `APP_KEY` fallback |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -89,6 +90,7 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 |---|---|---|
 | `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
+| `pull.token_cache_key` | `core_web_pull_access_token` | Where `core:pull`'s access token is cached, apart from the site's own |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |
 | `ping.middleware` | `['throttle:120,1']` | Outside the `web` group, so no CSRF exemption is needed |
@@ -260,6 +262,41 @@ Choose each snapshot's TTLs around it:
 
 A snapshot whose data moves without a ping (something time alone changes on
 Core's side) needs a schedule of its own, or its own ping.
+
+## Pulling production data
+
+A site's content references Core's records, and on a developer's machine the
+local Core (if there is one) holds other records, or none. `core:pull` fills
+the local snapshots from another Core, production as a rule, so the site
+renders what the live site renders without a local Core:
+
+```bash
+php artisan core:pull            # every registered snapshot
+php artisan core:pull staff      # one
+php artisan core:pull --release  # unpin: core:warm pulls from CORE_URL again
+```
+
+It runs each snapshot's own pull (or its warmer) on the `pull.*` client in
+place of `client.*`, so the documents are exactly what the site's
+projections make of that Core's data. What it stores is **pinned**: kept
+without expiry, and no `core:warm`, ping or render replaces it until the next
+`core:pull` or `--release`. A pull that fails or comes back empty pins
+nothing and leaves an earlier pin alone.
+
+- **Never in production.** A pinned copy stops a site following its Core, so
+  the command refuses to run there (`--release` still runs).
+- **A client that may only read.** In the source Core, create an app client
+  for local pulls (Settings → Apps, client credentials) holding the same read
+  permissions as the site's own client and nothing else, and share its secret
+  the way the team shares other secrets. It reads what the public site reads,
+  never more; revoking it in Core stops every pull.
+- **Stays on the machine.** The copies live in the `snapshots` store
+  (`storage/framework/snapshots`), which is not committed.
+- **Only what goes through the store.** A warmer that also writes cache keys
+  of its own, or reads Core during a render, keeps doing so against
+  `CORE_URL`; those keys are not pinned.
+- Production's pings do not reach a local machine: pull again for fresher
+  data.
 
 ## Ping contract
 

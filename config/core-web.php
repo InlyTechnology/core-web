@@ -19,8 +19,8 @@ return [
     |     return ['features' => ['snapshots' => true]];
     |
     | snapshots: Core snapshots with their store, `core:warm` and its schedule,
-    | the degraded guard, Core's pings (`ping`) and the snapshot sitemaps
-    | (`sitemaps`). The Core client below needs no switch.
+    | `core:pull`, the degraded guard, Core's pings (`ping`) and the snapshot
+    | sitemaps (`sitemaps`). The Core client below needs no switch.
     |
     */
 
@@ -49,6 +49,25 @@ return [
         'client_secret' => env('CORE_CLIENT_SECRET', ''),
         'ca_bundle' => env('CORE_CA_BUNDLE', ''),
         'token_cache_key' => 'core_web_access_token',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pulling another Core's data
+    |--------------------------------------------------------------------------
+    |
+    | Local only: the Core `core:pull` reads the snapshots from (production, as
+    | a rule) and its own client, which Core should let read and nothing more
+    | (CORE_PULL_URL, CORE_PULL_CLIENT_ID, CORE_PULL_CLIENT_SECRET). The copies
+    | it stores are pinned until the next pull or `core:pull --release`.
+    |
+    */
+
+    'pull' => [
+        'base_url' => env('CORE_PULL_URL', ''),
+        'client_id' => env('CORE_PULL_CLIENT_ID', ''),
+        'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
+        'token_cache_key' => 'core_web_pull_access_token',
     ],
 
     /*
