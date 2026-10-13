@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.0 (unreleased)
+## v0.4.0 (2026-10-13)
 
 - **Dormant until switched on**: installing the package no longer registers
   anything. Each feature has a switch under `features` in the config, off by
