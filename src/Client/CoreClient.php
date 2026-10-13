@@ -149,6 +149,30 @@ class CoreClient
         return $response->json() ?? [];
     }
 
+    /**
+     * A JSON POST with the client token, retried once on a 401 like every
+     * call, and handed back whatever Core answered for the caller to read.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string>  $headers
+     */
+    public function postResponse(string $path, array $data = [], array $headers = [], ?int $timeout = null): Response
+    {
+        $attempt = fn (string $token) => $this->client($token)
+            ->withHeaders($headers)
+            ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
+            ->post($this->baseUrl.'/'.ltrim($path, '/'), $data);
+
+        $response = $attempt($this->token());
+
+        if ($response->status() === 401) {
+            $this->forgetToken();
+            $response = $attempt($this->token());
+        }
+
+        return $response;
+    }
+
     /** A request to Core, trusting the configured CA bundle when there is one (a local self-signed certificate). */
     public static function request(): PendingRequest
     {
