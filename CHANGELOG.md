@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Chat**: `features.chat` (off by default) relays a site's visitors to Core's
+  public chat agents through Core's stock chat route
+  (`/api/app/chat/{agent}`). `CoreChat` is the transport (client token to
+  open a conversation, the conversation's access token after, the visitor in
+  `X-Core-Client-Id`), `ChatTranscript` normalizes a transcript (escaped
+  Markdown as `html`, structured replies unwrapped, result cards narrowed),
+  and the relay routes under `/!/core-web/chat/{agent}` keep each
+  conversation's token in the session, by agent and the key the agent's
+  `ChatContext` class names. `resources/js/core-chat.js` is a headless Alpine
+  data factory and `<x-core-web::chat>` its wrapper. `CoreClient::postResponse()`
+  posts with the client token and hands back Core's answer. See README § Chat.
+
 ## v0.5.0 (2026-10-14)
 
 - **`core:pull`**: fills the local snapshots from another Core, production as

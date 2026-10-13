@@ -1,6 +1,6 @@
 {
     "name": "inly/core-web",
-    "description": "Core snapshots, the Core API client, Core's signed pings and snapshot sitemaps for Statamic websites fed by an Inly Core backoffice.",
+    "description": "Core snapshots, the Core API client, Core's signed pings, snapshot sitemaps and a chat relay for Statamic websites fed by an Inly Core backoffice.",
     "type": "library",
     "license": "MIT",
     "keywords": [

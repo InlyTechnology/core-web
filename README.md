@@ -21,12 +21,13 @@ What the package gives a site:
 | Snapshot sitemaps | `Inly\CoreWeb\Sitemaps\*` | `/sitemap-core-{type}.xml` per site host, and the `{{ core_sitemaps }}` tag |
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
+| Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore` | A fake Core over `Http::fake()` and pings signed as Core signs them |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
 document looks like, how the pages read it), the page routes and views, the TTL
-choices, and anything that is not the snapshot pipeline (CMS single sign-on,
-AI chat, …).
+choices, the chat's markup, context and lead handling, and anything else that
+is not plumbing (CMS single sign-on, …).
 
 ## Installation
 
@@ -47,6 +48,7 @@ install it whether or not it shows Core data yet.
 | Feature | Switch | What it registers |
 |---|---|---|
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
+| Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -105,6 +107,12 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `snapshots.uncacheable_while_degraded` | `true` | Push `UncacheableWhileDegraded` onto `statamic.web` |
 | `sitemaps.enabled` / `sitemaps.name` | `true` / `core.sitemap` | Register `/sitemap-core-{type}.xml` |
 | `sitemaps.middleware` | `['web', StaticCache::class]` | Statically cached like the site's pages |
+| `features.chat` | `false` | Switch on the chat relay (see [Chat](#chat)) |
+| `chat.agents` | `[]` | Core agent key => the site's `ChatContext` class, or `null` for an agent that takes no context. Any other agent is a 404 |
+| `chat.path` | `api/app/chat` | Core's stock chat route |
+| `chat.timeouts` | `connect` 5, `read` 8, `turn` 60 | Seconds. `turn` covers a message and the handoff summary, `read` opening and reading a conversation |
+| `chat.name` / `chat.middleware` | `core-web.chat` / `['web', 'throttle:60,1']` | The relay routes (`core-web.chat.show`, `.messages`, `.handoff`, `.forget`). `web` gives them the session and CSRF |
+| `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
 ## Where snapshots live
 
@@ -421,6 +429,133 @@ whose pages you cannot name.
 a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
 path on the site.
+
+## Chat
+
+A site's visitors talk to Core's chat agents through the site: the browser
+calls the site's relay, and the relay calls Core with the visitor's
+conversation. What the package gives:
+
+- **The transport**, `Inly\CoreWeb\Chat\CoreChat`: `start($agent, $context)`,
+  `read()`, `postMessage()` and `handoff()` against
+  `{CORE_URL}/api/app/chat/{agent}/conversations`. Opening a conversation
+  uses the site's client token (the `CoreClient` credentials); every later
+  call uses the conversation's own access token, which Core returns once, and
+  never sends the client token. Every call names the visitor in
+  `X-Core-Client-Id` (an HMAC of the session id, never the id itself or an
+  IP), which Core's per-visitor limits key on. A failure is a
+  `ChatException` with Core's status (`busy()` 409, `limited()` 429,
+  `invalid()` 422, `gone()` 404; 0 when Core never answered).
+- **The transcript**, `ChatTranscript`: `{state, messages}`, each message
+  with `id`, `role` (`user` or `assistant`; any other role is left out),
+  `content`, `html`, `results` and `created_at`, plus `intent` on assistant
+  messages. An assistant `content` of `{"reply": …, "intent": …}` (an agent
+  with structured output) is unwrapped: `content` is the reply, `intent` the
+  render mode; prose is `answer`. A result card keeps `title`, `subtitle`,
+  `url` and `image` when they are strings (a `url` or `image` only as a web
+  address or a path) and `fields` as a flat map of strings.
+- **The relay**, `/!/core-web/chat/{agent}` under Statamic's action prefix,
+  so it is never statically cached: `GET` (the transcript, or
+  `{state: null, messages: []}`), `POST /messages` `{message, subject?}`,
+  `POST /handoff` (`{summary, subject, contact: {name, email, phone}}`, every
+  value null when Core could not say: a blank form is a normal outcome) and
+  `DELETE` (start over). The first message opens the conversation and keeps
+  its id and token in the session, by agent and conversation key; the token
+  never reaches the browser. A conversation Core no longer knows (expired,
+  cleared) is forgotten and the next message opens a fresh one. Errors are
+  `{error: 'busy' | 'limited' | 'invalid' | 'unavailable'}` with 409, 429, 422
+  or 503. A `core_chat_{agent}` cookie (readable by scripts) says the session
+  holds a conversation for the agent, so an idle page fetches nothing.
+- **A headless front end**: an Alpine data factory and a Blade component that
+  outputs only the wrapper.
+
+Switch it on and name the agents:
+
+```php
+return [
+    'features' => ['chat' => true],
+    'chat' => ['agents' => ['assistant' => App\Chat\AssistantContext::class]],
+];
+```
+
+Every `chat` key the site leaves out keeps its default, so a site's file
+needs only `agents`.
+
+### The context
+
+What an agent is told about the page comes from one small class per agent,
+built server side from the `subject` the browser names. The browser never
+supplies the context itself: whatever it sent would reach the agent's prompt.
+
+```php
+use Illuminate\Http\Request;
+use Inly\CoreWeb\Chat\ChatContext;
+
+class AssistantContext implements ChatContext
+{
+    public function context(?string $subject, Request $request): array
+    {
+        $record = $subject === null ? null : Record::find($subject);
+
+        return $record === null ? [] : ['record_id' => $record->core_id, 'page' => $record->url()];
+    }
+
+    // A different key starts a fresh conversation: one per record.
+    public function key(?string $subject, Request $request): string
+    {
+        return $subject ?? 'general';
+    }
+}
+```
+
+`context()` is read only when a conversation opens, and it decides what the
+subject may be (`abort(404)` for one it does not know). The agent decides
+which keys it accepts.
+
+### The front end
+
+```js
+import Alpine from 'alpinejs'
+import coreChat from '../../vendor/inly/core-web/resources/js/core-chat.js'
+
+Alpine.data('coreChat', coreChat)
+```
+
+```blade
+<x-core-web::chat agent="assistant" :subject="$record->id" class="chat">
+    <template x-for="message in messages" :key="message.id">
+        <div :class="message.role">
+            <div x-show="message.role === 'assistant'" x-html="message.html"></div>
+            <p x-show="message.role === 'user'" x-text="message.content"></p>
+        </div>
+    </template>
+    <p x-show="error" x-text="error"></p>
+    <form x-on:submit.prevent="send($refs.input.value).then((sent) => sent && ($refs.input.value = ''))">
+        <textarea x-ref="input" :disabled="pending"></textarea>
+        <button :disabled="pending">Send</button>
+    </form>
+    <button type="button" x-on:click="reset()">Start over</button>
+</x-core-web::chat>
+```
+
+State: `messages`, `state`, `pending`, `error` (`busy`, `limited`,
+`invalid`, `unavailable`, or `expired` when the session and its CSRF token
+did), `handoff`. Methods: `send(text)` (shows the visitor's message at once
+and resolves true or false), `reset()`, `requestHandoff()` (fills `handoff`),
+`load()` (called on init only when the hint cookie is there). CSRF comes from
+a `csrf-token` meta tag, else the `XSRF-TOKEN` cookie.
+
+Render text with `x-text`. A message's `html` is safe for `x-html`: the server
+rendered it with raw HTML escaped and unsafe links dropped. A result card's
+values are plain strings, for `x-text` and bound attributes.
+
+What stays in the site: the markup and its styling, the context classes, and
+what a handoff becomes (the lead form, where it is sent).
+
+What Core must have: the agent opted into the stock chat route, and the site's
+app client (`CORE_CLIENT_ID`) holding the `use_public_chat` scope. A turn runs
+while Core answers, so the web server's read timeout (nginx's
+`fastcgi_read_timeout`) must outlast `chat.timeouts.turn`.
 
 ## Testing a site
 
