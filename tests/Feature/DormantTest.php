@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\View;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
@@ -21,7 +22,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -30,6 +31,13 @@ class DormantTest extends TestCase
             ->filter(fn ($route) => str_starts_with($route->getActionName(), 'Inly\\CoreWeb\\'));
 
         $this->assertCount(0, $routes);
+    }
+
+    public function test_no_chat_route_or_component_is_registered(): void
+    {
+        $this->assertFalse(app(Router::class)->has('core-web.chat.show'));
+        $this->post('/!/core-web/chat/assistant/messages', ['message' => 'Hej'])->assertNotFound();
+        $this->assertFalse(View::exists('core-web::components.chat'));
     }
 
     public function test_nothing_is_scheduled(): void
@@ -87,6 +95,8 @@ class DormantTest extends TestCase
 
     public function test_a_switch_set_from_env_counts(): void
     {
+        $this->assertFalse(CoreWebServiceProvider::enabled('chat'));
+
         foreach (['1', 'true', 'on', true] as $on) {
             config(['core-web.features.snapshots' => $on]);
             $this->assertTrue(CoreWebServiceProvider::enabled('snapshots'), var_export($on, true));

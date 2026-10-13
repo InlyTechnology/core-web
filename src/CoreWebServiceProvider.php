@@ -3,8 +3,10 @@
 namespace Inly\CoreWeb;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -24,6 +26,7 @@ use Statamic\StaticCaching\Cacher;
  * store. The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
+ * The `chat` feature relays a site's visitors to Core's chat agents.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -62,6 +65,10 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();
         }
+
+        if (self::enabled('chat')) {
+            $this->bootChat();
+        }
     }
 
     /** Whether the site switched a feature on in core-web.features (true, or a string such as "1" or "true" from env). */
@@ -91,6 +98,15 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    private function bootChat(): void
+    {
+        $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+
+        // The front end reads the hint cookie; it says only that a conversation exists, never which.
+        EncryptCookies::except(array_map(ChatSession::cookieName(...), array_map('strval', array_keys((array) config('core-web.chat.agents', [])))));
     }
 
     /** The `snapshots` store (a file or a database store, core-web.snapshots.store_driver), unless the app defines a store by that name itself. */
