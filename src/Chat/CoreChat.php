@@ -20,6 +20,13 @@ class CoreChat
 {
     public const VISITOR_HEADER = 'X-Core-Client-Id';
 
+    public const EXHAUSTED_CODE = 'conversation_exhausted';
+
+    private const EXHAUSTED_MESSAGES = [
+        'This conversation has reached its limit. Please start a new one.',
+        'Den här konversationen har nått sin gräns. Starta en ny.',
+    ];
+
     public function __construct(
         protected CoreClient $client,
         protected string $visitor,
@@ -118,12 +125,34 @@ class CoreChat
     protected function decode(Response $response, string $call): array
     {
         if ($response->failed()) {
-            throw new ChatException("Core chat error [{$response->status()}] on {$call}", $response->status());
+            $retryAfter = $response->header('Retry-After');
+
+            throw new ChatException(
+                "Core chat error [{$response->status()}] on {$call}",
+                $response->status(),
+                retryAfter: ctype_digit($retryAfter) ? (int) $retryAfter : null,
+                exhausted: $response->status() === 429 && self::exhausted($response),
+            );
         }
 
         $payload = $response->json();
 
         return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * Core answers a spent conversation budget with a 429 like its rate limits, told apart only by `code`, or, from a
+     * Core that sends none, by the refusal's text in the languages Core ships.
+     */
+    protected static function exhausted(Response $response): bool
+    {
+        if ($response->json('code') === self::EXHAUSTED_CODE) {
+            return true;
+        }
+
+        $message = $response->json('message');
+
+        return is_string($message) && in_array(trim($message), self::EXHAUSTED_MESSAGES, true);
     }
 
     protected function path(string $agent, string $suffix): string

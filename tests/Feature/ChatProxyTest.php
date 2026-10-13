@@ -4,10 +4,14 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Inly\CoreWeb\Chat\ChatContext;
+use Inly\CoreWeb\Chat\ChatException;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
+use InvalidArgumentException;
 
 /** The site's relay: context built server side, tokens kept in the session, Core's refusals mapped for the front end. */
 class ChatProxyTest extends TestCase
@@ -187,16 +191,108 @@ class ChatProxyTest extends TestCase
         $this->assertNull(session('core_web_chat.assistant'));
     }
 
-    public function test_core_is_told_an_opaque_visitor_and_never_the_session_id(): void
+    public function test_core_is_told_a_random_visitor_that_outlives_a_regenerated_session(): void
     {
         $this->fakeChat();
 
         $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42']);
+        session()->regenerate();
+        $this->postJson(self::URL.'/messages', ['message' => 'Again', 'subject' => '42']);
 
-        $visitor = self::opened()[0]->header('X-Core-Client-Id')[0] ?? '';
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $visitor);
-        $this->assertStringNotContainsString(session()->getId(), $visitor);
-        Http::assertSent(fn (HttpRequest $request) => str_ends_with($request->url(), '/messages') && $request->hasHeader('X-Core-Client-Id', $visitor));
+        $visitors = collect(Http::recorded())->map(fn (array $pair) => $pair[0]->header('X-Core-Client-Id')[0] ?? null)->filter()->unique()->values()->all();
+
+        $this->assertCount(1, $visitors);
+        $this->assertSame(40, strlen($visitors[0]));
+        $this->assertSame($visitors[0], session('core_web_chat_visitor'));
+        $this->assertStringNotContainsString(session()->getId(), $visitors[0]);
+    }
+
+    public function test_turns_have_a_tighter_limit_of_their_own(): void
+    {
+        $this->fakeChat();
+        config(['core-web.chat.turn_rate_limit' => 2]);
+        // The limiter keys on the session, which a test's JSON request only keeps when it sends the session cookie.
+        $this->withCredentials()->withCookie((string) config('session.cookie'), str_repeat('a', 40));
+
+        $this->postJson(self::URL.'/messages', ['message' => 'One', 'subject' => '42'])->assertOk();
+        $this->postJson(self::URL.'/handoff', ['subject' => '42'])->assertOk();
+        $this->postJson(self::URL.'/messages', ['message' => 'Three', 'subject' => '42'])->assertStatus(429);
+
+        $this->getJson(self::URL.'?subject=42')->assertOk();
+    }
+
+    public function test_past_its_conversation_cap_a_session_opens_no_more_without_calling_core(): void
+    {
+        $this->fakeChat();
+        config(['core-web.chat.max_conversations' => 2]);
+
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '1'])->assertOk();
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '2'])->assertOk();
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '3'])->assertStatus(429)->assertExactJson(['error' => 'limited']);
+        $this->postJson(self::URL.'/messages', ['message' => 'Again', 'subject' => '1'])->assertOk()->assertJsonPath('messages.1.content', 'Reply in c1');
+
+        $this->assertCount(2, self::opened());
+    }
+
+    public function test_core_refusing_the_site_s_context_is_the_site_s_failure(): void
+    {
+        Exceptions::fake();
+        $this->fakeChat(['core.test/api/app/chat/assistant/conversations' => Http::response(['message' => 'The record field is required.'], 422)]);
+
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42'])->assertStatus(503)->assertExactJson(['error' => 'unavailable']);
+
+        Exceptions::assertReported(ChatException::class);
+    }
+
+    public function test_a_conversation_that_spent_its_budget_is_forgotten(): void
+    {
+        $answers = [
+            'code' => ['code' => 'conversation_exhausted', 'message' => 'Anything'],
+            'english' => ['message' => 'This conversation has reached its limit. Please start a new one.'],
+            'swedish' => ['message' => 'Den här konversationen har nått sin gräns. Starta en ny.'],
+        ];
+
+        foreach ($answers as $case => $body) {
+            $this->fakeChat(['core.test/api/app/chat/assistant/conversations/*/messages' => Http::response($body, 429)]);
+
+            $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => $case])
+                ->assertStatus(429)
+                ->assertExactJson(['error' => 'exhausted'])
+                ->assertHeaderMissing('Retry-After');
+
+            $this->assertNull(session('core_web_chat.assistant'), $case);
+        }
+    }
+
+    public function test_a_rate_limit_passes_core_s_wait_through_and_keeps_the_conversation(): void
+    {
+        $this->fakeChat(['core.test/api/app/chat/assistant/conversations/*/messages' => Http::response(['message' => 'Too Many Attempts.'], 429, ['Retry-After' => '30'])]);
+
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42'])
+            ->assertStatus(429)
+            ->assertExactJson(['error' => 'limited'])
+            ->assertHeader('Retry-After', '30');
+
+        $this->assertCount(1, session('core_web_chat.assistant'));
+    }
+
+    public function test_agent_keys_are_core_s_lowercase_slugs(): void
+    {
+        $this->getJson('/!/core-web/chat/Assistant')->assertNotFound();
+
+        foreach (['Assistant', 'my_agent', 'two--hyphens', '-edge'] as $bad) {
+            config(['core-web.chat.agents' => [$bad => null]]);
+
+            try {
+                CoreWebServiceProvider::chatAgents();
+                $this->fail("[{$bad}] passed");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString("[{$bad}]", $e->getMessage());
+            }
+        }
+
+        config(['core-web.chat.agents' => ['site-assistant' => null, 'faq2' => null]]);
+        $this->assertSame(['site-assistant', 'faq2'], CoreWebServiceProvider::chatAgents());
     }
 
     public function test_a_site_file_naming_only_its_agents_keeps_every_other_default(): void

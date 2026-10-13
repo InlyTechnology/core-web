@@ -12,6 +12,7 @@ export default function coreChat({ endpoint, subject = null, cookie = null } = {
         state: null,
         pending: false,
         error: null,
+        retryAfter: null,
         handoff: null,
 
         init() {
@@ -48,6 +49,10 @@ export default function coreChat({ endpoint, subject = null, cookie = null } = {
         },
 
         async reset() {
+            if (this.pending) {
+                return false
+            }
+
             this.handoff = null
 
             return this.call('DELETE', '', { subject })
@@ -60,12 +65,14 @@ export default function coreChat({ endpoint, subject = null, cookie = null } = {
 
             this.pending = true
             this.error = null
+            this.retryAfter = null
 
             try {
-                const { ok, data } = await request('POST', `${endpoint}/handoff`, { subject })
+                const { ok, data, retryAfter } = await request('POST', `${endpoint}/handoff`, { subject })
 
                 if (!ok) {
                     this.error = data.error ?? 'unavailable'
+                    this.retryAfter = retryAfter
 
                     return null
                 }
@@ -85,12 +92,14 @@ export default function coreChat({ endpoint, subject = null, cookie = null } = {
         async call(method, path, body, query = '') {
             this.pending = true
             this.error = null
+            this.retryAfter = null
 
             try {
-                const { ok, data } = await request(method, `${endpoint}${path}${query}`, body)
+                const { ok, data, retryAfter } = await request(method, `${endpoint}${path}${query}`, body)
 
                 if (!ok) {
                     this.error = data.error ?? 'unavailable'
+                    this.retryAfter = retryAfter
 
                     return false
                 }
@@ -140,11 +149,13 @@ async function request(method, url, body) {
     }
 
     if (!response.ok && !data.error) {
-        // 419: the session (and its CSRF token) expired; anything else without our error shape is the relay failing.
-        data = { error: response.status === 419 ? 'expired' : 'unavailable' }
+        // Without the relay's error shape: 419 is an expired session (and CSRF token), 429 the relay's own limits.
+        data = { error: { 419: 'expired', 429: 'limited' }[response.status] ?? 'unavailable' }
     }
 
-    return { ok: response.ok, data }
+    const retryAfter = Number.parseInt(response.headers.get('Retry-After') ?? '', 10)
+
+    return { ok: response.ok, data, retryAfter: Number.isNaN(retryAfter) ? null : retryAfter }
 }
 
 function csrfToken() {

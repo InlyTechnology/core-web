@@ -17,6 +17,11 @@ use InvalidArgumentException;
  */
 class ChatController
 {
+    /** Core's agent keys: lowercase slugs. */
+    public const AGENT_PATTERN = '[a-z0-9]+(?:-[a-z0-9]+)*';
+
+    public const TURN_LIMITER = 'core-web-chat-turn';
+
     public function show(Request $request, string $agent): JsonResponse
     {
         [$context, $key] = $this->resolve($request, $agent);
@@ -31,7 +36,7 @@ class ChatController
             return $this->respond($session, $agent, ChatTranscript::empty()->toArray());
         }
 
-        return $this->relay($session, $agent, function (CoreChat $chat) use ($session, $conversation, $key) {
+        return $this->relay($session, $agent, $key, function (CoreChat $chat) use ($session, $conversation, $key) {
             try {
                 return $chat->read($conversation)->toArray();
             } catch (ChatException $e) {
@@ -58,9 +63,19 @@ class ChatController
         $session = new ChatSession($request->session());
         $message = trim((string) $request->input('message'));
 
-        return $this->relay($session, $agent, function (CoreChat $chat) use ($session, $agent, $key, $context, $message) {
+        return $this->relay($session, $agent, $key, function (CoreChat $chat) use ($session, $agent, $key, $context, $message) {
             $open = function () use ($chat, $session, $agent, $key, $context): ChatConversation {
-                $conversation = $chat->start($agent, $context());
+                if ($session->count($agent) >= (int) config('core-web.chat.max_conversations', 5)) {
+                    throw new ChatException("The session holds the most conversations it may with [{$agent}].", 429);
+                }
+
+                try {
+                    $conversation = $chat->start($agent, $context());
+                } catch (ChatException $e) {
+                    // Core's rules for the agent's context refused what the site's ChatContext built: the site's bug, not the visitor's.
+                    throw $e->invalid() ? new ChatException("Core refused the context of [{$agent}]: {$e->getMessage()}", previous: $e) : $e;
+                }
+
                 $session->put($conversation, $key);
 
                 return $conversation;
@@ -99,7 +114,7 @@ class ChatController
             return $this->respond($session, $agent, $blank);
         }
 
-        return $this->relay($session, $agent, function (CoreChat $chat) use ($session, $conversation, $key, $blank) {
+        return $this->relay($session, $agent, $key, function (CoreChat $chat) use ($session, $conversation, $key, $blank) {
             try {
                 return $chat->handoff($conversation);
             } catch (ChatException $e) {
@@ -161,14 +176,19 @@ class ChatController
         return [fn (): array => $context->context($subject, $request), $context->key($subject, $request)];
     }
 
-    /** @param  Closure(CoreChat): array<string, mixed>  $call */
-    protected function relay(ChatSession $session, string $agent, Closure $call): JsonResponse
+    /**
+     * A conversation that spent its budget is forgotten, so the visitor's next message opens a fresh one.
+     *
+     * @param  Closure(CoreChat): array<string, mixed>  $call
+     */
+    protected function relay(ChatSession $session, string $agent, string $key, Closure $call): JsonResponse
     {
         try {
             return $this->respond($session, $agent, $call(CoreChat::for($session->visitor())));
         } catch (ChatException $e) {
             [$error, $status] = match (true) {
                 $e->busy() => ['busy', 409],
+                $e->exhausted => ['exhausted', 429],
                 $e->limited() => ['limited', 429],
                 $e->invalid() => ['invalid', 422],
                 default => ['unavailable', 503],
@@ -178,7 +198,13 @@ class ChatController
                 report($e);
             }
 
-            return $this->respond($session, $agent, ['error' => $error], $status);
+            if ($e->exhausted) {
+                $session->forget($agent, $key);
+            }
+
+            $response = $this->respond($session, $agent, ['error' => $error], $status);
+
+            return $e->retryAfter === null ? $response : $response->header('Retry-After', (string) $e->retryAfter);
         }
     }
 

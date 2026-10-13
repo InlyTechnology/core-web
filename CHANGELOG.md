@@ -13,6 +13,12 @@
   `ChatContext` class names. `resources/js/core-chat.js` is a headless Alpine
   data factory and `<x-core-web::chat>` its wrapper. `CoreClient::postResponse()`
   posts with the client token and hands back Core's answer. See README § Chat.
+  Messages and handoffs have a limit of their own (`chat.turn_rate_limit`,
+  10 a minute per session and address), and a session holds at most
+  `chat.max_conversations` (5) per agent. A conversation Core reports as
+  used up answers `exhausted` and is forgotten; a rate limit answers
+  `limited` with Core's `Retry-After`. Agent keys must be Core's lowercase
+  slugs.
 
 ## v0.5.0 (2026-10-14)
 

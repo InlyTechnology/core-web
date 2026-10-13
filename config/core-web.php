@@ -191,6 +191,12 @@ return [
     | prefix (`/!/core-web/chat/{agent}`). `web` gives them the session the
     | access tokens live in, and CSRF.
     |
+    | turn_rate_limit: messages and handoffs per minute, per session and
+    | address, on top of the routes' own middleware.
+    |
+    | max_conversations: conversations a session may hold per agent; a new
+    | subject past it is refused (`limited`) without calling Core.
+    |
     | session_key / cookie: where conversations are kept in the session, and
     | the prefix of the per-agent cookie that tells the front end one exists.
     |
@@ -206,6 +212,8 @@ return [
         ],
         'name' => 'core-web.chat',
         'middleware' => ['web', 'throttle:60,1'],
+        'turn_rate_limit' => 10,
+        'max_conversations' => 5,
         'session_key' => 'core_web_chat',
         'cookie' => 'core_chat',
     ],

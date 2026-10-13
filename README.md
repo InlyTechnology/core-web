@@ -108,10 +108,12 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `sitemaps.enabled` / `sitemaps.name` | `true` / `core.sitemap` | Register `/sitemap-core-{type}.xml` |
 | `sitemaps.middleware` | `['web', StaticCache::class]` | Statically cached like the site's pages |
 | `features.chat` | `false` | Switch on the chat relay (see [Chat](#chat)) |
-| `chat.agents` | `[]` | Core agent key => the site's `ChatContext` class, or `null` for an agent that takes no context. Any other agent is a 404 |
+| `chat.agents` | `[]` | Core agent key (a lowercase slug) => the site's `ChatContext` class, or `null` for an agent that takes no context. Any other agent is a 404 |
 | `chat.path` | `api/app/chat` | Core's stock chat route |
 | `chat.timeouts` | `connect` 5, `read` 8, `turn` 60 | Seconds. `turn` covers a message and the handoff summary, `read` opening and reading a conversation |
 | `chat.name` / `chat.middleware` | `core-web.chat` / `['web', 'throttle:60,1']` | The relay routes (`core-web.chat.show`, `.messages`, `.handoff`, `.forget`). `web` gives them the session and CSRF |
+| `chat.turn_rate_limit` | `10` | Messages and handoffs per minute, per session and address |
+| `chat.max_conversations` | `5` | Conversations a session holds per agent; a new subject past it is `limited` |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
 ## Where snapshots live
@@ -442,10 +444,13 @@ conversation. What the package gives:
   uses the site's client token (the `CoreClient` credentials); every later
   call uses the conversation's own access token, which Core returns once, and
   never sends the client token. Every call names the visitor in
-  `X-Core-Client-Id` (an HMAC of the session id, never the id itself or an
-  IP), which Core's per-visitor limits key on. A failure is a
-  `ChatException` with Core's status (`busy()` 409, `limited()` 429,
-  `invalid()` 422, `gone()` 404; 0 when Core never answered).
+  `X-Core-Client-Id` (a random value kept in the session, so it outlives a
+  regenerated session id; never the session id or an IP), which Core's
+  per-visitor limits key on. A failure is a `ChatException` with Core's
+  status (`busy()` 409, `limited()` 429, `invalid()` 422, `gone()` 404; 0
+  when Core never answered), `retryAfter` when Core's rate limiter said how
+  long to wait, and `exhausted` when a 429 means the conversation spent its
+  budget, which no wait mends.
 - **The transcript**, `ChatTranscript`: `{state, messages}`, each message
   with `id`, `role` (`user` or `assistant`; any other role is left out),
   `content`, `html`, `results` and `created_at`, plus `intent` on assistant
@@ -460,12 +465,37 @@ conversation. What the package gives:
   `POST /handoff` (`{summary, subject, contact: {name, email, phone}}`, every
   value null when Core could not say: a blank form is a normal outcome) and
   `DELETE` (start over). The first message opens the conversation and keeps
-  its id and token in the session, by agent and conversation key; the token
-  never reaches the browser. A conversation Core no longer knows (expired,
-  cleared) is forgotten and the next message opens a fresh one. Errors are
-  `{error: 'busy' | 'limited' | 'invalid' | 'unavailable'}` with 409, 429, 422
-  or 503. A `core_chat_{agent}` cookie (readable by scripts) says the session
-  holds a conversation for the agent, so an idle page fetches nothing.
+  its id and token in the session, by agent and conversation key. A
+  conversation Core no longer knows (expired, cleared) is forgotten and the
+  next message opens a fresh one. A `core_chat_{agent}` cookie (readable by
+  scripts) says the session holds a conversation for the agent, so an idle
+  page fetches nothing.
+- **Limits of the site's own**: messages and handoffs get
+  `chat.turn_rate_limit` per minute (10) per session and address, besides
+  the routes' general `throttle:60,1`; a session holds at most
+  `chat.max_conversations` (5) per agent, and a new subject past that is
+  refused as `limited` without calling Core.
+
+Errors are `{error: …}`:
+
+| Error | Status | When |
+|---|---|---|
+| `busy` | 409 | A turn is already running in the conversation |
+| `limited` | 429 | A rate limit, Core's or the relay's, or the conversation cap: wait. `Retry-After` is passed through when Core's limiter sent one |
+| `exhausted` | 429 | The conversation spent its budget at Core. The relay has forgotten it, so offer to start over: the next message opens a fresh one |
+| `invalid` | 422 | The message or subject was refused (empty, too long, screened by Core) |
+| `unavailable` | 503 | Core failed or is unreachable, and when Core's rules for the agent's context refuse what the site's `ChatContext` built (a site bug); both are reported |
+
+Core says a conversation is used up with a 429 like its rate limits; the
+relay tells them apart by the answer's `code` (`conversation_exhausted`),
+or, from a Core that sends none, by the refusal's text in English or
+Swedish.
+
+The access token never reaches the browser **as long as the session lives
+on the server** (`file`, `database`, `redis`, …). With the `cookie` session
+driver the session, tokens included, is the encrypted cookie itself, and at
+around ten conversations it outgrows a browser's 4 KB cookie limit: use a
+server-side driver with chat.
 - **A headless front end**: an Alpine data factory and a Blade component that
   outputs only the wrapper.
 
@@ -495,7 +525,7 @@ class AssistantContext implements ChatContext
 {
     public function context(?string $subject, Request $request): array
     {
-        $record = $subject === null ? null : Record::find($subject);
+        $record = $this->record($subject);
 
         return $record === null ? [] : ['record_id' => $record->core_id, 'page' => $record->url()];
     }
@@ -503,14 +533,24 @@ class AssistantContext implements ChatContext
     // A different key starts a fresh conversation: one per record.
     public function key(?string $subject, Request $request): string
     {
-        return $subject ?? 'general';
+        return (string) ($this->record($subject)?->getKey() ?? 'general');
+    }
+
+    // Only a record that exists names a conversation, so a visitor cannot mint subjects.
+    private function record(?string $subject): ?Record
+    {
+        return $subject === null ? null : (Record::find($subject) ?? abort(404));
     }
 }
 ```
 
-`context()` is read only when a conversation opens, and it decides what the
-subject may be (`abort(404)` for one it does not know). The agent decides
-which keys it accepts.
+`key()` runs on every call and `context()` only when a conversation opens;
+both must refuse a subject the site does not know (`abort(404)`), or every
+made-up subject would be a conversation of its own. The agent decides which
+context keys it accepts.
+
+Agent keys are Core's: lowercase slugs (`a-z`, `0-9`, single hyphens). A
+site naming any other key in `chat.agents` fails at boot.
 
 ### The front end
 
@@ -538,10 +578,11 @@ Alpine.data('coreChat', coreChat)
 </x-core-web::chat>
 ```
 
-State: `messages`, `state`, `pending`, `error` (`busy`, `limited`,
-`invalid`, `unavailable`, or `expired` when the session and its CSRF token
-did), `handoff`. Methods: `send(text)` (shows the visitor's message at once
-and resolves true or false), `reset()`, `requestHandoff()` (fills `handoff`),
+State: `messages`, `state`, `pending`, `error` (one of the errors above, or
+`expired` when the session and its CSRF token did), `retryAfter` (seconds,
+when the answer said), `handoff`. Methods: `send(text)` (shows the visitor's
+message at once and resolves true or false), `reset()` (on `exhausted`, this
+clears the old transcript off the page), `requestHandoff()` (fills `handoff`),
 `load()` (called on init only when the hint cookie is there). CSRF comes from
 a `csrf-token` meta tag, else the `XSRF-TOKEN` cookie.
 

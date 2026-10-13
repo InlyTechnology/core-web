@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Chat;
 
 use Illuminate\Contracts\Session\Session;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Cookie;
 
 /**
@@ -41,14 +42,26 @@ class ChatSession
         return ! empty($this->session->get($this->root($agent)));
     }
 
+    /** How many conversations the session holds for an agent. */
+    public function count(string $agent): int
+    {
+        return count((array) $this->session->get($this->root($agent), []));
+    }
+
     /**
-     * The opaque value Core's per-visitor limits key on: stable for the
-     * session, and not the session id, which would let anyone reading Core's
-     * logs take the session over.
+     * The opaque value Core's per-visitor limits key on: random, kept in the
+     * session so it outlives a regenerated session id, and unrelated to it.
      */
     public function visitor(): string
     {
-        return substr(hash_hmac('sha256', 'core-web-chat:'.$this->session->getId(), (string) config('app.key')), 0, 40);
+        $key = (string) config('core-web.chat.session_key', 'core_web_chat').'_visitor';
+        $visitor = $this->session->get($key);
+
+        if (! is_string($visitor) || $visitor === '') {
+            $this->session->put($key, $visitor = Str::random(40));
+        }
+
+        return $visitor;
     }
 
     /** The hint cookie for an agent: set while the session holds a conversation for it, expired once it holds none. */
