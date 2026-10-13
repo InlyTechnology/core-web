@@ -111,25 +111,77 @@ class PullSnapshotsTest extends TestCase
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'core.test'));
     }
 
-    public function test_release_hands_the_snapshot_back_to_core_warm(): void
+    public function test_release_forgets_the_pulled_copy_and_reads_the_site_s_own_core_again(): void
     {
         $this->artisan('core:pull')->assertSuccessful();
 
         $this->artisan('core:pull', ['--release' => true])->expectsOutputToContain('things: released.')->assertSuccessful();
 
-        $this->assertSame(['prod-1', 'prod-2'], $this->documents());
+        $this->assertNull(Cache::get('core:things:v1:last_good'));
+        $this->assertSame(['local-1'], $this->documents());
         $this->artisan('core:warm', ['type' => 'things'])->expectsOutputToContain('things: 1 documents')->assertSuccessful();
+    }
+
+    public function test_a_snapshot_that_accepts_empty_pins_an_empty_copy_and_releases_it(): void
+    {
+        app(SnapshotRegistry::class)->register($this->snapshot('empty')->emptyWhen(fn () => false));
+        $this->fake([], ['local-1']);
+
+        $this->artisan('core:pull', ['type' => 'empty'])->expectsOutputToContain('empty: 0 documents pinned')->assertSuccessful();
+        $this->artisan('core:pull', ['type' => 'empty', '--release' => true])->expectsOutputToContain('empty: released.')->assertSuccessful();
+
+        $this->assertNull(Cache::get('core:empty:v1:fresh'));
+    }
+
+    public function test_an_empty_pull_pins_nothing_and_keeps_its_short_ttl(): void
+    {
+        $this->fake([], ['local-1']);
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: nothing pinned')->assertFailed();
+
+        $this->travel(2)->minutes();
         $this->assertSame(['local-1'], $this->documents());
     }
 
-    public function test_a_released_copy_expires_like_any_last_good_copy(): void
+    public function test_a_pull_that_started_before_the_pin_does_not_overwrite_it(): void
+    {
+        $racing = true;
+        $snapshot = Snapshot::make('racing')->ttl(fresh: 900, stale: 3600, retry: 60)->pull(function () use (&$racing, &$snapshot): array {
+            if (! $racing) {
+                return ['prod' => ['id' => 'prod']];
+            }
+
+            $racing = false;
+            $other = new SnapshotStore(Cache::store(), app('log'));
+            $other->pinning('prod.test', fn () => $other->refresh($snapshot));
+
+            return ['local' => ['id' => 'local']];
+        });
+
+        (new SnapshotStore(Cache::store(), app('log')))->refresh($snapshot);
+
+        $this->assertSame(['prod'], array_keys(Cache::get('core:racing:v1:last_good')));
+    }
+
+    public function test_a_pin_missing_its_copy_is_dropped_and_the_site_pulls_as_usual(): void
     {
         $this->artisan('core:pull')->assertSuccessful();
-        $this->artisan('core:pull', ['--release' => true])->assertSuccessful();
+        Cache::forget('core:things:v1:fresh');
+        Cache::forget('core:things:v1:last_good');
 
-        $this->travel(2)->hours();
+        $this->assertSame(['local-1'], $this->documents());
+        $this->assertNull((new SnapshotStore(Cache::store(), app('log')))->pinned(app(SnapshotRegistry::class)->get('things')));
+    }
 
-        $this->assertNull(Cache::get('core:things:v1:last_good'));
+    public function test_a_warmer_that_fails_after_pinning_is_reported_as_both(): void
+    {
+        app(SnapshotRegistry::class)->register($this->snapshot('warmed'), warm: function () {
+            app(SnapshotStore::class)->refresh(app(SnapshotRegistry::class)->get('warmed'));
+
+            return 1;
+        });
+
+        $this->artisan('core:pull', ['type' => 'warmed'])->expectsOutputToContain('warmed: pinned from prod.test, but its warmer exited with 1')->assertFailed();
     }
 
     public function test_pulling_again_replaces_the_pin(): void
@@ -175,11 +227,13 @@ class PullSnapshotsTest extends TestCase
         $this->assertSame(['prod-1', 'prod-2'], array_keys(Cache::get('core:warmed:v1:last_good')));
     }
 
-    public function test_it_never_runs_in_production(): void
+    public function test_it_runs_only_locally(): void
     {
-        $this->app['env'] = 'production';
+        foreach (['production', 'staging'] as $environment) {
+            $this->app['env'] = $environment;
 
-        $this->artisan('core:pull')->expectsOutputToContain('never runs in production')->assertFailed();
+            $this->artisan('core:pull')->expectsOutputToContain('runs only where APP_ENV is local')->assertFailed();
+        }
 
         Http::assertNothingSent();
     }

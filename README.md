@@ -273,18 +273,21 @@ renders what the live site renders without a local Core:
 ```bash
 php artisan core:pull            # every registered snapshot
 php artisan core:pull staff      # one
-php artisan core:pull --release  # unpin: core:warm pulls from CORE_URL again
+php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
 
 It runs each snapshot's own pull (or its warmer) on the `pull.*` client in
 place of `client.*`, so the documents are exactly what the site's
 projections make of that Core's data. What it stores is **pinned**: kept
 without expiry, and no `core:warm`, ping or render replaces it until the next
-`core:pull` or `--release`. A pull that fails or comes back empty pins
-nothing and leaves an earlier pin alone.
+`core:pull` or `--release`. A pull that fails, or comes back too empty to
+trust (`emptyWhen()`), pins nothing and leaves an earlier pin alone. A
+warmer that pins and then fails is reported as both. `--release` forgets the
+pulled copies, since another Core's data is no fallback for this one, so the
+next read or warm pulls from `CORE_URL` as from a cold cache.
 
-- **Never in production.** A pinned copy stops a site following its Core, so
-  the command refuses to run there (`--release` still runs).
+- **Local only.** A pinned copy stops a site following its Core, so the
+  command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
 - **A client that may only read.** In the source Core, create an app client
   for local pulls (Settings → Apps, client credentials) holding the same read
   permissions as the site's own client and nothing else, and share its secret

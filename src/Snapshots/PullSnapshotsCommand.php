@@ -15,7 +15,7 @@ class PullSnapshotsCommand extends Command
 {
     protected $signature = 'core:pull
         {type? : One snapshot type; every registered type when omitted}
-        {--release : Unpin instead, so core:warm pulls from CORE_URL again}';
+        {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
 
     protected $description = 'Pull the Core snapshots from another Core (CORE_PULL_URL) and pin them locally';
 
@@ -32,16 +32,12 @@ class PullSnapshotsCommand extends Command
         $types = $type === null ? $registry->types() : [$type];
 
         if ($this->option('release')) {
-            foreach ($types as $name) {
-                $this->info($store->release($registry->get($name)) ? "{$name}: released." : "{$name}: not pinned.");
-            }
-
-            return self::SUCCESS;
+            return $this->release($registry, $store, $types);
         }
 
-        // A pinned copy is never replaced by a warm or a ping: on a live site it would stop the site following Core.
-        if (app()->environment('production')) {
-            $this->error('core:pull pins another Core\'s data on this machine, so it never runs in production.');
+        // A pinned copy is never replaced by a warm or a ping: on a server it would stop the site following its Core.
+        if (! app()->environment(['local', 'testing'])) {
+            $this->error('core:pull pins another Core\'s data on this machine, so it runs only where APP_ENV is local.');
 
             return self::FAILURE;
         }
@@ -62,7 +58,7 @@ class PullSnapshotsCommand extends Command
             'base_url' => $source['base_url'],
             'client_id' => $source['client_id'],
             'client_secret' => $source['client_secret'],
-            'ca_bundle' => $source['ca_bundle'] ?? '',
+            'ca_bundle' => '',
             'token_cache_key' => $source['token_cache_key'] ?? 'core_web_pull_access_token',
         ])]);
 
@@ -82,26 +78,60 @@ class PullSnapshotsCommand extends Command
     private function pull(SnapshotRegistry $registry, SnapshotStore $store, string $type, string $host): int
     {
         $snapshot = $registry->get($type);
+        $warm = $registry->warmer($type);
+        $failure = null;
 
         try {
-            $count = $store->pinning($host, fn () => ($warm = $registry->warmer($type)) ? $warm($this) : $store->refresh($snapshot));
+            $result = $store->pinning($host, fn () => $warm ? $warm($this) : $store->refresh($snapshot));
+
+            if ($warm && $result !== self::SUCCESS) {
+                $failure = "its warmer exited with {$result}";
+            }
         } catch (Throwable $e) {
             report($e);
-            $this->error("{$type}: pull failed ({$e->getMessage()}).");
-
-            return self::FAILURE;
+            $failure = $e->getMessage();
         } finally {
             $store->forget($snapshot);
         }
 
+        // A warmer can pin its snapshot and fail afterwards, and core:warm skips a pinned snapshot, so both are said.
         if (! $store->pinnedNow($snapshot)) {
-            $this->warn("{$type}: nothing pinned from {$host}; the pull failed or came back empty.");
+            $this->warn("{$type}: nothing pinned from {$host} (".($failure ?? 'the pull failed or came back too empty to trust').').');
 
             return self::FAILURE;
         }
 
-        $this->info($registry->warmer($type) ? "{$type}: pinned from {$host}." : "{$type}: {$count} documents pinned from {$host}.");
+        $pinned = $warm ? "{$type}: pinned from {$host}" : "{$type}: {$result} documents pinned from {$host}";
+
+        if ($failure !== null) {
+            $this->warn("{$pinned}, but {$failure}.");
+
+            return self::FAILURE;
+        }
+
+        $this->info("{$pinned}.");
 
         return self::SUCCESS;
+    }
+
+    /** @param  list<string>  $types */
+    private function release(SnapshotRegistry $registry, SnapshotStore $store, array $types): int
+    {
+        $exit = self::SUCCESS;
+
+        foreach ($types as $type) {
+            $snapshot = $registry->get($type);
+
+            if ($store->pinned($snapshot) === null) {
+                $this->info("{$type}: not pinned.");
+            } elseif ($store->release($snapshot)) {
+                $this->info("{$type}: released.");
+            } else {
+                $this->error("{$type}: busy with another write; still pinned, try again.");
+                $exit = self::FAILURE;
+            }
+        }
+
+        return $exit;
     }
 }
