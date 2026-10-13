@@ -13,13 +13,16 @@
 
 ### Upgrade notes
 
-- **A site that shows Core snapshots stops receiving pings, warming and
-  serving its sitemaps until it switches them on.** Find it: the site
-  registers snapshots (`grep -rn "SnapshotRegistry" app/`) or its robots view
-  uses `{{ core_sitemaps }}`. Migrate: add `config/core-web.php` holding
-  `return ['features' => ['snapshots' => true]];`, or, when the site publishes
-  the whole file, add that `features` key to it. Verify: `php artisan
-  route:list --name=api.core.objects` lists the ping route and
+- **A site that shows Core snapshots breaks until it switches them on**:
+  every page that reads a snapshot throws "Core snapshots are switched off",
+  and pings, `core:warm`, its schedule and the snapshot sitemaps are gone.
+  Find it: the site registers snapshots (`grep -rn "SnapshotRegistry" app/`)
+  or its robots view uses `{{ core_sitemaps }}`. Migrate: add
+  `config/core-web.php` holding
+  `return ['features' => ['snapshots' => true]];`, or, when the site
+  publishes the whole file, add that `features` key to it; then let the
+  deploy rebuild its config and route caches (`optimize`). Verify:
+  `php artisan route:list --name=api.core.objects` lists the ping route and
   `php artisan schedule:list` lists `core:warm`.
 
 ## v0.3.0 (2026-10-12)

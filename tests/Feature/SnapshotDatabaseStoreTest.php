@@ -117,7 +117,6 @@ class SnapshotDatabaseStoreTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
 
-        // The store is merged as the app boots; this app has booted already.
-        (fn () => $this->mergeSnapshotStore())->call(new CoreWebServiceProvider($this->app));
+        (new CoreWebServiceProvider($this->app))->register();
     }
 }

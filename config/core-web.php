@@ -10,7 +10,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Every feature is off until the site switches it on, and a feature that is
-    | off registers nothing: no route, schedule, middleware, command or tag. A
+    | off registers nothing: no route, schedule, middleware, command, tag or
+    | cache store. A
     | site switches one on in its own config/core-web.php; that file needs only
     | the keys it changes, since every other top-level key keeps the defaults
     | below:

@@ -7,6 +7,7 @@ use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
+use LogicException;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -53,7 +54,14 @@ final class SnapshotStore
     /** The cache store snapshots live in (core-web.snapshots.store; null for the default store). */
     public static function repository(): Repository
     {
-        return Cache::store(config('core-web.snapshots.store'));
+        $store = config('core-web.snapshots.store');
+
+        // The `snapshots` store is only added while the feature is on; say so instead of Laravel's bare "not defined".
+        if ($store === 'snapshots' && ! config()->has('cache.stores.snapshots')) {
+            throw new LogicException('Core snapshots are switched off: set core-web.features.snapshots to true (inly/core-web README, Features).');
+        }
+
+        return Cache::store($store);
     }
 
     /** @return array<string, array<string, mixed>> */

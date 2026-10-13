@@ -7,10 +7,13 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Routing\Router;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
+use LogicException;
 use Statamic\Tags\Loader as TagLoader;
-use Throwable;
+use Statamic\Tags\TagNotFoundException;
 
 class DormantTest extends TestCase
 {
@@ -52,7 +55,7 @@ class DormantTest extends TestCase
 
         try {
             app(TagLoader::class)->load('core_sitemaps', ['parser' => null, 'params' => [], 'content' => '', 'context' => [], 'tag' => 'core_sitemaps', 'tag_method' => 'index']);
-        } catch (Throwable) {
+        } catch (TagNotFoundException) {
             $registered = false;
         }
 
@@ -64,11 +67,33 @@ class DormantTest extends TestCase
         $this->assertFalse(config()->has('cache.stores.snapshots'));
     }
 
-    public function test_the_core_client_is_still_configured(): void
+    public function test_the_core_client_needs_no_switch(): void
     {
-        config(['core-web.client.base_url' => 'https://core.test']);
+        config(['core-web.client.base_url' => 'https://core.test', 'core-web.client.client_id' => 'web', 'core-web.client.client_secret' => 'secret']);
 
-        $this->assertInstanceOf(CoreClient::class, app(CoreClient::class));
-        $this->assertSame('https://core.test', config('core-web.client.base_url'));
+        $this->assertTrue(app(CoreClient::class)->configured());
+    }
+
+    public function test_reading_snapshots_while_switched_off_names_the_switch(): void
+    {
+        config(['core-web.snapshots.store' => 'snapshots']);
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('core-web.features.snapshots');
+
+        app(SnapshotStore::class);
+    }
+
+    public function test_a_switch_set_from_env_counts(): void
+    {
+        foreach (['1', 'true', 'on', true] as $on) {
+            config(['core-web.features.snapshots' => $on]);
+            $this->assertTrue(CoreWebServiceProvider::enabled('snapshots'), var_export($on, true));
+        }
+
+        foreach (['0', 'false', '', null, false] as $off) {
+            config(['core-web.features.snapshots' => $off]);
+            $this->assertFalse(CoreWebServiceProvider::enabled('snapshots'), var_export($off, true));
+        }
     }
 }

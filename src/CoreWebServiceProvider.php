@@ -30,12 +30,13 @@ class CoreWebServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/core-web.php', 'core-web');
 
-        // Before any provider boots, once the app's config (and a test's environment) is in place.
-        $this->app->booting(function (): void {
+        // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
+        $merge = function (): void {
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
-        });
+        };
+        $this->app->isBooted() ? $merge() : $this->app->booting($merge);
 
         $this->app->singleton(SnapshotRegistry::class);
 
@@ -62,10 +63,10 @@ class CoreWebServiceProvider extends ServiceProvider
         }
     }
 
-    /** Whether the site switched a feature on in core-web.features. */
+    /** Whether the site switched a feature on in core-web.features (true, or a string such as "1" or "true" from env). */
     public static function enabled(string $feature): bool
     {
-        return config("core-web.features.{$feature}") === true;
+        return filter_var(config("core-web.features.{$feature}"), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function bootSnapshots(): void
