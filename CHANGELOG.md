@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 (2026-10-14)
 
 - **Chat**: `features.chat` (off by default) relays a site's visitors to Core's
   public chat agents through Core's stock chat route
