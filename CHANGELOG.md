@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 (2026-10-14)
 
 - **`core:pull`**: fills the local snapshots from another Core, production as
   a rule, through a read-only client of its own (`pull.base_url` and
