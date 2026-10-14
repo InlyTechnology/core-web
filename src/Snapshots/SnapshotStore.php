@@ -206,19 +206,23 @@ final class SnapshotStore
         }
 
         // Checked again under the lock: a pull that started before core:pull pinned must not overwrite the pin.
-        $count = $this->writing($snapshot, fn () => match (true) {
-            $this->pinnedElsewhere($snapshot) => count($this->freshDocuments($snapshot) ?? []),
-            $this->store($snapshot, $documents) => count($documents),
-            default => null,
+        return $this->writing($snapshot, function () use ($snapshot, $documents): ?int {
+            if ($this->pinnedElsewhere($snapshot)) {
+                return count($this->freshDocuments($snapshot) ?? []);
+            }
+
+            if (! $this->store($snapshot, $documents)) {
+                return null;
+            }
+
+            // Under the same lock as the copy, and only for one stored as the last good copy: a cold empty pull keeps its short TTL.
+            if ($this->pinningFrom !== null && ! $snapshot->isEmpty($documents)) {
+                $this->cache->forever($snapshot->key('pinned'), ['source' => $this->pinningFrom, 'at' => now()->toIso8601String()]);
+                $this->pinnedNow[$snapshot->type] = true;
+            }
+
+            return count($documents);
         });
-
-        // Only a copy stored as the last good one is pinned: a cold empty pull keeps its short TTL.
-        if ($this->pinningFrom !== null && $count !== null && ! $snapshot->isEmpty($documents)) {
-            $this->cache->forever($snapshot->key('pinned'), ['source' => $this->pinningFrom, 'at' => now()->toIso8601String()]);
-            $this->pinnedNow[$snapshot->type] = true;
-        }
-
-        return $count;
     }
 
     /**
@@ -280,6 +284,7 @@ final class SnapshotStore
             }
 
             $this->cache->forget($snapshot->key('pinned'));
+            $this->cache->forget($snapshot->key('backoff'));
 
             return true;
         });

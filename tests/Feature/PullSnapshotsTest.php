@@ -122,6 +122,16 @@ class PullSnapshotsTest extends TestCase
         $this->artisan('core:warm', ['type' => 'things'])->expectsOutputToContain('things: 1 documents')->assertSuccessful();
     }
 
+    public function test_release_clears_a_standing_backoff_so_the_next_read_pulls(): void
+    {
+        $this->artisan('core:pull')->assertSuccessful();
+        Cache::put('core:things:v1:backoff', true, 60);
+
+        $this->artisan('core:pull', ['--release' => true])->assertSuccessful();
+
+        $this->assertSame(['local-1'], $this->documents());
+    }
+
     public function test_a_snapshot_that_accepts_empty_pins_an_empty_copy_and_releases_it(): void
     {
         app(SnapshotRegistry::class)->register($this->snapshot('empty')->emptyWhen(fn () => false));

@@ -311,7 +311,10 @@ next read or warm pulls from `CORE_URL` as from a cold cache.
   the way the team shares other secrets. It reads what the public site reads,
   never more; revoking it in Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
-  (`storage/framework/snapshots`), which is not committed.
+  (`storage/framework/snapshots` with the `file` driver, its own tables with
+  `database`), never in the repository.
+- **A certificate the machine trusts.** The pull ignores `CORE_CA_BUNDLE`,
+  which is for a local Core, so the source needs a public certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
   `CORE_URL`; those keys are not pinned.
