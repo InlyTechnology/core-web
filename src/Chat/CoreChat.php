@@ -3,22 +3,24 @@
 namespace Inly\CoreWeb\Chat;
 
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Inly\CoreWeb\Client\CoreClient;
 use RuntimeException;
 
 /**
  * Core's stock chat route for one visitor (`{core-web.chat.path}/{agent}`).
- * Opening a conversation is the site's own call, with its client token;
- * everything after is the conversation's, with the access token Core
- * returned once, and the client token never travels with it. Every call
- * names the visitor in `X-Core-Client-Id`, which Core's per-visitor limits
- * key on. Any failure is a ChatException carrying Core's status.
+ * Every call is the site's, with its client token as the bearer; a call on
+ * a conversation also carries the access token Core returned once, in
+ * `X-Core-Conversation-Token`, and Core serves a conversation only to the
+ * client that opened it. Every call names the visitor in `X-Core-Client-Id`,
+ * which Core's per-visitor limits key on. Any failure is a ChatException
+ * carrying Core's status.
  */
 class CoreChat
 {
     public const VISITOR_HEADER = 'X-Core-Client-Id';
+
+    public const CONVERSATION_HEADER = 'X-Core-Conversation-Token';
 
     public const EXHAUSTED_CODE = 'conversation_exhausted';
 
@@ -36,17 +38,8 @@ class CoreChat
     /** @param  array<string, mixed>  $context  the agent's context payload */
     public function start(string $agent, array $context = []): ChatConversation
     {
-        if (! $this->client->configured()) {
-            throw new ChatException('Core is not configured (core-web.client).');
-        }
-
         $path = $this->path($agent, '/conversations');
-
-        try {
-            $response = $this->client->postResponse($path, $context, [self::VISITOR_HEADER => $this->visitor], $this->timeout('read'));
-        } catch (ConnectionException|RuntimeException $e) {
-            throw new ChatException("Core chat unreachable on POST {$path}: {$e->getMessage()}", previous: $e);
-        }
+        $response = $this->send('post', $path, $context, [], 'read');
 
         $payload = $this->decode($response, "POST {$path}");
         $id = data_get($payload, 'conversation.id');
@@ -89,31 +82,34 @@ class CoreChat
     }
 
     /**
+     * @param  'get'|'post'  $method
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     protected function call(ChatConversation $conversation, string $method, string $suffix, array $data, string $timeout): array
     {
         $path = $this->path($conversation->agent, '/conversations/'.rawurlencode($conversation->id).$suffix);
-        $request = $this->conversationRequest($conversation, $timeout);
-
-        try {
-            $response = $method === 'get' ? $request->get($this->client->baseUrl().$path) : $request->post($this->client->baseUrl().$path, $data);
-        } catch (ConnectionException $e) {
-            throw new ChatException("Core chat unreachable on {$method} {$path}: {$e->getMessage()}", previous: $e);
-        }
+        $response = $this->send($method, $path, $data, [self::CONVERSATION_HEADER => $conversation->token], $timeout);
 
         return $this->decode($response, strtoupper($method).' '.$path);
     }
 
-    protected function conversationRequest(ChatConversation $conversation, string $timeout): PendingRequest
+    /**
+     * @param  'get'|'post'  $method
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string>  $headers
+     */
+    protected function send(string $method, string $path, array $data, array $headers, string $timeout): Response
     {
-        return CoreClient::request()
-            ->withToken($conversation->token)
-            ->withHeaders([self::VISITOR_HEADER => $this->visitor])
-            ->acceptJson()
-            ->connectTimeout($this->timeout('connect'))
-            ->timeout($this->timeout($timeout));
+        if (! $this->client->configured()) {
+            throw new ChatException('Core is not configured (core-web.client).');
+        }
+
+        try {
+            return $this->client->sendResponse($method, $path, $data, $headers + [self::VISITOR_HEADER => $this->visitor], $this->timeout($timeout), $this->timeout('connect'));
+        } catch (ConnectionException|RuntimeException $e) {
+            throw new ChatException('Core chat unreachable on '.strtoupper($method)." {$path}: {$e->getMessage()}", previous: $e);
+        }
     }
 
     /** @return array<string, mixed> */

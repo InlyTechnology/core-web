@@ -54,7 +54,7 @@ class ChatController
     public function message(Request $request, string $agent): JsonResponse
     {
         [$context, $key] = $this->resolve($request, $agent);
-        $valid = Validator::make($request->all(), ['message' => ['required', 'string', 'max:2000']]);
+        $valid = Validator::make($request->all(), ['message' => ['required', 'string', 'max:'.(int) config('core-web.chat.max_message_length', 10000)]]);
 
         if ($context === null || $valid->fails()) {
             return $this->invalid();

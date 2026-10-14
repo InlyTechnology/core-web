@@ -85,7 +85,9 @@ class ChatProxyTest extends TestCase
 
         $this->assertStringNotContainsString('token-c1', $response->getContent());
         $this->assertContains(['agent' => 'assistant', 'id' => 'c1', 'token' => 'token-c1'], session('core_web_chat.assistant'));
-        Http::assertSent(fn (HttpRequest $request) => str_ends_with($request->url(), '/c1/messages') && $request->hasHeader('Authorization', 'Bearer token-c1'));
+        Http::assertSent(fn (HttpRequest $request) => str_ends_with($request->url(), '/c1/messages')
+            && $request->hasHeader('X-Core-Conversation-Token', 'token-c1')
+            && $request->hasHeader('Authorization', 'Bearer token'));
     }
 
     public function test_each_conversation_key_is_its_own_conversation(): void
@@ -150,10 +152,20 @@ class ChatProxyTest extends TestCase
         $this->fakeChat();
 
         $this->postJson(self::URL.'/messages', ['message' => '   '])->assertStatus(422)->assertExactJson(['error' => 'invalid']);
-        $this->postJson(self::URL.'/messages', ['message' => str_repeat('a', 2001)])->assertStatus(422);
+        $this->postJson(self::URL.'/messages', ['message' => str_repeat('a', 10001)])->assertStatus(422);
         $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => ['an', 'array']])->assertStatus(422);
 
         Http::assertNothingSent();
+    }
+
+    public function test_the_message_cap_is_core_s_default_and_the_site_s_to_lower(): void
+    {
+        $this->fakeChat();
+
+        $this->postJson(self::URL.'/messages', ['message' => str_repeat('a', 10000)])->assertOk();
+
+        config(['core-web.chat.max_message_length' => 500]);
+        $this->postJson(self::URL.'/messages', ['message' => str_repeat('a', 501)])->assertStatus(422)->assertExactJson(['error' => 'invalid']);
     }
 
     public function test_an_agent_the_site_does_not_name_is_a_404(): void

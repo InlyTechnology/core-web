@@ -113,6 +113,7 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `chat.timeouts` | `connect` 5, `read` 8, `turn` 60 | Seconds. `turn` covers a message and the handoff summary, `read` opening and reading a conversation |
 | `chat.name` / `chat.middleware` | `core-web.chat` / `['web', 'throttle:60,1']` | The relay routes (`core-web.chat.show`, `.messages`, `.handoff`, `.forget`). `web` gives them the session and CSRF |
 | `chat.turn_rate_limit` | `10` | Messages and handoffs per minute, per session and address |
+| `chat.max_message_length` | `10000` | The longest message the relay passes on; longer is `invalid` without calling Core. Core's default cap per agent; an agent with a lower one still refuses past it (`invalid`) |
 | `chat.max_conversations` | `5` | Conversations a session holds per agent; a new subject past it is `limited` |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
@@ -440,10 +441,13 @@ conversation. What the package gives:
 
 - **The transport**, `Inly\CoreWeb\Chat\CoreChat`: `start($agent, $context)`,
   `read()`, `postMessage()` and `handoff()` against
-  `{CORE_URL}/api/app/chat/{agent}/conversations`. Opening a conversation
-  uses the site's client token (the `CoreClient` credentials); every later
-  call uses the conversation's own access token, which Core returns once, and
-  never sends the client token. Every call names the visitor in
+  `{CORE_URL}/api/app/chat/{agent}/conversations`. Every call authenticates
+  as the site, with its client token (the `CoreClient` credentials) as
+  `Authorization: Bearer`, fetched afresh and retried once on a 401. A call on
+  a conversation also sends the conversation's own access token, which Core
+  returns once, in `X-Core-Conversation-Token`; Core serves a conversation
+  only to the client that opened it, so another site's client gets a 404, and
+  revoking the client closes its conversations. Every call names the visitor in
   `X-Core-Client-Id` (a random value kept in the session, so it outlives a
   regenerated session id; never the session id or an IP), which Core's
   per-visitor limits key on. A failure is a `ChatException` with Core's
@@ -591,8 +595,11 @@ values are plain strings, for `x-text` and bound attributes.
 What stays in the site: the markup and its styling, the context classes, and
 what a handoff becomes (the lead form, where it is sent).
 
-What Core must have: the agent opted into the stock chat route, and the site's
-app client (`CORE_CLIENT_ID`) holding the `use_public_chat` scope. A turn runs
+What Core must have: the agent's key in `chat.agents` matching its
+`chatRoute()`, and the site's app client (`CORE_CLIENT_ID`) holding the
+`use_public_chat` scope, which every call needs, not only opening a
+conversation (without it Core answers 403, which the relay reports as
+`unavailable`). A turn runs
 while Core answers, so the web server's read timeout (nginx's
 `fastcgi_read_timeout`) must outlast `chat.timeouts.turn`.
 

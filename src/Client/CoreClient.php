@@ -158,10 +158,29 @@ class CoreClient
      */
     public function postResponse(string $path, array $data = [], array $headers = [], ?int $timeout = null): Response
     {
-        $attempt = fn (string $token) => $this->client($token)
-            ->withHeaders($headers)
-            ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
-            ->post($this->baseUrl.'/'.ltrim($path, '/'), $data);
+        return $this->sendResponse('post', $path, $data, $headers, $timeout);
+    }
+
+    /**
+     * A JSON GET or POST with the client token, retried once on a 401, and
+     * handed back whatever Core answered. `$data` is the query of a GET and
+     * the body of a POST.
+     *
+     * @param  'get'|'post'  $method
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string>  $headers
+     */
+    public function sendResponse(string $method, string $path, array $data = [], array $headers = [], ?int $timeout = null, ?int $connectTimeout = null): Response
+    {
+        $url = $this->baseUrl.'/'.ltrim($path, '/');
+        $attempt = function (string $token) use ($method, $url, $data, $headers, $timeout, $connectTimeout): Response {
+            $request = $this->client($token)
+                ->withHeaders($headers)
+                ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
+                ->when($connectTimeout !== null, fn (PendingRequest $request) => $request->connectTimeout($connectTimeout));
+
+            return $method === 'get' ? $request->get($url, $data) : $request->post($url, $data);
+        };
 
         $response = $attempt($this->token());
 
