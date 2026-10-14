@@ -3,8 +3,9 @@
 ## Unreleased
 
 - **`core:pull`**: fills the local snapshots from another Core, production as
-  a rule, through a read-only client of its own (`CORE_PULL_URL`,
-  `CORE_PULL_CLIENT_ID`, `CORE_PULL_CLIENT_SECRET`), so a local site renders
+  a rule, through a read-only client of its own (`pull.base_url` and
+  `pull.client_id` committed as defaults in the site's config, the secret in
+  `CORE_PULL_CLIENT_SECRET`), so a local site renders
   the live site's data without a local Core. The copies are pinned: no
   `core:warm`, ping or render replaces them until the next pull or
   `core:pull --release`, which forgets them. Runs only where `APP_ENV` is

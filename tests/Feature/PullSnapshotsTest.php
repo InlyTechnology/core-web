@@ -249,7 +249,7 @@ class PullSnapshotsTest extends TestCase
     {
         config(['core-web.pull.client_secret' => '']);
 
-        $this->artisan('core:pull')->expectsOutputToContain('CORE_PULL_URL')->assertFailed();
+        $this->artisan('core:pull')->expectsOutputToContain('CORE_PULL_CLIENT_SECRET')->assertFailed();
 
         Http::assertNothingSent();
     }

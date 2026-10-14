@@ -17,7 +17,7 @@ class PullSnapshotsCommand extends Command
         {type? : One snapshot type; every registered type when omitted}
         {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
 
-    protected $description = 'Pull the Core snapshots from another Core (CORE_PULL_URL) and pin them locally';
+    protected $description = 'Pull the Core snapshots from another Core (core-web.pull) and pin them locally';
 
     public function handle(SnapshotRegistry $registry, SnapshotStore $store): int
     {
@@ -45,7 +45,7 @@ class PullSnapshotsCommand extends Command
         $source = (array) config('core-web.pull');
 
         if (blank($source['base_url'] ?? null) || blank($source['client_id'] ?? null) || blank($source['client_secret'] ?? null)) {
-            $this->error('Set CORE_PULL_URL, CORE_PULL_CLIENT_ID and CORE_PULL_CLIENT_SECRET: the Core to pull from and a client that may only read (README, Pulling production data).');
+            $this->error('Set CORE_PULL_CLIENT_SECRET, and pull.base_url and pull.client_id in config/core-web.php: the Core to pull from and a client that may only read (README, Pulling production data).');
 
             return self::FAILURE;
         }

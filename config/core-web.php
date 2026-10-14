@@ -57,9 +57,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | Local only: the Core `core:pull` reads the snapshots from (production, as
-    | a rule) and its own client, which Core should let read and nothing more
-    | (CORE_PULL_URL, CORE_PULL_CLIENT_ID, CORE_PULL_CLIENT_SECRET). The copies
-    | it stores are pinned until the next pull or `core:pull --release`.
+    | a rule) and its own client, which Core should let read and nothing more.
+    | The URL and client id are the same for every developer, so the site
+    | commits them as the defaults in its own config/core-web.php (env can
+    | still override them); only the secret has to be set
+    | (CORE_PULL_CLIENT_SECRET). The copies it stores are pinned until the
+    | next pull or `core:pull --release`.
     |
     */
 

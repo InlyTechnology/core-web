@@ -77,7 +77,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` / `CORE_PULL_CLIENT_SECRET` | `pull.base_url` / `pull.client_id` / `pull.client_secret` | Local only: the Core `core:pull` reads from and its read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret Core signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). **Empty rejects every ping**; there is no `APP_KEY` fallback |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -275,6 +276,22 @@ php artisan core:pull            # every registered snapshot
 php artisan core:pull staff      # one
 php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
+
+The Core and the client are the same on every machine, so the site commits
+them as defaults in its own `config/core-web.php`, overridable from env, and a
+developer sets only the secret (`CORE_PULL_CLIENT_SECRET`). A `pull` key there
+replaces the package's whole, so it names all three:
+
+```php
+'pull' => [
+    'base_url' => env('CORE_PULL_URL', 'https://core.example.com'),
+    'client_id' => env('CORE_PULL_CLIENT_ID', '…'),
+    'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
+],
+```
+
+The client is an app client in that Core (Settings → Apps, client
+credentials grant): Core shows its id and secret when it is created.
 
 It runs each snapshot's own pull (or its warmer) on the `pull.*` client in
 place of `client.*`, so the documents are exactly what the site's
