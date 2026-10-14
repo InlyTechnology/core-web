@@ -597,11 +597,11 @@ what a handoff becomes (the lead form, where it is sent).
 
 What Core must have: the agent's key in `chat.agents` matching its
 `chatRoute()`, and the site's app client (`CORE_CLIENT_ID`) holding the
-`use_public_chat` scope, which every call needs, not only opening a
-conversation (without it Core answers 403, which the relay reports as
-`unavailable`). A turn runs
-while Core answers, so the web server's read timeout (nginx's
-`fastcgi_read_timeout`) must outlast `chat.timeouts.turn`.
+`use_public_chat` scope (or the agent's own `chatPermission()`), which every
+call needs, not only opening a conversation (without it Core answers 403,
+which the relay reports as `unavailable`). A turn runs while Core answers, so
+the web server's read timeout (nginx's `fastcgi_read_timeout`) must outlast
+`chat.timeouts.turn`.
 
 ## Testing a site
 
