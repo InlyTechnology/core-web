@@ -41,6 +41,12 @@ class WarmSnapshotsCommand extends Command
 
     private function warm(SnapshotRegistry $registry, SnapshotStore $store, string $type): int
     {
+        if ($pinned = $store->pinned($registry->get($type))) {
+            $this->info("{$type}: pinned by core:pull from {$pinned['source']} at {$pinned['at']}; skipped (core:pull --release unpins it).");
+
+            return self::SUCCESS;
+        }
+
         if ($warm = $registry->warmer($type)) {
             return $warm($this);
         }

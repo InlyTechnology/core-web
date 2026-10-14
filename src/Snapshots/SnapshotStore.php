@@ -24,6 +24,9 @@ use Throwable;
  * at a time (the others serve a degraded read). A failed or suspiciously
  * empty pull keeps serving the last good copy. Each read is kept for the rest
  * of the request (bind the store scoped).
+ *
+ * A copy `core:pull` stored is pinned: kept without expiry, and no warm,
+ * ping or render replaces it until it is pulled again or released.
  */
 final class SnapshotStore
 {
@@ -45,6 +48,12 @@ final class SnapshotStore
 
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
+
+    /** Where the pull running under pinning() reads from; null outside one. */
+    private ?string $pinningFrom = null;
+
+    /** @var array<string, true> the snapshot types the last pinning() pinned */
+    private array $pinnedNow = [];
 
     public function __construct(
         private readonly Repository $cache,
@@ -175,6 +184,18 @@ final class SnapshotStore
     {
         $this->forget($snapshot);
 
+        if ($this->pinnedElsewhere($snapshot)) {
+            $pinned = $this->freshDocuments($snapshot);
+
+            if ($pinned !== null) {
+                return count($pinned);
+            }
+
+            // A pin missing a partition (one added since the pull) serves nothing: drop it and pull as usual.
+            $this->warn($snapshot, 'broken_pin');
+            $this->cache->forget($snapshot->key('pinned'));
+        }
+
         try {
             $documents = $snapshot->pullDocuments();
         } catch (Throwable $e) {
@@ -184,7 +205,93 @@ final class SnapshotStore
             return null;
         }
 
-        return $this->writing($snapshot, fn () => $this->store($snapshot, $documents) ? count($documents) : null);
+        // Checked again under the lock: a pull that started before core:pull pinned must not overwrite the pin.
+        return $this->writing($snapshot, function () use ($snapshot, $documents): ?int {
+            if ($this->pinnedElsewhere($snapshot)) {
+                return count($this->freshDocuments($snapshot) ?? []);
+            }
+
+            if (! $this->store($snapshot, $documents)) {
+                return null;
+            }
+
+            // Under the same lock as the copy, and only for one stored as the last good copy: a cold empty pull keeps its short TTL.
+            if ($this->pinningFrom !== null && ! $snapshot->isEmpty($documents)) {
+                $this->cache->forever($snapshot->key('pinned'), ['source' => $this->pinningFrom, 'at' => now()->toIso8601String()]);
+                $this->pinnedNow[$snapshot->type] = true;
+            }
+
+            return count($documents);
+        });
+    }
+
+    /**
+     * Runs a pull whose every full refresh stores its copy pinned (no
+     * expiry, the marker naming `$source`), even over a copy pinned before.
+     * A failed refresh, or one too empty to trust, pins nothing and leaves
+     * an earlier pin alone.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $pull
+     * @return T
+     */
+    public function pinning(string $source, Closure $pull): mixed
+    {
+        $this->pinnedNow = [];
+        $this->pinningFrom = $source;
+
+        try {
+            return $pull();
+        } finally {
+            $this->pinningFrom = null;
+        }
+    }
+
+    /** Whether the last pinning() pinned this snapshot. */
+    public function pinnedNow(Snapshot $snapshot): bool
+    {
+        return isset($this->pinnedNow[$snapshot->type]);
+    }
+
+    /** Whether a pin stands that only another pinning() may replace. */
+    private function pinnedElsewhere(Snapshot $snapshot): bool
+    {
+        return $this->pinningFrom === null && $this->pinned($snapshot) !== null;
+    }
+
+    /** @return array{source: string, at: string}|null where and when `core:pull` pinned the snapshot, or null when it is not pinned */
+    public function pinned(Snapshot $snapshot): ?array
+    {
+        $pinned = $this->cache->get($snapshot->key('pinned'));
+
+        return is_array($pinned) ? $pinned : null;
+    }
+
+    /**
+     * Unpins a snapshot and forgets the pinned copy, so the next read or
+     * warm pulls from the site's own Core as from a cold cache (another
+     * Core's data is no last good copy of this one). False when another
+     * write held the snapshot too long.
+     */
+    public function release(Snapshot $snapshot): bool
+    {
+        $released = $this->writing($snapshot, function () use ($snapshot): bool {
+            foreach ($snapshot->partitions() as $partition) {
+                foreach (['fresh', 'stored', 'last_good', 'fingerprint'] as $key) {
+                    $this->cache->forget($snapshot->key($key, $partition));
+                }
+            }
+
+            $this->cache->forget($snapshot->key('pinned'));
+            $this->cache->forget($snapshot->key('backoff'));
+
+            return true;
+        });
+
+        $this->forget($snapshot);
+
+        return $released === true;
     }
 
     /**
@@ -228,7 +335,12 @@ final class SnapshotStore
      */
     public function refreshOne(Snapshot $snapshot, string $id, ?string $key = null, bool $deleted = false): ?int
     {
-        if (! $snapshot->pullsOne() || ($deleted && $key === null)) {
+        if ($this->pinnedElsewhere($snapshot)) {
+            return 0;
+        }
+
+        // A pin is a whole copy: a patch would write without expiry and without the marker.
+        if ($this->pinningFrom !== null || ! $snapshot->pullsOne() || ($deleted && $key === null)) {
             return $this->refresh($snapshot);
         }
 
@@ -241,6 +353,10 @@ final class SnapshotStore
     /** @return int|false|null the documents patched in, false when a full pull must decide, null when the read failed */
     private function patch(Snapshot $snapshot, string $id, ?string $key, bool $deleted): int|false|null
     {
+        if ($this->pinnedElsewhere($snapshot)) {
+            return 0;
+        }
+
         $current = $this->freshDocuments($snapshot);
 
         if ($current === null) {
@@ -393,16 +509,18 @@ final class SnapshotStore
             }
 
             $hash = self::hash($part);
-            $unchanged = $this->isStored($snapshot, $partition, $hash);
+            // A pinned copy has no expiry to renew, so a pin always writes it whole.
+            $unchanged = $this->pinningFrom === null && $this->isStored($snapshot, $partition, $hash);
+            $stale = $this->pinningFrom === null ? $snapshot->staleTtl() : null;
             $announce = $this->announcement($snapshot, $partition, $part, $unchanged, $previous);
 
             if (! $unchanged) {
-                $this->cache->put($snapshot->key('last_good', $partition), $part, $snapshot->staleTtl());
-                $this->cache->put($snapshot->key('stored', $partition), ['hash' => $hash, 'at' => now()->getTimestamp()], $snapshot->staleTtl());
+                $this->cache->put($snapshot->key('last_good', $partition), $part, $stale);
+                $this->cache->put($snapshot->key('stored', $partition), ['hash' => $hash, 'at' => now()->getTimestamp()], $stale);
             }
 
             // Never outliving the copy it vouches for, whatever the TTLs say.
-            $this->cache->put($snapshot->key('fresh', $partition), $hash, min($ttl, $snapshot->staleTtl()));
+            $this->cache->put($snapshot->key('fresh', $partition), $hash, $stale === null ? null : min($ttl, $stale));
 
             if ($announce !== null) {
                 $this->notify($snapshot, $partition, $part, ...$announce);

@@ -8,6 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
+use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
@@ -74,7 +75,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/core-web.php');
 
         // Not console-only: a ping's refresh job calls it from a sync queue inside a web request too.
-        $this->commands([WarmSnapshotsCommand::class]);
+        $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
 
