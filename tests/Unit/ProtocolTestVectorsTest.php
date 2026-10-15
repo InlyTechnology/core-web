@@ -53,12 +53,11 @@ class ProtocolTestVectorsTest extends TestCase
     {
         $this->travelTo(Carbon::createFromTimestamp($vector['now']));
 
-        $cache = new Repository(new ArrayStore);
-        $cache->put('keys', CoreSigningKeys::parse($vector['core_public_keys']), CoreSigningKeys::TTL_SECONDS);
-        // The keys are the vector's document alone: a fetch for an unknown key id finds nothing more.
-        $cache->put('keys:fetched', true, CoreSigningKeys::REFETCH_SECONDS);
+        // The keys are the vector's document alone: with no Core to read, a fetch for an unknown key id finds nothing more.
+        $keys = new CoreSigningKeys('', new Repository(new ArrayStore), 'keys');
+        $keys->remember(CoreSigningKeys::parse($vector['core_public_keys']));
 
-        $envelope = new CoreEnvelope(new CoreSigningKeys('', $cache, 'keys'), $vector['audience'], $vector['environment'] ?? 'production', new Repository(new ArrayStore));
+        $envelope = new CoreEnvelope($keys, $vector['audience'], $vector['environment'] ?? 'production', new Repository(new ArrayStore));
         $headers = $vector['headers'];
         $answer = null;
 

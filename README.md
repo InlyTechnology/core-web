@@ -663,10 +663,15 @@ request: `VerifyCoreEnvelope::claims($request)`.
 | 403 `{"error":"wrong_environment","message":"…"}` | A draft or publish sealed for another environment |
 
 Core's key document (`{core}/.well-known/core-signing-keys`) is read over
-https only (plain http in `local` and `testing`). It is cached for five
-minutes, and read again when an envelope names a key id the cached copy
-lacks, at most once a minute. A document read replaces the cached one, so a
-key Core retires stops opening envelopes.
+https only (plain http in `local` and `testing`), from the paired Core alone:
+a redirect is not followed. It is read again once the copy is five minutes
+old, or when an envelope names a key id the copy lacks, at most once a minute
+either way. Only the call that takes the minute's fetch waits for it; every
+other call opens with the copy it has. The last good copy is kept until a
+fetch succeeds, so a slow or unreachable Core costs no call a stale copy can
+open, and only a site with no copy at all refuses while Core cannot be read.
+A document read replaces the copy, so a key Core retires stops opening
+envelopes once the site has read the document again.
 
 An envelope that arrives with no request to bind it to, such as one handed
 over in a URL, is opened with

@@ -9,8 +9,11 @@
     environment of a draft or publish. It refuses with a JSON 403 and marks
     every answer `no-store`.
   - `CoreEnvelope::open()` opens an envelope bound to no request.
-  - `CoreSigningKeys` reads Core's key document over https: cached for five
-    minutes, read again for an unknown key id at most once a minute.
+  - `CoreSigningKeys` reads Core's key document over https from the paired
+    Core, following no redirect: read again once the copy is five minutes
+    old or for an unknown key id, at most once a minute. The last good copy
+    keeps opening envelopes until a fetch succeeds, so only the call that
+    fetches waits, and only a site with no copy refuses while Core is down.
   - `ContentPings` tells Core a page changed through
     `POST {core}/webhooks/connectors/{content.connector_id}`.
   - `FakesCore` seals content calls with a test key it publishes as Core's
