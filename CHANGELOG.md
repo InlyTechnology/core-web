@@ -18,7 +18,8 @@
     `POST {core}/webhooks/connectors/{content.connector_id}`.
   - `FakesCore` seals content calls with a test key it publishes as Core's
     (`callSealed()`, `coreEnvelopeHeaders()`, `CoreEnvelopeSealer`).
-  - The protocol's Core-key test vectors run in the suite.
+  - The protocol's test vectors run in the suite: the Core-key ones as
+    given, the shared-secret ones re-sealed with the test key.
 
   See README § Website content.
 - `CoreClient::sendResponse()` takes a closure for `$data`. The closure is

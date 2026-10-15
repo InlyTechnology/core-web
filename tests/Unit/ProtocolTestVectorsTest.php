@@ -12,6 +12,7 @@ use Inly\CoreWeb\Content\WrongEnvironment;
 use Inly\CoreWeb\Testing\CoreEnvelopeSealer;
 use Inly\CoreWeb\Tests\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use stdClass;
 
 /**
  * The test vectors of the website content protocol v1, the `test-vectors.json`
@@ -28,8 +29,7 @@ class ProtocolTestVectorsTest extends TestCase
     }
 
     /**
-     * Only the vectors under Core's own key: a site opens nothing else, so the
-     * shared-secret vectors, which a site never receives, are left out.
+     * The vectors under Core's own key, as the fixture gives them.
      *
      * @return iterable<string, array{array<string, mixed>}>
      */
@@ -47,8 +47,62 @@ class ProtocolTestVectorsTest extends TestCase
         $this->assertGreaterThanOrEqual(16, iterator_count(self::openVectors()));
     }
 
+    /**
+     * The shared-secret vectors, which a site never receives, re-sealed with
+     * the test key so their structural refusals run against Core's key too:
+     * the claims kept byte for byte, a purpose added where they are an
+     * object, and an environment for a write. The vectors about the secret
+     * itself (a rotation's grace window, another secret) say nothing about
+     * Core's key and are left out.
+     *
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function resealedVectors(): iterable
+    {
+        $sealer = CoreEnvelopeSealer::test();
+        $document = $sealer->document();
+
+        foreach (self::vectors()['open'] as $vector) {
+            if (isset($vector['core_public_keys']) || isset($vector['previous_secret']) || $vector['expect'] === EnvelopeRefused::SIGNATURE) {
+                continue;
+            }
+
+            $original = $vector['headers'];
+            // Decoded as objects, so an empty query stays `{}` and the claims keep their order.
+            $claims = json_decode(base64_decode($original[CoreEnvelope::PAYLOAD_HEADER], true), false, flags: JSON_THROW_ON_ERROR);
+            $purpose = $vector['request']['method'] === 'GET' ? CoreEnvelope::READ : CoreEnvelope::DRAFT;
+
+            if ($claims instanceof stdClass) {
+                $claims->purpose = $purpose;
+                $claims->environment = 'production';
+            }
+
+            $headers = $sealer->seal((array) $claims);
+
+            foreach ([CoreEnvelope::PAYLOAD_HEADER, CoreEnvelope::SIGNATURE_HEADER] as $header) {
+                if (! isset($original[$header])) {
+                    unset($headers[$header]);
+                }
+            }
+
+            yield $vector['name'] => [[
+                ...$vector,
+                'core_public_keys' => $document,
+                'environment' => 'production',
+                'headers' => $headers,
+                'purpose' => $purpose,
+            ]];
+        }
+    }
+
+    public function test_the_fixture_holds_shared_secret_vectors_to_reseal(): void
+    {
+        $this->assertGreaterThanOrEqual(20, iterator_count(self::resealedVectors()));
+    }
+
     /** @param  array<string, mixed>  $vector */
     #[DataProvider('openVectors')]
+    #[DataProvider('resealedVectors')]
     public function test_an_open_vector(array $vector): void
     {
         $this->travelTo(Carbon::createFromTimestamp($vector['now']));

@@ -703,8 +703,10 @@ $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', $body, ['envir
     ->assertForbidden()->assertJson(['error' => 'wrong_environment']);
 ```
 
-core-web's own suite runs the protocol's test vectors that use Core's key
-(`tests/fixtures/website-content-protocol-v1-test-vectors.json`).
+core-web's own suite runs the protocol's test vectors
+(`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
+use Core's key as given, and the shared-secret ones re-sealed with the test
+key, so their method, path, query and body refusals run against Core's key too.
 
 ## Testing a site
 
