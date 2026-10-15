@@ -1,0 +1,921 @@
+{
+  "seal": [
+    {
+      "name": "a read of the content feed",
+      "secret": "demo-pairing-secret",
+      "claims": {
+        "aud": "demo-site",
+        "expires_at": 1790813100,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "method": "GET",
+        "path": "/api/core/v1/content",
+        "query": {
+          "cursor": "eyJpZCI6IjQyIn0",
+          "limit": "100",
+          "updated_since": "2026-09-30T00:00:00Z"
+        }
+      },
+      "payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnsiY3Vyc29yIjoiZXlKcFpDSTZJalF5SW4wIiwibGltaXQiOiIxMDAiLCJ1cGRhdGVkX3NpbmNlIjoiMjAyNi0wOS0zMFQwMDowMDowMFoifX0=",
+      "signature": "462d64698ea9b780989f82de7665106be4a86fec38908f719cd29acb03e2966d"
+    },
+    {
+      "name": "a draft, its body bound",
+      "secret": "demo-pairing-secret",
+      "claims": {
+        "aud": "demo-site",
+        "expires_at": 1790813100,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "method": "POST",
+        "path": "/api/core/v1/drafts",
+        "query": {},
+        "body_sha256": "6a4496f89f2d4ce4792798b8de8bfe442ff61bf70d0b7072cd0dcf2b73858e86"
+      },
+      "payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvYXBpL2NvcmUvdjEvZHJhZnRzIiwicXVlcnkiOnt9LCJib2R5X3NoYTI1NiI6IjZhNDQ5NmY4OWYyZDRjZTQ3OTI3OThiOGRlOGJmZTQ0MmZmNjFiZjcwZDBiNzA3MmNkMGRjZjJiNzM4NThlODYifQ==",
+      "signature": "687943bdb88654cc5344f1e91622a9df86c208dec403f0a2af64a7fe528f5fd5"
+    },
+    {
+      "name": "the site's ping to Core",
+      "secret": "demo-pairing-secret",
+      "claims": {
+        "aud": "demo-site",
+        "expires_at": 1790813100,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "method": "POST",
+        "path": "/webhooks/connectors/demo-site",
+        "query": {},
+        "body_sha256": "0fcb9b1933e86a78fba6aa2b26c6ee296f55a9be3becfccc206ba1eabdb13e03"
+      },
+      "payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvd2ViaG9va3MvY29ubmVjdG9ycy9kZW1vLXNpdGUiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiMGZjYjliMTkzM2U4NmE3OGZiYTZhYTJiMjZjNmVlMjk2ZjU1YTliZTNiZWNmY2NjMjA2YmExZWFiZGIxM2UwMyJ9",
+      "signature": "bcd5bc67ddaa174a0a734008c750a12600aba6fddeccd009aec23d9059b5ca75"
+    },
+    {
+      "name": "slashes and text outside ASCII, unescaped",
+      "secret": "demo-pairing-secret",
+      "claims": {
+        "aud": "demo-site",
+        "expires_at": 1790813100,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "method": "GET",
+        "path": "/api/core/v1/content",
+        "query": {
+          "cursor": "Café/2"
+        }
+      },
+      "payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnsiY3Vyc29yIjoiQ2Fmw6kvMiJ9fQ==",
+      "signature": "0a7f9f1d13a7379459d4b1927aa3a698f0048ed3927fd0320d9167d7be9d3e1e"
+    },
+    {
+      "name": "a draft Core seals with its own key",
+      "core_seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "claims": {
+        "aud": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+        "expires_at": 1790813100,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "purpose": "website.draft",
+        "environment": "production",
+        "method": "POST",
+        "path": "/api/core/v1/drafts",
+        "query": {},
+        "body_sha256": "6a4496f89f2d4ce4792798b8de8bfe442ff61bf70d0b7072cd0dcf2b73858e86"
+      },
+      "payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+      "key_id": "21fe31dfa154a261",
+      "signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000"
+    }
+  ],
+  "open": [
+    {
+      "name": "a read, its query sent in another order than sealed",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content?updated_since=2026-09-30T00%3A00%3A00Z&limit=100&cursor=eyJpZCI6IjQyIn0",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnsiY3Vyc29yIjoiZXlKcFpDSTZJalF5SW4wIiwibGltaXQiOiIxMDAiLCJ1cGRhdGVkX3NpbmNlIjoiMjAyNi0wOS0zMFQwMDowMDowMFoifX0=",
+        "X-Core-Signature": "462d64698ea9b780989f82de7665106be4a86fec38908f719cd29acb03e2966d"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "a path still percent-encoded",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content/ab%20c",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50L2FiJTIwYyIsInF1ZXJ5Ijp7fX0=",
+        "X-Core-Signature": "6c2cb23b0bd182757d20dbf37700650d5ed3f8cc02c2855ba9786c1dd82c9868"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "an empty query value",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content?limit=100&updated_since=",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnsibGltaXQiOiIxMDAiLCJ1cGRhdGVkX3NpbmNlIjoiIn19",
+        "X-Core-Signature": "e0a9df8b3de07b4b4767cb5ec8cbe0e2dc22da01c4534a96aad828ba104c7901"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "a draft, its body bound",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvYXBpL2NvcmUvdjEvZHJhZnRzIiwicXVlcnkiOnt9LCJib2R5X3NoYTI1NiI6IjZhNDQ5NmY4OWYyZDRjZTQ3OTI3OThiOGRlOGJmZTQ0MmZmNjFiZjcwZDBiNzA3MmNkMGRjZjJiNzM4NThlODYifQ==",
+        "X-Core-Signature": "687943bdb88654cc5344f1e91622a9df86c208dec403f0a2af64a7fe528f5fd5"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "the site's ping to Core",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/webhooks/connectors/demo-site",
+        "body": "{\"type\":\"page\",\"id\":\"5f0c2a1e\",\"action\":\"saved\"}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvd2ViaG9va3MvY29ubmVjdG9ycy9kZW1vLXNpdGUiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiMGZjYjliMTkzM2U4NmE3OGZiYTZhYTJiMjZjNmVlMjk2ZjU1YTliZTNiZWNmY2NjMjA2YmExZWFiZGIxM2UwMyJ9",
+        "X-Core-Signature": "bcd5bc67ddaa174a0a734008c750a12600aba6fddeccd009aec23d9059b5ca75"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "an expiry six minutes ahead",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTYwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "dabf310f9232951ccbe444d869fed54a5ce0537cbd44d2ac0d5991e3a9d37f65"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "the previous secret inside its grace window",
+      "secret": "demo-pairing-secret",
+      "previous_secret": "demo-pairing-previous",
+      "previous_expires_at": 1790816400,
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "637d919741451813eb048150e0059d39ecbba6ff8acac0429361ad9ce6839fc1"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "the previous secret past its grace window",
+      "secret": "demo-pairing-secret",
+      "previous_secret": "demo-pairing-previous",
+      "previous_expires_at": 1790812799,
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "637d919741451813eb048150e0059d39ecbba6ff8acac0429361ad9ce6839fc1"
+      },
+      "expect": "signature"
+    },
+    {
+      "name": "no signature header",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ=="
+      },
+      "expect": "missing"
+    },
+    {
+      "name": "signed with another secret",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "c7847f192861232d2b57e6b85e488c63b5a2b26208fed48df4ec525f1940d6af"
+      },
+      "expect": "signature"
+    },
+    {
+      "name": "a payload that is not a JSON object",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "WyJkZW1vLXNpdGUiXQ==",
+        "X-Core-Signature": "cb6fb42bd7fcfb2fe892e89438e2424a393fa52a945e20c954a565e1adb1126a"
+      },
+      "expect": "payload"
+    },
+    {
+      "name": "a nonce in uppercase",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlBQkNERUYwMTIzNDU2Nzg5QUJDREVGIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "fdf5e6df87414c18b8d13f44c2fb1ee3e6c3ee9b41ff04404d940df009059bcf"
+      },
+      "expect": "payload"
+    },
+    {
+      "name": "another audience",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJhbm90aGVyLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "7b709d9291380c4f623abb4c34010ab63fdb0394e919deba7e6e8160518a9b6d"
+      },
+      "expect": "audience"
+    },
+    {
+      "name": "expiring now",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEyODAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "f0b830d8ed8545ab000f46f8713916396fb0dce61ef333f69ebde383ccfc64ee"
+      },
+      "expect": "expired"
+    },
+    {
+      "name": "an expiry past the window",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTYxLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "7bdb75cf7b3e709027c36ee0feb8233355b3d95a0ce06b417861e3722311839e"
+      },
+      "expect": "expired"
+    },
+    {
+      "name": "another method",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "DELETE",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "0560632670723638536e4f50fadf8ee5ee51398cd7c98e4a150551d4c128e99e"
+      },
+      "expect": "method"
+    },
+    {
+      "name": "another path",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content/42",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "0560632670723638536e4f50fadf8ee5ee51398cd7c98e4a150551d4c128e99e"
+      },
+      "expect": "path"
+    },
+    {
+      "name": "a colon in a path segment",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content/page:42",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50L3BhZ2U6NDIiLCJxdWVyeSI6e319",
+        "X-Core-Signature": "f36a5823d75115b24b2b1ccafe811c8844f1eae7547be4856ad7bc7e33cfc21b"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "a target starting with two slashes, which a URL parser reads as a host",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "//x/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "0560632670723638536e4f50fadf8ee5ee51398cd7c98e4a150551d4c128e99e"
+      },
+      "expect": "path"
+    },
+    {
+      "name": "another query value",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content?updated_since=2026-09-30T00%3A00%3A00Z&limit=200&cursor=eyJpZCI6IjQyIn0",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnsiY3Vyc29yIjoiZXlKcFpDSTZJalF5SW4wIiwibGltaXQiOiIxMDAiLCJ1cGRhdGVkX3NpbmNlIjoiMjAyNi0wOS0zMFQwMDowMDowMFoifX0=",
+        "X-Core-Signature": "462d64698ea9b780989f82de7665106be4a86fec38908f719cd29acb03e2966d"
+      },
+      "expect": "query"
+    },
+    {
+      "name": "no query claim",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50In0=",
+        "X-Core-Signature": "baf697c81847e55f36030b43bd9c8828467ea3fa8881ef12126eab29f2b73870"
+      },
+      "expect": "query"
+    },
+    {
+      "name": "a tampered body",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Shop opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvYXBpL2NvcmUvdjEvZHJhZnRzIiwicXVlcnkiOnt9LCJib2R5X3NoYTI1NiI6IjZhNDQ5NmY4OWYyZDRjZTQ3OTI3OThiOGRlOGJmZTQ0MmZmNjFiZjcwZDBiNzA3MmNkMGRjZjJiNzM4NThlODYifQ==",
+        "X-Core-Signature": "687943bdb88654cc5344f1e91622a9df86c208dec403f0a2af64a7fe528f5fd5"
+      },
+      "expect": "body"
+    },
+    {
+      "name": "a write without body_sha256",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvYXBpL2NvcmUvdjEvZHJhZnRzIiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "e1a91144d9d17b27701e24bd9dedc375bdc5afc4cdeaeb094b960fc65a4c43e9"
+      },
+      "expect": "body"
+    },
+    {
+      "name": "a GET carrying a body",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": "{}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "0560632670723638536e4f50fadf8ee5ee51398cd7c98e4a150551d4c128e99e"
+      },
+      "expect": "body"
+    },
+    {
+      "name": "the same request presented twice",
+      "secret": "demo-pairing-secret",
+      "audience": "demo-site",
+      "now": 1790812800,
+      "request": {
+        "method": "GET",
+        "uri": "/api/core/v1/content",
+        "body": ""
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiJkZW1vLXNpdGUiLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9jb250ZW50IiwicXVlcnkiOnt9fQ==",
+        "X-Core-Signature": "0560632670723638536e4f50fadf8ee5ee51398cd7c98e4a150551d4c128e99e"
+      },
+      "present": 2,
+      "expect": "replayed"
+    },
+    {
+      "name": "a draft Core sealed with its own key",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "a key id Core does not publish",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "0000000000000000"
+      },
+      "expect": "signature"
+    },
+    {
+      "name": "an HMAC where Core's key is expected",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "e67303b009f079a67bc237025ded2706ddd0825fb41858dcaf5026b2c5273403",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "signature"
+    },
+    {
+      "name": "sealed for another purpose than the endpoint's",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUucmVhZCIsImVudmlyb25tZW50IjoicHJvZHVjdGlvbiIsIm1ldGhvZCI6IlBPU1QiLCJwYXRoIjoiL2FwaS9jb3JlL3YxL2RyYWZ0cyIsInF1ZXJ5Ijp7fSwiYm9keV9zaGEyNTYiOiI2YTQ0OTZmODlmMmQ0Y2U0NzkyNzk4YjhkZThiZmU0NDJmZjYxYmY3MGQwYjcwNzJjZDBkY2YyYjczODU4ZTg2In0=",
+        "X-Core-Signature": "839eb65df9191996ca43d6f3da717944024a2eaeec95afdd356befecb8c9e616b6c6aed6e2b23700432a040cdf9557a13d7e84bd459e8885e92cce1659e8a606",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "purpose"
+    },
+    {
+      "name": "Core's key, sealed for another site",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "5c7a0d94-2e1b-4f8a-a6d3-9b0e4c2f7a15",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "audience"
+    },
+    {
+      "name": "Core's key, expiring now",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790813100,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "expired"
+    },
+    {
+      "name": "Core's key, the same request presented twice",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "present": 2,
+      "expect": "replayed"
+    },
+    {
+      "name": "Core's key with no purpose, where the endpoint checks one",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwiZW52aXJvbm1lbnQiOiJwcm9kdWN0aW9uIiwibWV0aG9kIjoiUE9TVCIsInBhdGgiOiIvYXBpL2NvcmUvdjEvZHJhZnRzIiwicXVlcnkiOnt9LCJib2R5X3NoYTI1NiI6IjZhNDQ5NmY4OWYyZDRjZTQ3OTI3OThiOGRlOGJmZTQ0MmZmNjFiZjcwZDBiNzA3MmNkMGRjZjJiNzM4NThlODYifQ==",
+        "X-Core-Signature": "34449876dc0ed269fbc0ade40726889bba18ccbdc3d1d924025c9525d2ecaa5c72b30083bec189fd98ad7d265bc45e0a77f0b9ae060a75af14c67a555808a00e",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "purpose"
+    },
+    {
+      "name": "Core's key with no key id",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000"
+      },
+      "expect": "signature"
+    },
+    {
+      "name": "Core's key, a draft envelope at the publish endpoint",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.publish",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "purpose"
+    },
+    {
+      "name": "Core's key, another method",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "PUT",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "method"
+    },
+    {
+      "name": "Core's key, another path",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts/42/publish",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "path"
+    },
+    {
+      "name": "Core's key, another query",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts?collection=articles",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "query"
+    },
+    {
+      "name": "Core's key, a tampered body",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours!\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InByb2R1Y3Rpb24iLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "693042500ccfb2613ec5ff0ca53242b3a7131590440446d50461f5a8e0ea3dab50202fef6c97c5375e1054c8873eb48b7553fddde2f0ae9d870307f6b8b5c000",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "body"
+    },
+    {
+      "name": "a draft from a staging Core at a production site",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJlbnZpcm9ubWVudCI6InN0YWdpbmciLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "3b0f49923e0ec3df56acac16e69307df6b863ceb4799cc933739ef31e15c9420add4e10950cd856c785927eff50f46af8fb8d37c29cfa10bae8cc6024a847501",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "wrong_environment"
+    },
+    {
+      "name": "a draft from a Core that names no environment",
+      "core_public_keys": {
+        "keys": [
+          {
+            "kid": "21fe31dfa154a261",
+            "alg": "Ed25519",
+            "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+          }
+        ]
+      },
+      "audience": "9d1e3b52-5c0a-4f1e-9b7a-2f6c8d4e1a37",
+      "purpose": "website.draft",
+      "environment": "production",
+      "now": 1790812800,
+      "request": {
+        "method": "POST",
+        "uri": "/api/core/v1/drafts",
+        "body": "{\"collection\":\"pages\",\"fields\":{\"title\":\"Café opening hours\"}}"
+      },
+      "headers": {
+        "X-Core-Payload": "eyJhdWQiOiI5ZDFlM2I1Mi01YzBhLTRmMWUtOWI3YS0yZjZjOGQ0ZTFhMzciLCJleHBpcmVzX2F0IjoxNzkwODEzMTAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHVycG9zZSI6IndlYnNpdGUuZHJhZnQiLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii9hcGkvY29yZS92MS9kcmFmdHMiLCJxdWVyeSI6e30sImJvZHlfc2hhMjU2IjoiNmE0NDk2Zjg5ZjJkNGNlNDc5Mjc5OGI4ZGU4YmZlNDQyZmY2MWJmNzBkMGI3MDcyY2QwZGNmMmI3Mzg1OGU4NiJ9",
+        "X-Core-Signature": "35b49a03e9e2e603baead22228b30948db6a0db2510d62c4e42769536ea362351716bb1ef2ce3945a252726dc8ce89f6e5ffa12c7276b36c76634dc1b8811902",
+        "X-Core-Key-Id": "21fe31dfa154a261"
+      },
+      "expect": "wrong_environment"
+    }
+  ]
+}

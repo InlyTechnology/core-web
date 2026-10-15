@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Client;
 
+use Closure;
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -164,16 +165,18 @@ class CoreClient
     /**
      * A JSON GET or POST with the client token, retried once on a 401, and
      * handed back whatever Core answered. `$data` is the query of a GET and
-     * the body of a POST.
+     * the body of a POST; a closure is called for each attempt, so a body
+     * that must be fresh every time (a nonce) is.
      *
      * @param  'get'|'post'  $method
-     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|Closure(): array<string, mixed>  $data
      * @param  array<string, string>  $headers
      */
-    public function sendResponse(string $method, string $path, array $data = [], array $headers = [], ?int $timeout = null, ?int $connectTimeout = null): Response
+    public function sendResponse(string $method, string $path, array|Closure $data = [], array $headers = [], ?int $timeout = null, ?int $connectTimeout = null): Response
     {
         $url = $this->baseUrl.'/'.ltrim($path, '/');
         $attempt = function (string $token) use ($method, $url, $data, $headers, $timeout, $connectTimeout): Response {
+            $data = $data instanceof Closure ? $data() : $data;
             $request = $this->client($token)
                 ->withHeaders($headers)
                 ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))

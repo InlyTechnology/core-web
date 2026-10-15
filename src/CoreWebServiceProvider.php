@@ -12,6 +12,10 @@ use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Content\ContentPings;
+use Inly\CoreWeb\Content\CoreEnvelope;
+use Inly\CoreWeb\Content\CoreSigningKeys;
+use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -27,10 +31,13 @@ use Statamic\StaticCaching\Cacher;
 /**
  * Dormant until a site switches a feature on (core-web.features): with every
  * switch off it adds no route, schedule, middleware, command, tag or cache
- * store. The `snapshots` feature is the snapshot pipeline with its pings and
+ * store, only the `core-web.envelope` alias a site's own routes may name.
+ * The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
- * The `chat` feature relays a site's visitors to Core's chat agents.
+ * The `chat` feature relays a site's visitors to Core's chat agents. The
+ * `content` feature opens the envelopes Core seals with its own key for the
+ * site's content endpoints, and pings Core when a page changes.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -54,6 +61,9 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Not scoped: built from config each time, so configured() answers from the configuration of the moment.
         $this->app->bind(CoreClient::class, fn () => CoreClient::fromConfig());
+        $this->app->bind(CoreSigningKeys::class, fn () => CoreSigningKeys::fromConfig());
+        $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
+        $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -73,6 +83,9 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('chat')) {
             $this->bootChat();
         }
+
+        // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
+        $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
     }
 
     /** Whether the site switched a feature on in core-web.features (true, or a string such as "1" or "true" from env). */

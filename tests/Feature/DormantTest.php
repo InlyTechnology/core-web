@@ -8,6 +8,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\View;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
@@ -22,7 +23,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -38,6 +39,15 @@ class DormantTest extends TestCase
         $this->assertFalse(app(Router::class)->has('core-web.chat.show'));
         $this->post('/!/core-web/chat/assistant/messages', ['message' => 'Hej'])->assertNotFound();
         $this->assertFalse(View::exists('core-web::components.chat'));
+    }
+
+    public function test_the_envelope_alias_is_registered_but_joins_no_group(): void
+    {
+        $this->assertSame(VerifyCoreEnvelope::class, app(Router::class)->getMiddleware()[VerifyCoreEnvelope::ALIAS] ?? null);
+
+        foreach (app(Router::class)->getMiddlewareGroups() as $group) {
+            $this->assertNotContains(VerifyCoreEnvelope::class, $group);
+        }
     }
 
     public function test_nothing_is_scheduled(): void

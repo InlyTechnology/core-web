@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.7.0 (unreleased)
+
+- **Website content**: `features.content` (off by default) is the site half of
+  Core's website content protocol v1.1 (inly-core v31.1.0 or later).
+  - The `core-web.envelope:<purpose>` route middleware opens an envelope Core
+    sealed with its own Ed25519 key, steps 1 to 11, and checks the
+    environment of a draft or publish. It refuses with a JSON 403 and marks
+    every answer `no-store`. The alias is registered whatever the switches,
+    so a site's routes can always name it; while `features.content` is off
+    it refuses every call.
+  - `CoreEnvelope::open()` opens an envelope bound to no request, and refuses
+    one sealed to a request (a `method`, `path`, `query` or `body_sha256`
+    claim) with that reason.
+  - `CoreSigningKeys` reads Core's key document over https from the paired
+    Core, following no redirect. A copy is refreshed at four minutes, by one
+    call while the others open with it, and opens nothing past five, so a
+    retired key stops opening envelopes even while Core cannot be read. A
+    failed refresh, or a fetch with no copy, is retried after 10 seconds; an
+    unknown key id refetches at most once a minute.
+  - `content.environment` reads `CORE_CONTENT_ENVIRONMENT`, for a site whose
+    `APP_ENV` differs from its Core's; empty is the app's own environment.
+  - `ContentPings` tells Core a page changed through
+    `POST {core}/webhooks/connectors/{content.connector_id}`.
+  - `FakesCore` seals content calls with a test key it publishes as Core's
+    (`callSealed()`, `coreEnvelopeHeaders()`, `CoreEnvelopeSealer`).
+  - The protocol's test vectors run in the suite: the Core-key ones as
+    given, the shared-secret ones re-sealed with the test key.
+
+  See README § Website content.
+- `CoreClient::sendResponse()` takes a closure for `$data`. The closure is
+  called for each attempt, so the retry after a 401 sends a fresh body.
+- core-web requires `ext-sodium`.
+- `CoreClient::sendResponse()` widens `$data` to `array|Closure`, so a subclass
+  that overrides it with `array $data` must widen it too.
+
 ## v0.6.0 (2026-10-15)
 
 - **Chat**: `features.chat` (off by default) relays a site's visitors to Core's
