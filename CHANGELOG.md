@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.0 (unreleased)
+
+- **Website content**: `features.content` (off by default) is the site half of
+  Core's website content protocol v1.1 (inly-core v31.1.0 or later).
+  - The `core-web.envelope:<purpose>` route middleware opens an envelope Core
+    sealed with its own Ed25519 key, steps 1 to 11, and checks the
+    environment of a draft or publish. It refuses with a JSON 403 and marks
+    every answer `no-store`.
+  - `CoreEnvelope::open()` opens an envelope bound to no request.
+  - `CoreSigningKeys` reads Core's key document over https: cached for five
+    minutes, read again for an unknown key id at most once a minute.
+  - `ContentPings` tells Core a page changed through
+    `POST {core}/webhooks/connectors/{content.connector_id}`.
+  - `FakesCore` seals content calls with a test key it publishes as Core's
+    (`callSealed()`, `coreEnvelopeHeaders()`, `CoreEnvelopeSealer`).
+  - The protocol's Core-key test vectors run in the suite.
+
+  See README § Website content.
+- `CoreClient::sendResponse()` takes a closure for `$data`. The closure is
+  called for each attempt, so the retry after a 401 sends a fresh body.
+- core-web requires `ext-sodium`.
+
 ## v0.6.0 (2026-10-15)
 
 - **Chat**: `features.chat` (off by default) relays a site's visitors to Core's

@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
+use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Ping\PingSignature;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -15,7 +16,9 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * A fake Core for a site's tests: the client pointed at `https://core.test`
  * with a token that always issues, Objects API answers stubbed over HTTP,
- * and pings signed as Core signs them. For a TestCase (MakesHttpRequests).
+ * pings signed as Core signs them, and calls to the site's content
+ * endpoints sealed with a test key it publishes as Core's. For a TestCase
+ * (MakesHttpRequests).
  */
 trait FakesCore
 {
@@ -39,10 +42,12 @@ trait FakesCore
             'core-web.client.client_secret' => 'secret',
         ]);
         Cache::forget((string) config('core-web.client.token_cache_key'));
+        CoreSigningKeys::fromConfig()->forget();
 
         Http::swap(new Factory);
         Http::fake([
             "{$this->fakeCoreHost}/oauth/token" => Http::response(['access_token' => 'token', 'expires_in' => 3600]),
+            "{$this->fakeCoreHost}".CoreSigningKeys::PATH => Http::response(CoreEnvelopeSealer::test()->document()),
             ...$stubs,
             "{$this->fakeCoreHost}/*" => Http::response(['errors' => [['status' => '404']]], 404),
         ]);
@@ -258,5 +263,35 @@ trait FakesCore
     protected function receivePing(array $data): TestResponse
     {
         return $this->postJson(route((string) config('core-web.ping.name', 'api.core.objects')), $this->signedPing($data));
+    }
+
+    /**
+     * The headers of a call sealed with the key fakeCore() publishes as Core's.
+     *
+     * @param  array<string, mixed>  $claims  replace the sealed claims of the same name; a null one is left out
+     * @return array<string, string>
+     */
+    protected function coreEnvelopeHeaders(string $method, string $uri, string $purpose, ?string $body = null, array $claims = []): array
+    {
+        return CoreEnvelopeSealer::test()->requestHeaders($method, $uri, $purpose, $body, $claims);
+    }
+
+    /**
+     * Calls one of the site's content endpoints as Core does: sealed for
+     * `$purpose`, a JSON body sent as the exact bytes sealed.
+     *
+     * @param  array<string, mixed>|string|null  $body
+     * @param  array<string, mixed>  $claims
+     */
+    protected function callSealed(string $method, string $uri, string $purpose, array|string|null $body = null, array $claims = []): TestResponse
+    {
+        $content = is_array($body) ? json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $body;
+        $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'];
+
+        foreach ($this->coreEnvelopeHeaders($method, $uri, $purpose, $content, $claims) as $name => $value) {
+            $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
+        }
+
+        return $this->call(strtoupper($method), $uri, [], [], [], $server, $content);
     }
 }

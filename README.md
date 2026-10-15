@@ -22,7 +22,8 @@ What the package gives a site:
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
-| Test helpers | `Inly\CoreWeb\Testing\FakesCore` | A fake Core over `Http::fake()` and pings signed as Core signs them |
+| Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
+| Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
 document looks like, how the pages read it), the page routes and views, the TTL
@@ -49,6 +50,7 @@ install it whether or not it shows Core data yet.
 |---|---|---|
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
+| Website content | `features.content` | The `core-web.envelope` route middleware. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -82,6 +84,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret Core signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). **Empty rejects every ping**; there is no `APP_KEY` fallback |
+| `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 A site's own Core settings sit in the same family: `CORE_CMS_SITE` for CMS
@@ -115,6 +118,10 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `chat.turn_rate_limit` | `10` | Messages and handoffs per minute, per session and address |
 | `chat.max_message_length` | `10000` | The longest message the relay passes on; longer is `invalid` without calling Core. Core's default cap per agent; an agent with a lower one still refuses past it (`invalid`) |
 | `chat.max_conversations` | `5` | Conversations a session holds per agent; a new subject past it is `limited` |
+| `features.content` | `false` | Switch on the website content middleware (see [Website content](#website-content)) |
+| `content.environment` | `null` | The environment a draft or publish must be sealed for; `null` is `app()->environment()` |
+| `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site |
+| `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
 ## Where snapshots live
@@ -603,6 +610,96 @@ call needs, not only opening a conversation (without it Core answers 403,
 which the relay reports as `unavailable`). A turn runs while Core answers, so
 the web server's read timeout (nginx's `fastcgi_read_timeout`) must outlast
 `chat.timeouts.turn`.
+
+## Website content
+
+The site half of Core's website content protocol v1.1 (inly-core
+`docs/learn/website-content/protocol-v1.md`): Core reads a site's pages and
+writes drafts to it, every call sealed with Core's own Ed25519 key, and the
+site pings Core when a page changes. core-web opens the envelopes and sends
+the pings; the endpoints, their routes and their JSON are the site's own.
+
+### Routes
+
+With `features.content` on, the `core-web.envelope:<purpose>` middleware opens
+the envelope before the controller runs:
+
+```php
+Route::middleware('throttle:120,1')->prefix('api/core/v1')->group(function () {
+    Route::get('content', [ContentController::class, 'index'])->middleware('core-web.envelope:website.read');
+    Route::post('drafts', [DraftsController::class, 'store'])->middleware('core-web.envelope:website.draft');
+    Route::post('drafts/{id}/publish', [DraftsController::class, 'publish'])->middleware('core-web.envelope:website.publish');
+});
+```
+
+Register the routes outside the `web` group, and keep `TrimStrings` and
+`ConvertEmptyStringsToNull` off them. The envelope binds the raw query string
+and body either way, but the controller should read what Core sent.
+
+The middleware checks, in the protocol's order:
+
+1. the headers;
+2. Core's signature, under a key id from Core's key document;
+3. the payload;
+4. the audience, which is the site's `client.client_id`;
+5. the expiry, which is at most six minutes ahead;
+6. the purpose;
+7. the method;
+8. the raw path;
+9. the canonical query;
+10. the body's SHA-256;
+11. the nonce, spent once per audience until the envelope expires.
+
+A draft or publish must also carry the site's environment (`content.environment`).
+
+Every answer that passes through it, the controller's included, carries
+`Cache-Control: no-store` and `X-Statamic-Uncacheable`. The claims are on the
+request: `VerifyCoreEnvelope::claims($request)`.
+
+| Answer | When |
+|---|---|
+| 403 `{"error":"envelope_refused"}` | No envelope, a bad signature or an unreadable payload: nothing is said about why |
+| 403 `{"error":"envelope_refused","reason":"…"}` | The signature verified and a later check failed: `audience`, `expired`, `purpose`, `method`, `path`, `query`, `body` or `replayed` |
+| 403 `{"error":"wrong_environment","message":"…"}` | A draft or publish sealed for another environment |
+
+Core's key document (`{core}/.well-known/core-signing-keys`) is read over
+https only (plain http in `local` and `testing`). It is cached for five
+minutes, and read again when an envelope names a key id the cached copy
+lacks, at most once a minute. A document read replaces the cached one, so a
+key Core retires stops opening envelopes.
+
+An envelope that arrives with no request to bind it to, such as one handed
+over in a URL, is opened with
+`app(CoreEnvelope::class)->open($payload, $signature, $keyId, $purpose)`. It
+checks steps 1 to 6 and spends the nonce. Use it only for a purpose whose
+claims say everything the envelope allows.
+
+### Pings
+
+`app(ContentPings::class)->send($pageId, 'saved'|'deleted')` posts
+`{"type":"page","id":…,"action":…,"nonce":…}` to
+`{core}/webhooks/connectors/{content.connector_id}` with the client token.
+The nonce is new for every attempt. `enabled()` is false until the client and
+the connector id are set. `send()` throws when Core does not accept the ping,
+so call it from a queued job and let the queue retry.
+
+### Testing
+
+`fakeCore()` publishes a test key as Core's. `callSealed($method, $uri,
+$purpose, $body, $claims)` calls a content route sealed with it, with a JSON
+body sent as the exact bytes it sealed. `$claims` replaces sealed claims, and
+a `null` value leaves a claim out. `coreEnvelopeHeaders()` gives the headers
+alone, and `CoreEnvelopeSealer` seals with a key of your own.
+
+```php
+$this->fakeCore();
+$this->callSealed('GET', '/api/core/v1/content?limit=10', 'website.read')->assertOk();
+$this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', $body, ['environment' => 'staging'])
+    ->assertForbidden()->assertJson(['error' => 'wrong_environment']);
+```
+
+core-web's own suite runs the protocol's test vectors that use Core's key
+(`tests/fixtures/website-content-protocol-v1-test-vectors.json`).
 
 ## Testing a site
 
