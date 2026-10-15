@@ -639,6 +639,11 @@ Register the routes outside the `web` group, and keep `TrimStrings` and
 `ConvertEmptyStringsToNull` off them. The envelope binds the raw query string
 and body either way, but the controller should read what Core sent.
 
+The protocol has the site answer over https outside a local environment.
+core-web does not check the scheme of a request it opens: the site's
+endpoints rely on the web server (or the proxy in front of it) to serve them
+over https only.
+
 The middleware checks, in the protocol's order:
 
 1. the headers;
@@ -693,6 +698,11 @@ the request it binds.
 The nonce is new for every attempt. `enabled()` is false until the client and
 the connector id are set. `send()` throws when Core does not accept the ping,
 so call it from a queued job and let the queue retry.
+
+Each pairing has a connector of its own in Core, so a staging site sets its
+own `content.connector_id` (`CORE_CONTENT_CONNECTOR_ID`). One that keeps the
+production site's id pings the production connector with its own client
+token, and Core answers every ping with a 401.
 
 ### Testing
 

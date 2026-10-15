@@ -242,7 +242,8 @@ return [
     | connector_id: the Core connector that holds this site's pairing, which
     | the pings go to. Not a secret: a site commits it as the default in its
     | own config/core-web.php (CORE_CONTENT_CONNECTOR_ID can still override
-    | it). Empty sends no ping.
+    | it, as a staging site must: each pairing has a connector of its own).
+    | Empty sends no ping.
     |
     | environment: the environment a draft or publish call must come from;
     | null is this app's own environment.
