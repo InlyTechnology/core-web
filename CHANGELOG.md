@@ -14,10 +14,11 @@
     one sealed to a request (a `method`, `path`, `query` or `body_sha256`
     claim) with that reason.
   - `CoreSigningKeys` reads Core's key document over https from the paired
-    Core, following no redirect: read again once the copy is five minutes
-    old or for an unknown key id, at most once a minute. The last good copy
-    keeps opening envelopes until a fetch succeeds, so only the call that
-    fetches waits, and only a site with no copy refuses while Core is down.
+    Core, following no redirect. A copy is refreshed at four minutes, by one
+    call while the others open with it, and opens nothing past five, so a
+    retired key stops opening envelopes even while Core cannot be read. A
+    failed refresh, or a fetch with no copy, is retried after 10 seconds; an
+    unknown key id refetches at most once a minute.
   - `ContentPings` tells Core a page changed through
     `POST {core}/webhooks/connectors/{content.connector_id}`.
   - `FakesCore` seals content calls with a test key it publishes as Core's

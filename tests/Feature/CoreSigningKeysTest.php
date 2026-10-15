@@ -17,6 +17,11 @@ class CoreSigningKeysTest extends TestCase
 
     protected array $features = ['content'];
 
+    private function holdLock(string $suffix, int $seconds): void
+    {
+        Cache::store(config('core-web.content.store'))->put('core_web_signing_keys'.$suffix, true, $seconds);
+    }
+
     private function keyFetches(): int
     {
         return Http::recorded(fn (Request $request) => str_ends_with($request->url(), CoreSigningKeys::PATH))->count();
@@ -62,15 +67,18 @@ class CoreSigningKeysTest extends TestCase
         $this->assertNull(app(CoreSigningKeys::class)->publicKey($old->kid()));
     }
 
-    public function test_the_cached_document_expires_after_five_minutes(): void
+    public function test_a_copy_is_refreshed_once_four_minutes_old(): void
     {
         $this->fakeCore();
         $kid = CoreEnvelopeSealer::test()->kid();
 
         app(CoreSigningKeys::class)->publicKey($kid);
-        $this->travel(CoreSigningKeys::TTL_SECONDS + 1)->seconds();
+        $this->travel(CoreSigningKeys::REFRESH_SECONDS - 1)->seconds();
         app(CoreSigningKeys::class)->publicKey($kid);
+        $this->assertSame(1, $this->keyFetches());
 
+        $this->travel(2)->seconds();
+        app(CoreSigningKeys::class)->publicKey($kid);
         $this->assertSame(2, $this->keyFetches());
     }
 
@@ -86,51 +94,89 @@ class CoreSigningKeysTest extends TestCase
         $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
     }
 
-    public function test_a_stale_copy_answers_while_another_call_fetches(): void
+    public function test_a_due_copy_answers_while_another_call_fetches(): void
     {
         $this->fakeCore();
         $kid = CoreEnvelopeSealer::test()->kid();
 
         app(CoreSigningKeys::class)->publicKey($kid);
-        $this->travel(CoreSigningKeys::TTL_SECONDS + 1)->seconds();
-        // Another request holds the minute's fetch, as it does while Core answers slowly.
-        Cache::store(config('core-web.content.store'))->put('core_web_signing_keys:fetched', true, CoreSigningKeys::REFETCH_SECONDS);
+        $this->travel(CoreSigningKeys::REFRESH_SECONDS + 1)->seconds();
+        // Another request holds the refresh, as it does while Core answers slowly.
+        $this->holdLock(':retry', CoreSigningKeys::RETRY_SECONDS);
 
         $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($kid));
         $this->assertNull(app(CoreSigningKeys::class)->publicKey('0000000000000000'));
         $this->assertSame(1, $this->keyFetches());
     }
 
-    public function test_a_failed_refresh_keeps_the_stale_copy_until_a_fetch_succeeds(): void
+    public function test_a_copy_opens_nothing_past_five_minutes_while_another_call_fetches(): void
+    {
+        $this->fakeCore();
+        $kid = CoreEnvelopeSealer::test()->kid();
+
+        app(CoreSigningKeys::class)->publicKey($kid);
+        $this->travel(CoreSigningKeys::EXPIRES_SECONDS)->seconds();
+        $this->holdLock(':retry', CoreSigningKeys::RETRY_SECONDS);
+
+        $this->assertNull(app(CoreSigningKeys::class)->publicKey($kid));
+        $this->assertSame(1, $this->keyFetches());
+    }
+
+    public function test_a_failed_refresh_keeps_the_copy_until_it_expires(): void
     {
         $sealer = CoreEnvelopeSealer::test();
-        $this->fakeCore(['core.test'.CoreSigningKeys::PATH => Http::sequence()->push($sealer->document())->push('down', 503)->push('down', 503)->push($sealer->document())]);
+        $this->fakeCore(['core.test'.CoreSigningKeys::PATH => Http::sequence()->push($sealer->document())->push('down', 503)->push('down', 503)->push('down', 503)]);
 
         app(CoreSigningKeys::class)->publicKey($sealer->kid());
-        $this->travel(CoreSigningKeys::TTL_SECONDS + 1)->seconds();
+        $this->travel(CoreSigningKeys::REFRESH_SECONDS + 1)->seconds();
 
         $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
         $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
         $this->assertSame(2, $this->keyFetches());
 
-        $this->travel(CoreSigningKeys::REFETCH_SECONDS + 1)->seconds();
+        $this->travel(CoreSigningKeys::RETRY_SECONDS + 1)->seconds();
 
         $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
         $this->assertSame(3, $this->keyFetches());
 
-        $this->travel(CoreSigningKeys::REFETCH_SECONDS + 1)->seconds();
+        $this->travel(CoreSigningKeys::EXPIRES_SECONDS - CoreSigningKeys::REFRESH_SECONDS)->seconds();
 
-        // This fetch succeeds, so the copy is fresh again and the next call reads nothing.
-        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
-        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+        // Five minutes old and Core still down: a key Core may have retired opens nothing.
+        $this->assertNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
         $this->assertSame(4, $this->keyFetches());
     }
 
-    public function test_with_no_copy_a_failed_fetch_refuses(): void
+    public function test_a_refresh_that_succeeds_makes_the_copy_fresh_again(): void
     {
-        $this->fakeCore(['core.test'.CoreSigningKeys::PATH => Http::response('down', 503)]);
+        $sealer = CoreEnvelopeSealer::test();
+        $this->fakeCore(['core.test'.CoreSigningKeys::PATH => Http::sequence()->push($sealer->document())->push('down', 503)->push($sealer->document())]);
 
-        $this->assertNull(app(CoreSigningKeys::class)->publicKey(CoreEnvelopeSealer::test()->kid()));
+        app(CoreSigningKeys::class)->publicKey($sealer->kid());
+        $this->travel(CoreSigningKeys::REFRESH_SECONDS + 1)->seconds();
+        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+
+        $this->travel(CoreSigningKeys::RETRY_SECONDS + 1)->seconds();
+        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+
+        $this->travel(CoreSigningKeys::REFRESH_SECONDS - 1)->seconds();
+        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+        $this->assertSame(3, $this->keyFetches());
+    }
+
+    public function test_with_no_copy_a_failed_fetch_refuses_and_retries_soon(): void
+    {
+        $sealer = CoreEnvelopeSealer::test();
+        $this->fakeCore(['core.test'.CoreSigningKeys::PATH => Http::sequence()->push('down', 503)->push($sealer->document())]);
+
+        $this->assertNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+        $this->assertNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+        $this->assertSame(1, $this->keyFetches());
+
+        // Core is back: the next try comes after seconds, not the minute an unknown key id waits.
+        $this->travel(CoreSigningKeys::RETRY_SECONDS + 1)->seconds();
+
+        $this->assertNotNull(app(CoreSigningKeys::class)->publicKey($sealer->kid()));
+        $this->assertSame(2, $this->keyFetches());
     }
 
     public function test_a_redirect_is_not_followed(): void

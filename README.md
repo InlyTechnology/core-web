@@ -672,14 +672,15 @@ request: `VerifyCoreEnvelope::claims($request)`.
 
 Core's key document (`{core}/.well-known/core-signing-keys`) is read over
 https only (plain http in `local` and `testing`), from the paired Core alone:
-a redirect is not followed. It is read again once the copy is five minutes
-old, or when an envelope names a key id the copy lacks, at most once a minute
-either way. Only the call that takes the minute's fetch waits for it; every
-other call opens with the copy it has. The last good copy is kept until a
-fetch succeeds, so a slow or unreachable Core costs no call a stale copy can
-open, and only a site with no copy at all refuses while Core cannot be read.
-A document read replaces the copy, so a key Core retires stops opening
-envelopes once the site has read the document again.
+a redirect is not followed. A copy is refreshed once it is four minutes old:
+one call takes the refresh and the rest keep opening with the copy, as they do
+when the refresh fails, with a retry every 10 seconds. A copy five minutes
+old opens nothing, whether or not Core can be read, so a key Core retires
+stops opening envelopes within five minutes even while the fetch fails. A
+site with no copy refuses until a fetch succeeds, and tries again after 10
+seconds, so it picks Core up soon after Core comes back. An envelope naming a
+key id a fresh copy lacks refetches at most once a minute, since the key id
+is read before anything is verified.
 
 An envelope that arrives with no request to bind it to, such as one handed
 over in a URL, is opened with
