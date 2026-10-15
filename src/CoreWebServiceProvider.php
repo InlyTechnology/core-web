@@ -31,7 +31,7 @@ use Statamic\StaticCaching\Cacher;
 /**
  * Dormant until a site switches a feature on (core-web.features): with every
  * switch off it adds no route, schedule, middleware, command, tag or cache
- * store. The `snapshots` feature is the snapshot pipeline with its pings and
+ * store, only the `core-web.envelope` alias a site's own routes may name. The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
  * The `chat` feature relays a site's visitors to Core's chat agents. The
@@ -83,9 +83,8 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootChat();
         }
 
-        if (self::enabled('content')) {
-            $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
-        }
+        // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
+        $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
     }
 
     /** Whether the site switched a feature on in core-web.features (true, or a string such as "1" or "true" from env). */

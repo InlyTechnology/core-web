@@ -41,9 +41,13 @@ class DormantTest extends TestCase
         $this->assertFalse(View::exists('core-web::components.chat'));
     }
 
-    public function test_no_envelope_middleware_is_registered(): void
+    public function test_the_envelope_alias_is_registered_but_joins_no_group(): void
     {
-        $this->assertArrayNotHasKey(VerifyCoreEnvelope::ALIAS, app(Router::class)->getMiddleware());
+        $this->assertSame(VerifyCoreEnvelope::class, app(Router::class)->getMiddleware()[VerifyCoreEnvelope::ALIAS] ?? null);
+
+        foreach (app(Router::class)->getMiddlewareGroups() as $group) {
+            $this->assertNotContains(VerifyCoreEnvelope::class, $group);
+        }
     }
 
     public function test_nothing_is_scheduled(): void

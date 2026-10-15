@@ -7,7 +7,9 @@
   - The `core-web.envelope:<purpose>` route middleware opens an envelope Core
     sealed with its own Ed25519 key, steps 1 to 11, and checks the
     environment of a draft or publish. It refuses with a JSON 403 and marks
-    every answer `no-store`.
+    every answer `no-store`. The alias is registered whatever the switches,
+    so a site's routes can always name it; while `features.content` is off
+    it refuses every call.
   - `CoreEnvelope::open()` opens an envelope bound to no request, and refuses
     one sealed to a request (a `method`, `path`, `query` or `body_sha256`
     claim) with that reason.

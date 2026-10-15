@@ -44,13 +44,16 @@ below. Requirements: PHP 8.3+, Laravel 12 or 13, Statamic 6.31+.
 Installed, the package does nothing: every feature is off until the site
 switches it on, and a feature that is off registers no route, schedule,
 middleware, command, tag or cache store. That is what lets every new site
-install it whether or not it shows Core data yet.
+install it whether or not it shows Core data yet. The one exception is the
+`core-web.envelope` middleware alias, registered whatever the switches so a
+site's own routes can name it; while `features.content` is off it opens
+nothing.
 
 | Feature | Switch | What it registers |
 |---|---|---|
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
-| Website content | `features.content` | The `core-web.envelope` route middleware. The site registers its own content routes behind it (see [Website content](#website-content)) |
+| Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.

@@ -52,6 +52,14 @@ class ContentEnvelopeTest extends TestCase
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
+    public function test_a_site_with_content_switched_off_opens_nothing(): void
+    {
+        config(['core-web.features.content' => false]);
+
+        $this->callSealed('GET', '/api/core/v1/content', 'website.read')->assertForbidden()->assertExactJson(['error' => 'envelope_refused']);
+        Http::assertNothingSent();
+    }
+
     public function test_an_unsealed_call_is_refused_without_a_reason(): void
     {
         $response = $this->getJson('/api/core/v1/content')->assertForbidden()->assertExactJson(['error' => 'envelope_refused']);

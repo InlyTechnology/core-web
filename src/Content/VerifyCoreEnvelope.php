@@ -4,13 +4,15 @@ namespace Inly\CoreWeb\Content;
 
 use Closure;
 use Illuminate\Http\Request;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Route middleware for a site endpoint Core calls, naming the purpose the
- * endpoint takes (`core-web.envelope:website.read`). A refusal is a JSON 403;
- * an opened request reaches the controller with its claims in the request's
- * `core_envelope` attribute. No answer is kept by the static cache or a proxy.
+ * endpoint takes (`core-web.envelope:website.read`), opening nothing while
+ * `features.content` is off. A refusal is a JSON 403; an opened request
+ * reaches the controller with its claims in the request's `core_envelope`
+ * attribute. No answer is kept by the static cache or a proxy.
  */
 class VerifyCoreEnvelope
 {
@@ -24,6 +26,11 @@ class VerifyCoreEnvelope
     {
         // Core is a machine: whatever the controller refuses is JSON, never a redirect back.
         $request->headers->set('Accept', 'application/json');
+
+        // The alias is registered whatever the switch, so a site that switched content off opens nothing, reading no key.
+        if (! CoreWebServiceProvider::enabled('content')) {
+            return self::uncached(response()->json(['error' => 'envelope_refused'], 403));
+        }
 
         try {
             $request->attributes->set(self::ATTRIBUTE, $this->envelope->openRequest($request, $purpose));
