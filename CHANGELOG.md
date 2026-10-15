@@ -1,10 +1,10 @@
 # Changelog
 
-## v0.6.0 (2026-10-14)
+## v0.6.0 (2026-10-15)
 
 - **Chat**: `features.chat` (off by default) relays a site's visitors to Core's
   public chat agents through Core's stock chat route
-  (`/api/app/chat/{agent}`). `CoreChat` is the transport (the client token
+  (`/api/app/chat/{agent}`, inly-core v29.0.0 or later). `CoreChat` is the transport (the client token
   as the bearer on every call, the conversation's access token in
   `X-Core-Conversation-Token` on the calls after opening it, the visitor in
   `X-Core-Client-Id`), `ChatTranscript` normalizes a transcript (escaped
