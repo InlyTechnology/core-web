@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.6.0 (2026-10-14)
+
+- **Chat**: `features.chat` (off by default) relays a site's visitors to Core's
+  public chat agents through Core's stock chat route
+  (`/api/app/chat/{agent}`). `CoreChat` is the transport (the client token
+  as the bearer on every call, the conversation's access token in
+  `X-Core-Conversation-Token` on the calls after opening it, the visitor in
+  `X-Core-Client-Id`), `ChatTranscript` normalizes a transcript (escaped
+  Markdown as `html`, structured replies unwrapped, result cards narrowed),
+  and the relay routes under `/!/core-web/chat/{agent}` keep each
+  conversation's token in the session, by agent and the key the agent's
+  `ChatContext` class names. `resources/js/core-chat.js` is a headless Alpine
+  data factory and `<x-core-web::chat>` its wrapper. `CoreClient::sendResponse()`
+  (and `postResponse()`) sends a GET or POST with the client token, retried
+  once on a 401, and hands back Core's answer. See README § Chat.
+  Messages are capped at `chat.max_message_length` (10000, Core's default per
+  agent).
+  Messages and handoffs have a limit of their own (`chat.turn_rate_limit`,
+  10 a minute per session and address), and a session holds at most
+  `chat.max_conversations` (5) per agent. A conversation Core reports as
+  used up answers `exhausted` and is forgotten; a rate limit answers
+  `limited` with Core's `Retry-After`. Agent keys must be Core's lowercase
+  slugs.
+
 ## v0.5.0 (2026-10-14)
 
 - **`core:pull`**: fills the local snapshots from another Core, production as

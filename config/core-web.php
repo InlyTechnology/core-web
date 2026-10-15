@@ -22,10 +22,14 @@ return [
     | `core:pull`, the degraded guard, Core's pings (`ping`) and the snapshot
     | sitemaps (`sitemaps`). The Core client below needs no switch.
     |
+    | chat: the relay between the site's visitors and Core's chat agents
+    | (`chat`), with its routes and the <x-core-web::chat> component.
+    |
     */
 
     'features' => [
         'snapshots' => false,
+        'chat' => false,
     ],
 
     /*
@@ -164,6 +168,60 @@ return [
         'enabled' => true,
         'name' => 'core.sitemap',
         'middleware' => ['web', StaticCache::class],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Chat
+    |--------------------------------------------------------------------------
+    |
+    | agents: the Core agents the site's visitors may talk to, by Core's agent
+    | key, each with the site's Inly\CoreWeb\Chat\ChatContext class (null for
+    | an agent that takes no context). Any other agent is a 404.
+    |
+    |     'agents' => ['assistant' => App\Chat\AssistantContext::class],
+    |
+    | path: Core's stock chat route, `{path}/{agent}/conversations`.
+    |
+    | timeouts: seconds. `turn` covers a message (the model runs while Core
+    | answers) and the handoff summary; `read` opening and reading a
+    | conversation. The web server's own read timeout must outlast `turn`.
+    |
+    | name / middleware: the site's relay routes, under Statamic's action
+    | prefix (`/!/core-web/chat/{agent}`). `web` gives them the session the
+    | access tokens live in, and CSRF.
+    |
+    | turn_rate_limit: messages and handoffs per minute, per session and
+    | address, on top of the routes' own middleware.
+    |
+    | max_message_length: the longest message the relay passes on, in
+    | characters; longer is `invalid` without calling Core. 10000 is Core's
+    | default cap per agent (MAX_MESSAGE_LENGTH); an agent with a lower cap
+    | still refuses past it, which answers `invalid` too.
+    |
+    | max_conversations: conversations a session may hold per agent; a new
+    | subject past it is refused (`limited`) without calling Core.
+    |
+    | session_key / cookie: where conversations are kept in the session, and
+    | the prefix of the per-agent cookie that tells the front end one exists.
+    |
+    */
+
+    'chat' => [
+        'agents' => [],
+        'path' => 'api/app/chat',
+        'timeouts' => [
+            'connect' => 5,
+            'read' => 8,
+            'turn' => 60,
+        ],
+        'name' => 'core-web.chat',
+        'middleware' => ['web', 'throttle:60,1'],
+        'turn_rate_limit' => 10,
+        'max_message_length' => 10000,
+        'max_conversations' => 5,
+        'session_key' => 'core_web_chat',
+        'cookie' => 'core_chat',
     ],
 
 ];
