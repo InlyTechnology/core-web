@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Content;
 use Closure;
 use Illuminate\Http\Request;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -22,8 +23,12 @@ class VerifyCoreEnvelope
 
     public function __construct(private CoreEnvelope $envelope) {}
 
-    public function handle(Request $request, Closure $next, string $purpose): Response
+    public function handle(Request $request, Closure $next, string $purpose = ''): Response
     {
+        if ($purpose === '') {
+            throw new InvalidArgumentException('Name the purpose the endpoint takes: '.self::ALIAS.':website.read.');
+        }
+
         // Core is a machine: whatever the controller refuses is JSON, never a redirect back.
         $request->headers->set('Accept', 'application/json');
 

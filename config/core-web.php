@@ -246,16 +246,20 @@ return [
     | Empty sends no ping.
     |
     | environment: the environment a draft or publish call must come from;
-    | null is this app's own environment.
+    | empty is this app's own environment. Set CORE_CONTENT_ENVIRONMENT when
+    | the site runs in another APP_ENV than the Core it is paired with.
     |
     | store: the cache store the key document and the spent nonces live in,
-    | shared by every server of the site; null is the default store.
+    | shared by every server of the site; null is the default store. Pick
+    | one a deploy's cache:clear leaves alone, or the spent nonces go with it.
+    |
+    | key_cache_key: the cache key Core's key document is kept under.
     |
     */
 
     'content' => [
         'connector_id' => env('CORE_CONTENT_CONNECTOR_ID', ''),
-        'environment' => null,
+        'environment' => env('CORE_CONTENT_ENVIRONMENT'),
         'store' => null,
         'key_cache_key' => 'core_web_signing_keys',
     ],

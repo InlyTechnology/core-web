@@ -160,8 +160,9 @@ class CoreSigningKeys
         try {
             $response = CoreClient::request()
                 ->acceptJson()
-                ->connectTimeout(5)
-                ->timeout(10)
+                // Short: the fetch runs inside a call Core is waiting on.
+                ->connectTimeout(2)
+                ->timeout(4)
                 // Only from the Core the site was paired with: a redirect would read keys from wherever it points.
                 ->withoutRedirecting()
                 ->get($this->baseUrl.self::PATH);

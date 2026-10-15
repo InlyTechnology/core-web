@@ -19,6 +19,8 @@
     retired key stops opening envelopes even while Core cannot be read. A
     failed refresh, or a fetch with no copy, is retried after 10 seconds; an
     unknown key id refetches at most once a minute.
+  - `content.environment` reads `CORE_CONTENT_ENVIRONMENT`, for a site whose
+    `APP_ENV` differs from its Core's; empty is the app's own environment.
   - `ContentPings` tells Core a page changed through
     `POST {core}/webhooks/connectors/{content.connector_id}`.
   - `FakesCore` seals content calls with a test key it publishes as Core's
@@ -30,6 +32,8 @@
 - `CoreClient::sendResponse()` takes a closure for `$data`. The closure is
   called for each attempt, so the retry after a 401 sends a fresh body.
 - core-web requires `ext-sodium`.
+- `CoreClient::sendResponse()` widens `$data` to `array|Closure`, so a subclass
+  that overrides it with `array $data` must widen it too.
 
 ## v0.6.0 (2026-10-15)
 

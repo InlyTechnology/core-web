@@ -12,6 +12,7 @@ use Inly\CoreWeb\Content\WrongEnvironment;
 use Inly\CoreWeb\Testing\CoreEnvelopeSealer;
 use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
+use InvalidArgumentException;
 
 /** The `core-web.envelope` middleware and the opener behind it: what a site's content endpoint lets through, and how it refuses. */
 class ContentEnvelopeTest extends TestCase
@@ -58,6 +59,14 @@ class ContentEnvelopeTest extends TestCase
 
         $this->callSealed('GET', '/api/core/v1/content', 'website.read')->assertForbidden()->assertExactJson(['error' => 'envelope_refused']);
         Http::assertNothingSent();
+    }
+
+    public function test_an_endpoint_must_name_its_purpose(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('core-web.envelope:website.read');
+
+        app(VerifyCoreEnvelope::class)->handle(Request::create('/api/core/v1/content'), fn () => response('reached'));
     }
 
     public function test_an_unsealed_call_is_refused_without_a_reason(): void

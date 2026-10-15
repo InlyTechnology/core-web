@@ -39,6 +39,14 @@ class CoreEnvelope
 
     private const BODYLESS_METHODS = ['GET', 'HEAD'];
 
+    /** The claims that bind an envelope to a request, each refused as that part of the request when opened without one. */
+    private const REQUEST_CLAIMS = [
+        'method' => EnvelopeRefused::METHOD,
+        'path' => EnvelopeRefused::PATH,
+        'query' => EnvelopeRefused::QUERY,
+        'body_sha256' => EnvelopeRefused::BODY,
+    ];
+
     public function __construct(
         protected CoreSigningKeys $keys,
         protected string $audience,
@@ -65,14 +73,6 @@ class CoreEnvelope
     {
         return $this->environment;
     }
-
-    /** The claims that bind an envelope to a request, each refused as that part of the request when opened without one. */
-    private const REQUEST_CLAIMS = [
-        'method' => EnvelopeRefused::METHOD,
-        'path' => EnvelopeRefused::PATH,
-        'query' => EnvelopeRefused::QUERY,
-        'body_sha256' => EnvelopeRefused::BODY,
-    ];
 
     /**
      * The claims of an envelope bound to no request, such as one handed over

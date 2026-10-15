@@ -37,7 +37,7 @@ composer require inly/core-web
 ```
 
 The service provider is auto-discovered and the defaults read the env names
-below. Requirements: PHP 8.3+, Laravel 12 or 13, Statamic 6.31+.
+below. Requirements: PHP 8.3+ with `ext-sodium`, Laravel 12 or 13, Statamic 6.31+.
 
 ## Features
 
@@ -87,6 +87,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret Core signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). **Empty rejects every ping**; there is no `APP_KEY` fallback |
+| `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -122,8 +123,8 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `chat.max_message_length` | `10000` | The longest message the relay passes on; longer is `invalid` without calling Core. Core's default cap per agent; an agent with a lower one still refuses past it (`invalid`) |
 | `chat.max_conversations` | `5` | Conversations a session holds per agent; a new subject past it is `limited` |
 | `features.content` | `false` | Switch on the website content middleware (see [Website content](#website-content)) |
-| `content.environment` | `null` | The environment a draft or publish must be sealed for; `null` is `app()->environment()` |
-| `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site |
+| `content.environment` | `CORE_CONTENT_ENVIRONMENT` | The environment a draft or publish must be sealed for; empty is `app()->environment()` |
+| `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
@@ -635,9 +636,29 @@ Route::middleware('throttle:120,1')->prefix('api/core/v1')->group(function () {
 });
 ```
 
-Register the routes outside the `web` group, and keep `TrimStrings` and
-`ConvertEmptyStringsToNull` off them. The envelope binds the raw query string
-and body either way, but the controller should read what Core sent.
+Register the routes outside the `web` group, in a routes file of their own
+rather than `routes/api.php`, whose `api` prefix would make the path
+`/api/api/core/v1`:
+
+```php
+// bootstrap/app.php
+->withRouting(
+    web: __DIR__.'/../routes/web.php',
+    then: fn () => Route::group([], base_path('routes/core-api.php')),
+)
+```
+
+Keep `TrimStrings` and `ConvertEmptyStringsToNull` off them. On Laravel 11 and
+later both are global middleware, so exclude the paths there. The envelope
+binds the raw query string and body either way, but the controller should
+read what Core sent:
+
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->trimStrings(except: [fn (Request $request) => $request->is('api/core/v1/*')]);
+    $middleware->convertEmptyStringsToNull(except: [fn (Request $request) => $request->is('api/core/v1/*')]);
+})
+```
 
 The protocol has the site answer over https outside a local environment.
 core-web does not check the scheme of a request it opens: the site's

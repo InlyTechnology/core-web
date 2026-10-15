@@ -31,7 +31,8 @@ use Statamic\StaticCaching\Cacher;
 /**
  * Dormant until a site switches a feature on (core-web.features): with every
  * switch off it adds no route, schedule, middleware, command, tag or cache
- * store, only the `core-web.envelope` alias a site's own routes may name. The `snapshots` feature is the snapshot pipeline with its pings and
+ * store, only the `core-web.envelope` alias a site's own routes may name.
+ * The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
  * The `chat` feature relays a site's visitors to Core's chat agents. The
