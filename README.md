@@ -595,8 +595,9 @@ values are plain strings, for `x-text` and bound attributes.
 What stays in the site: the markup and its styling, the context classes, and
 what a handoff becomes (the lead form, where it is sent).
 
-What Core must have: the agent's key in `chat.agents` matching its
-`chatRoute()`, and the site's app client (`CORE_CLIENT_ID`) holding the
+What Core must have: inly-core v29.0.0 or later (the stock chat route), the
+agent's key in `chat.agents` matching its `chatRoute()`, and the site's app
+client (`CORE_CLIENT_ID`) holding the
 `use_public_chat` scope (or the agent's own `chatPermission()`), which every
 call needs, not only opening a conversation (without it Core answers 403,
 which the relay reports as `unavailable`). A turn runs while Core answers, so
