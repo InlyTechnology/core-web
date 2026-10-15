@@ -8,7 +8,9 @@
     sealed with its own Ed25519 key, steps 1 to 11, and checks the
     environment of a draft or publish. It refuses with a JSON 403 and marks
     every answer `no-store`.
-  - `CoreEnvelope::open()` opens an envelope bound to no request.
+  - `CoreEnvelope::open()` opens an envelope bound to no request, and refuses
+    one sealed to a request (a `method`, `path`, `query` or `body_sha256`
+    claim) with that reason.
   - `CoreSigningKeys` reads Core's key document over https from the paired
     Core, following no redirect: read again once the copy is five minutes
     old or for an unknown key id, at most once a minute. The last good copy

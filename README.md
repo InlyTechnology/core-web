@@ -677,7 +677,10 @@ An envelope that arrives with no request to bind it to, such as one handed
 over in a URL, is opened with
 `app(CoreEnvelope::class)->open($payload, $signature, $keyId, $purpose)`. It
 checks steps 1 to 6 and spends the nonce. Use it only for a purpose whose
-claims say everything the envelope allows.
+claims say everything the envelope allows. An envelope that carries a
+`method`, `path`, `query` or `body_sha256` claim was sealed to a request and
+is refused here with that reason, so a `website.*` call never opens without
+the request it binds.
 
 ### Pings
 

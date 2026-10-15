@@ -190,6 +190,22 @@ class ContentEnvelopeTest extends TestCase
         $this->assertRefused('signature', fn () => $envelope->open($other[CoreEnvelope::PAYLOAD_HEADER], $other[CoreEnvelope::SIGNATURE_HEADER], null, 'cms.sso'));
     }
 
+    public function test_an_envelope_sealed_to_a_request_does_not_open_without_it(): void
+    {
+        $envelope = CoreEnvelope::fromConfig();
+
+        foreach (['method' => 'method', 'path' => 'path', 'query' => 'query', 'body_sha256' => 'body'] as $claim => $reason) {
+            $headers = $this->coreEnvelopeHeaders('POST', '/api/core/v1/drafts', 'website.draft', '{}', array_fill_keys(array_diff(['method', 'path', 'query', 'body_sha256'], [$claim]), null));
+
+            $this->assertRefused($reason, fn () => $envelope->open($headers[CoreEnvelope::PAYLOAD_HEADER], $headers[CoreEnvelope::SIGNATURE_HEADER], $headers[CoreEnvelope::KEY_ID_HEADER], 'website.draft'));
+        }
+
+        // Refused before the nonce is spent, so the same envelope still opens with its request.
+        $headers = $this->coreEnvelopeHeaders('GET', '/api/core/v1/content', 'website.read');
+        $this->assertRefused('method', fn () => $envelope->open($headers[CoreEnvelope::PAYLOAD_HEADER], $headers[CoreEnvelope::SIGNATURE_HEADER], $headers[CoreEnvelope::KEY_ID_HEADER], 'website.read'));
+        $this->call('GET', '/api/core/v1/content', [], [], [], self::server($headers))->assertOk();
+    }
+
     public function test_a_write_bound_to_no_request_checks_the_environment_too(): void
     {
         $headers = CoreEnvelopeSealer::test()->seal(['aud' => 'web', 'expires_at' => now()->timestamp + 300, 'nonce' => bin2hex(random_bytes(16)), 'purpose' => 'website.draft', 'environment' => 'staging']);

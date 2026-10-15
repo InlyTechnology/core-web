@@ -66,11 +66,20 @@ class CoreEnvelope
         return $this->environment;
     }
 
+    /** The claims that bind an envelope to a request, each refused as that part of the request when opened without one. */
+    private const REQUEST_CLAIMS = [
+        'method' => EnvelopeRefused::METHOD,
+        'path' => EnvelopeRefused::PATH,
+        'query' => EnvelopeRefused::QUERY,
+        'body_sha256' => EnvelopeRefused::BODY,
+    ];
+
     /**
      * The claims of an envelope bound to no request, such as one handed over
      * in a URL: the signature, payload, audience, expiry and purpose are
-     * checked, then the nonce is spent. Nothing binds it to a method, path,
-     * query or body, so it suits only a purpose whose claims say all it does.
+     * checked, then the nonce is spent. It suits only a purpose whose claims
+     * say all it does, so an envelope sealed to a request is refused here: it
+     * opens only with that request, through `openRequest()`.
      *
      * @return array<string, mixed>
      *
@@ -80,6 +89,12 @@ class CoreEnvelope
     {
         $audience ??= $this->audience;
         $claims = $this->verify($payload, $signature, $keyId, $purpose, $audience);
+
+        foreach (self::REQUEST_CLAIMS as $claim => $reason) {
+            if (array_key_exists($claim, $claims)) {
+                throw new EnvelopeRefused($reason);
+            }
+        }
 
         return $this->spend($claims, $purpose, $audience);
     }
