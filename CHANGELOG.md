@@ -1,10 +1,12 @@
 # Changelog
 
-## v0.9.0 (unreleased)
+## v0.9.0
 
-- **Live reads**: `features.live` (off by default) lets a site's pages read
-  Core while the visitor waits, for what no snapshot can hold (a calculation
-  on the visitor's input, a figure that must be current).
+- **Live reads**: `features.live` (off by default) lets a site read Core
+  while the visitor waits, for what no snapshot holds: a calculation on the
+  visitor's input, a figure that must be current, a short list fetched and
+  cached on the server. A snapshot stays the answer for data that makes
+  pages of its own. See README → Live reads.
   - The site names each read in `live.reads` with a `LiveRead` class: the
     input rules, the one call to Core (`LiveRequest::get()` / `post()`, on the
     site's client token), what of Core's answer the page gets, a `ttl()`,
