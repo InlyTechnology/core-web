@@ -22,12 +22,23 @@ final class LiveResult
         public readonly ?array $data = null,
         public readonly array $errors = [],
         public readonly int $ttl = 0,
+        public readonly bool $stale = false,
     ) {}
 
     /** @param  array<string, mixed>  $data */
     public static function ok(array $data, int $ttl = 0): self
     {
         return new self(self::OK, $data, ttl: $ttl);
+    }
+
+    /**
+     * The last good answer, served while Core fails; never kept by the browser.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function stale(array $data): self
+    {
+        return new self(self::OK, $data, stale: true);
     }
 
     /** @param  array<string, list<string>>  $errors */

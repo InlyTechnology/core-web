@@ -28,7 +28,7 @@ class LiveReadTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class]);
+        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class, 'server' => ServerRead::class, 'lasting' => LastingRead::class]);
     }
 
     private function fakeQuote(mixed $answer = null): void
@@ -120,6 +120,45 @@ class LiveReadTest extends TestCase
         $this->get('/!/core-web/live/other')->assertNotFound()->assertExactJson(['error' => 'not_found']);
     }
 
+    public function test_a_read_that_is_not_public_is_for_server_code_only(): void
+    {
+        $this->fakeQuote();
+
+        $this->getJson('/!/core-web/live/server?item=a1&months=12')->assertNotFound()->assertExactJson(['error' => 'not_found']);
+        Http::assertNothingSent();
+
+        $this->assertSame(['monthly' => 120], app(CoreLive::class)->read('server', ['item' => 'a1', 'months' => 12])->data);
+    }
+
+    public function test_the_last_good_answer_is_served_while_core_fails_within_stale_for(): void
+    {
+        $this->fakeQuote();
+        $this->getJson('/!/core-web/live/lasting?item=a1&months=12')->assertOk();
+
+        $this->travel(2)->minutes();
+        $this->fakeQuote(Http::response('Server error', 500));
+
+        $this->getJson('/!/core-web/live/lasting?item=a1&months=12')
+            ->assertOk()
+            ->assertJsonPath('data.monthly', 120)
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertTrue(app(CoreLive::class)->read('lasting', ['item' => 'a1', 'months' => 12])->stale, 'server code and the route share one kept answer');
+
+        $this->travel(2)->hours();
+        $this->getJson('/!/core-web/live/lasting?item=a1&months=12')->assertStatus(503);
+    }
+
+    public function test_without_stale_for_a_failure_after_the_ttl_is_unavailable(): void
+    {
+        $this->fakeQuote();
+        $this->getJson('/!/core-web/live/cached?item=a1&months=12')->assertOk();
+
+        $this->travel(2)->minutes();
+        $this->fakeQuote(Http::response('Server error', 500));
+
+        $this->getJson('/!/core-web/live/cached?item=a1&months=12')->assertStatus(503);
+    }
+
     public function test_a_kept_answer_tells_the_browser_what_is_left_of_its_ttl(): void
     {
         $this->fakeQuote();
@@ -205,6 +244,11 @@ class LiveReadTest extends TestCase
 
 class QuoteRead extends LiveRead
 {
+    public function public(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer', 'min:1']];
@@ -233,5 +277,21 @@ class CachedRead extends QuoteRead
     public function ttl(): int
     {
         return 60;
+    }
+}
+
+class ServerRead extends QuoteRead
+{
+    public function public(): bool
+    {
+        return false;
+    }
+}
+
+class LastingRead extends CachedRead
+{
+    public function staleFor(): int
+    {
+        return 3600;
     }
 }

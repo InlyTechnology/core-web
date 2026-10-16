@@ -641,10 +641,16 @@ the web server's read timeout (nginx's `fastcgi_read_timeout`) must outlast
 ## Live reads
 
 Snapshots hold what every visitor sees the same way. A live read is for what
-a snapshot cannot hold: a calculation on what the visitor typed, a figure that
-must be current. The site names each read, and nothing else of Core is
+a snapshot cannot hold, or does not need to: a calculation on what the
+visitor typed, a figure that must be current, a short list fetched and cached
+on the server. The site names each read, and nothing else of Core is
 reachable: there is no pass-through to Core's API, since the site's client
 token reads more than any page should show.
+
+Snapshot or live read? Data that makes pages of its own (a detail page, a
+sitemap entry, schema) is a snapshot: Core's pings refresh it the moment it
+changes, and it outlives an outage. Data that only fills part of a page is a
+live read.
 
 A read is a `LiveRead` class:
 
@@ -654,6 +660,11 @@ use Inly\CoreWeb\Live\LiveRequest;
 
 class LoanQuote extends LiveRead
 {
+    public function public(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer', 'min:1', 'max:120']];
@@ -676,6 +687,9 @@ class LoanQuote extends LiveRead
 }
 ```
 
+- `public()` opens the read to pages' scripts at `/!/core-web/live/{name}`.
+  It is false by default: a read is for server code only until the site says
+  otherwise.
 - `rules()` validates the visitor's input; only the keys it names reach
   `request()` (a nested key needs a rule of its own, `x.*`). Query-string
   input arrives as strings, so cast.
@@ -688,8 +702,14 @@ class LoanQuote extends LiveRead
   browser keep it for what is left of that (`private, max-age`). 0, the
   default, keeps none. `keep($data)` returning false keeps that one answer
   nowhere: a fallback Core gave while a source was down, say.
+- `staleFor()` serves the last good answer for that many seconds past
+  `ttl()` while Core fails, instead of `unavailable` (`$result->stale`, and
+  never kept by the browser). 0, the default, serves none.
 
 A read answers the same for every visitor: never put anything personal in one.
+On a statically cached page, what server code read is frozen into the page
+until it is flushed, and live reads send no pings: a figure that must stay
+current there belongs in a script calling a `public()` read.
 
 Switch it on and name the reads:
 
@@ -703,9 +723,10 @@ return [
 Every `live` key the site leaves out keeps its default, so a site's file
 needs only `reads`.
 
-The browser calls `GET /!/core-web/live/loan-quote?item=a1&months=24` (under
-Statamic's action prefix, so never statically cached; `throttle:60,1` by
-default). Server code, a Livewire component included, skips the route:
+The browser calls a public read at `GET /!/core-web/live/loan-quote?item=a1&months=24`
+(under Statamic's action prefix, so never statically cached; `throttle:60,1`
+by default); any other name is a 404. Server code, a Livewire component
+included, skips the route and may call every read:
 
 ```php
 $result = app(Inly\CoreWeb\Live\CoreLive::class)->read('loan-quote', ['item' => $id, 'months' => $months]);
@@ -717,7 +738,7 @@ $result->successful(); // $result->data, or $result->status and $result->errors
 |---|---|---|
 | `{data: …}` | 200 | Core answered and `present()` returned the page's data |
 | `{error: "invalid", errors: {field: [...]}}` | 422 | The site's rules refused the input, or Core did (its messages passed on per field) |
-| `{error: "not_found"}` | 404 | Core answered 404, or `request()` returned null |
+| `{error: "not_found"}` | 404 | Core answered 404, `request()` returned null, or the route was asked for a read that is not `public()` |
 | `{error: "unavailable"}` | 503 | Core failed, timed out (`live.timeouts`), is not configured, or `present()` returned null; logged as a warning |
 
 ## Website content

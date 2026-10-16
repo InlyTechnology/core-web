@@ -14,7 +14,8 @@ use Throwable;
  * Runs the live reads named in core-web.live.reads: validates the input,
  * makes the read's one call to Core with the site's client token, and maps
  * Core's answer to a LiveResult. Livewire components and controllers call
- * read() directly; the browser reaches it through LiveController.
+ * read() directly; the browser reaches the reads that are public() through
+ * LiveController.
  */
 class CoreLive
 {
@@ -27,6 +28,12 @@ class CoreLive
     public static function has(string $name): bool
     {
         return array_key_exists($name, (array) config('core-web.live.reads', []));
+    }
+
+    /** Whether the site named a read and opened it to pages' scripts. */
+    public function isPublic(string $name): bool
+    {
+        return self::has($name) && $this->resolve($name)->public();
     }
 
     /** @param  array<string, mixed>  $input */
@@ -47,22 +54,34 @@ class CoreLive
         }
 
         $key = 'core_web_live:'.$name.':'.sha1(serialize(self::sorted($input)));
+        $kept = $this->kept($key);
+        $left = $kept === null ? 0 : $kept['expires'] - now()->getTimestamp();
 
-        if (($kept = $this->kept($key)) !== null) {
-            return $kept;
+        if ($kept !== null && $left > 0) {
+            return LiveResult::ok($kept['data'], $left);
         }
 
         $result = $this->call($name, $read, $input);
 
         if ($result->successful() && $read->keep((array) $result->data)) {
-            $this->keepFor($key, (array) $result->data, $ttl);
+            $this->keepFor($key, (array) $result->data, $ttl, max(0, $read->staleFor()));
+        }
+
+        // Core failed: the last good answer, within staleFor(), rather than none.
+        if ($result->status === LiveResult::UNAVAILABLE && $kept !== null) {
+            return LiveResult::stale($kept['data']);
         }
 
         return $result;
     }
 
-    /** A kept answer, with the seconds it has left; a cache that fails reads as a miss. */
-    protected function kept(string $key): ?LiveResult
+    /**
+     * The answer kept for an input, fresh or past its ttl() but within
+     * staleFor(); a cache that fails reads as a miss.
+     *
+     * @return array{data: array<string, mixed>, expires: int}|null
+     */
+    protected function kept(string $key): ?array
     {
         try {
             $kept = $this->store()->get($key);
@@ -72,18 +91,14 @@ class CoreLive
             return null;
         }
 
-        if (! is_array($kept) || ! is_array($kept['data'] ?? null) || ($left = (int) ($kept['expires'] ?? 0) - now()->getTimestamp()) <= 0) {
-            return null;
-        }
-
-        return LiveResult::ok($kept['data'], $left);
+        return is_array($kept) && is_array($kept['data'] ?? null) && is_int($kept['expires'] ?? null) ? $kept : null;
     }
 
     /** @param  array<string, mixed>  $data */
-    protected function keepFor(string $key, array $data, int $ttl): void
+    protected function keepFor(string $key, array $data, int $ttl, int $staleFor): void
     {
         try {
-            $this->store()->put($key, ['data' => $data, 'expires' => now()->getTimestamp() + $ttl], $ttl);
+            $this->store()->put($key, ['data' => $data, 'expires' => now()->getTimestamp() + $ttl], $ttl + $staleFor);
         } catch (Throwable $e) {
             Log::warning('Core live read cache failed.', ['exception' => $e::class, 'message' => $e->getMessage()]);
         }
@@ -172,6 +187,9 @@ class CoreLive
     }
 
     /**
+     * The input as a cache key sees it: keys sorted, scalars as strings, so a
+     * query string's "12" and server code's 12 keep one answer.
+     *
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
@@ -179,6 +197,11 @@ class CoreLive
     {
         ksort($input);
 
-        return array_map(fn ($value) => is_array($value) ? self::sorted($value) : $value, $input);
+        return array_map(fn ($value) => match (true) {
+            is_array($value) => self::sorted($value),
+            is_bool($value) => $value ? '1' : '0',
+            is_scalar($value) => (string) $value,
+            default => $value,
+        }, $input);
     }
 }

@@ -45,8 +45,23 @@ abstract class LiveRead
         return is_array($data) ? $data : null;
     }
 
+    /** Whether pages' scripts may call the read at /!/core-web/live/{name}; server code always may. */
+    public function public(): bool
+    {
+        return false;
+    }
+
     /** Seconds an answer is kept, by the site per input and by the visitor's browser; 0 keeps none. */
     public function ttl(): int
+    {
+        return 0;
+    }
+
+    /**
+     * Seconds past ttl() the last good answer is still served while Core
+     * fails (never to a browser's cache); 0 serves none. Needs a ttl().
+     */
+    public function staleFor(): int
     {
         return 0;
     }

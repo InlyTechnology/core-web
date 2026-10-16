@@ -7,9 +7,11 @@
   on the visitor's input, a figure that must be current).
   - The site names each read in `live.reads` with a `LiveRead` class: the
     input rules, the one call to Core (`LiveRequest::get()` / `post()`, on the
-    site's client token), what of Core's answer the page gets, a `ttl()`, and
-    `keep()` for an answer not to keep (a fallback).
-  - The browser reads at `GET /!/core-web/live/{name}?…`; server code
+    site's client token), what of Core's answer the page gets, a `ttl()`,
+    `keep()` for an answer not to keep (a fallback), and `staleFor()` to serve
+    the last good answer while Core fails.
+  - The browser reads a `public()` read at `GET /!/core-web/live/{name}?…`
+    (reads are server-only by default); server code
     (a Livewire component, a controller) calls `CoreLive::read($name, $input)`
     and gets a `LiveResult`.
   - Answers are `{data}`, or `{error}` with `invalid` (422, with `errors` per
