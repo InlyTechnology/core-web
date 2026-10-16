@@ -329,8 +329,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
-    | or on a local machine without one at the Core `core:pull` reads, once
-    | the pull client is set up; with neither there is no link.
+    | or on a local machine without one at the remote Core, once its client
+    | is set up; with neither there is no link.
     |
     | label: what the link says, such as the backoffice's own name.
     | icon: a Statamic icon name or an SVG; null is Core's mark.

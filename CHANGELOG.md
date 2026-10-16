@@ -10,7 +10,8 @@
 - **Config**: `pull` is renamed `remote` (`CORE_REMOTE_URL`,
   `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`), since it is the Core
   a local machine uses, not only `core:pull`'s source. A site config naming
-  `pull` and the `CORE_PULL_*` variables keep working.
+  `pull` keeps working, as do the `CORE_PULL_*` variables unless the site
+  writes its own `remote` block (README → Pulling production data).
 
 ## v0.9.0
 

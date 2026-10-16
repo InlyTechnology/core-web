@@ -315,8 +315,11 @@ there replaces the package's whole, so it names all three:
 ],
 ```
 
-The key was called `pull` before; a site config still naming it, and the
-`CORE_PULL_*` variables, keep working.
+The key was called `pull` before. A site config still naming it keeps
+working, and so do the `CORE_PULL_*` variables while the site leaves the key
+to the package; a site that writes its own `remote` block reads only the
+variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
+default to keep developers' `.env` files working.
 
 The client is an app client in that Core (Settings → Apps, client
 credentials grant): Core shows its id and secret when it is created.
