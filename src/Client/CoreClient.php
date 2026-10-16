@@ -203,6 +203,14 @@ class CoreClient
         return $bundle !== '' ? Http::withOptions(['verify' => $bundle]) : Http::createPendingRequest();
     }
 
+    /** Https, except in a local or testing environment, where Core may answer plain http. */
+    public static function secureUrl(string $url): bool
+    {
+        $url = strtolower($url);
+
+        return str_starts_with($url, 'https://') || (str_starts_with($url, 'http://') && app()->environment(['local', 'testing']));
+    }
+
     public function forgetToken(): void
     {
         Cache::forget($this->tokenCacheKey);
@@ -266,10 +274,16 @@ class CoreClient
             return $cached;
         }
 
+        if (! self::secureUrl($this->baseUrl)) {
+            throw new RuntimeException('core-web sends its client secret to Core over https only; the Core URL is not.');
+        }
+
         $response = $this->http()
             ->asForm()
             ->connectTimeout(5)
             ->timeout(15)
+            // A 307 or 308 would post the secret on to wherever it points.
+            ->withoutRedirecting()
             ->post($this->baseUrl.'/oauth/token', [
                 'grant_type' => 'client_credentials',
                 'client_id' => $this->clientId,
@@ -277,11 +291,13 @@ class CoreClient
                 'scope' => '',
             ]);
 
-        if ($response->failed()) {
-            throw new RuntimeException('Failed to obtain a Core access token: '.$response->body());
+        $token = (string) $response->json('access_token');
+
+        // A redirect or an answer without a token is a failure too, never an empty token cached for an hour.
+        if (! $response->successful() || $token === '') {
+            throw new TokenRefused("Failed to obtain a Core access token [{$response->status()}]: ".$response->body(), $response->status());
         }
 
-        $token = (string) $response->json('access_token');
         $expiresIn = (int) $response->json('expires_in', 3600);
 
         // 60 seconds short of the expiry, so a token about to expire is never used.

@@ -233,6 +233,20 @@ class ChatProxyTest extends TestCase
         $this->getJson(self::URL.'?subject=42')->assertOk();
     }
 
+    public function test_an_address_that_opens_a_session_per_message_still_meets_a_turn_limit(): void
+    {
+        $this->fakeChat();
+        config(['core-web.chat.turn_rate_limit_per_address' => 2]);
+
+        foreach (['a', 'b'] as $session) {
+            $this->withCredentials()->withCookie((string) config('session.cookie'), str_repeat($session, 40));
+            $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42'])->assertOk();
+        }
+
+        $this->withCredentials()->withCookie((string) config('session.cookie'), str_repeat('c', 40));
+        $this->postJson(self::URL.'/messages', ['message' => 'Hej', 'subject' => '42'])->assertStatus(429);
+    }
+
     public function test_past_its_conversation_cap_a_session_opens_no_more_without_calling_core(): void
     {
         $this->fakeChat();

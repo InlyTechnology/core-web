@@ -57,6 +57,7 @@ class ChatTranscriptTest extends TestCase
         $results = self::one(['role' => 'assistant', 'content' => 'Two', 'results' => [
             ['title' => 'A', 'subtitle' => 'Sub', 'url' => '/a', 'image' => 'https://cdn.example.com/a.jpg', 'handle' => 'x', 'fields' => ['id' => 42, 'name' => 'A', 'nested' => ['no'], 'flag' => true]],
             ['title' => 'B', 'url' => 'javascript:alert(1)', 'image' => ['no'], 'subtitle' => 5],
+            ['title' => 'C', 'url' => '//evil.example/a', 'image' => '/\\evil.example/a.jpg'],
             ['subtitle' => 'no title'],
             'not a card',
         ]])['results'];
@@ -64,6 +65,7 @@ class ChatTranscriptTest extends TestCase
         $this->assertSame([
             ['title' => 'A', 'subtitle' => 'Sub', 'url' => '/a', 'image' => 'https://cdn.example.com/a.jpg', 'fields' => ['id' => '42', 'name' => 'A']],
             ['title' => 'B', 'fields' => []],
+            ['title' => 'C', 'fields' => []],
         ], $results);
     }
 

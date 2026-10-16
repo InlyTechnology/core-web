@@ -3,10 +3,12 @@
 namespace Inly\CoreWeb\Live;
 
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Client\TokenRefused;
 use InvalidArgumentException;
 use Throwable;
 
@@ -122,6 +124,11 @@ class CoreLive
                 throw new InvalidArgumentException("The live read [{$name}] asked for a path with a dot segment.");
             }
 
+            // A raw `?` or `#` would let visitor input end the path and write its own query; a backslash or control character is no path at all.
+            if (preg_match('~[?#\\\\\x00-\x20\x7f]~', $request->path) === 1) {
+                throw new InvalidArgumentException("The live read [{$name}] asked for a path with a query, fragment or unencoded character; rawurlencode the input it carries.");
+            }
+
             $response = $this->core->sendResponse(
                 $request->method,
                 $request->path,
@@ -144,7 +151,7 @@ class CoreLive
             if ($data === null) {
                 Log::warning('Core live read failed.', ['read' => $name, 'status' => $response->status()]);
 
-                return $this->failed($name, $response->serverError());
+                return $this->failed($name, self::coreDown($response->status()));
             }
 
             return LiveResult::ok($data);
@@ -152,11 +159,21 @@ class CoreLive
             Log::warning('Core live read refused.', ['read' => $name, 'message' => $e->getMessage()]);
 
             return LiveResult::unavailable();
-        } catch (Throwable $e) {
+        } catch (ConnectionException|TokenRefused $e) {
             Log::warning('Core live read failed.', ['read' => $name, 'exception' => $e::class, 'message' => $e->getMessage()]);
 
             return $this->failed($name, true);
+        } catch (Throwable $e) {
+            Log::warning('Core live read failed.', ['read' => $name, 'exception' => $e::class, 'message' => $e->getMessage()]);
+
+            return $this->failed($name, false);
         }
+    }
+
+    /** Whether a status says Core itself is down; a 500 can be one visitor's input, which must not switch the read off for all. */
+    protected static function coreDown(int $status): bool
+    {
+        return in_array($status, [502, 503, 504], true);
     }
 
     /** Unavailable, marking Core down for the read for core-web.live.retry_after seconds when Core itself failed. */

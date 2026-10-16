@@ -208,6 +208,10 @@ return [
     | turn_rate_limit: messages and handoffs per minute, per session and
     | address, on top of the routes' own middleware.
     |
+    | turn_rate_limit_per_address: messages and handoffs per minute from one
+    | address, whatever sessions it holds, so a script that opens a session
+    | per message is capped too. Visitors behind one office address share it.
+    |
     | max_message_length: the longest message the relay passes on, in
     | characters; longer is `invalid` without calling Core. 10000 is Core's
     | default cap per agent (MAX_MESSAGE_LENGTH); an agent with a lower cap
@@ -232,6 +236,7 @@ return [
         'name' => 'core-web.chat',
         'middleware' => ['web', 'throttle:60,1'],
         'turn_rate_limit' => 10,
+        'turn_rate_limit_per_address' => 30,
         'max_message_length' => 10000,
         'max_conversations' => 5,
         'session_key' => 'core_web_chat',

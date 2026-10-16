@@ -28,7 +28,7 @@ class LiveReadTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class, 'server' => ServerRead::class, 'lasting' => LastingRead::class, 'loose' => LooseRead::class]);
+        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class, 'server' => ServerRead::class, 'lasting' => LastingRead::class, 'loose' => LooseRead::class, 'raw' => RawRead::class]);
     }
 
     private function fakeQuote(mixed $answer = null): void
@@ -209,7 +209,7 @@ class LiveReadTest extends TestCase
 
     public function test_after_core_fails_a_read_answers_at_once_for_retry_after(): void
     {
-        $this->fakeQuote(Http::response('Server error', 500));
+        $this->fakeQuote(Http::response('Bad gateway', 502));
         $this->getJson(self::URL.'?item=a1&months=12')->assertStatus(503);
 
         $this->fakeQuote();
@@ -217,6 +217,35 @@ class LiveReadTest extends TestCase
         Http::assertNothingSent();
 
         $this->travel(31)->seconds();
+        $this->getJson(self::URL.'?item=a2&months=12')->assertOk();
+    }
+
+    public function test_core_unreachable_marks_a_read_down(): void
+    {
+        $this->fakeQuote(fn () => throw new ConnectionException('timed out'));
+        $this->getJson(self::URL.'?item=a1&months=12')->assertStatus(503);
+
+        $this->fakeQuote();
+        $this->getJson(self::URL.'?item=a2&months=12')->assertStatus(503);
+        Http::assertNothingSent();
+    }
+
+    public function test_core_refusing_the_site_a_token_marks_a_read_down(): void
+    {
+        $this->fakeCore(['core.test/oauth/token' => Http::response('Unavailable', 503)]);
+        $this->getJson(self::URL.'?item=a1&months=12')->assertStatus(503);
+
+        $this->fakeQuote();
+        $this->getJson(self::URL.'?item=a2&months=12')->assertStatus(503);
+        Http::assertNothingSent();
+    }
+
+    public function test_a_500_on_one_input_does_not_mark_the_read_down_for_others(): void
+    {
+        $this->fakeQuote(Http::response('Server error', 500));
+        $this->getJson(self::URL.'?item=a1&months=12')->assertStatus(503);
+
+        $this->fakeQuote();
         $this->getJson(self::URL.'?item=a2&months=12')->assertOk();
     }
 
@@ -237,6 +266,18 @@ class LiveReadTest extends TestCase
         $this->getJson('/!/core-web/live/loose?item=%2E%2E&months=12')->assertStatus(503);
 
         Http::assertNothingSent();
+    }
+
+    public function test_a_path_input_cannot_end_the_path(): void
+    {
+        $this->fakeQuote();
+
+        foreach (['a1?admin=1', 'a1#x', 'a1\\x', 'a 1', "a\t1"] as $item) {
+            $this->getJson('/!/core-web/live/raw?'.http_build_query(['item' => $item, 'months' => 12]))->assertStatus(503);
+        }
+
+        Http::assertNothingSent();
+        $this->getJson('/!/core-web/live/raw?item=a1&months=12')->assertOk();
     }
 
     public function test_core_s_messages_reach_the_page_only_for_the_visitor_s_fields(): void
@@ -343,5 +384,13 @@ class LooseRead extends QuoteRead
     public function rules(): array
     {
         return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer']];
+    }
+}
+
+class RawRead extends LooseRead
+{
+    public function request(array $input): ?LiveRequest
+    {
+        return LiveRequest::post('/api/app/items/'.$input['item'].'/quote', ['months' => (int) $input['months']]);
     }
 }

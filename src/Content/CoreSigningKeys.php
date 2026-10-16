@@ -151,7 +151,7 @@ class CoreSigningKeys
             return null;
         }
 
-        if (! $this->secureBaseUrl()) {
+        if (! CoreClient::secureUrl($this->baseUrl)) {
             logger()->warning('core-web: Core\'s signing keys are read over https only; core-web.client.base_url is not.', ['base_url' => $this->baseUrl]);
 
             return null;
@@ -181,15 +181,5 @@ class CoreSigningKeys
         }
 
         return self::parse($document);
-    }
-
-    /** Https, except in a local or testing environment, where Core may answer plain http. */
-    protected function secureBaseUrl(): bool
-    {
-        if (str_starts_with(strtolower($this->baseUrl), 'https://')) {
-            return true;
-        }
-
-        return str_starts_with(strtolower($this->baseUrl), 'http://') && app()->environment(['local', 'testing']);
     }
 }

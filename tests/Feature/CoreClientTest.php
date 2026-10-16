@@ -107,6 +107,57 @@ class CoreClientTest extends TestCase
         $this->client()->object('facility', 1);
     }
 
+    public function test_the_secret_goes_to_core_over_https_only_outside_local_and_testing(): void
+    {
+        $this->fakeCore();
+        config(['core-web.client.base_url' => 'http://core.test']);
+        $this->app['env'] = 'production';
+
+        try {
+            $this->client()->object('facility', 1);
+            $this->fail('A token was requested over plain http.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('https only', $e->getMessage());
+        }
+
+        $this->assertSame(0, $this->tokenRequests());
+    }
+
+    public function test_the_token_request_follows_no_redirect(): void
+    {
+        $this->fakeCore();
+        Http::swap(new Factory);
+        Http::fake([
+            'core.test/oauth/token' => Http::response('', 307, ['Location' => 'https://elsewhere.test/oauth/token']),
+            'elsewhere.test/*' => Http::response(['access_token' => 'stolen', 'expires_in' => 3600]),
+        ]);
+
+        try {
+            $this->client()->object('facility', 1);
+            $this->fail('A redirected token request was followed.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Failed to obtain a Core access token', $e->getMessage());
+        }
+
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'elsewhere.test'));
+    }
+
+    public function test_a_token_answer_without_a_token_throws_and_caches_nothing(): void
+    {
+        $this->fakeCore();
+        Http::swap(new Factory);
+        Http::fake(['core.test/oauth/token' => Http::response(['token_type' => 'Bearer'])]);
+
+        try {
+            $this->client()->object('facility', 1);
+            $this->fail('An empty token was used.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Failed to obtain a Core access token', $e->getMessage());
+        }
+
+        $this->assertNull(Cache::get((string) config('core-web.client.token_cache_key')));
+    }
+
     public function test_objects_walks_every_page_and_reports_the_total(): void
     {
         $this->fakeCore(['core.test/api/v1/objects/facility*' => function (Request $request) {
