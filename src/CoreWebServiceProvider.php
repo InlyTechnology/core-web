@@ -16,6 +16,7 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -40,6 +41,7 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `cp_link` feature links the control panel to Core under Dashboard.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -89,6 +91,10 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('live')) {
             self::liveReads();
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
+        }
+
+        if (self::enabled('cp_link')) {
+            CoreNavLink::register();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

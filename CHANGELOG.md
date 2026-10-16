@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Control panel link**: `features.cp_link` (off by default) adds a link to
+  Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
+  (or locally to the `core:pull` Core when no `CORE_URL` is set).
+  `cp_link.label` names it and `cp_link.icon` swaps Core's mark for a
+  Statamic icon or an SVG. See README → Control panel link.
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

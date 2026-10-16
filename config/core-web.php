@@ -33,6 +33,9 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | cp_link: a link to Core right under Dashboard in the control panel
+    | (`cp_link`), for every CP user, opened in a new tab.
+    |
     */
 
     'features' => [
@@ -40,6 +43,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'cp_link' => false,
     ],
 
     /*
@@ -318,4 +322,22 @@ return [
         'middleware' => ['throttle:60,1'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Control panel link
+    |--------------------------------------------------------------------------
+    |
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
+    | or on a local machine without one at the Core `core:pull` reads, once
+    | the pull client is set up; with neither there is no link.
+    |
+    | label: what the link says, such as the backoffice's own name.
+    | icon: a Statamic icon name or an SVG; null is Core's mark.
+    |
+    */
+
+    'cp_link' => [
+        'label' => 'Core',
+        'icon' => null,
+    ],
 ];

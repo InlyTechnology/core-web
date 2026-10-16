@@ -54,6 +54,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -884,6 +885,26 @@ core-web's own suite runs the protocol's test vectors
 (`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
+
+## Control panel link
+
+`features.cp_link` adds a link to Core right under Dashboard in the control
+panel, for every CP user, opened in a new tab so unsaved CP work stays open.
+It points at `client.base_url` (`CORE_URL`). On a local machine without one it
+points at the Core `core:pull` reads (`pull.base_url`), once the pull client's
+id and secret are set, since that is the Core the developer's data came from.
+With neither there is no link.
+
+The site names the link and may pick its icon, in its own
+`config/core-web.php`; the icon is a Statamic icon name or an SVG, and null
+keeps Core's mark:
+
+```php
+return [
+    'features' => ['cp_link' => true],
+    'cp_link' => ['label' => 'Acme Core', 'icon' => null],
+];
+```
 
 ## Testing a site
 
