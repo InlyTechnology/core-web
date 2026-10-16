@@ -66,7 +66,8 @@ class CoreClient
      */
     public function openUrl(string $type, int|string $id): ?string
     {
-        if ($this->baseUrl === '' || $type === '' || (string) $id === '') {
+        // Core's route takes the last segment as the id, so an id with a slash has no link.
+        if ($this->baseUrl === '' || $type === '' || (string) $id === '' || str_contains((string) $id, '/')) {
             return null;
         }
 

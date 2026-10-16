@@ -42,6 +42,7 @@ class CoreClientTest extends TestCase
         $this->assertSame('https://core.test/open/employee/7', $core->openUrl('employee', 7));
         $this->assertSame('https://core.test/open/sales/order/a%20b', $core->openUrl('sales/order', 'a b'));
         $this->assertNull($core->openUrl('', 7));
+        $this->assertNull($core->openUrl('employee', 'a/b'));
         $this->assertNull((new CoreClient('', '', ''))->openUrl('employee', 7));
     }
 

@@ -426,8 +426,10 @@ Sitemap: {{ url }}
 
 A snapshot that declares `->listing()` can be shown on the control panel
 dashboard by the `core_snapshot` widget: its documents, a page at a time, each
-with a link to the record in Core. The widget reads the site's own copy, so a
-dashboard visit asks Core nothing while the copy is cached.
+with a link to the record in Core. The widget only reads what the store already
+holds (`SnapshotStore::cached()`), so a dashboard visit never waits on Core. A
+snapshot with nothing cached yet shows "Not loaded yet" and queues its warm job
+(one at a time per snapshot).
 
 ```php
 Snapshot::make('staff')
@@ -449,16 +451,20 @@ Snapshot::make('staff')
 Options: `snapshot` (required), `title` (the type as a headline by default),
 `per_page` (10, at most 100), `partition` (one partition; every partition by
 default), and Statamic's own `width`, `can` and `sites`. Rows are sorted by
-title. Each widget pages with its own query parameter
-(`?core_{type}_page=2`), so several sit on one dashboard. A badge says when the
-copy is stale, pinned by `core:pull`, or empty because Core could not be read.
+title in the selected site's language (with intl). Each snapshot and partition
+pages on its own query parameter (`?core_{type}_page=2`,
+`?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
+badge says when the copy is stale or pinned by `core:pull`. A document the
+`title` closure fails on is listed by its id, unlinked, and logged.
 
 The link is Core's `/open/{object}/{id}` (`CoreClient::openUrl()`), which sends
 a signed-in person to the record's page in Core, whatever its route; it needs
-Core 37 or later. It opens in a new tab with the person's own Core session, so
+a Core release with that route (inly-core, `GET /open/{object}/{id}`); until
+then the links answer 404. It opens in a new tab with the person's own Core session, so
 CMS editors who sign in through Core are already signed in there. Store Core's
 primary key in the document when the snapshot is keyed by something else (a
-public id, say): the API answers with it as each resource's `id`.
+public id, say): the API answers with it as each resource's `id`. An id with a
+`/` gets no link.
 
 ## Static cache
 
