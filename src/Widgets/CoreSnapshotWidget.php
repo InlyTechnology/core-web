@@ -85,6 +85,7 @@ class CoreSnapshotWidget extends Widget
 
         return view('core-web::widgets.snapshot', [
             'title' => __((string) $this->config('title', Str::headline($type))),
+            'icon' => (string) $this->config('icon', 'link'),
             'rows' => array_slice($rows, ($page - 1) * $perPage, $perPage),
             'total' => count($rows),
             'page' => $page,

@@ -1,5 +1,5 @@
 {{-- Statamic compiles widget HTML as a Vue template, so Core's text sits in v-pre elements: a title with braces stays text. --}}
-<ui-widget title="{{ $title }}" icon="link">
+<ui-widget title="{{ $title }}" icon="{{ $icon }}">
     <template #actions>
         @if (! $loaded)
             <ui-badge text="{{ __('Loading') }}"></ui-badge>
@@ -31,7 +31,7 @@
                             @endif
                             <td class="py-1 text-end whitespace-nowrap">
                                 @if ($row['core_url'])
-                                    <ui-button size="xs" variant="ghost" icon-append="external-link" href="{{ $row['core_url'] }}" target="_blank" text="{{ __('Open in Core') }}"></ui-button>
+                                    <ui-button size="xs" variant="ghost" icon-append="external-link" href="{{ $row['core_url'] }}" target="_blank" text="{{ __('View') }}"></ui-button>
                                 @endif
                             </td>
                         </tr>

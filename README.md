@@ -449,8 +449,9 @@ Snapshot::make('staff')
 ```
 
 Options: `snapshot` (required), `title` (the type as a headline by default),
-`per_page` (10, at most 100), `partition` (one partition; every partition by
-default), and Statamic's own `width`, `can` and `sites`. Rows are sorted by
+`icon` (a Statamic CP icon name, `link` by default), `per_page` (10, at most
+100), `partition` (one partition; every partition by default), and Statamic's
+own `width`, `can` and `sites`. Rows are sorted by
 title in the selected site's language (with intl). Each snapshot and partition
 pages on its own query parameter (`?core_{type}_page=2`,
 `?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A

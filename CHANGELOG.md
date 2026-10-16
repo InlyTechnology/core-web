@@ -6,7 +6,8 @@
   documents, paginated, each linked to its record in Core. A snapshot opts in
   with `->listing(title:, coreType:, coreId:)`; `CoreClient::openUrl()` builds
   the link to Core's `/open/{object}/{id}`. See README → Control panel widget.
-  Its labels are translatable, with Swedish shipped in `lang/sv.json`.
+  Its labels are translatable, with Swedish shipped in `lang/sv.json`; `icon`
+  sets the widget's icon.
 
 ## v0.9.0
 

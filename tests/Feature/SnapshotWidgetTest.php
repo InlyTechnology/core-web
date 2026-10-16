@@ -58,13 +58,13 @@ class SnapshotWidgetTest extends TestCase
             'p-3' => ['name' => 'No Core id'],
         ]);
 
-        $html = $this->render(['snapshot' => 'staff', 'title' => 'Our staff']);
+        $html = $this->render(['snapshot' => 'staff', 'title' => 'Our staff', 'icon' => 'users']);
 
-        $this->assertStringContainsString('title="Our staff"', $html);
+        $this->assertStringContainsString('title="Our staff" icon="users"', $html);
         $this->assertStringContainsString('3 items', $html);
         $this->assertStringContainsString('href="https://core.test/open/employee/7"', $html);
         $this->assertStringContainsString('href="https://core.test/open/employee/12"', $html);
-        $this->assertSame(2, substr_count($html, 'Open in Core'));
+        $this->assertSame(2, substr_count($html, 'text="View"'));
         $this->assertLessThan(strpos($html, 'No Core id'), strpos($html, 'Anna'));
         $this->assertLessThan(strpos($html, 'Örjan'), strpos($html, 'No Core id'));
         $this->assertStringNotContainsString('Page 1 of', $html);
@@ -123,7 +123,7 @@ class SnapshotWidgetTest extends TestCase
 
         $html = $this->render(['snapshot' => 'staff', 'per_page' => 1]);
 
-        foreach (['2 poster', 'Öppna i Core', 'Sida 1 av 2', 'Föregående sida', 'Nästa sida'] as $label) {
+        foreach (['2 poster', 'text="Visa"', 'Sida 1 av 2', 'Föregående sida', 'Nästa sida'] as $label) {
             $this->assertStringContainsString($label, $html);
         }
     }
@@ -194,7 +194,7 @@ class SnapshotWidgetTest extends TestCase
 
         $this->assertStringContainsString('v-pre>Alpha</span>', $html);
         $this->assertStringContainsString('v-pre>b</span>', $html);
-        $this->assertSame(1, substr_count($html, 'Open in Core'));
+        $this->assertSame(1, substr_count($html, 'text="View"'));
     }
 
     public function test_it_reads_every_partition_unless_one_is_named(): void
