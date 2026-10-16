@@ -1,6 +1,29 @@
 # Changelog
 
-## v0.8.0 (unreleased)
+## v0.9.0 (unreleased)
+
+- **Live reads**: `features.live` (off by default) lets a site's pages read
+  Core while the visitor waits, for what no snapshot can hold (a calculation
+  on the visitor's input, a figure that must be current).
+  - The site names each read in `live.reads` with a `LiveRead` class: the
+    input rules, the one call to Core (`LiveRequest::get()` / `post()`, on the
+    site's client token), what of Core's answer the page gets, a `ttl()`,
+    `keep()` for an answer not to keep (a fallback), and `staleFor()` to serve
+    the last good answer while Core fails.
+  - The browser reads a `public()` read at `GET /!/core-web/live/{name}?…`
+    (reads are server-only by default); server code
+    (a Livewire component, a controller) calls `CoreLive::read($name, $input)`
+    and gets a `LiveResult`.
+  - Answers are `{data}`, or `{error}` with `invalid` (422, with `errors` per
+    field, the site's rules or Core's), `not_found` (404) and `unavailable`
+    (503). Nothing reaches Core but the validated input, a path with a dot
+    segment is refused, and Core's 422 messages pass on only for the fields
+    in `rules()`.
+  - After Core fails a read, it answers at once (stale or `unavailable`) for
+    `live.retry_after` seconds (30) instead of every visitor waiting out the
+    timeouts.
+
+## v0.8.0
 
 - **Pings sealed with Core's key**: the ping endpoint opens a ping Core seals
   with its own Ed25519 key (`X-Core-*` headers, purpose `website.objects`,
