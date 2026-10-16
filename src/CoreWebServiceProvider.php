@@ -16,6 +16,7 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -37,7 +38,8 @@ use Statamic\StaticCaching\Cacher;
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
  * The `chat` feature relays a site's visitors to Core's chat agents. The
  * `content` feature opens the envelopes Core seals with its own key for the
- * site's content endpoints, and pings Core when a page changes.
+ * site's content endpoints, and pings Core when a page changes. The `live`
+ * feature opens the site's named live reads of Core to its pages' scripts.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -82,6 +84,11 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('chat')) {
             $this->bootChat();
+        }
+
+        if (self::enabled('live')) {
+            self::liveReads();
+            $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -148,6 +155,24 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         return $keys;
+    }
+
+    /**
+     * The read names in core-web.live.reads, each a slug, as the relay's URL carries it.
+     *
+     * @return list<string>
+     */
+    public static function liveReads(): array
+    {
+        $names = array_map('strval', array_keys((array) config('core-web.live.reads', [])));
+
+        foreach ($names as $name) {
+            if (preg_match('~^'.CoreLive::NAME_PATTERN.'$~', $name) !== 1) {
+                throw new InvalidArgumentException("core-web.live.reads: [{$name}] is not a read name; use a lowercase slug (a-z, 0-9, single hyphens).");
+            }
+        }
+
+        return $names;
     }
 
     /** The `snapshots` store (a file or a database store, core-web.snapshots.store_driver), unless the app defines a store by that name itself. */

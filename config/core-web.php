@@ -29,12 +29,17 @@ return [
     | the `core-web.envelope` route middleware its content endpoints open
     | Core's sealed calls with, and the page pings it sends Core.
     |
+    | live: the site's named live reads of Core (`live`), for its pages'
+    | scripts at /!/core-web/live/{name}, and for its own code through
+    | Inly\CoreWeb\Live\CoreLive.
+    |
     */
 
     'features' => [
         'snapshots' => false,
         'chat' => false,
         'content' => false,
+        'live' => false,
     ],
 
     /*
@@ -266,6 +271,41 @@ return [
         'environment' => env('CORE_CONTENT_ENVIRONMENT'),
         'store' => null,
         'key_cache_key' => 'core_web_signing_keys',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Live reads
+    |--------------------------------------------------------------------------
+    |
+    | Reads of Core made while a visitor waits, for what no snapshot can hold:
+    | a calculation on the visitor's input, a figure that must be current.
+    |
+    | reads: each read by name (a lowercase slug) with the site's
+    | Inly\CoreWeb\Live\LiveRead class. Any other name is a 404.
+    |
+    |     'reads' => ['loan-quote' => App\Live\LoanQuote::class],
+    |
+    | timeouts: seconds to connect to Core and to wait for its answer.
+    |
+    | store: the cache store a read's ttl() keeps answers in; null is the
+    | default store.
+    |
+    | name / middleware: the route at /!/core-web/live/{name}, under
+    | Statamic's action prefix so the static cache never stores it. It needs
+    | no session, so no `web` group.
+    |
+    */
+
+    'live' => [
+        'reads' => [],
+        'timeouts' => [
+            'connect' => 3,
+            'read' => 5,
+        ],
+        'store' => null,
+        'name' => 'core-web.live',
+        'middleware' => ['throttle:60,1'],
     ],
 
 ];

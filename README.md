@@ -53,6 +53,7 @@ nothing.
 |---|---|---|
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
+| Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -636,6 +637,88 @@ call needs, not only opening a conversation (without it Core answers 403,
 which the relay reports as `unavailable`). A turn runs while Core answers, so
 the web server's read timeout (nginx's `fastcgi_read_timeout`) must outlast
 `chat.timeouts.turn`.
+
+## Live reads
+
+Snapshots hold what every visitor sees the same way. A live read is for what
+a snapshot cannot hold: a calculation on what the visitor typed, a figure that
+must be current. The site names each read, and nothing else of Core is
+reachable: there is no pass-through to Core's API, since the site's client
+token reads more than any page should show.
+
+A read is a `LiveRead` class:
+
+```php
+use Inly\CoreWeb\Live\LiveRead;
+use Inly\CoreWeb\Live\LiveRequest;
+
+class LoanQuote extends LiveRead
+{
+    public function rules(): array
+    {
+        return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer', 'min:1', 'max:120']];
+    }
+
+    public function request(array $input): ?LiveRequest
+    {
+        return LiveRequest::post('/api/app/items/'.rawurlencode($input['item']).'/quote', ['months' => (int) $input['months']]);
+    }
+
+    public function present(array $json, array $input): ?array
+    {
+        return ['monthly' => $json['data']['monthly'] ?? null];
+    }
+
+    public function ttl(): int
+    {
+        return 60;
+    }
+}
+```
+
+- `rules()` validates the visitor's input; only the keys it names reach
+  `request()` (a nested key needs a rule of its own, `x.*`). Query-string
+  input arrives as strings, so cast.
+- `request()` is the one call to Core, on the site's client token (retried
+  once on a 401). Return null when the site already knows there is nothing to
+  read: the answer is `not_found` without calling Core.
+- `present()` is what the page gets. The default is Core's `data`; return null
+  for an answer the site cannot show (`unavailable`).
+- `ttl()` keeps an answer per input, in `live.store`, and lets the visitor's
+  browser keep it for what is left of that (`private, max-age`). 0, the
+  default, keeps none. `keep($data)` returning false keeps that one answer
+  nowhere: a fallback Core gave while a source was down, say.
+
+A read answers the same for every visitor: never put anything personal in one.
+
+Switch it on and name the reads:
+
+```php
+return [
+    'features' => ['live' => true],
+    'live' => ['reads' => ['loan-quote' => App\Live\LoanQuote::class]],
+];
+```
+
+Every `live` key the site leaves out keeps its default, so a site's file
+needs only `reads`.
+
+The browser calls `GET /!/core-web/live/loan-quote?item=a1&months=24` (under
+Statamic's action prefix, so never statically cached; `throttle:60,1` by
+default). Server code, a Livewire component included, skips the route:
+
+```php
+$result = app(Inly\CoreWeb\Live\CoreLive::class)->read('loan-quote', ['item' => $id, 'months' => $months]);
+
+$result->successful(); // $result->data, or $result->status and $result->errors
+```
+
+| Answer | Status | When |
+|---|---|---|
+| `{data: …}` | 200 | Core answered and `present()` returned the page's data |
+| `{error: "invalid", errors: {field: [...]}}` | 422 | The site's rules refused the input, or Core did (its messages passed on per field) |
+| `{error: "not_found"}` | 404 | Core answered 404, or `request()` returned null |
+| `{error: "unavailable"}` | 503 | Core failed, timed out (`live.timeouts`), is not configured, or `present()` returned null; logged as a warning |
 
 ## Website content
 
