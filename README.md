@@ -456,8 +456,9 @@ pages on its own query parameter (`?core_{type}_page=2`,
 `?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
 badge says when the copy may be out of date or is a local `core:pull` copy. A
 document the `title` closure fails on is listed by its id, unlinked, and logged.
-Every label goes through `__()`; core-web ships Swedish in `lang/sv.json`, and a
-site adds or overrides any other locale in its own `lang/<locale>.json`.
+Every label, the configured `title` included, goes through `__()`; core-web
+ships Swedish in `lang/sv.json`, and a site adds its titles and any other
+locale in its own `lang/<locale>.json`.
 
 The link is Core's `/open/{object}/{id}` (`CoreClient::openUrl()`), which sends
 a signed-in person to the record's page in Core, whatever its route; it needs

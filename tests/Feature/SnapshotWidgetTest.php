@@ -134,7 +134,14 @@ class SnapshotWidgetTest extends TestCase
         app()->forgetScopedInstances();
         app()->setLocale('sv');
 
-        $this->assertStringContainsString('Inga resultat', $this->render(['snapshot' => 'staff']));
+        // Load the package's sv lines first: added lines would otherwise mark the locale loaded and hide them.
+        __('No results');
+        app('translator')->addLines(['*.Staff from Core' => 'Personal från Core'], 'sv');
+
+        $html = $this->render(['snapshot' => 'staff', 'title' => 'Staff from Core']);
+
+        $this->assertStringContainsString('Inga resultat', $html);
+        $this->assertStringContainsString('title="Personal från Core"', $html);
     }
 
     public function test_it_says_when_the_copy_cannot_be_trusted(): void

@@ -84,7 +84,7 @@ class CoreSnapshotWidget extends Widget
         $page = max(1, min($pages, (int) request()->query($param, 1)));
 
         return view('core-web::widgets.snapshot', [
-            'title' => (string) $this->config('title', Str::headline($type)),
+            'title' => __((string) $this->config('title', Str::headline($type))),
             'rows' => array_slice($rows, ($page - 1) * $perPage, $perPage),
             'total' => count($rows),
             'page' => $page,
