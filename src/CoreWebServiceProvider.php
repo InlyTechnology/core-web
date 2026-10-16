@@ -131,9 +131,13 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
 
-        // Per session and address; the routes' general limit already caps each address, however many sessions it mints.
-        RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.chat.turn_rate_limit', 10)))
-            ->by(sha1(($request->hasSession() ? $request->session()->getId() : '').'|'.$request->ip())));
+        // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
+        RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [
+            Limit::perMinute(max(1, (int) config('core-web.chat.turn_rate_limit', 10)))
+                ->by('session|'.sha1(($request->hasSession() ? $request->session()->getId() : '').'|'.$request->ip())),
+            Limit::perMinute(max(1, (int) config('core-web.chat.turn_rate_limit_per_address', 30)))
+                ->by('address|'.sha1((string) $request->ip())),
+        ]);
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));

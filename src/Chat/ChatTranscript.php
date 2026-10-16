@@ -152,10 +152,10 @@ final class ChatTranscript
         return $flat;
     }
 
-    /** A page puts a card's url in an href or src, so only a web address or a path on the site passes. */
+    /** A page puts a card's url in an href or src, so only a web address or a path on the site passes, never `//host`. */
     private static function safeUrl(string $url): bool
     {
-        return preg_match('~^(https?://|/)~i', $url) === 1;
+        return preg_match('~^(https?://|/(?![/\\\\]))~i', $url) === 1;
     }
 
     private static function string(mixed $value): ?string

@@ -92,8 +92,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
-A site's own Core settings sit in the same family: `CORE_CMS_SITE` for CMS
-single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
+CMS single sign-on is the site's own: Core seals its hand-offs with its own
+key, which `CoreEnvelope::open()` opens with no secret.
 
 `config/core-web.php`:
 
@@ -121,6 +121,7 @@ single sign-on, with the backoffice's `WEBSITE_HANDOFF_SECRET` as its secret.
 | `chat.timeouts` | `connect` 5, `read` 8, `turn` 60 | Seconds. `turn` covers a message and the handoff summary, `read` opening and reading a conversation |
 | `chat.name` / `chat.middleware` | `core-web.chat` / `['web', 'throttle:60,1']` | The relay routes (`core-web.chat.show`, `.messages`, `.handoff`, `.forget`). `web` gives them the session and CSRF |
 | `chat.turn_rate_limit` | `10` | Messages and handoffs per minute, per session and address |
+| `chat.turn_rate_limit_per_address` | `30` | Messages and handoffs per minute from one address, whatever sessions it holds |
 | `chat.max_message_length` | `10000` | The longest message the relay passes on; longer is `invalid` without calling Core. Core's default cap per agent; an agent with a lower one still refuses past it (`invalid`) |
 | `chat.max_conversations` | `5` | Conversations a session holds per agent; a new subject past it is `limited` |
 | `features.content` | `false` | Switch on the website content middleware (see [Website content](#website-content)) |
@@ -509,8 +510,9 @@ conversation. What the package gives:
   scripts) says the session holds a conversation for the agent, so an idle
   page fetches nothing.
 - **Limits of the site's own**: messages and handoffs get
-  `chat.turn_rate_limit` per minute (10) per session and address, besides
-  the routes' general `throttle:60,1`; a session holds at most
+  `chat.turn_rate_limit` per minute (10) per session and address, and
+  `chat.turn_rate_limit_per_address` (30) per address however many sessions
+  it opens, besides the routes' general `throttle:60,1`; a session holds at most
   `chat.max_conversations` (5) per agent, and a new subject past that is
   refused as `limited` without calling Core.
 
@@ -696,8 +698,9 @@ class LoanQuote extends LiveRead
   (`max:`, `in:`, `between:`, `alpha_dash` for what goes in a path): each
   distinct input is a call to Core and an entry in the cache.
 - `request()` is the one call to Core, on the site's client token (retried
-  once on a 401). A path with a `.` or `..` segment is refused
-  (`unavailable`), since visitor input builds it. Return null when the site already knows there is nothing to
+  once on a 401). `rawurlencode()` every input the path carries: a path with
+  a `.` or `..` segment, a raw `?` or `#`, a backslash, a space or a control
+  character is refused (`unavailable`), since visitor input builds it. Return null when the site already knows there is nothing to
   read: the answer is `not_found` without calling Core.
 - `present()` is what the page gets. The default is Core's `data`; return null
   for an answer the site cannot show (`unavailable`).
@@ -710,9 +713,9 @@ class LoanQuote extends LiveRead
   never kept by the browser; the JSON says `stale: true`). 0, the default,
   serves none.
 
-After Core fails a read (5xx, timeout, unreachable), the read answers at once
-for `live.retry_after` seconds (30): its stale answer, or `unavailable`,
-rather than every visitor waiting out the timeouts again. A kept answer has
+After Core itself fails a read (502, 503, 504, a timeout, unreachable), the
+read answers at once for `live.retry_after` seconds (30): its stale answer,
+or `unavailable`, rather than every visitor waiting out the timeouts again. A kept answer has
 the shape `present()` gave when it was kept: after a deploy that changes that
 shape, the old one is served until its `ttl()` (and `staleFor()`) runs out.
 
