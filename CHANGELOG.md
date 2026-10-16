@@ -1,23 +1,16 @@
 # Changelog
 
-## Unreleased
+## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,
   `chat.turn_rate_limit_per_address` (30 a minute), so a script that opens a
   fresh session per message no longer slips past the per-session limit.
 - **Chat**: a result card's `url` or `image` starting `//` (another host) is
   dropped, like a link in Core's rich text.
-- **Live reads**: a 500 from Core no longer marks a read down for every
-  visitor (one visitor's input can cause it); only 502, 503, 504 and a
-  connection failure do. A path with a raw `?`, `#`, backslash, space or
-  control character is refused: `rawurlencode()` the input a path carries.
 - **Core client**: the client secret is sent to Core over https only
   (plain http in `local` and `testing`, as for Core's signing keys), and the
   token request no longer follows redirects. A token answer that is not a
   2xx with an `access_token` throws, instead of caching an empty token.
-
-## v0.9.0
-
 - **Live reads**: `features.live` (off by default) lets a site read Core
   while the visitor waits, for what no snapshot holds: a calculation on the
   visitor's input, a figure that must be current, a short list fetched and
@@ -37,9 +30,12 @@
     (503). Nothing reaches Core but the validated input, a path with a dot
     segment is refused, and Core's 422 messages pass on only for the fields
     in `rules()`.
-  - After Core fails a read, it answers at once (stale or `unavailable`) for
-    `live.retry_after` seconds (30) instead of every visitor waiting out the
-    timeouts.
+  - After Core itself fails a read (502, 503, 504, unreachable, no token),
+    it answers at once (stale or `unavailable`) for `live.retry_after`
+    seconds (30) instead of every visitor waiting out the timeouts; a 500,
+    which one visitor's input can cause, switches nothing off.
+  - A path with a raw `?`, `#`, backslash, space or control character is
+    refused: `rawurlencode()` the input a path carries.
 
 ## v0.8.0
 
