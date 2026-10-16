@@ -86,7 +86,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
 | `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
-| `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
+| `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
@@ -378,6 +378,28 @@ signature 81df17fceeac581bb3163d4d0c7b80a7f547533b823db233859e74caaf0674b6
 ```
 
 (`json_encode` with PHP's default flags, keys in that order.)
+
+### Sealed with Core's key
+
+A Core that seals pings with its own key posts the data itself as the JSON
+body (`{ "type", "id", "public_id"?, "action" }`) with the `X-Core-*` headers,
+purpose `website.objects`, audience `CORE_CLIENT_ID`. The endpoint takes this
+whenever those headers are present, whatever `features.content` says.
+
+- **Post the bytes you sealed.** The envelope binds `sha256` of the body, so
+  the sender seals a JSON string and posts that string (`withBody($json)`, or a
+  Saloon request that seals its final body). Sealing a string and posting the
+  array re-encodes it, and a value with `/` or non-ASCII is then refused
+  `body`.
+- **The path must arrive as sealed.** The `path` claim is the URL Core posts
+  to, compared with the request's raw path, so a proxy that adds or strips a
+  prefix refuses every sealed ping.
+- Each opens once: its nonce is spent in `content.store`.
+- A refusal is JSON, `{ "error": "envelope_refused" }`, with a `reason` once
+  the signature verified; a body that is no object is a 422 `invalid_ping`.
+- With no `CORE_CLIENT_ID` every sealed ping is refused; blank
+  `WEBSITE_SYNC_SECRET` once Core seals every ping, to refuse shared-secret
+  ones.
 
 ## Sitemaps
 

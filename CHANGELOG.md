@@ -7,10 +7,20 @@
   audience `client.client_id`) and reads its data from the JSON body the
   envelope binds. Such a ping needs no `ping.secret` and opens once. A ping
   without those headers is the shared-secret `{ payload, signature }` as
-  before, so a site can take both while its Core moves over.
-  - `FakesCore::receiveSealedPing()` sends one sealed with the test key.
+  before, so a site can take both while its Core moves over; blank
+  `ping.secret` once Core seals every ping to refuse shared-secret ones.
+  - Core must post the exact bytes it sealed (`withBody($json)`, or a Saloon
+    request that seals its final body), or the body hash is refused.
+  - A sealed ping opens whatever `features.content` says, needs
+    `client.client_id`, and spends its nonce in `content.store`.
+  - A refused sealed ping answers JSON (`envelope_refused` with its `reason`
+    once the signature verified, `no-store`), and a body that is no object a
+    422 `invalid_ping`.
+  - `FakesCore::receiveSealedPing()` sends one sealed with the test key, and
+    `sealedServer()` gives a sealed call's server variables and body to send
+    again.
 
-## v0.7.0 (unreleased)
+## v0.7.0
 
 - **Website content**: `features.content` (off by default) is the site half of
   Core's website content protocol v1.1 (inly-core v31.1.0 or later).

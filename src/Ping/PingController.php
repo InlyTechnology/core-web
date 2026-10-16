@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Ping;
 
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -23,6 +24,9 @@ use Inly\CoreWeb\Snapshots\SnapshotRegistry;
  * A ping sealed with Core's own key (`X-Core-*` headers, purpose
  * `website.objects`) carries its data as the JSON body the envelope binds;
  * one without those headers is the shared-secret `{ payload, signature }`.
+ * A sealed ping opens whatever `features.content` says: it needs only the
+ * paired client id, and it is not bound to an environment, since all it
+ * does is make the site read back from its own Core.
  */
 class PingController
 {
@@ -64,14 +68,30 @@ class PingController
 
         try {
             CoreEnvelope::fromConfig()->openRequest($request, CoreEnvelope::OBJECTS);
-        } catch (EnvelopeRefused|WrongEnvironment) {
-            abort(403);
+        } catch (EnvelopeRefused $e) {
+            self::refuse(['error' => 'envelope_refused', ...($e->signatureVerified() ? ['reason' => $e->reason] : [])]);
+        } catch (WrongEnvironment $e) {
+            self::refuse(['error' => 'wrong_environment', 'message' => $e->getMessage()]);
         }
 
         $data = json_decode((string) $request->getContent(), true);
-        abort_unless(is_array($data), 403);
+
+        // The body is Core's own, sealed and opened, so one that is no object is Core's bug, not a forgery.
+        if (! is_array($data) || array_is_list($data)) {
+            self::refuse(['error' => 'invalid_ping'], 422);
+        }
 
         return $data;
+    }
+
+    /**
+     * Ends the request with the refusal VerifyCoreEnvelope gives, so Core's retry log reads why.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    private static function refuse(array $body, int $status = 403): never
+    {
+        throw new HttpResponseException(response()->json($body, $status, ['Cache-Control' => 'no-store', 'X-Statamic-Uncacheable' => 'true']));
     }
 
     /** A bulk ping names `all`; a sender without that word sends id 0. */
