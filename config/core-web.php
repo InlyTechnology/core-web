@@ -33,6 +33,9 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | cp_link: a link to Core right under Dashboard in the control panel
+    | (`cp_link`), for every CP user, opened in a new tab.
+    |
     */
 
     'features' => [
@@ -40,6 +43,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'cp_link' => false,
     ],
 
     /*
@@ -67,24 +71,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pulling another Core's data
+    | The remote Core
     |--------------------------------------------------------------------------
     |
-    | Local only: the Core `core:pull` reads the snapshots from (production, as
-    | a rule) and its own client, which Core should let read and nothing more.
-    | The URL and client id are the same for every developer, so the site
-    | commits them as the defaults in its own config/core-web.php (env can
-    | still override them); only the secret has to be set
-    | (CORE_PULL_CLIENT_SECRET). The copies it stores are pinned until the
-    | next pull or `core:pull --release`.
+    | Local only: the Core a local machine uses in place of its own
+    | (production, as a rule), with a client Core should let read and nothing
+    | more. `core:pull` copies its snapshots, and without a CORE_URL the
+    | control panel link points at it. The URL and client id are the same for
+    | every developer, so the site commits them as the defaults in its own
+    | config/core-web.php (env can still override them); only the secret has
+    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
+    | `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
 
-    'pull' => [
-        'base_url' => env('CORE_PULL_URL', ''),
-        'client_id' => env('CORE_PULL_CLIENT_ID', ''),
-        'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
-        'token_cache_key' => 'core_web_pull_access_token',
+    'remote' => [
+        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
+        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
+        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
+        'token_cache_key' => 'core_web_remote_access_token',
     ],
 
     /*
@@ -318,4 +323,22 @@ return [
         'middleware' => ['throttle:60,1'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Control panel link
+    |--------------------------------------------------------------------------
+    |
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
+    | or on a local machine without one at the remote Core, once its client
+    | is set up; with neither there is no link.
+    |
+    | label: what the link says, such as the backoffice's own name.
+    | icon: a Statamic icon name or an SVG; null is Core's mark.
+    |
+    */
+
+    'cp_link' => [
+        'label' => 'Core',
+        'icon' => null,
+    ],
 ];

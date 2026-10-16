@@ -16,6 +16,7 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -40,6 +41,7 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `cp_link` feature links the control panel to Core under Dashboard.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -49,6 +51,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
+            $this->mergeLegacyRemote();
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -73,6 +77,21 @@ class CoreWebServiceProvider extends ServiceProvider
         ));
     }
 
+    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
+    private function mergeLegacyRemote(): void
+    {
+        $legacy = config('core-web.pull');
+
+        if (! is_array($legacy)) {
+            return;
+        }
+
+        config(['core-web.remote' => array_replace(
+            $legacy,
+            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
+        )]);
+    }
+
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
@@ -89,6 +108,10 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('live')) {
             self::liveReads();
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
+        }
+
+        if (self::enabled('cp_link')) {
+            CoreNavLink::register();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

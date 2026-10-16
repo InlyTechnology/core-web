@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Control panel link**: `features.cp_link` (off by default) adds a link to
+  Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
+  (or locally to the remote Core when no `CORE_URL` is set).
+  `cp_link.label` names it and `cp_link.icon` swaps Core's mark for a
+  Statamic icon or an SVG. See README → Control panel link.
+- **Config**: `pull` is renamed `remote` (`CORE_REMOTE_URL`,
+  `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`), since it is the Core
+  a local machine uses, not only `core:pull`'s source. A site config naming
+  `pull` keeps working, as do the `CORE_PULL_*` variables unless the site
+  writes its own `remote` block (README → Pulling production data).
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

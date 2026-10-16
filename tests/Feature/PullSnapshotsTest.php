@@ -28,9 +28,9 @@ class PullSnapshotsTest extends TestCase
             'core-web.client.client_id' => 'local',
             'core-web.client.client_secret' => 'local-secret',
             'core-web.client.ca_bundle' => '/local/ca.pem',
-            'core-web.pull.base_url' => 'https://prod.test',
-            'core-web.pull.client_id' => 'pull',
-            'core-web.pull.client_secret' => 'pull-secret',
+            'core-web.remote.base_url' => 'https://prod.test',
+            'core-web.remote.client_id' => 'pull',
+            'core-web.remote.client_secret' => 'pull-secret',
         ]);
 
         $this->fake(['prod-1', 'prod-2'], ['local-1']);
@@ -257,9 +257,9 @@ class PullSnapshotsTest extends TestCase
 
     public function test_it_needs_a_source_to_pull_from(): void
     {
-        config(['core-web.pull.client_secret' => '']);
+        config(['core-web.remote.client_secret' => '']);
 
-        $this->artisan('core:pull')->expectsOutputToContain('CORE_PULL_CLIENT_SECRET')->assertFailed();
+        $this->artisan('core:pull')->expectsOutputToContain('CORE_REMOTE_CLIENT_SECRET')->assertFailed();
 
         Http::assertNothingSent();
     }
