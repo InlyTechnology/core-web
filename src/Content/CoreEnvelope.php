@@ -34,6 +34,9 @@ class CoreEnvelope
 
     public const PUBLISH = 'website.publish';
 
+    /** An object-change ping to the site's ping endpoint. */
+    public const OBJECTS = 'website.objects';
+
     /** The purposes that write, which a Core in another environment never sends. */
     public const ENVIRONMENT_PURPOSES = [self::DRAFT, self::PUBLISH];
 

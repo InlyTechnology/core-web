@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
+use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Ping\PingSignature;
 use Psr\Http\Message\RequestInterface;
@@ -266,6 +267,17 @@ trait FakesCore
     }
 
     /**
+     * A ping as Core seals it with its own key: the data as the JSON body, under fakeCore()'s test key.
+     *
+     * @param  array<string, mixed>  $data  type, id, action (default saved), public_id; sent as given, nulls included
+     * @param  array<string, mixed>  $claims  replace the sealed claims of the same name; a null one is left out
+     */
+    protected function receiveSealedPing(array $data, array $claims = []): TestResponse
+    {
+        return $this->callSealed('POST', route((string) config('core-web.ping.name', 'api.core.objects'), [], false), CoreEnvelope::OBJECTS, $data + ['action' => 'saved'], $claims);
+    }
+
+    /**
      * The headers of a call sealed with the key fakeCore() publishes as Core's.
      *
      * @param  array<string, mixed>  $claims  replace the sealed claims of the same name; a null one is left out
@@ -285,6 +297,20 @@ trait FakesCore
      */
     protected function callSealed(string $method, string $uri, string $purpose, array|string|null $body = null, array $claims = []): TestResponse
     {
+        [$server, $content] = $this->sealedServer($method, $uri, $purpose, $body, $claims);
+
+        return $this->call(strtoupper($method), $uri, [], [], [], $server, $content);
+    }
+
+    /**
+     * The server variables and body of a sealed call, to send the same envelope more than once.
+     *
+     * @param  array<string, mixed>|string|null  $body
+     * @param  array<string, mixed>  $claims
+     * @return array{0: array<string, string>, 1: string|null}
+     */
+    protected function sealedServer(string $method, string $uri, string $purpose, array|string|null $body = null, array $claims = []): array
+    {
         $content = is_array($body) ? json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $body;
         $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'];
 
@@ -292,6 +318,6 @@ trait FakesCore
             $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
         }
 
-        return $this->call(strtoupper($method), $uri, [], [], [], $server, $content);
+        return [$server, $content];
     }
 }
