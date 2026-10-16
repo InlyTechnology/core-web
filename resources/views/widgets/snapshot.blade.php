@@ -2,11 +2,11 @@
 <ui-widget title="{{ $title }}" icon="link">
     <template #actions>
         @if (! $loaded)
-            <ui-badge text="{{ __('Not loaded yet') }}"></ui-badge>
+            <ui-badge text="{{ __('Loading') }}"></ui-badge>
         @elseif ($pinned)
-            <ui-badge color="amber" text="{{ __('Pinned copy') }}"></ui-badge>
+            <ui-badge color="amber" text="{{ __('Local copy') }}"></ui-badge>
         @elseif ($stale)
-            <ui-badge color="amber" text="{{ __('Stale copy') }}"></ui-badge>
+            <ui-badge color="amber" text="{{ __('May be out of date') }}"></ui-badge>
         @endif
         @if ($loaded)
             <ui-badge text="{{ trans_choice(':count item|:count items', $total, ['count' => $total]) }}"></ui-badge>
@@ -14,9 +14,9 @@
     </template>
 
     @if (! $loaded)
-        <ui-description class="flex-1 flex items-center justify-center">{{ __('Loading from Core. Reload the dashboard in a moment.') }}</ui-description>
+        <ui-description class="flex-1 flex items-center justify-center">{{ __('Loading. Reload the page in a moment.') }}</ui-description>
     @elseif ($total === 0)
-        <ui-description class="flex-1 flex items-center justify-center">{{ __('Nothing in this snapshot') }}</ui-description>
+        <ui-description class="flex-1 flex items-center justify-center">{{ __('No results') }}</ui-description>
     @else
         <div class="px-4 py-3 overflow-x-auto">
             <table class="w-full widget-table">

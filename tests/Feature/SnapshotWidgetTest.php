@@ -115,6 +115,28 @@ class SnapshotWidgetTest extends TestCase
         $this->assertMatchesRegularExpression('~<span[^>]*v-pre>\{\{ alert\(1\) \}\} &lt;b&gt;bold&lt;/b&gt;</span>~', $html);
     }
 
+    public function test_its_labels_are_translated(): void
+    {
+        $this->people(['a' => ['name' => 'Anna', 'core_id' => 1], 'b' => ['name' => 'Bo', 'core_id' => 2]]);
+        app()->forgetScopedInstances();
+        app()->setLocale('sv');
+
+        $html = $this->render(['snapshot' => 'staff', 'per_page' => 1]);
+
+        foreach (['2 poster', 'Öppna i Core', 'Sida 1 av 2', 'Föregående sida', 'Nästa sida'] as $label) {
+            $this->assertStringContainsString($label, $html);
+        }
+    }
+
+    public function test_its_empty_state_is_translated(): void
+    {
+        $this->people([]);
+        app()->forgetScopedInstances();
+        app()->setLocale('sv');
+
+        $this->assertStringContainsString('Inga resultat', $this->render(['snapshot' => 'staff']));
+    }
+
     public function test_it_says_when_the_copy_cannot_be_trusted(): void
     {
         $snapshot = $this->people(['p-1' => ['name' => 'Anna', 'core_id' => 1]]);
@@ -122,15 +144,15 @@ class SnapshotWidgetTest extends TestCase
         $store->refresh($snapshot);
         app()->forgetScopedInstances();
 
-        $this->assertStringNotContainsString('Stale copy', $this->render(['snapshot' => 'staff']));
+        $this->assertStringNotContainsString('May be out of date', $this->render(['snapshot' => 'staff']));
 
         SnapshotStore::repository()->forget($snapshot->key('fresh'));
         app()->forgetScopedInstances();
-        $this->assertStringContainsString('Stale copy', $this->render(['snapshot' => 'staff']));
+        $this->assertStringContainsString('May be out of date', $this->render(['snapshot' => 'staff']));
 
         SnapshotStore::repository()->forever($snapshot->key('pinned'), ['source' => 'https://prod.test', 'at' => '2026-10-16T10:00:00Z']);
         app()->forgetScopedInstances();
-        $this->assertStringContainsString('Pinned copy', $this->render(['snapshot' => 'staff']));
+        $this->assertStringContainsString('Local copy', $this->render(['snapshot' => 'staff']));
     }
 
     public function test_a_cold_snapshot_is_never_pulled_by_the_dashboard_but_queued(): void
@@ -148,7 +170,7 @@ class SnapshotWidgetTest extends TestCase
         $html = $this->render(['snapshot' => 'cold']);
 
         $this->assertSame(0, $pulls);
-        $this->assertStringContainsString('Not loaded yet', $html);
+        $this->assertStringContainsString('text="Loading"', $html);
         $this->assertStringNotContainsString('items"', $html);
         Queue::assertPushed(RefreshSnapshotJob::class, fn (RefreshSnapshotJob $job) => $job->type === 'cold' && $job->id === 'all');
     }

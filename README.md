@@ -428,7 +428,7 @@ A snapshot that declares `->listing()` can be shown on the control panel
 dashboard by the `core_snapshot` widget: its documents, a page at a time, each
 with a link to the record in Core. The widget only reads what the store already
 holds (`SnapshotStore::cached()`), so a dashboard visit never waits on Core. A
-snapshot with nothing cached yet shows "Not loaded yet" and queues its warm job
+snapshot with nothing cached yet shows "Loading" and queues its warm job
 (one at a time per snapshot).
 
 ```php
@@ -454,8 +454,10 @@ default), and Statamic's own `width`, `can` and `sites`. Rows are sorted by
 title in the selected site's language (with intl). Each snapshot and partition
 pages on its own query parameter (`?core_{type}_page=2`,
 `?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
-badge says when the copy is stale or pinned by `core:pull`. A document the
-`title` closure fails on is listed by its id, unlinked, and logged.
+badge says when the copy may be out of date or is a local `core:pull` copy. A
+document the `title` closure fails on is listed by its id, unlinked, and logged.
+Every label goes through `__()`; core-web ships Swedish in `lang/sv.json`, and a
+site adds or overrides any other locale in its own `lang/<locale>.json`.
 
 The link is Core's `/open/{object}/{id}` (`CoreClient::openUrl()`), which sends
 a signed-in person to the record's page in Core, whatever its route; it needs
