@@ -667,7 +667,7 @@ class LoanQuote extends LiveRead
 
     public function rules(): array
     {
-        return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer', 'min:1', 'max:120']];
+        return ['item' => ['required', 'alpha_dash', 'max:40'], 'months' => ['required', 'integer', 'min:1', 'max:120']];
     }
 
     public function request(array $input): ?LiveRequest
@@ -692,9 +692,12 @@ class LoanQuote extends LiveRead
   otherwise.
 - `rules()` validates the visitor's input; only the keys it names reach
   `request()` (a nested key needs a rule of its own, `x.*`). Query-string
-  input arrives as strings, so cast.
+  input arrives as strings, so cast. Bound every rule of a `public()` read
+  (`max:`, `in:`, `between:`, `alpha_dash` for what goes in a path): each
+  distinct input is a call to Core and an entry in the cache.
 - `request()` is the one call to Core, on the site's client token (retried
-  once on a 401). Return null when the site already knows there is nothing to
+  once on a 401). A path with a `.` or `..` segment is refused
+  (`unavailable`), since visitor input builds it. Return null when the site already knows there is nothing to
   read: the answer is `not_found` without calling Core.
 - `present()` is what the page gets. The default is Core's `data`; return null
   for an answer the site cannot show (`unavailable`).
@@ -704,7 +707,14 @@ class LoanQuote extends LiveRead
   nowhere: a fallback Core gave while a source was down, say.
 - `staleFor()` serves the last good answer for that many seconds past
   `ttl()` while Core fails, instead of `unavailable` (`$result->stale`, and
-  never kept by the browser). 0, the default, serves none.
+  never kept by the browser; the JSON says `stale: true`). 0, the default,
+  serves none.
+
+After Core fails a read (5xx, timeout, unreachable), the read answers at once
+for `live.retry_after` seconds (30): its stale answer, or `unavailable`,
+rather than every visitor waiting out the timeouts again. A kept answer has
+the shape `present()` gave when it was kept: after a deploy that changes that
+shape, the old one is served until its `ttl()` (and `staleFor()`) runs out.
 
 A read answers the same for every visitor: never put anything personal in one.
 On a statically cached page, what server code read is frozen into the page
@@ -736,8 +746,8 @@ $result->successful(); // $result->data, or $result->status and $result->errors
 
 | Answer | Status | When |
 |---|---|---|
-| `{data: …}` | 200 | Core answered and `present()` returned the page's data |
-| `{error: "invalid", errors: {field: [...]}}` | 422 | The site's rules refused the input, or Core did (its messages passed on per field) |
+| `{data: …}` | 200 | Core answered and `present()` returned the page's data; with `stale: true`, the last good answer while Core fails |
+| `{error: "invalid", errors: {field: [...]}}` | 422 | The site's rules refused the input, or Core did (its messages passed on for the fields in `rules()` only) |
 | `{error: "not_found"}` | 404 | Core answered 404, `request()` returned null, or the route was asked for a read that is not `public()` |
 | `{error: "unavailable"}` | 503 | Core failed, timed out (`live.timeouts`), is not configured, or `present()` returned null; logged as a warning |
 

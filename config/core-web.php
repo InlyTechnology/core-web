@@ -288,6 +288,10 @@ return [
     |
     | timeouts: seconds to connect to Core and to wait for its answer.
     |
+    | retry_after: seconds a read answers at once (its stale answer, or
+    | `unavailable`) after Core failed it, instead of every visitor waiting
+    | out the timeouts again. 0 asks Core every time.
+    |
     | store: the cache store a read's ttl() keeps answers in; null is the
     | default store.
     |
@@ -303,6 +307,7 @@ return [
             'connect' => 3,
             'read' => 5,
         ],
+        'retry_after' => 30,
         'store' => null,
         'name' => 'core-web.live',
         'middleware' => ['throttle:60,1'],

@@ -16,7 +16,12 @@
     and gets a `LiveResult`.
   - Answers are `{data}`, or `{error}` with `invalid` (422, with `errors` per
     field, the site's rules or Core's), `not_found` (404) and `unavailable`
-    (503). Nothing reaches Core but the validated input.
+    (503). Nothing reaches Core but the validated input, a path with a dot
+    segment is refused, and Core's 422 messages pass on only for the fields
+    in `rules()`.
+  - After Core fails a read, it answers at once (stale or `unavailable`) for
+    `live.retry_after` seconds (30) instead of every visitor waiting out the
+    timeouts.
 
 ## v0.8.0
 

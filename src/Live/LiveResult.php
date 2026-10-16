@@ -77,7 +77,7 @@ final class LiveResult
     public function toArray(): array
     {
         return match ($this->status) {
-            self::OK => ['data' => $this->data],
+            self::OK => $this->stale ? ['data' => $this->data, 'stale' => true] : ['data' => $this->data],
             self::INVALID => ['error' => self::INVALID, 'errors' => $this->errors],
             default => ['error' => $this->status],
         };

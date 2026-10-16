@@ -28,7 +28,7 @@ class LiveReadTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class, 'server' => ServerRead::class, 'lasting' => LastingRead::class]);
+        $app['config']->set('core-web.live.reads', ['quote' => QuoteRead::class, 'cached' => CachedRead::class, 'server' => ServerRead::class, 'lasting' => LastingRead::class, 'loose' => LooseRead::class]);
     }
 
     private function fakeQuote(mixed $answer = null): void
@@ -140,7 +140,7 @@ class LiveReadTest extends TestCase
 
         $this->getJson('/!/core-web/live/lasting?item=a1&months=12')
             ->assertOk()
-            ->assertJsonPath('data.monthly', 120)
+            ->assertExactJson(['data' => ['monthly' => 120], 'stale' => true])
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->assertTrue(app(CoreLive::class)->read('lasting', ['item' => 'a1', 'months' => 12])->stale, 'server code and the route share one kept answer');
 
@@ -202,8 +202,50 @@ class LiveReadTest extends TestCase
         $this->fakeQuote(Http::response('Server error', 500));
         $this->getJson('/!/core-web/live/cached?item=a1&months=12')->assertStatus(503);
 
+        $this->travel(31)->seconds();
         $this->fakeQuote();
         $this->getJson('/!/core-web/live/cached?item=a1&months=12')->assertOk();
+    }
+
+    public function test_after_core_fails_a_read_answers_at_once_for_retry_after(): void
+    {
+        $this->fakeQuote(Http::response('Server error', 500));
+        $this->getJson(self::URL.'?item=a1&months=12')->assertStatus(503);
+
+        $this->fakeQuote();
+        $this->getJson(self::URL.'?item=a2&months=12')->assertStatus(503);
+        Http::assertNothingSent();
+
+        $this->travel(31)->seconds();
+        $this->getJson(self::URL.'?item=a2&months=12')->assertOk();
+    }
+
+    public function test_core_refusing_one_answer_does_not_mark_it_down(): void
+    {
+        $this->fakeQuote(Http::response(['message' => 'Not found'], 404));
+        $this->getJson(self::URL.'?item=a1&months=12')->assertNotFound();
+
+        $this->fakeQuote();
+        $this->getJson(self::URL.'?item=a1&months=12')->assertOk();
+    }
+
+    public function test_a_path_with_a_dot_segment_never_reaches_core(): void
+    {
+        $this->fakeQuote();
+
+        $this->getJson('/!/core-web/live/loose?item=..&months=12')->assertStatus(503);
+        $this->getJson('/!/core-web/live/loose?item=%2E%2E&months=12')->assertStatus(503);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_core_s_messages_reach_the_page_only_for_the_visitor_s_fields(): void
+    {
+        $this->fakeQuote(Http::response(['errors' => ['months' => ['Max 84 months.'], 'internal_margin' => ['Margin below floor 0.42.']]], 422));
+
+        $this->getJson(self::URL.'?item=a1&months=120')
+            ->assertStatus(422)
+            ->assertExactJson(['error' => 'invalid', 'errors' => ['months' => ['Max 84 months.']]]);
     }
 
     public function test_server_code_reads_without_the_route(): void
@@ -293,5 +335,13 @@ class LastingRead extends CachedRead
     public function staleFor(): int
     {
         return 3600;
+    }
+}
+
+class LooseRead extends QuoteRead
+{
+    public function rules(): array
+    {
+        return ['item' => ['required', 'string', 'max:40'], 'months' => ['required', 'integer']];
     }
 }

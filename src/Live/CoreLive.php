@@ -48,23 +48,24 @@ class CoreLive
 
         $input = $validator->validated();
         $ttl = max(0, $read->ttl());
-
-        if ($ttl === 0) {
-            return $this->call($name, $read, $input);
-        }
-
         $key = 'core_web_live:'.$name.':'.sha1(serialize(self::sorted($input)));
-        $kept = $this->kept($key);
-        $left = $kept === null ? 0 : $kept['expires'] - now()->getTimestamp();
+        $kept = $ttl === 0 ? null : $this->kept($key);
 
-        if ($kept !== null && $left > 0) {
+        if ($kept !== null && ($left = $kept['expires'] - now()->getTimestamp()) > 0) {
             return LiveResult::ok($kept['data'], $left);
         }
 
-        $result = $this->call($name, $read, $input);
+        // Core failed a moment ago: answer at once rather than have every visitor wait out the timeout again.
+        $result = $this->down($name) ? LiveResult::unavailable() : $this->call($name, $read, $input);
 
-        if ($result->successful() && $read->keep((array) $result->data)) {
+        if ($result->successful()) {
+            if ($ttl === 0 || ! $read->keep((array) $result->data)) {
+                return $result;
+            }
+
             $this->keepFor($key, (array) $result->data, $ttl, max(0, $read->staleFor()));
+
+            return LiveResult::ok((array) $result->data, $ttl);
         }
 
         // Core failed: the last good answer, within staleFor(), rather than none.
@@ -116,13 +117,18 @@ class CoreLive
                 return LiveResult::notFound();
             }
 
+            // Built from visitor input: a dot segment would walk the site's token up Core's API once a proxy normalises it.
+            if (preg_match('~(^|/)\.{1,2}(/|$)~', rawurldecode($request->path)) === 1) {
+                throw new InvalidArgumentException("The live read [{$name}] asked for a path with a dot segment.");
+            }
+
             $response = $this->core->sendResponse(
                 $request->method,
                 $request->path,
                 $request->data,
                 ['Accept' => 'application/json'],
-                (int) config('core-web.live.timeouts.read', 5),
-                (int) config('core-web.live.timeouts.connect', 3),
+                max(1, (int) config('core-web.live.timeouts.read', 5)),
+                max(1, (int) config('core-web.live.timeouts.connect', 3)),
             );
 
             if ($response->status() === 404) {
@@ -130,7 +136,7 @@ class CoreLive
             }
 
             if ($response->status() === 422) {
-                return LiveResult::invalid(self::errors($response->json('errors')));
+                return LiveResult::invalid(self::errors($response->json('errors'), $read->rules()));
             }
 
             $data = $response->successful() && is_array($json = $response->json()) ? $read->present($json, $input) : null;
@@ -138,14 +144,43 @@ class CoreLive
             if ($data === null) {
                 Log::warning('Core live read failed.', ['read' => $name, 'status' => $response->status()]);
 
-                return LiveResult::unavailable();
+                return $this->failed($name, $response->serverError());
             }
 
-            return LiveResult::ok($data, $read->keep($data) ? max(0, $read->ttl()) : 0);
+            return LiveResult::ok($data);
+        } catch (InvalidArgumentException $e) {
+            Log::warning('Core live read refused.', ['read' => $name, 'message' => $e->getMessage()]);
+
+            return LiveResult::unavailable();
         } catch (Throwable $e) {
             Log::warning('Core live read failed.', ['read' => $name, 'exception' => $e::class, 'message' => $e->getMessage()]);
 
-            return LiveResult::unavailable();
+            return $this->failed($name, true);
+        }
+    }
+
+    /** Unavailable, marking Core down for the read for core-web.live.retry_after seconds when Core itself failed. */
+    protected function failed(string $name, bool $coreDown): LiveResult
+    {
+        $seconds = max(0, (int) config('core-web.live.retry_after', 30));
+
+        if ($coreDown && $seconds > 0) {
+            try {
+                $this->store()->put('core_web_live_down:'.$name, true, $seconds);
+            } catch (Throwable) {
+                // A store that fails only costs the shortcut.
+            }
+        }
+
+        return LiveResult::unavailable();
+    }
+
+    protected function down(string $name): bool
+    {
+        try {
+            return $this->store()->get('core_web_live_down:'.$name) === true;
+        } catch (Throwable) {
+            return false;
         }
     }
 
@@ -171,16 +206,22 @@ class CoreLive
     }
 
     /**
-     * Core's validation messages by field, strings only.
+     * Core's validation messages for the fields the visitor sent (the read's
+     * rules), strings only: Core judged a body the site built, and the rest
+     * can name fields the visitor never saw.
      *
+     * @param  array<string, mixed>  $rules
      * @return array<string, list<string>>
      */
-    protected static function errors(mixed $errors): array
+    protected static function errors(mixed $errors, array $rules): array
     {
+        $fields = array_map(fn (string $key): string => explode('.', $key)[0], array_keys($rules));
         $out = [];
 
         foreach (is_array($errors) ? $errors : [] as $field => $messages) {
-            $out[(string) $field] = array_values(array_filter((array) $messages, 'is_string'));
+            if (in_array(explode('.', (string) $field)[0], $fields, true)) {
+                $out[(string) $field] = array_values(array_filter((array) $messages, 'is_string'));
+            }
         }
 
         return $out;
