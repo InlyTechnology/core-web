@@ -31,6 +31,7 @@ abstract class TestCase extends AddonTestCase
     /**
      * Statamic's AddonTestCase mocks the CP nav after the provider booted, so a test
      * of what the nav shows gets a real one, with the provider's boot run again on it.
+     * Only for tests without the snapshots or chat features, whose routes and hooks would register twice.
      */
     protected function withRealNav(): void
     {

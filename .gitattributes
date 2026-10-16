@@ -1,6 +1,6 @@
 * text=auto
 
-# Left out of the Composer dist: a site installs src, config, routes and migrations only.
+# Left out of the Composer dist: a site installs src, config, routes, resources and migrations only.
 /.github export-ignore
 /tests export-ignore
 /.gitattributes export-ignore

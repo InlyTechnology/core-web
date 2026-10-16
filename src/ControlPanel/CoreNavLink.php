@@ -20,7 +20,9 @@ final class CoreNavLink
                 return;
             }
 
-            $nav->create((string) config('core-web.cp_link.label', 'Core'))
+            $label = config('core-web.cp_link.label');
+
+            $nav->create(filled($label) ? (string) $label : 'Core')
                 ->section('Top Level')
                 ->url($url)
                 ->icon(self::icon())
@@ -49,11 +51,11 @@ final class CoreNavLink
         return rtrim((string) config('core-web.pull.base_url'), '/');
     }
 
-    /** The configured icon (a Statamic icon name or an SVG), or Core's mark. */
+    /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */
     private static function icon(): string
     {
         $icon = config('core-web.cp_link.icon');
 
-        return filled($icon) ? (string) $icon : (string) file_get_contents(__DIR__.'/../../resources/svg/core.svg');
+        return filled($icon) ? trim((string) $icon) : (string) file_get_contents(__DIR__.'/../../resources/svg/core.svg');
     }
 }
