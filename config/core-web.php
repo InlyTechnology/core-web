@@ -87,8 +87,12 @@ return [
     | Core's on-change pings
     |--------------------------------------------------------------------------
     |
-    | secret: the HMAC secret Core signs its pings with (WEBSITE_SYNC_SECRET in
-    | the backoffice). Empty rejects every ping; there is no APP_KEY fallback.
+    | A ping sealed with Core's own key (purpose website.objects, audience
+    | client.client_id) opens with no secret here.
+    |
+    | secret: the HMAC secret a Core still on the shared secret signs its pings
+    | with (WEBSITE_SYNC_SECRET in the backoffice). Empty rejects every
+    | shared-secret ping; there is no APP_KEY fallback.
     |
     | path / name / middleware: the endpoint Core posts to. Outside the `web`
     | group, so it needs no CSRF exemption.

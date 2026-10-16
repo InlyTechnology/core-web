@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
+use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Ping\PingSignature;
 use Psr\Http\Message\RequestInterface;
@@ -263,6 +264,17 @@ trait FakesCore
     protected function receivePing(array $data): TestResponse
     {
         return $this->postJson(route((string) config('core-web.ping.name', 'api.core.objects')), $this->signedPing($data));
+    }
+
+    /**
+     * A ping as Core seals it with its own key: the data as the JSON body, under fakeCore()'s test key.
+     *
+     * @param  array<string, mixed>  $data  type, id, action (default saved), public_id
+     * @param  array<string, mixed>  $claims  replace the sealed claims of the same name; a null one is left out
+     */
+    protected function receiveSealedPing(array $data, array $claims = []): TestResponse
+    {
+        return $this->callSealed('POST', route((string) config('core-web.ping.name', 'api.core.objects'), [], false), CoreEnvelope::OBJECTS, $data + ['action' => 'saved'], $claims);
     }
 
     /**

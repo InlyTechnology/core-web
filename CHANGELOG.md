@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.0 (unreleased)
+
+- **Pings sealed with Core's key**: the ping endpoint opens a ping Core seals
+  with its own Ed25519 key (`X-Core-*` headers, purpose `website.objects`,
+  audience `client.client_id`) and reads its data from the JSON body the
+  envelope binds. Such a ping needs no `ping.secret` and opens once. A ping
+  without those headers is the shared-secret `{ payload, signature }` as
+  before, so a site can take both while its Core moves over.
+  - `FakesCore::receiveSealedPing()` sends one sealed with the test key.
+
 ## v0.7.0 (unreleased)
 
 - **Website content**: `features.content` (off by default) is the site half of

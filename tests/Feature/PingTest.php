@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Queue;
+use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Snapshots\RefreshSnapshotJob;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
@@ -114,6 +115,47 @@ class PingTest extends TestCase
         $this->postJson('/api/core/objects', $ping)->assertForbidden();
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_a_ping_sealed_with_cores_key_opens_without_the_shared_secret(): void
+    {
+        $this->fakeCore();
+        config(['core-web.ping.secret' => '']);
+        $this->registry()->register(Snapshot::make('things'), pings: ['thing']);
+
+        $this->receiveSealedPing(['type' => 'thing', 'id' => 17, 'public_id' => 'ABC', 'action' => 'deleted'])->assertStatus(202);
+
+        Queue::assertPushed(RefreshSnapshotJob::class, fn (RefreshSnapshotJob $job) => [$job->type, $job->id, $job->action, $job->key] === ['things', '17', 'deleted', 'ABC']);
+    }
+
+    public function test_a_sealed_ping_for_another_purpose_audience_or_body_is_refused(): void
+    {
+        $this->fakeCore();
+        $this->registry()->register(Snapshot::make('things'), pings: ['things']);
+        $ping = ['type' => 'things', 'id' => 'all', 'action' => 'saved'];
+
+        $this->callSealed('POST', '/api/core/objects', CoreEnvelope::READ, $ping)->assertForbidden();
+        $this->receiveSealedPing($ping, ['aud' => 'another-site'])->assertForbidden();
+        $this->receiveSealedPing($ping, ['body_sha256' => hash('sha256', '{"type":"things","id":"all","action":"deleted"}')])->assertForbidden();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_a_sealed_ping_opens_once(): void
+    {
+        $this->fakeCore();
+        $this->registry()->register(Snapshot::make('things'), pings: ['things']);
+        $body = json_encode(['type' => 'things', 'id' => 'all', 'action' => 'saved'], JSON_THROW_ON_ERROR);
+        $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'];
+
+        foreach ($this->coreEnvelopeHeaders('POST', '/api/core/objects', CoreEnvelope::OBJECTS, $body) as $name => $value) {
+            $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
+        }
+
+        $this->call('POST', '/api/core/objects', [], [], [], $server, $body)->assertStatus(202);
+        $this->call('POST', '/api/core/objects', [], [], [], $server, $body)->assertForbidden();
+
+        Queue::assertPushed(RefreshSnapshotJob::class, 1);
     }
 
     public function test_the_endpoint_needs_no_csrf_token_and_is_named(): void

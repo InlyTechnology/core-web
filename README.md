@@ -86,7 +86,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
 | `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
-| `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret Core signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). **Empty rejects every ping**; there is no `APP_KEY` fallback |
+| `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
