@@ -87,6 +87,11 @@ class DormantTest extends TestCase
         $this->assertFalse($registered);
     }
 
+    public function test_no_widget_is_registered(): void
+    {
+        $this->assertFalse(app('statamic.widgets')->has('core_snapshot'));
+    }
+
     public function test_no_cache_store_is_added(): void
     {
         $this->assertFalse(config()->has('cache.stores.snapshots'));

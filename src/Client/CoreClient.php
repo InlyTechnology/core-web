@@ -59,6 +59,23 @@ class CoreClient
     }
 
     /**
+     * Where a person opens a Core record in their browser: Core's
+     * /open/{object}/{id}, which redirects them to its page once signed in.
+     * Null without a Core address. Needs no credentials: the link is
+     * followed with the person's own Core session.
+     */
+    public function openUrl(string $type, int|string $id): ?string
+    {
+        if ($this->baseUrl === '' || $type === '' || (string) $id === '') {
+            return null;
+        }
+
+        $segments = array_map(rawurlencode(...), explode('/', trim($type, '/')));
+
+        return $this->baseUrl.'/open/'.implode('/', $segments).'/'.rawurlencode((string) $id);
+    }
+
+    /**
      * One object from Core's Objects API as a JSON:API document (`data` +
      * optional `included`), or null when Core answers 404: the object is
      * gone, or this client may no longer read it.

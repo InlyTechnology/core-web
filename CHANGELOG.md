@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Snapshots**: a `core_snapshot` control panel widget lists a snapshot's
+  documents, paginated, each linked to its record in Core. A snapshot opts in
+  with `->listing(title:, coreType:, coreId:)`; `CoreClient::openUrl()` builds
+  the link to Core's `/open/{object}/{id}`. See README → Control panel widget.
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

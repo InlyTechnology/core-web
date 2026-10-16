@@ -19,8 +19,9 @@ return [
     |     return ['features' => ['snapshots' => true]];
     |
     | snapshots: Core snapshots with their store, `core:warm` and its schedule,
-    | `core:pull`, the degraded guard, Core's pings (`ping`) and the snapshot
-    | sitemaps (`sitemaps`). The Core client below needs no switch.
+    | `core:pull`, the degraded guard, Core's pings (`ping`), the snapshot
+    | sitemaps (`sitemaps`) and the `core_snapshot` control panel widget. The
+    | Core client below needs no switch.
     |
     | chat: the relay between the site's visitors and Core's chat agents
     | (`chat`), with its routes and the <x-core-web::chat> component.

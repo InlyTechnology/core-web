@@ -25,6 +25,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -109,6 +110,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
+        CoreSnapshotWidget::register();
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
             // After Statamic's static cache middleware (Statamic builds the group once the app has booted, then runs
