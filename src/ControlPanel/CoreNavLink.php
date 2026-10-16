@@ -31,8 +31,8 @@ final class CoreNavLink
     }
 
     /**
-     * CORE_URL, or on a local machine without one the Core `core:pull` reads,
-     * once the pull client is set up: the Core a developer's data came from.
+     * CORE_URL, or on a local machine without one the remote Core, once its
+     * client is set up: the Core a developer's data came from.
      */
     public static function url(): string
     {
@@ -43,12 +43,12 @@ final class CoreNavLink
         }
 
         if (! app()->environment('local')
-            || blank(config('core-web.pull.client_id'))
-            || blank(config('core-web.pull.client_secret'))) {
+            || blank(config('core-web.remote.client_id'))
+            || blank(config('core-web.remote.client_secret'))) {
             return '';
         }
 
-        return rtrim((string) config('core-web.pull.base_url'), '/');
+        return rtrim((string) config('core-web.remote.base_url'), '/');
     }
 
     /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */

@@ -61,36 +61,36 @@ class CpLinkTest extends TestCase
         $this->assertNull($this->navItem('Core'));
     }
 
-    public function test_a_local_checkout_links_to_the_core_it_pulls_from(): void
+    public function test_a_local_checkout_links_to_the_remote_core(): void
     {
         $this->app['env'] = 'local';
         config([
             'core-web.client.base_url' => '',
-            'core-web.pull.base_url' => 'https://pull-core.test/',
-            'core-web.pull.client_id' => 'pull',
-            'core-web.pull.client_secret' => 'pull-secret',
+            'core-web.remote.base_url' => 'https://remote-core.test/',
+            'core-web.remote.client_id' => 'remote',
+            'core-web.remote.client_secret' => 'remote-secret',
         ]);
         $this->actingAs($this->super());
 
-        $this->assertSame('https://pull-core.test', $this->navItem('Core')?->url());
+        $this->assertSame('https://remote-core.test', $this->navItem('Core')?->url());
     }
 
-    public function test_the_pull_core_stands_in_only_locally_and_with_its_client(): void
+    public function test_the_remote_core_stands_in_only_locally_and_with_its_client(): void
     {
         config([
             'core-web.client.base_url' => '',
-            'core-web.pull.base_url' => 'https://pull-core.test/',
-            'core-web.pull.client_id' => 'pull',
-            'core-web.pull.client_secret' => 'pull-secret',
+            'core-web.remote.base_url' => 'https://remote-core.test/',
+            'core-web.remote.client_id' => 'remote',
+            'core-web.remote.client_secret' => 'remote-secret',
         ]);
         $this->actingAs($this->super());
 
         $this->assertNull($this->navItem('Core'), 'Off a local machine.');
 
         $this->app['env'] = 'local';
-        config(['core-web.pull.client_secret' => '']);
+        config(['core-web.remote.client_secret' => '']);
 
-        $this->assertNull($this->navItem('Core'), 'Without the pull client.');
+        $this->assertNull($this->navItem('Core'), 'Without the remote client.');
     }
 
     private function navItem(string $display)

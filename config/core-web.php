@@ -71,24 +71,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pulling another Core's data
+    | The remote Core
     |--------------------------------------------------------------------------
     |
-    | Local only: the Core `core:pull` reads the snapshots from (production, as
-    | a rule) and its own client, which Core should let read and nothing more.
-    | The URL and client id are the same for every developer, so the site
-    | commits them as the defaults in its own config/core-web.php (env can
-    | still override them); only the secret has to be set
-    | (CORE_PULL_CLIENT_SECRET). The copies it stores are pinned until the
-    | next pull or `core:pull --release`.
+    | Local only: the Core a local machine uses in place of its own
+    | (production, as a rule), with a client Core should let read and nothing
+    | more. `core:pull` copies its snapshots, and without a CORE_URL the
+    | control panel link points at it. The URL and client id are the same for
+    | every developer, so the site commits them as the defaults in its own
+    | config/core-web.php (env can still override them); only the secret has
+    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
+    | `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
 
-    'pull' => [
-        'base_url' => env('CORE_PULL_URL', ''),
-        'client_id' => env('CORE_PULL_CLIENT_ID', ''),
-        'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
-        'token_cache_key' => 'core_web_pull_access_token',
+    'remote' => [
+        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
+        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
+        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
+        'token_cache_key' => 'core_web_remote_access_token',
     ],
 
     /*
