@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Forms**: `features.forms` (off by default) for a form with the site's
+  own Livewire markup that posts to a Core form (`CoreForm`). Core's
+  definition, kept in the `core-web-forms` snapshot, gives it defaults,
+  validation, the hidden page fields, and any required field the markup
+  leaves out, rendered after it (with a warning in `local`). Entries go on
+  the site's client token, capped per address by `forms.submit_rate_limit`.
+  `core:forms-report` tells Core which fields each form renders, so Core
+  asks before an admin saves a change that breaks one. Needs Livewire and
+  an Inly Core with form renderings. See README → Forms.
+- **Core client**: `sendResponse()` sends PUT too, and `withToken()` sends a
+  request it builds itself (a multipart body) on the client token.
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

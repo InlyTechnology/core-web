@@ -163,12 +163,12 @@ class CoreClient
     }
 
     /**
-     * A JSON GET or POST with the client token, retried once on a 401, and
-     * handed back whatever Core answered. `$data` is the query of a GET and
-     * the body of a POST; a closure is called for each attempt, so a body
+     * A JSON GET, POST or PUT with the client token, retried once on a 401,
+     * and handed back whatever Core answered. `$data` is the query of a GET
+     * and the body of a POST or PUT; a closure is called for each attempt, so a body
      * that must be fresh every time (a nonce) is.
      *
-     * @param  'get'|'post'  $method
+     * @param  'get'|'post'|'put'  $method
      * @param  array<string, mixed>|Closure(): array<string, mixed>  $data
      * @param  array<string, string>  $headers
      */
@@ -182,7 +182,11 @@ class CoreClient
                 ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
                 ->when($connectTimeout !== null, fn (PendingRequest $request) => $request->connectTimeout($connectTimeout));
 
-            return $method === 'get' ? $request->get($url, $data) : $request->post($url, $data);
+            return match ($method) {
+                'get' => $request->get($url, $data),
+                'put' => $request->put($url, $data),
+                default => $request->post($url, $data),
+            };
         };
 
         $response = $attempt($this->token());
@@ -190,6 +194,25 @@ class CoreClient
         if ($response->status() === 401) {
             $this->forgetToken();
             $response = $attempt($this->token());
+        }
+
+        return $response;
+    }
+
+    /**
+     * A request built by `$send` on a PendingRequest that carries the client
+     * token, sent again with a new token on a 401: for what sendResponse()
+     * cannot send, such as a multipart body.
+     *
+     * @param  Closure(PendingRequest): Response  $send
+     */
+    public function withToken(Closure $send): Response
+    {
+        $response = $send($this->http()->withToken($this->token()));
+
+        if ($response->status() === 401) {
+            $this->forgetToken();
+            $response = $send($this->http()->withToken($this->token()));
         }
 
         return $response;
