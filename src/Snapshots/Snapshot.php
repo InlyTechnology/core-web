@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Snapshots;
 
 use Closure;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * The definition of one cached copy of Core objects: where it lives in the
@@ -56,6 +57,9 @@ final class Snapshot
 
     /** @var (Closure(string, array<string, array<string, mixed>>): ?array{loc: string, lastmod?: mixed})|null */
     private ?Closure $sitemapIndex = null;
+
+    /** @var (Closure(array<string, mixed>, string): ?string)|null */
+    private ?Closure $pages = null;
 
     private function __construct(public readonly string $type)
     {
@@ -253,6 +257,37 @@ final class Snapshot
         return $this->sitemap !== null
             && ($this->sitemapSites === null || in_array($site, $this->sitemapSites, true))
             && $this->partitionFor($site) !== false;
+    }
+
+    /**
+     * Opts the documents into pages of their own, served by the site's own
+     * routes through SnapshotPage: given a document and a site handle, the
+     * path of its page on that site, null for one without a page there.
+     *
+     * @param  Closure(array<string, mixed>, string): ?string  $path
+     */
+    public function pages(Closure $path): self
+    {
+        $this->pages = $path;
+
+        return $this;
+    }
+
+    public function hasPages(): bool
+    {
+        return $this->pages !== null;
+    }
+
+    /** @param  array<string, mixed>  $document */
+    public function pagePath(array $document, string $site): ?string
+    {
+        if ($this->pages === null) {
+            throw new LogicException("Snapshot [{$this->type}] has no pages: declare them with pages().");
+        }
+
+        $path = ($this->pages)($document, $site);
+
+        return is_string($path) && $path !== '' ? '/'.trim($path, '/') : null;
     }
 
     /**

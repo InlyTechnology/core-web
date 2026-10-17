@@ -19,6 +19,12 @@
   a local machine uses, not only `core:pull`'s source. A site config naming
   `pull` keeps working, as do the `CORE_PULL_*` variables unless the site
   writes its own `remote` block (README → Pulling production data).
+- **Snapshots**: a snapshot can opt into pages with `->pages(fn (array $doc,
+  string $site) => '/path')`, and `SnapshotPage` serves one from the site's
+  own route: `find()` (503 while nothing can be read, Statamic's 404 when
+  gone), `canonical()` (a 301 to the document's own path, query string kept)
+  and `render()` (Statamic's View with an optional cascade entry). Snapshots
+  without `->pages()` are unchanged. See README → Pages.
 
 ## v0.9.0
 
