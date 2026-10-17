@@ -17,6 +17,10 @@
   `content:check`, run nightly, and a `content_checks` dashboard widget,
   with three checks: `own-url-links` (fixed as drafts and proposals),
   `dead-targets` and `seo-gaps`. See README → Content checks.
+- **Protocol v1.2**: with `features.content` and `checks` or `drafts`, Core
+  reads a site's checks and findings, asks for fixes, reads proposal targets
+  and makes proposals for a person in Core, sealed with Core's key. See
+  README → Core reads checks and proposes.
 
 ## v0.9.0
 

@@ -981,6 +981,29 @@ first, and fixes everything fixable in the same entry or tree at once. A site
 adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
 `checks.checks`, or leaves one out.
 
+### Core reads checks and proposes (protocol v1.2)
+
+With `features.content` on as well, core-web registers the protocol's v1.2
+endpoints itself, under `content.prefix` (`api/core/v1`), each sealed with
+Core's key:
+
+| Route | Purpose | With |
+|---|---|---|
+| `GET checks` | `website.read` | `checks` |
+| `GET checks/{check}/findings?site=&subject=` | `website.read` | `checks` |
+| `POST checks/{check}/fix` | `website.draft` | `checks` |
+| `GET proposal-target?key=` | `website.read` | `drafts` |
+| `POST proposals` (`dry_run` to validate only) | `website.draft` | `drafts` |
+| `GET proposals/{id}` | `website.draft` | `drafts` |
+
+A fix or a proposal is made for a person in Core: the body names them in
+`actor` (`core_user_id`, `name`, `email`), with an optional `summary`,
+`core_request_id` and `core_approval_id`. It is written as their CP account
+(the one single sign-on stamped with their Core user id; a site that keeps
+accounts another way binds its own `Inly\CoreWeb\Content\CoreUsers`), marked
+`via: core-ai`, and refused with `no_cms_user` when they have none. Nothing
+goes live: a fix is a draft, a proposal waits for an editor.
+
 ## Testing a site
 
 ```php

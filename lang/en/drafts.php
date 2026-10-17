@@ -20,4 +20,7 @@ return [
     'not_fixable' => 'The :check check has no fix for this; an editor changes it in the CP.',
     'nothing_to_fix' => 'Nothing here can be fixed automatically any more.',
     'finding_gone' => 'The check no longer finds this: it was fixed or changed since.',
+    'no_cms_user' => ':name has no account in the site\'s CMS.',
+    'core_ai_draft' => 'Drafted by Core AI for :name',
+    'core_ai_proposal' => 'Proposed by Core AI for :name',
 ];

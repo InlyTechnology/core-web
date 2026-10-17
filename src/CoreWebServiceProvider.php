@@ -18,6 +18,7 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
+use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
@@ -90,6 +91,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
         $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
+        $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
@@ -122,6 +124,11 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('checks')) {
             $this->bootChecks();
+        }
+
+        // Protocol v1.2: Core reads the checks and proposes, where the site speaks the protocol.
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts'))) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
