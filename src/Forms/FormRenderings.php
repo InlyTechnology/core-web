@@ -63,10 +63,11 @@ final class FormRenderings
 
         foreach (self::renderers() as $name => $class) {
             $form = $forms[$class::coreForm()] ?? null;
-            $definition = is_array($form['definition'] ?? null) ? new FormDefinition($form['definition']) : null;
+            $declared = $form['definition'] ?? $form['last_definition'] ?? null;
+            $definition = is_array($declared) ? new FormDefinition($declared) : null;
 
             if ($form === null || $definition === null) {
-                Log::warning('core-web forms: a renderer\'s Core form is unknown or off', ['renderer' => $name, 'form' => $class::coreForm()]);
+                Log::warning('core-web forms: a renderer\'s Core form is unknown, or off since before the site read it', ['renderer' => $name, 'form' => $class::coreForm()]);
 
                 continue;
             }
@@ -75,9 +76,9 @@ final class FormRenderings
 
             foreach ($class::renders() as $key => $value) {
                 $field = is_int($key) ? (string) $value : (string) $key;
-                $declared = $definition->field($field);
+                $declaredField = $definition->field($field);
 
-                if ($declared === null) {
+                if ($declaredField === null) {
                     Log::warning('core-web forms: a renderer renders a field its Core form lacks', ['renderer' => $name, 'field' => $field]);
 
                     continue;
@@ -85,7 +86,7 @@ final class FormRenderings
 
                 $fields[] = [
                     'name' => $field,
-                    'type' => FormDefinition::typeOf($declared),
+                    'type' => FormDefinition::typeOf($declaredField),
                     ...(is_array($value) ? ['options' => array_values(array_map('strval', $value))] : []),
                 ];
             }

@@ -29,6 +29,7 @@ use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use InvalidArgumentException;
+use LogicException;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -154,6 +155,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
     private function bootForms(): void
     {
+        if (! self::enabled('snapshots')) {
+            throw new LogicException('core-web.features.forms needs core-web.features.snapshots: the forms are a snapshot, refreshed by Core\'s pings.');
+        }
+
         FormRenderings::renderers();
 
         $this->loadViews();

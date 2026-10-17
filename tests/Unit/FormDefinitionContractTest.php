@@ -49,6 +49,19 @@ class FormDefinitionContractTest extends TestCase
         $this->assertSame(['towbar', 'charger'], array_column($definition->options('extras', ['fuel' => 'electric']), 'value'));
     }
 
+    public function test_a_field_a_condition_hid_reads_blank_to_the_fields_after_it(): void
+    {
+        $definition = new FormDefinition(['version' => 1, 'form' => ['fields' => [
+            ['name' => 'kind', 'type' => 'enum', 'options' => [['value' => 'a', 'label' => 'A'], ['value' => 'b', 'label' => 'B']]],
+            ['name' => 'detail', 'type' => 'string', 'visibleWhen' => ['field' => 'kind', 'operator' => 'equals', 'value' => 'a']],
+            ['name' => 'more', 'type' => 'string', 'required' => true, 'visibleWhen' => ['field' => 'detail', 'operator' => 'filled']],
+            ['name' => 'pick', 'type' => 'enum', 'required' => true, 'options' => [['value' => 'x', 'label' => 'X', 'visibleWhen' => ['field' => 'kind', 'operator' => 'equals', 'value' => 'a']]]],
+        ]]]);
+
+        $this->assertSame(['more', 'pick'], $definition->required(['kind' => 'a', 'detail' => 'left over']));
+        $this->assertSame([], $definition->required(['kind' => 'b', 'detail' => 'left over']));
+    }
+
     public function test_the_rules_check_what_core_checks(): void
     {
         $definition = self::definition();

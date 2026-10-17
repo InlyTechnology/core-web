@@ -85,8 +85,21 @@ final class CoreForms
         }
 
         foreach ($forms as $key => $form) {
-            if (isset($rendered[$key]) && $form['enabled']) {
-                $forms[$key]['definition'] = self::fetchDefinition($core, $form);
+            if (! isset($rendered[$key])) {
+                continue;
+            }
+
+            $definition = $form['enabled'] ? self::fetchDefinition($core, $form) : null;
+            $forms[$key]['definition'] = $definition;
+            $forms[$key]['last_definition'] = $definition ?? self::lastDefinition($key);
+
+            if ($definition !== null) {
+                self::keepDefinition($key, $definition);
+                self::logUnknownTypes($key, new FormDefinition($definition));
+            }
+
+            if (! $form['accepts_server']) {
+                Log::warning('core-web forms: a rendered Core form does not take server entries; switch them on in Core', ['form' => $key]);
             }
         }
 
@@ -99,7 +112,7 @@ final class CoreForms
      * One row of Core's form list, or null without a key or a uuid.
      *
      * @param  array<string, mixed>  $attributes
-     * @return array{uuid: string, key: string, name: string, site_key: string, accepts_server: bool, enabled: bool, definition: ?array<string, mixed>}|null
+     * @return array{uuid: string, key: string, name: string, site_key: string, accepts_server: bool, enabled: bool, definition: ?array<string, mixed>, last_definition: ?array<string, mixed>}|null
      */
     public static function document(array $attributes): ?array
     {
@@ -118,6 +131,7 @@ final class CoreForms
             'accepts_server' => (bool) ($attributes['accepts_server'] ?? false),
             'enabled' => (bool) ($attributes['enabled'] ?? false),
             'definition' => null,
+            'last_definition' => null,
         ];
     }
 
@@ -149,6 +163,35 @@ final class CoreForms
         }
 
         return (array) $response->json();
+    }
+
+    /**
+     * The last definition read of a form, kept apart from the snapshot: a
+     * form Core switched off serves none, and its renderings must still be
+     * reported, or Core stops guarding its fields while it is off.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function lastDefinition(string $key): ?array
+    {
+        $definition = SnapshotStore::repository()->get(self::TYPE.':last-definition:'.$key);
+
+        return is_array($definition) ? $definition : null;
+    }
+
+    /** @param  array<string, mixed>  $definition */
+    private static function keepDefinition(string $key, array $definition): void
+    {
+        SnapshotStore::repository()->forever(self::TYPE.':last-definition:'.$key, $definition);
+    }
+
+    private static function logUnknownTypes(string $key, FormDefinition $definition): void
+    {
+        foreach ($definition->fields() as $name => $field) {
+            if (! FormDefinition::knows($field)) {
+                Log::notice('core-web forms: a field type core-web does not know renders as text', ['form' => $key, 'field' => $name, 'type' => FormDefinition::typeOf($field)]);
+            }
+        }
     }
 
     /** @return array<string, mixed>|null the form's row, by key */

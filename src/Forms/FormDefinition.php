@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Forms;
 
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
 /**
@@ -28,6 +29,9 @@ final class FormDefinition
         'autocomplete', 'display', 'accept', 'maxKb', 'multiple', 'maxFiles', 'minFiles', 'slots', 'maxSide', 'capture',
         'withTime', 'width', 'visibleWhen', 'section', 'step',
     ];
+
+    /** The privacy box Core adds to a form whose notice is a checkbox. */
+    public const PRIVACY_FIELD = '_privacy_policy';
 
     /** @var array<string, array<string, mixed>> */
     private array $fields = [];
@@ -117,15 +121,26 @@ final class FormDefinition
     }
 
     /**
-     * Whether a field shows for these values: its own condition holds.
+     * Whether a field shows for these values, as Core decides it: its own
+     * condition holds, reading a field a condition hid as blank, and a
+     * choice whose options all have conditions still offers one.
      *
      * @param  array<string, mixed>  $values
      */
     public function visible(string $name, array $values): bool
     {
-        $field = $this->fields[$name] ?? null;
+        return $this->visibility($values)[$name] ?? false;
+    }
 
-        return $field !== null && self::matches($field['visibleWhen'] ?? null, $values);
+    /**
+     * Every field's visibility, in the form's order.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, bool>
+     */
+    public function visibility(array $values): array
+    {
+        return $this->resolve($values)[0];
     }
 
     /**
@@ -136,18 +151,69 @@ final class FormDefinition
      */
     public function options(string $name, array $values = []): array
     {
-        $options = [];
+        return self::offered((array) ($this->fields[$name]['options'] ?? []), $this->resolve($values)[1]);
+    }
 
-        foreach ((array) ($this->fields[$name]['options'] ?? []) as $option) {
+    /**
+     * Walks the fields in order as Core's rules do, blanking each hidden one
+     * so a condition watching it reads blank.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array{0: array<string, bool>, 1: array<string, mixed>}
+     */
+    private function resolve(array $values): array
+    {
+        $shown = [];
+
+        foreach ($this->fields as $name => $field) {
+            $visible = self::matches($field['visibleWhen'] ?? null, $values);
+            $options = (array) ($field['options'] ?? []);
+
+            if ($visible && self::conditionalOptions($options) && self::offered($options, $values) === []) {
+                $visible = false;
+            }
+
+            if (! $visible) {
+                $values[$name] = null;
+            }
+
+            $shown[$name] = $visible;
+        }
+
+        return [$shown, $values];
+    }
+
+    /** @param  array<int, mixed>  $options */
+    private static function conditionalOptions(array $options): bool
+    {
+        foreach ($options as $option) {
+            if (is_array($option) && is_array($option['visibleWhen'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, mixed>  $options
+     * @param  array<string, mixed>  $values
+     * @return list<array{value: string, label: string}>
+     */
+    private static function offered(array $options, array $values): array
+    {
+        $offered = [];
+
+        foreach ($options as $option) {
             if (! is_array($option) || ! array_key_exists('value', $option) || ! self::matches($option['visibleWhen'] ?? null, $values)) {
                 continue;
             }
 
             $value = self::comparable($option['value']);
-            $options[] = ['value' => $value, 'label' => (string) ($option['label'] ?? $value)];
+            $offered[] = ['value' => $value, 'label' => (string) ($option['label'] ?? $value)];
         }
 
-        return $options;
+        return $offered;
     }
 
     /**
@@ -160,9 +226,10 @@ final class FormDefinition
     public function required(array $values = []): array
     {
         $required = [];
+        $visibility = $this->visibility($values);
 
         foreach ($this->fields as $name => $field) {
-            if (($field['required'] ?? false) === true && ! self::isHidden($field) && $this->visible($name, $values)) {
+            if (($field['required'] ?? false) === true && ! self::isHidden($field) && $visibility[$name]) {
                 $required[] = $name;
             }
         }
@@ -180,9 +247,10 @@ final class FormDefinition
     public function rules(array $values, string $prefix = 'values.'): array
     {
         $rules = [];
+        $visibility = $this->visibility($values);
 
         foreach ($this->fields as $name => $field) {
-            if (self::isHidden($field) || ! $this->visible($name, $values)) {
+            if (self::isHidden($field) || ! $visibility[$name]) {
                 continue;
             }
 
@@ -193,10 +261,12 @@ final class FormDefinition
 
             match (self::typeOf($field)) {
                 'email' => $rules[$key] = [$presence, 'string', 'email', 'max:255'],
-                'url' => $rules[$key] = [$presence, 'string', 'url', 'max:2048'],
+                'url' => $rules[$key] = [$presence, 'string', 'max:2048', 'url:http,https'],
                 'number' => $rules[$key] = [$presence, 'numeric'],
                 'date' => $rules[$key] = [$presence, 'date'],
-                'boolean' => $rules[$key] = $required ? ['accepted'] : ['nullable', 'boolean'],
+                // Core requires a tick only of a consent box; the definition cannot tell one from a plain checkbox but
+                // for the privacy box, so Core's 422 names an unticked consent box.
+                'boolean' => $rules[$key] = $name === self::PRIVACY_FIELD && $required ? ['accepted'] : [$presence, 'boolean'],
                 'enum' => $rules[$key] = [$presence, 'string', Rule::in($options)],
                 'multi_enum' => [
                     $rules[$key] = [$presence, 'array', ...($required ? ['min:1'] : [])],
@@ -206,7 +276,7 @@ final class FormDefinition
                     $rules[$key] = [$presence, 'array', ...self::fileCount($field, $required)],
                     $rules[$key.'.*'] = ['file', ...(is_int($field['maxKb'] ?? null) ? ['max:'.$field['maxKb']] : []), ...(self::typeOf($field) === 'image' ? ['image'] : [])],
                 ],
-                'text' => $rules[$key] = [$presence, 'string', 'max:10000'],
+                'text' => $rules[$key] = [$presence, 'string'],
                 default => $rules[$key] = [$presence, 'string', 'max:255'],
             };
         }
@@ -226,6 +296,7 @@ final class FormDefinition
     public function payload(array $values, array $captured = []): array
     {
         $payload = [];
+        $visibility = $this->visibility($values);
 
         foreach ($this->fields as $name => $field) {
             if (self::isHidden($field)) {
@@ -238,7 +309,7 @@ final class FormDefinition
                 continue;
             }
 
-            if (self::isFile($field) || ! $this->visible($name, $values) || ! array_key_exists($name, $values)) {
+            if (self::isFile($field) || ! $visibility[$name] || ! array_key_exists($name, $values)) {
                 continue;
             }
 
@@ -294,7 +365,7 @@ final class FormDefinition
             return true;
         }
 
-        $actual = self::values($values[$condition['field']] ?? null);
+        $actual = self::values(Arr::get($values, $condition['field']));
         $expected = array_map(self::comparable(...), (array) ($condition['value'] ?? []));
 
         return match ($condition['operator'] ?? 'equals') {

@@ -794,16 +794,18 @@ class DamageInspection extends CoreForm
         return ['plate', 'name', 'email', 'photos', 'damage' => ['scratch', 'dent']];
     }
 
-    protected function view(): string
+    protected function fieldsView(): string
     {
         return 'livewire.damage-inspection';
     }
 }
 ```
 
-The view holds the fields only, bound to `values.{field}`; the component
-wraps it in the `<form>`, followed by any required field the view leaves
-out and a submit button. What the definition carries does the rest:
+The view holds the fields only, bound to `values.{field}`, and reads the
+definition through `$coreForm` (`FormView`: `form()`, `options()`,
+`visible()`); the component wraps it in the `<form>`, followed by any
+required field the view leaves out, the form's privacy notice and a submit
+button. What the definition carries does the rest:
 
 - **Defaults**: `values` start with each field's default.
 - **Missing required fields**: a required field the view does not render
@@ -817,6 +819,8 @@ out and a submit button. What the definition carries does the rest:
 - **Validation**: `submit` checks the visible fields against the
   definition (required, email, url, number, date, the offered options, file
   counts and sizes) before anything is sent; add rules with `extraRules()`.
+  Conditions are read as Core reads them: a field a condition hid reads
+  blank to the fields after it, and a choice with no option left is hidden.
 - **Hidden fields** with a `source` are filled from the page the form was
   rendered on (`page.url`, `referrer`, `page.lang`, `query.{key}`);
   `pageTitle()` and `context()` supply `page.title` and `context.{key}`.
@@ -825,8 +829,19 @@ out and a submit button. What the definition carries does the rest:
   which Core takes for a form linked to the site's app client. Core's 422
   errors show on their fields. `$status` is then `sent`, `invalid`,
   `throttled` or `unavailable`; `sent()` runs after Core took an entry.
-- **Limit**: Core does not limit what the site sends on its token, so
-  `forms.submit_rate_limit` (5) caps entries per minute per address and form.
+- **Bots**: Core's honeypot, Turnstile and nonce guard the embed, not an
+  entry the site sends on its token, so the site guards its own forms: a
+  honeypot field in the wrapper (a filled one is answered `sent` and goes
+  nowhere), and `forms.submit_rate_limit` (5) entries per minute per address
+  and form. The address is `request()->ip()`: behind a proxy, trust it
+  (TrustProxies) or every visitor shares one limit. Add more (Turnstile, a
+  question) in the view and `extraRules()` when a form draws spam.
+- **Static cache**: the component captures the visitor's page (referrer,
+  query string) when it renders, so on a statically cached page render it
+  inside `@nocache`, or the first visitor's values go to everyone.
+- **Language**: the definition is read in the app's locale when the
+  snapshot is pulled, so labels and messages are in the site's default
+  language.
 
 Override `submitView()` for another button (null when the view has its own),
 and put your own `resources/views/vendor/core-web/forms/*.blade.php` in
@@ -840,7 +855,11 @@ deploy. The forms snapshot runs it too whenever a form changes. Core then
 lists the renderers on the form's Fields tab, and a save that removes,
 renames or retypes a rendered field, or drops an option `renders()` lists,
 asks the admin to confirm first. Core refuses a rendering of a form not
-linked to the site's app client; the command says so and fails.
+linked to the site's app client; the command says so and fails. A form Core
+switched off is still reported, from the last definition the site read,
+so its fields stay guarded while it is off. A rendered form must take
+server entries in Core (`accepts_server`); the pull logs a warning when it
+does not.
 
 ### Keeping up with Core
 

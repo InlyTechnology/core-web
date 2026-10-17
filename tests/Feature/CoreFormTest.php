@@ -7,6 +7,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Forms\CoreForm;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Forms\FormDefinition;
@@ -255,6 +256,72 @@ class CoreFormTest extends TestCase
         $this->assertStringContainsString('app_client_not_allowed', Artisan::output());
     }
 
+    public function test_a_form_switched_off_in_core_stays_guarded(): void
+    {
+        $this->fakeForms();
+        $this->warm();
+        $this->fakeForms(enabled: false);
+        app(SnapshotStore::class)->forget(app(SnapshotRegistry::class)->get(CoreForms::TYPE));
+        $this->warm();
+
+        $this->assertNull(CoreForms::fromContainer()->definition('inspection'));
+        Http::assertSent(fn (HttpRequest $request) => $request->method() === 'PUT' && count($request['renderings'][0]['fields'] ?? []) === 3);
+    }
+
+    public function test_a_bot_filling_the_honeypot_is_told_its_entry_went(): void
+    {
+        $this->fakeForms();
+        $this->warm();
+
+        Livewire::test(InspectionForm::class)
+            ->set('website_url', 'https://spam.test')
+            ->call('submit')
+            ->assertSet('status', 'sent');
+
+        Http::assertNotSent(fn (HttpRequest $request) => str_ends_with($request->url(), '/submit'));
+    }
+
+    public function test_the_privacy_box_links_the_policy_and_the_notice_shows(): void
+    {
+        $definition = self::definition();
+        $definition['form']['notice'] = 'We handle your details as described in our [privacy policy](https://site.test/privacy).';
+        $definition['form']['fields'][] = ['name' => '_privacy_policy', 'type' => 'boolean', 'label' => 'I accept the [privacy policy](https://site.test/privacy) <script>x</script>', 'required' => true];
+        $this->fakeForms(['core.test/api/forms/'.self::UUID.'/definition*' => Http::response($definition)]);
+        $this->warm();
+
+        Livewire::test(InspectionForm::class)
+            ->assertSeeHtml('<a href="https://site.test/privacy">privacy policy</a>')
+            ->assertSeeHtml('class="core-form-notice"')
+            ->assertDontSeeHtml('<script>x</script>')
+            ->call('submit')
+            ->assertHasErrors(['values._privacy_policy']);
+    }
+
+    public function test_an_error_core_gives_a_field_the_visitor_cannot_see_is_the_forms(): void
+    {
+        $this->fakeForms(['core.test/api/forms/'.self::UUID.'/submit' => Http::response(['error' => ['code' => 'schema_validation_failed', 'fields' => ['utm_source' => ['Bad source.'], 'photos.0' => ['Too large.']]]], 422)]);
+        $this->warm();
+
+        $component = Livewire::test(InspectionForm::class);
+
+        foreach (self::filled() as $field => $value) {
+            $component->set("values.{$field}", $value);
+        }
+
+        $component->set('values.photos', [UploadedFile::fake()->image('car.jpg')])
+            ->call('submit')
+            ->assertHasErrors(['form', 'values.photos']);
+    }
+
+    public function test_forms_need_snapshots(): void
+    {
+        config(['core-web.features.snapshots' => false]);
+
+        $this->expectException(\LogicException::class);
+
+        (new CoreWebServiceProvider($this->app))->boot();
+    }
+
     public function test_a_missing_required_field_is_found_without_rendering(): void
     {
         $definition = new FormDefinition(self::definition());
@@ -284,7 +351,7 @@ class InspectionForm extends CoreForm
         return ['plate', 'name', 'fuel' => ['petrol', 'diesel']];
     }
 
-    protected function view(): string
+    protected function fieldsView(): string
     {
         return 'inspection-form';
     }

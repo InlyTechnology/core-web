@@ -19,9 +19,11 @@ use Livewire\WithFileUploads;
  * passes Core's checks. In local development that last case shows a
  * warning above those fields.
  *
- * The view binds `values.{field}`; `$status` is '' until a submission, then
- * a SubmissionResult value. Register the class in core-web.forms.renderers
- * so Core guards the fields it renders.
+ * The view binds `values.{field}` and reads `$coreForm` (FormView);
+ * `$status` is '' until a submission, then a SubmissionResult value.
+ * Register the class in core-web.forms.renderers so Core guards the fields
+ * it renders. On a statically cached page, render it inside `@nocache`:
+ * the page it captures (referrer, query) is the visitor's own.
  */
 abstract class CoreForm extends Component implements RendersCoreForm
 {
@@ -39,10 +41,11 @@ abstract class CoreForm extends Component implements RendersCoreForm
 
     private ?FormDefinition $definition = null;
 
-    private bool $missingPlaced = false;
+    /** Honeypot: a field no visitor sees, which a bot filling every input fills. */
+    public string $website_url = '';
 
     /** The Blade view of the form's own fields, without the <form> element. */
-    abstract protected function view(): string;
+    abstract protected function fieldsView(): string;
 
     /** The submit button's view, after the fields; null when the form's own view has its own. */
     protected function submitView(): ?string
@@ -95,24 +98,9 @@ abstract class CoreForm extends Component implements RendersCoreForm
     }
 
     /** The Core form's definition, or null while the site has none for it. */
-    public function definition(): ?FormDefinition
+    protected function definition(): ?FormDefinition
     {
         return $this->definition ??= CoreForms::fromContainer()->definition(static::coreForm());
-    }
-
-    /**
-     * The required fields the view does not render, for the current values.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function missing(): array
-    {
-        $definition = $this->definition();
-
-        return $definition === null ? [] : array_map(
-            fn (string $name) => (array) $definition->field($name),
-            self::missingFrom($definition, static::rendered(), $this->values),
-        );
     }
 
     /**
@@ -138,39 +126,19 @@ abstract class CoreForm extends Component implements RendersCoreForm
         );
     }
 
-    /** Whether the view placed the missing fields itself (@include('core-web::forms.missing')). */
-    public function placeMissing(): void
-    {
-        $this->missingPlaced = true;
-    }
-
-    public function missingPlaced(): bool
-    {
-        return $this->missingPlaced;
-    }
-
-    /** Field names other fields' conditions read, which the default markup binds live. */
-    public function controlling(): array
-    {
-        $names = [];
-
-        foreach ($this->definition()?->fields() ?? [] as $field) {
-            foreach ([$field['visibleWhen'] ?? null, ...array_column((array) ($field['options'] ?? []), 'visibleWhen')] as $condition) {
-                if (is_array($condition) && is_string($condition['field'] ?? null)) {
-                    $names[$condition['field']] = true;
-                }
-            }
-        }
-
-        return array_keys($names);
-    }
-
     public function submit(FormSubmitter $submitter): void
     {
         $definition = $this->definition();
 
         if ($definition === null) {
             $this->status = SubmissionResult::UNAVAILABLE->value;
+
+            return;
+        }
+
+        // A bot is told its entry went, so it has no reason to try another way.
+        if ($this->website_url !== '') {
+            $this->status = SubmissionResult::SENT->value;
 
             return;
         }
@@ -215,8 +183,13 @@ abstract class CoreForm extends Component implements RendersCoreForm
         $this->status = $result->value;
 
         if ($result === SubmissionResult::INVALID) {
-            foreach ($submitter->errors() as $field => $message) {
-                $this->addError("values.{$field}", $message);
+            $shown = array_filter($definition->visibility($this->values));
+
+            foreach ($submitter->errors() as $key => $message) {
+                // `photos.0` is the photos field's error; one on a field the visitor cannot see is the form's.
+                $field = explode('.', $key, 2)[0];
+                $visible = isset($shown[$field]) && ! FormDefinition::isHidden((array) $definition->field($field));
+                $this->addError($visible ? "values.{$field}" : 'form', $message);
             }
 
             return;
@@ -231,8 +204,8 @@ abstract class CoreForm extends Component implements RendersCoreForm
     public function render(): View
     {
         return view('core-web::forms.form', [
-            'coreForm' => $this,
-            'body' => $this->view(),
+            'coreForm' => new FormView($this->getId(), $this->definition(), $this->values, static::rendered()),
+            'body' => $this->fieldsView(),
             'submitView' => $this->submitView(),
         ]);
     }
