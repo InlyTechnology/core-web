@@ -9,6 +9,10 @@
   holder guard, the restate rule, a base hash check, field conditions, dry
   runs, publishing and a signed Live Preview link. The site names its
   draftable collections in `drafts.collections`. See README → Drafts.
+- **Proposals**: with `features.drafts`, changes to content without
+  revisions (navigation trees, page trees, globals, terms, asset meta) are
+  staged as proposals an editor applies or discards under Content →
+  Proposals in the CP. See README → Proposals.
 
 ## v0.9.0
 

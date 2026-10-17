@@ -344,6 +344,12 @@ return [
     | preview: the signed link a draft's source hands the person, opening the
     | draft in Live Preview for `days` days at `path`, by `name`.
     |
+    | proposals: where staged changes to content without revisions (navs,
+    | page trees, globals, terms, asset meta) are kept until an editor applies
+    | or discards them in the CP: a filesystem `disk` (null for the default)
+    | and a `path` on it. A host whose disk does not outlive a deploy names a
+    | bucket.
+    |
     | The sentences a refused draft answers with are translations
     | (core-web::drafts); a site words them for its editors in
     | lang/vendor/core-web/{locale}/drafts.php.
@@ -357,6 +363,10 @@ return [
             'name' => 'core.preview',
             'days' => 7,
             'middleware' => ['throttle:60,1', 'signed:relative'],
+        ],
+        'proposals' => [
+            'disk' => null,
+            'path' => 'core-web/proposals',
         ],
     ],
 

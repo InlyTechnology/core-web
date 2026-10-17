@@ -23,6 +23,8 @@ use Inly\CoreWeb\Drafts\FieldsHash;
 use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -33,6 +35,8 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use InvalidArgumentException;
 use Statamic\Events\RevisionSaving;
+use Statamic\Facades\CP\Nav;
+use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -49,7 +53,9 @@ use Statamic\StaticCaching\Cacher;
  * feature opens the site's named live reads of Core to its pages' scripts.
  * The `drafts` feature writes drafts of the site's entries for the sources
  * that make them (Core AI, a push), each binding how its values arrive
- * (DraftValueNormaliser) and how an update names its base (DraftBase).
+ * (DraftValueNormaliser) and how an update names its base (DraftBase),
+ * and stages changes to content without revisions as proposals an editor
+ * applies in the CP.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -78,6 +84,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
 
         $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
+        $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
@@ -105,9 +112,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('drafts')) {
-            $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
-            $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
-            Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+            $this->bootDrafts();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -141,6 +146,27 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    private function bootDrafts(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
+        Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');
+
+        // Only for editors with open proposals they may apply, so the entry stays out of the way until there is one.
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+            $proposals = app(Proposals::class);
+            $count = $user === null ? 0 : collect($proposals->open())->filter(fn ($proposal) => $proposals->target($proposal)?->mayEdit($user))->count();
+
+            if ($count > 0) {
+                $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
+            }
+        });
     }
 
     private function bootChat(): void

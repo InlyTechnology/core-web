@@ -928,6 +928,32 @@ update names (`FieldsHash` hashes the draft's fields). Refusals throw
 messages are translations a site rewords in
 `lang/vendor/core-web/{locale}/drafts.php`.
 
+### Proposals
+
+Content Statamic keeps no revisions of (a navigation tree, a collection's
+page tree, a global's values, a term, an asset's meta) is changed by
+proposal: a source stages the target's whole new value, and an editor
+applies or discards it under **Content → Proposals** in the CP, which shows
+what changes. The entry appears only while an editor has proposals to decide.
+
+```php
+$target = ProposalTargets::resolve('nav:main:default'); // tree:{collection}:{site}, global:{handle}:{site}, term:{taxonomy}:{slug}:{site}, asset:{container}::{path}
+
+app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($target));
+```
+
+- The proposer and the editor must both be allowed to edit the target.
+- A proposal names the fingerprint of the value it was made from; it is
+  refused when the target changed since, and never applied over a later
+  change.
+- One open proposal per target: its author's next one replaces it, anyone
+  else's is refused until it is decided.
+- Values are validated as the CP validates a save; a page tree proposal
+  moves pages and never drops one.
+
+Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
+whose disk does not outlive a deploy names a bucket.
+
 ## Testing a site
 
 ```php

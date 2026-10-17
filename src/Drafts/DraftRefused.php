@@ -60,6 +60,16 @@ class DraftRefused extends RuntimeException
         ]);
     }
 
+    public static function proposalHeld(?User $user, CarbonInterface $since): self
+    {
+        $who = $user === null ? __('core-web::drafts.someone_without_account') : self::who($user);
+
+        return new self('held', __('core-web::drafts.held_proposal', ['who' => $who, 'when' => $since->copy()->utc()->toIso8601String()]), [
+            'held_by' => DraftPerson::of($user),
+            'since' => $since->copy()->utc()->toIso8601String(),
+        ]);
+    }
+
     private static function who(User $user): string
     {
         $name = $user->name() ?: $user->email();

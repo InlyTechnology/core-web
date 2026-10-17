@@ -14,4 +14,7 @@ return [
     'base_changed' => 'The entry changed after you read it: read it again and redo the draft from what it holds now.',
     'base_required' => 'An update names the hash of the entry it was written against; read the entry first.',
     'revisions_off' => 'Revisions are off on this site (STATAMIC_REVISIONS_ENABLED); a draft needs them. Without them a draft would change a published entry live and carry no record of who wrote it.',
+    'unchanged' => 'The proposal changes nothing: the value is already as proposed.',
+    'decided' => 'This proposal is already :status.',
+    'held_proposal' => 'This already has an open proposal by :who, made :when. It is not replaced: ask them to apply or discard it in the CP, then try again.',
 ];
