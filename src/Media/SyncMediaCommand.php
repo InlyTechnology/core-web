@@ -6,13 +6,17 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 
-/** Copies each media disk's files, `.meta` folders included, between its local folder and the bucket: skips files of the same size, never deletes. */
+/**
+ * Copies each media disk's files, `.meta` folders included, between its local folder and the bucket. Never
+ * deletes; a push leaves every file the bucket already has unless --overwrite, which still skips same-size files.
+ */
 class SyncMediaCommand extends Command
 {
     protected $signature = 'media:sync
         {direction : push (local folder to bucket) or pull (bucket to local folder)}
         {--disk=* : Only these disks; every disk in core-web.media.disks when omitted}
         {--dry-run : List what would be copied, copy nothing}
+        {--overwrite : Push over files in the bucket that differ in size (edited meta included)}
         {--force : Push without asking}';
 
     protected $description = 'Copy the media disks between their local folders and the bucket';
@@ -45,7 +49,9 @@ class SyncMediaCommand extends Command
         $dry = (bool) $this->option('dry-run');
 
         if ($direction === 'push' && ! $dry && ! $this->option('force')
-            && ! $this->confirm('Push writes production\'s bucket (it never overwrites a file of the same size or deletes one). Continue?')) {
+            && ! $this->confirm($this->option('overwrite')
+                ? 'Push writes production\'s bucket and replaces its files that differ in size, edited meta included. Continue?'
+                : 'Push adds the files production\'s bucket does not have yet; it changes and deletes none. Continue?')) {
             return self::FAILURE;
         }
 
@@ -59,7 +65,7 @@ class SyncMediaCommand extends Command
             $bucket = Storage::build(MediaDisks::bucket($folder));
 
             [$from, $to] = $direction === 'push' ? [$local, $bucket] : [$bucket, $local];
-            $copied = $this->copy($from, $to, $dry);
+            $copied = $this->copy($from, $to, $dry, $direction === 'pull' || (bool) $this->option('overwrite'));
 
             $this->info(sprintf('%s: %d file(s) %s.', $disk, $copied, $dry ? 'to copy' : 'copied'));
         }
@@ -67,12 +73,12 @@ class SyncMediaCommand extends Command
         return self::SUCCESS;
     }
 
-    private function copy(Filesystem $from, Filesystem $to, bool $dry): int
+    private function copy(Filesystem $from, Filesystem $to, bool $dry, bool $overwrite): int
     {
         $copied = 0;
 
         foreach ($from->allFiles() as $path) {
-            if ($to->exists($path) && $to->size($path) === $from->size($path)) {
+            if ($to->exists($path) && (! $overwrite || $to->size($path) === $from->size($path))) {
                 continue;
             }
 
@@ -84,7 +90,9 @@ class SyncMediaCommand extends Command
                 continue;
             }
 
-            if (! $to->writeStream($path, $from->readStream($path))) {
+            $stream = $from->readStream($path);
+
+            if ($stream === null || ! $to->writeStream($path, $stream)) {
                 $this->warn("  {$path}: copy failed.");
                 $copied--;
             }

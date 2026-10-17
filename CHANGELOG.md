@@ -11,11 +11,15 @@
     videos get CDN versions for wide and small screens and a frame poster.
     URLs the CDN does not serve render as is.
   - The disks in `media.disks` are the bucket in production and the local
-    folder without a key. Elsewhere they sit behind a layer: writes and
-    deletes never reach production's files.
+    folder without a key, unless the app's config/filesystems.php defines
+    them (remove the site's own `assets` disk). Elsewhere they sit behind a
+    layer: writes land in it, and deleting or moving production's files
+    throws `ProductionFileLocked`.
   - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
     bucket is committed config. `acl: false` for R2.
-  - `media:sync push|pull` copies a disk between its folder and the bucket;
+  - `MediaSource::urlOf()` gives a file's URL as the components render it.
+  - `media:sync push|pull` copies a disk between its folder and the bucket
+    (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
 
 ## v0.9.0

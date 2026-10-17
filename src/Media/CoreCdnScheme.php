@@ -100,12 +100,23 @@ final class CoreCdnScheme implements UrlScheme
         return explode('?', $url, 2)[0];
     }
 
-    /** @param  array<string, scalar>  $params */
+    /**
+     * The URL with these params set, every other param kept as it was: split by hand, since parse_str() turns
+     * dots in a name (Core's `trim.border.color`) into underscores.
+     *
+     * @param  array<string, scalar>  $params
+     */
     private static function merge(string $url, array $params): string
     {
         [$path, $query] = array_pad(explode('?', $url, 2), 2, '');
-        parse_str($query, $existing);
-        $query = http_build_query(array_merge($existing, $params));
+        $set = array_map(fn ($value) => $value === true ? 'true' : (string) $value, $params);
+
+        $kept = array_filter(
+            $query === '' ? [] : explode('&', $query),
+            fn (string $pair) => ! array_key_exists(rawurldecode(explode('=', $pair, 2)[0]), $set),
+        );
+
+        $query = implode('&', [...$kept, ...array_map(fn ($key, $value) => rawurlencode($key).'='.rawurlencode($value), array_keys($set), $set)]);
 
         return $path.($query !== '' ? '?'.$query : '');
     }

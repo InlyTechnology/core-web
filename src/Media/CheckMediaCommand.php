@@ -28,12 +28,17 @@ class CheckMediaCommand extends Command
             return self::FAILURE;
         }
 
+        if (! MediaDisks::defines($name)) {
+            $this->warn("{$name}: config/filesystems.php defines it, so core-web does not. Remove it there to get the bucket, the layer and the local fallback.");
+
+            return self::SUCCESS;
+        }
+
         $driver = config("filesystems.disks.{$name}.driver");
         $this->line(sprintf('%s: %s', $name, match ($driver) {
             MediaDisks::LAYERED_DRIVER => 'the bucket, behind a layer (writes never reach production\'s files)',
             's3' => 'the bucket',
-            'local' => 'the local folder public/'.trim($folder, '/'),
-            default => "defined by the app ({$driver})",
+            default => 'the local folder public/'.trim($folder, '/'),
         }));
 
         if (! MediaDisks::bucketConfigured()) {

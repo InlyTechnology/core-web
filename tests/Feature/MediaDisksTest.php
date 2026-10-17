@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\ProductionFileLocked;
 use Inly\CoreWeb\Tests\TestCase;
 
 class MediaDisksTest extends TestCase
@@ -118,8 +119,13 @@ class MediaDisksTest extends TestCase
 
         $this->assertSame('prod', $disk->get('production.jpg'));
         $this->assertTrue($disk->put('new.jpg', 'new'));
-        $this->assertFalse($disk->delete('production.jpg'), 'production\'s file stays');
-        $this->assertFileExists($root.'/lower/production.jpg');
+        try {
+            $disk->delete('production.jpg');
+            $this->fail('Deleting production\'s file must throw, whatever the disk\'s `throw`.');
+        } catch (ProductionFileLocked) {
+            $this->assertFileExists($root.'/lower/production.jpg');
+        }
+
         $this->assertFileExists($root.'/upper/new.jpg');
         $this->assertSame('https://cdn.inlycore.com/c/s/production.jpg', $disk->url('production.jpg'));
         $this->assertSame('/layer/new.jpg', $disk->url('new.jpg'));
@@ -127,8 +133,27 @@ class MediaDisksTest extends TestCase
         exec('rm -rf '.escapeshellarg($root));
     }
 
+    public function test_a_disk_needs_a_folder(): void
+    {
+        $this->expectExceptionMessage('[assets] needs a folder');
+
+        $this->define('staging', ['core-web.media.disks' => ['assets' => '/']]);
+    }
+
+    public function test_media_check_says_when_the_app_defines_the_disk_itself(): void
+    {
+        config(['filesystems.disks.assets' => ['driver' => 'local', 'root' => '/elsewhere']]);
+        MediaDisks::define($this->app);
+
+        $this->artisan('media:check')
+            ->expectsOutputToContain('config/filesystems.php defines it, so core-web does not')
+            ->assertSuccessful();
+    }
+
     public function test_the_media_commands_are_registered(): void
     {
+        $this->define('local');
+
         $this->artisan('media:sync', ['direction' => 'push'])
             ->expectsOutputToContain('No bucket key here')
             ->assertFailed();

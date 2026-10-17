@@ -78,8 +78,6 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
 
-        $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
-
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
             $app['config']['statamic.static_caching.invalidation.rules'],
@@ -105,6 +103,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('media')) {
+            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
             MediaDisks::registerDriver();
             Blade::anonymousComponentPath(__DIR__.'/../resources/views/media');
 

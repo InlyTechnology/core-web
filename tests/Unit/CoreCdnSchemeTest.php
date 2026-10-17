@@ -42,6 +42,13 @@ class CoreCdnSchemeTest extends TestCase
         $this->assertSame(self::CDN.'/c/s/a.jpg?v=2&width=5000&height=1&trim=border&format=auto&quality=100&dpr=2', $url);
     }
 
+    public function test_existing_params_keep_their_names_and_ours_replace_theirs(): void
+    {
+        $url = (new CoreCdnScheme(self::CDN))->image(self::CDN.'/a.jpg?trim.border.color=red&width=10&X-Amz-Signature=abc%2F', ['width' => 600]);
+
+        $this->assertSame(self::CDN.'/a.jpg?trim.border.color=red&X-Amz-Signature=abc%2F&width=600', $url);
+    }
+
     public function test_svgs_and_foreign_urls_are_untouched(): void
     {
         $scheme = new CoreCdnScheme(self::CDN);

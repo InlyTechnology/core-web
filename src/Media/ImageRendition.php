@@ -163,9 +163,11 @@ final class ImageRendition
      */
     private static function glideSrcset(MediaSource $source): ?string
     {
+        // A local disk only: on a bucket each preset would have the server download the original.
         if (! config('core-web.media.images.glide_presets', true)
             || $source->asset === null
-            || preg_match('/\.(jpe?g|png|webp)$/i', $source->asset->path()) !== 1) {
+            || preg_match('/\.(jpe?g|png|webp)$/i', $source->asset->path()) !== 1
+            || config('filesystems.disks.'.$source->asset->container()?->diskHandle().'.driver') !== 'local') {
             return null;
         }
 

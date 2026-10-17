@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Media;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Statamic\Contracts\Assets\Asset;
 use Statamic\Contracts\Query\Builder;
@@ -48,6 +49,12 @@ final class MediaSource
         };
     }
 
+    /** A file's URL as the components render it: for an Asset, the layer's URL when the layer holds the file. For og:image, a feed, anything outside the components. */
+    public static function urlOf(mixed $value): ?string
+    {
+        return self::from($value)?->url;
+    }
+
     public function isVideo(): bool
     {
         return $this->kind === self::VIDEO;
@@ -61,7 +68,7 @@ final class MediaSource
     /** The file's own width in pixels: given, or read off the Asset's meta (never an exception). */
     public function originalWidth(): ?int
     {
-        return $this->width ?? ($this->asset ? self::int(self::guard(fn () => $this->asset->meta('width'))) : null);
+        return $this->width ?? ($this->asset ? self::int(self::guard(fn () => Arr::get($this->asset->meta(), 'width'))) : null);
     }
 
     /** The focal point as CSS object-position, or null. */
@@ -106,13 +113,13 @@ final class MediaSource
             default => self::kindOf($asset->path()),
         };
 
-        // Dimensions are left to originalWidth(): reading them hydrates the file's meta, which only a Glide srcset needs.
+        // Meta is read whole (meta($key) re-measures the file on every call while a value is missing). Dimensions are left to originalWidth(): reading them hydrates the file's meta, which only a Glide srcset needs.
         return new self(
             url: MediaDisks::layerUrl($asset) ?? $url,
             kind: $kind,
             alt: (string) self::meta($asset, 'alt', ''),
             focus: self::focus(self::meta($asset, 'focus')),
-            mimeType: $kind === self::VIDEO ? self::guard(fn () => $asset->mimeType()) : null,
+            mimeType: $kind === self::VIDEO ? self::guard(fn () => Arr::get($asset->meta(), 'mime_type')) : null,
             asset: $asset,
         );
     }
@@ -120,7 +127,8 @@ final class MediaSource
     /** @param  array<string, mixed>  $file */
     private static function fromArray(array $file): ?self
     {
-        $url = $file['url'] ?? $file['original_url'] ?? $file['src'] ?? null;
+        // Core's `url` can be a rendition already; transforms go on the original.
+        $url = $file['original_url'] ?? $file['url'] ?? $file['src'] ?? null;
 
         if (! is_string($url) || $url === '') {
             return null;
@@ -156,7 +164,7 @@ final class MediaSource
     }
 
     /**
-     * Statamic's "x-y" string or Core's {x, y}, as percentages clamped to 0-100.
+     * Statamic's "x-y" string or Core's {x, y}, as percentages clamped to 0-100 (Core's zoom, z, is not used).
      *
      * @return array{0: float, 1: float}|null
      */

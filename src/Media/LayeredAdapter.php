@@ -9,10 +9,8 @@ use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\StorageAttributes;
-use League\Flysystem\UnableToDeleteDirectory;
-use League\Flysystem\UnableToDeleteFile;
-use League\Flysystem\UnableToMoveFile;
-use League\Flysystem\UnableToSetVisibility;
+use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToRetrieveMetadata;
 use Throwable;
 
 /**
@@ -20,6 +18,8 @@ use Throwable;
  * written. Every write lands in the layer (upper), reads try the layer
  * first, and a file only the bucket holds cannot be deleted or moved, so a
  * staging site or a laptop shares production's files without touching them.
+ * A layer file over a bucket file at the same path hides it; deleting the
+ * layer's shows the bucket's again (there are no whiteouts).
  */
 final class LayeredAdapter implements FilesystemAdapter
 {
@@ -43,28 +43,18 @@ final class LayeredAdapter implements FilesystemAdapter
         return $this->inLayer($path) ? ($this->upperUrl)($path) : ($this->lowerUrl)($path);
     }
 
-    /** Whether the layer holds the file, from an index listed once and kept a few minutes: a bucket layer would otherwise cost a request per image. */
+    /**
+     * Whether the layer holds the file, from an index listed once and kept a few minutes, since a bucket layer
+     * would otherwise cost a request per image. Writes here update it in place; a failed listing is not kept.
+     */
     public function inLayer(string $path): bool
     {
-        $index = $this->cache->remember($this->indexKey, $this->indexSeconds, function (): array {
-            try {
-                return collect($this->upper->listContents('', true))
-                    ->filter(fn (StorageAttributes $item) => $item->isFile())
-                    ->mapWithKeys(fn (StorageAttributes $item) => [ltrim($item->path(), '/') => true])
-                    ->all();
-            } catch (Throwable $e) {
-                report($e);
-
-                return [];
-            }
-        });
-
-        return isset($index[ltrim($path, '/')]);
+        return isset($this->index()[self::key($path)]);
     }
 
     public function fileExists(string $path): bool
     {
-        return $this->upper->fileExists($path) || $this->lower->fileExists($path);
+        return $this->inLayer($path) || $this->lower->fileExists($path) || $this->upper->fileExists($path);
     }
 
     public function directoryExists(string $path): bool
@@ -75,47 +65,47 @@ final class LayeredAdapter implements FilesystemAdapter
     public function write(string $path, string $contents, Config $config): void
     {
         $this->upper->write($path, $contents, $config);
-        $this->forgetIndex();
+        $this->indexed($path, true);
     }
 
     public function writeStream(string $path, $contents, Config $config): void
     {
         $this->upper->writeStream($path, $contents, $config);
-        $this->forgetIndex();
+        $this->indexed($path, true);
     }
 
     public function read(string $path): string
     {
-        return $this->upper->fileExists($path) ? $this->upper->read($path) : $this->lower->read($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->read($path), UnableToReadFile::class);
     }
 
     public function readStream(string $path)
     {
-        return $this->upper->fileExists($path) ? $this->upper->readStream($path) : $this->lower->readStream($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->readStream($path), UnableToReadFile::class);
     }
 
     public function delete(string $path): void
     {
         if ($this->upper->fileExists($path)) {
             $this->upper->delete($path);
-            $this->forgetIndex();
+            $this->indexed($path, false);
 
             return;
         }
 
         if ($this->lower->fileExists($path)) {
-            throw UnableToDeleteFile::atLocation($path, 'The file is production\'s; outside production only files added here can be deleted.');
+            throw ProductionFileLocked::at($path, 'deleted');
         }
     }
 
     public function deleteDirectory(string $path): void
     {
         if ($this->lower->directoryExists($path)) {
-            throw UnableToDeleteDirectory::atLocation($path, 'The folder holds production\'s files; outside production only folders added here can be deleted.');
+            throw ProductionFileLocked::at($path, 'deleted');
         }
 
         $this->upper->deleteDirectory($path);
-        $this->forgetIndex();
+        $this->cache->forget($this->indexKey);
     }
 
     public function createDirectory(string $path, Config $config): void
@@ -126,7 +116,7 @@ final class LayeredAdapter implements FilesystemAdapter
     public function setVisibility(string $path, string $visibility): void
     {
         if (! $this->upper->fileExists($path)) {
-            throw UnableToSetVisibility::atLocation($path, 'The file is production\'s; outside production only files added here can change.');
+            throw ProductionFileLocked::at($path, 'changed');
         }
 
         $this->upper->setVisibility($path, $visibility);
@@ -134,22 +124,22 @@ final class LayeredAdapter implements FilesystemAdapter
 
     public function visibility(string $path): FileAttributes
     {
-        return $this->upper->fileExists($path) ? $this->upper->visibility($path) : $this->lower->visibility($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->visibility($path), UnableToRetrieveMetadata::class);
     }
 
     public function mimeType(string $path): FileAttributes
     {
-        return $this->upper->fileExists($path) ? $this->upper->mimeType($path) : $this->lower->mimeType($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->mimeType($path), UnableToRetrieveMetadata::class);
     }
 
     public function lastModified(string $path): FileAttributes
     {
-        return $this->upper->fileExists($path) ? $this->upper->lastModified($path) : $this->lower->lastModified($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->lastModified($path), UnableToRetrieveMetadata::class);
     }
 
     public function fileSize(string $path): FileAttributes
     {
-        return $this->upper->fileExists($path) ? $this->upper->fileSize($path) : $this->lower->fileSize($path);
+        return $this->either($path, fn (FilesystemAdapter $adapter) => $adapter->fileSize($path), UnableToRetrieveMetadata::class);
     }
 
     /** Both, as one: a path in the layer hides the bucket's file at that path. */
@@ -177,11 +167,12 @@ final class LayeredAdapter implements FilesystemAdapter
     public function move(string $source, string $destination, Config $config): void
     {
         if (! $this->upper->fileExists($source)) {
-            throw UnableToMoveFile::because('The file is production\'s; outside production only files added here can be moved.', $source, $destination);
+            throw ProductionFileLocked::at($source, 'moved');
         }
 
         $this->upper->move($source, $destination, $config);
-        $this->forgetIndex();
+        $this->indexed($source, false);
+        $this->indexed($destination, true);
     }
 
     public function copy(string $source, string $destination, Config $config): void
@@ -192,11 +183,76 @@ final class LayeredAdapter implements FilesystemAdapter
             $this->upper->writeStream($destination, $this->lower->readStream($source), $config);
         }
 
-        $this->forgetIndex();
+        $this->indexed($destination, true);
     }
 
-    private function forgetIndex(): void
+    /**
+     * The layer's answer for a file the index says it holds, else the bucket's; one the index has not seen yet
+     * (written by another server since it was listed) falls back to the layer.
+     *
+     * @param  class-string<Throwable>  $missing
+     */
+    private function either(string $path, Closure $read, string $missing): mixed
     {
-        $this->cache->forget($this->indexKey);
+        if ($this->inLayer($path)) {
+            return $read($this->upper);
+        }
+
+        try {
+            return $read($this->lower);
+        } catch (Throwable $e) {
+            if (! $e instanceof $missing || ! $this->upper->fileExists($path)) {
+                throw $e;
+            }
+
+            return $read($this->upper);
+        }
+    }
+
+    /** @return array<string, true> */
+    private function index(): array
+    {
+        $index = $this->cache->get($this->indexKey);
+
+        if (is_array($index)) {
+            return $index;
+        }
+
+        try {
+            $index = collect($this->upper->listContents('', true))
+                ->filter(fn (StorageAttributes $item) => $item->isFile())
+                ->mapWithKeys(fn (StorageAttributes $item) => [self::key($item->path()) => true])
+                ->all();
+        } catch (Throwable $e) {
+            report($e);
+
+            return [];
+        }
+
+        $this->cache->put($this->indexKey, $index, $this->indexSeconds);
+
+        return $index;
+    }
+
+    private function indexed(string $path, bool $present): void
+    {
+        $index = $this->cache->get($this->indexKey);
+
+        if (! is_array($index)) {
+            return;
+        }
+
+        if ($present) {
+            $index[self::key($path)] = true;
+        } else {
+            unset($index[self::key($path)]);
+        }
+
+        $this->cache->put($this->indexKey, $index, $this->indexSeconds);
+    }
+
+    private static function key(string $path): string
+    {
+        return trim($path, '/');
     }
 }

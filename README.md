@@ -800,9 +800,14 @@ field (its Value, Collection or query builder), a URL, or a file from Core
 - **`<x-core-media>`**: one or the other, by the source, with each getting only
   its own options: for a field an editor fills with either.
 
+`width` and `height` on `<x-core-img>` are the rendition's size, not HTML
+attributes: give the box its size in CSS or with `ratio`, or the page shifts
+as the image arrives. The video poster is one frame at `width`, for phones too.
+
 The CDN builds a video version on its first request (30 to 60 seconds for a
 large file) and keeps it a year, so open each new video once after uploading.
-Its limits are Cloudflare's: under 100 MB and 10 minutes.
+Its limits are Cloudflare's: a source under 100 MB and 10 minutes, and a
+version at most 60 seconds long.
 
 The placeholder and the reduced-motion pause need the shipped CSS and script:
 
@@ -819,8 +824,10 @@ coreMedia() // before Alpine.start()
 ### The disks
 
 Each disk in `media.disks` is defined unless the app's
-`config/filesystems.php` has one by that name (`composer require
-league/flysystem-aws-s3-v3` for the bucket):
+`config/filesystems.php` has one by that name, so **remove the site's own
+`assets` disk** (Statamic's skeleton ships one) and any other it lists there;
+`media:check` says when the app's definition is the one in use. The bucket
+needs `composer require league/flysystem-aws-s3-v3`.
 
 | Where | With `CORE_MEDIA_KEY` | Without |
 |---|---|---|
@@ -835,9 +842,17 @@ layer is `_staging/` in the bucket; in the `local` environment it is
 `public/media-layer/` (add it to `.gitignore`). `media.writes.everywhere`
 turns it off.
 
-A file in the layer renders from the layer's URL in the components. Statamic's
-own links to it in the control panel point at the bucket, where it is not, so
-they 404; its thumbnails, which Glide reads through the disk, show.
+Refusals are loud: deleting, renaming or moving one of production's files
+throws `ProductionFileLocked` whatever the disk's `throw`, so Statamic stops
+before it strips the asset from entries or saves its new path. A layer file at
+the same path as one of production's hides it, and deleting it shows
+production's again.
+
+A file in the layer renders from the layer's URL in the components. Anywhere
+else, Statamic's `Asset::url()` points at the bucket, where it is not: use
+`Inly\CoreWeb\Media\MediaSource::urlOf($asset)` for a URL of your own (an
+og:image, a feed). The control panel's links to it 404; its thumbnails, which
+Glide reads through the disk, show.
 
 Without a key a disk is its committed local folder: a fresh clone, CI and a
 server missing the key all render from it.
@@ -863,10 +878,13 @@ Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
 
 ### Commands
 
-- **`media:sync push|pull [--disk=] [--dry-run]`** copies each disk's files,
-  `.meta` folders included, between its local folder and the bucket, skipping
-  files of the same size and never deleting. `push` writes production's
-  bucket, so it asks first (`--force` skips the question). Dry run first; a
+- **`media:sync push|pull [--disk=] [--dry-run] [--overwrite]`** copies each
+  disk's files, `.meta` folders included, between its committed local folder
+  and the bucket, and never deletes. `push` is the move to a bucket: it adds
+  the files the bucket lacks and leaves the rest, since a file of a different
+  size there is usually an editor's later change (`--overwrite` replaces
+  those). It asks first; `--force` skips the question. `pull` refreshes the
+  committed folder from the bucket. Neither touches a layer. Dry run first; a
   second dry run after a push finds nothing.
 - **`media:check [path] [--disk=assets]`** says what the disk is here and, with
   a key, checks a file (the first image when no path is given): its URL is

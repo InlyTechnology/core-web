@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Media;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
+use InvalidArgumentException;
 use League\Flysystem\Filesystem;
 use Statamic\Contracts\Assets\Asset;
 use Throwable;
@@ -18,15 +19,33 @@ final class MediaDisks
 {
     public const LAYERED_DRIVER = 'core-web-layered';
 
+    /** @var list<string> */
+    private static array $defined = [];
+
     public static function define(Application $app): void
     {
         $config = $app['config'];
+        self::$defined = [];
 
         foreach ((array) $config->get('core-web.media.disks', []) as $disk => $folder) {
+            $folder = trim((string) $folder, '/');
+
+            // A blank folder would make the bucket's root production's disk, with the staging layer inside it.
+            if ($folder === '') {
+                throw new InvalidArgumentException("core-web.media.disks: [{$disk}] needs a folder.");
+            }
+
             if (! $config->has("filesystems.disks.{$disk}")) {
-                $config->set("filesystems.disks.{$disk}", self::disk((string) $disk, trim((string) $folder, '/'), $app));
+                $config->set("filesystems.disks.{$disk}", self::disk((string) $disk, $folder, $app));
+                self::$defined[] = (string) $disk;
             }
         }
+    }
+
+    /** Whether core-web defined the disk, rather than the app's own config/filesystems.php. */
+    public static function defines(string $disk): bool
+    {
+        return in_array($disk, self::$defined, true);
     }
 
     public static function registerDriver(): void
@@ -103,7 +122,12 @@ final class MediaDisks
             $disk = Storage::disk($asset->container()->diskHandle());
             $adapter = $disk instanceof FilesystemAdapter ? $disk->getAdapter() : null;
 
-            return $adapter instanceof LayeredAdapter && $adapter->inLayer($asset->path()) ? $adapter->getUrl($asset->path()) : null;
+            if (! $adapter instanceof LayeredAdapter || ! $adapter->inLayer($asset->path())) {
+                return null;
+            }
+
+            // Encoded per segment, as Statamic encodes Asset::url(), so a space or comma cannot split a srcset.
+            return $adapter->getUrl(implode('/', array_map('rawurlencode', explode('/', $asset->path()))));
         } catch (Throwable $e) {
             report($e);
 
