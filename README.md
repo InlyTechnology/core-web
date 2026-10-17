@@ -54,6 +54,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -884,6 +885,48 @@ core-web's own suite runs the protocol's test vectors
 (`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
+
+## Drafts
+
+`Inly\CoreWeb\Drafts\DraftWriter` writes drafts of the site's entries the
+way an editor's CP save writes them, for whatever source makes them: Core AI,
+a content push. It needs revisions on, and refuses a draft when they are off
+rather than change a live entry.
+
+- A new entry is saved unpublished; a published one gets a working copy and
+  its live entry is left alone. A structured collection's new entry goes
+  under its parent (`parent_id`) in the tree.
+- Each draft is saved as its author's CP user, who must be allowed to make
+  the change, with the author's provenance on the revision (`via` plus the
+  source's own details) and its message. An editor's later CP save keeps the
+  provenance.
+- A draft never touches a working copy someone else holds, and the author's
+  own must restate what it already changed. An update names the hash of the
+  entry it was written against (`base_hash`), so it never undoes a later edit.
+- Values are validated against the blueprint, values their field conditions
+  hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
+  checks without saving.
+- `publish()` makes the draft live; `read()` returns it with who holds it.
+
+```php
+$author = new DraftAuthor($cpUser, $name, DraftProvenance::make('content-push', ['by' => $email]), 'Pushed from local');
+
+app(DraftWriter::class)->write($author, [
+    'collection' => 'articles',
+    'entry_id' => $id,            // omit for a new entry
+    'fields' => ['title' => '…'],
+    'base_hash' => $hash,         // the DraftBase hash read before the change
+]);
+```
+
+The site names the collections sources may draft in `drafts.collections`
+(see the config file). Two bindings shape a source's input:
+`DraftValueNormaliser` turns the fields sent into stored values
+(`StoredValues` keeps them as they are), and `DraftBase` is the hash an
+update names (`FieldsHash` hashes the draft's fields). Refusals throw
+`DraftRefused`, which renders as JSON (`error`, `message`, details); the
+messages are translations a site rewords in
+`lang/vendor/core-web/{locale}/drafts.php`.
 
 ## Testing a site
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
+  writes drafts of a site's entries as an editor's CP save does, for any
+  source (Core AI, a content push): unpublished entries and working copies
+  saved as the author's CP user with their provenance and message, the
+  holder guard, the restate rule, a base hash check, field conditions, dry
+  runs, publishing and a signed Live Preview link. The site names its
+  draftable collections in `drafts.collections`. See README → Drafts.
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

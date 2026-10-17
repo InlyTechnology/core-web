@@ -33,6 +33,11 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | drafts: drafts of the site's entries written as an editor's CP save
+    | writes them (Inly\CoreWeb\Drafts\DraftWriter), for the sources that
+    | write them (Core AI, a push), with their signed preview link (`drafts`)
+    | and the provenance an editor's save keeps.
+    |
     */
 
     'features' => [
@@ -40,6 +45,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'drafts' => false,
     ],
 
     /*
@@ -316,6 +322,42 @@ return [
         'store' => null,
         'name' => 'core-web.live',
         'middleware' => ['throttle:60,1'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Drafts
+    |--------------------------------------------------------------------------
+    |
+    | collections: the collections a source may draft, by handle, each with
+    | the blueprints a new entry may take (its default first; none named
+    | allows the collection's own), whether a new entry goes under a parent
+    | in the collection's tree (`structured`), and the fields an entry is
+    | never published without (`published_with`). A collection not named
+    | here is edited in the CP only.
+    |
+    |     'collections' => [
+    |         'articles' => ['blueprints' => ['article'], 'published_with' => ['image']],
+    |         'pages' => ['blueprints' => ['page'], 'structured' => true],
+    |     ],
+    |
+    | preview: the signed link a draft's source hands the person, opening the
+    | draft in Live Preview for `days` days at `path`, by `name`.
+    |
+    | The sentences a refused draft answers with are translations
+    | (core-web::drafts); a site words them for its editors in
+    | lang/vendor/core-web/{locale}/drafts.php.
+    |
+    */
+
+    'drafts' => [
+        'collections' => [],
+        'preview' => [
+            'path' => 'core-preview/{id}',
+            'name' => 'core.preview',
+            'days' => 7,
+            'middleware' => ['throttle:60,1', 'signed:relative'],
+        ],
     ],
 
 ];

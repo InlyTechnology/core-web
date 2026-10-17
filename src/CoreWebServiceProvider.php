@@ -7,6 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
@@ -16,6 +17,11 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\Drafts\DraftBase;
+use Inly\CoreWeb\Drafts\DraftValueNormaliser;
+use Inly\CoreWeb\Drafts\FieldsHash;
+use Inly\CoreWeb\Drafts\KeepDraftProvenance;
+use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -26,6 +32,7 @@ use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use InvalidArgumentException;
+use Statamic\Events\RevisionSaving;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -40,6 +47,9 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `drafts` feature writes drafts of the site's entries for the sources
+ * that make them (Core AI, a push), each binding how its values arrive
+ * (DraftValueNormaliser) and how an update names its base (DraftBase).
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -67,6 +77,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
 
+        $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
+        $this->app->bindIf(DraftBase::class, FieldsHash::class);
+
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
             $app['config']['statamic.static_caching.invalidation.rules'],
@@ -89,6 +102,12 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('live')) {
             self::liveReads();
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
+        }
+
+        if (self::enabled('drafts')) {
+            $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+            $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
+            Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
