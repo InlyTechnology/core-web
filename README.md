@@ -30,7 +30,7 @@ What the package gives a site:
 What stays in the site: the domain snapshots (which Core types, what a stored
 document looks like, how the pages read it), the page routes and views, the TTL
 choices, the chat's markup, context and lead handling, and anything else that
-is not plumbing (CMS single sign-on, …).
+is not plumbing.
 
 ## Installation
 
@@ -97,9 +97,6 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
-CMS single sign-on is the site's own: Core seals its hand-offs with its own
-key, which `CoreEnvelope::open()` opens with no secret.
-
 `config/core-web.php`:
 
 | Key | Default | Meaning |
@@ -139,7 +136,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
 | `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
 | `cms_sign_in.remote_site` | `local` | The site key a local machine signs in as through the remote Core |
-| `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route; `rate_limit` (10) a minute per address |
+| `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route, always in `web` (it signs into a session); `rate_limit` (10) a minute per address |
 | `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
 | `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
 | `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
@@ -465,14 +462,16 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
 ```
 
 - `find($id)` or `find(fn (array $doc, string $id) => bool)` reads the site's
-  partition and returns a document that has a page there. None is a **503**
+  partition and returns a document that has a page there (a closure only sees
+  documents with one). None is a **503** with `Retry-After`
   while nothing at all can be read (a cold cache and Core unreachable), so an
   outage cannot deindex the pages, and Statamic's `NotFoundHttpException`
   otherwise: `abort(404)` renders Laravel's error view, whose layout lacks the
   cascade and fails.
 - `canonical($request, $doc)` answers a request that reached the document at
   another path (an old slug, a renamed brand) with a 301 to its page on the
-  site, under the site's own path on a shared host. The query string goes
+  site, under the site's own path on a shared host, percent-encoding a
+  non-ASCII path. The query string goes
   along (campaign tags, filters); `keepQuery: false` drops it.
 - `render($template, $data, $cascade)` is Statamic's View, with `$cascade`
   (an entry, say the listing's) as the cascade's content when the layout

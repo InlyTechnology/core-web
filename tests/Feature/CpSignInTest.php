@@ -164,6 +164,8 @@ class CpSignInTest extends CmsSignInTestCase
             'front-end activation' => ['POST', '/!/auth/activate'],
             'front-end passkey login' => ['POST', '/!/auth/passkeys/auth'],
             'front-end passkey options' => ['GET', '/!/auth/passkeys/options'],
+            'OAuth redirect' => ['GET', '/oauth/github'],
+            'OAuth callback' => ['GET', '/oauth/github/callback'],
         ];
     }
 

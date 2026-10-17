@@ -46,7 +46,7 @@ class HandoffController
         }
 
         if ($person === null) {
-            $users->revoke((string) ($claims['email'] ?? ''));
+            $users->revokeCoreUser((string) ($claims['user_id'] ?? ''));
 
             abort(403);
         }
@@ -58,7 +58,7 @@ class HandoffController
         $roles = $users->mappedRoles($person['cms_roles']);
 
         if (! $person['is_admin'] && $roles === []) {
-            $users->revoke($person['email']);
+            $users->revokeCoreUser($person['user_id']);
 
             abort(403);
         }

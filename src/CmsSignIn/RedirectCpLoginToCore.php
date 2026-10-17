@@ -127,6 +127,15 @@ class RedirectCpLoginToCore
             $action.'/auth/activate/*',
             $action.'/auth/passkeys/auth',
             $action.'/auth/passkeys/options',
+            // Statamic's OAuth signs a matching address straight in, past the provider.
+            self::pattern((string) config('statamic.oauth.routes.login', 'oauth/{provider}')),
+            self::pattern((string) config('statamic.oauth.routes.callback', 'oauth/{provider}/callback')),
         ];
+    }
+
+    /** A route URI as a Request::is() pattern: each `{parameter}` matches any one segment. */
+    private static function pattern(string $uri): string
+    {
+        return (string) preg_replace('/\{[^}]+\}/', '*', trim($uri, '/'));
     }
 }

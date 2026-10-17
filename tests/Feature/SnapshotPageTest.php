@@ -72,6 +72,29 @@ class SnapshotPageTest extends TestCase
         $this->assertSame('Second', SnapshotPage::for('things', 'other')->find('b')['title']);
     }
 
+    public function test_a_closure_only_picks_among_documents_with_a_page(): void
+    {
+        $this->documents['c']['slug'] = 'first';
+        $this->documents = ['c' => $this->documents['c']] + $this->documents;
+        $this->things();
+
+        $this->assertSame('First', SnapshotPage::for('things')->find(fn (array $doc) => $doc['slug'] === 'first')['title']);
+    }
+
+    public function test_a_non_ascii_page_path_is_percent_encoded_in_the_redirect(): void
+    {
+        $this->documents['a']['slug'] = 'göteborg';
+        $this->things();
+
+        $request = Request::create('http://default.test/things/old');
+
+        $this->assertSame(
+            'http://default.test/things/g%C3%B6teborg',
+            SnapshotPage::for('things')->canonical($request, $this->documents['a'])->getTargetUrl(),
+        );
+        $this->assertNull(SnapshotPage::for('things')->canonical(Request::create('http://default.test/things/g%C3%B6teborg'), $this->documents['a']));
+    }
+
     public function test_a_document_missing_from_the_sites_partition_or_without_a_page_is_statamics_404(): void
     {
         $this->things();
@@ -111,6 +134,7 @@ class SnapshotPageTest extends TestCase
         } catch (HttpException $e) {
             $this->assertNotInstanceOf(NotFoundHttpException::class, $e);
             $this->assertSame(503, $e->getStatusCode());
+            $this->assertSame((string) SnapshotPage::RETRY_AFTER, $e->getHeaders()['Retry-After'] ?? null);
         }
     }
 

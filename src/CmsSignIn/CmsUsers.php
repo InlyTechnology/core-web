@@ -79,13 +79,14 @@ class CmsUsers
         return $user;
     }
 
-    /**
-     * Strips what Core granted from every account with this address: the
-     * mapped roles always, the super flag only where Core provisioned it.
-     */
-    public function revoke(string $email): void
+    /** Strips what Core granted from the account bound to this Core user, never one that merely shares the address. */
+    public function revokeCoreUser(string $coreUserId): void
     {
-        $this->withEmail($email)->each(fn (UserContract $user) => $this->revokeAccount($user));
+        $user = $this->forCoreUser($coreUserId);
+
+        if ($user !== null) {
+            $this->revokeAccount($user);
+        }
     }
 
     public function revokeAccount(UserContract $user): void
@@ -117,17 +118,18 @@ class CmsUsers
     }
 
     /**
-     * Deletes the core-provisioned accounts with this address or bound to this
-     * Core user — the latter also finds one whose email was changed in the CP.
-     * Returns how many.
+     * Deletes the accounts bound to this Core user, never by address alone:
+     * Core lets people change their own email unverified, so a notice naming
+     * someone else's address must not take their account. Returns how many.
      */
-    public function delete(string $email, ?string $coreUserId = null): int
+    public function delete(string $coreUserId): int
     {
-        $email = mb_strtolower(trim($email));
+        if (blank($coreUserId)) {
+            return 0;
+        }
 
         return $this->provisioned()
-            ->filter(fn (UserContract $user): bool => ($email !== '' && mb_strtolower(trim((string) $user->email())) === $email)
-                || (filled($coreUserId) && (string) $user->get(self::MARKER) === $coreUserId))
+            ->filter(fn (UserContract $user): bool => (string) $user->get(self::MARKER) === $coreUserId)
             ->each(fn (UserContract $user) => $user->delete())
             ->count();
     }

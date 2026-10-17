@@ -209,19 +209,18 @@ class CmsUserOffboardingTest extends CmsSignInTestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_the_job_deletes_by_email_or_by_the_bound_core_user(): void
+    public function test_the_job_deletes_only_the_account_bound_to_the_core_user(): void
     {
         $this->provisioned('anna@example.com', '7');
         $this->provisioned('renamed@example.com', '9');
-        $this->provisioned('kept@example.com', '8');
         User::make()->email('hand@example.com')->makeSuper()->save();
 
+        // Core lets people change their email unverified, so a notice naming Anna's address for user 9 takes only user 9's account.
         (new ForgetCmsUserJob('9', 'anna@example.com'))->handle(app(CmsUsers::class));
         (new ForgetCmsUserJob('10', 'hand@example.com'))->handle(app(CmsUsers::class));
 
-        $this->assertNull(User::findByEmail('anna@example.com'));
+        $this->assertNotNull(User::findByEmail('anna@example.com'));
         $this->assertNull(User::findByEmail('renamed@example.com'));
-        $this->assertNotNull(User::findByEmail('kept@example.com'));
         $this->assertNotNull(User::findByEmail('hand@example.com'));
     }
 }

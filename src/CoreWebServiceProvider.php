@@ -200,15 +200,26 @@ class CoreWebServiceProvider extends ServiceProvider
         config(['core-web.cms_sign_in' => $merged]);
     }
 
-    /** The CP guard's provider admits only the accounts Core provisioned, unless the site gave it a driver other than Statamic's. */
+    /**
+     * The CP guard's provider admits only the accounts Core provisioned. Any
+     * other driver would keep password sign-in open beside SSO, so it fails
+     * the boot rather than leave that door quietly unlocked.
+     */
     private function mergeSsoUserProvider(): void
     {
         $config = $this->app['config'];
         $guard = (string) $config->get('statamic.users.guards.cp', 'web');
         $provider = (string) $config->get("auth.guards.{$guard}.provider", 'users');
+        $driver = $config->get("auth.providers.{$provider}.driver");
 
-        if ($config->get("auth.providers.{$provider}.driver") === 'statamic') {
+        if ($driver === 'statamic') {
             $config->set("auth.providers.{$provider}.driver", SsoUserProvider::DRIVER);
+
+            return;
+        }
+
+        if ($driver !== SsoUserProvider::DRIVER) {
+            throw new InvalidArgumentException("CMS sign-in needs the CP guard's user provider [{$provider}] on Statamic's driver, not [{$driver}].");
         }
     }
 

@@ -38,12 +38,15 @@ final class SnapshotPage
         );
     }
 
+    /** Seconds a crawler is told to wait out a 503 while nothing can be read. */
+    public const RETRY_AFTER = 300;
+
     /**
-     * The document with a page here: by its id, or the first a closure picks
-     * (given the document and its id). None is a 503 while nothing at all
-     * can be read, since a 404 then would deindex every page at once, and
-     * Statamic's 404 otherwise: Laravel's abort(404) renders a layout without
-     * its cascade and fails.
+     * The document with a page here: by its id, or the first with a page
+     * that a closure picks (given the document and its id). None is a 503
+     * while nothing at all can be read, since a 404 then would deindex every
+     * page at once, and Statamic's 404 otherwise: Laravel's abort(404)
+     * renders a layout without its cascade and fails.
      *
      * @param  string|Closure(array<string, mixed>, string): bool  $key
      * @return array<string, mixed>
@@ -57,13 +60,13 @@ final class SnapshotPage
         }
 
         $read = $this->store->read($this->snapshot, $partition);
-        $document = is_string($key) ? ($read->documents[$key] ?? null) : self::first($read->documents, $key);
+        $document = is_string($key) ? ($read->documents[$key] ?? null) : $this->first($read->documents, $key);
 
         if ($document !== null && $this->path($document) !== null) {
             return $document;
         }
 
-        abort_if($read->degraded, 503);
+        abort_if($read->degraded, 503, headers: ['Retry-After' => (string) self::RETRY_AFTER]);
 
         throw new NotFoundHttpException;
     }
@@ -95,7 +98,7 @@ final class SnapshotPage
         }
 
         $query = $keepQuery ? $request->getQueryString() : null;
-        $url = rtrim(Site::get($this->site)->absoluteUrl(), '/').$path;
+        $url = rtrim(Site::get($this->site)->absoluteUrl(), '/').self::encodePath($path);
 
         return redirect()->to($query === null ? $url : "{$url}?{$query}", 301);
     }
@@ -124,15 +127,21 @@ final class SnapshotPage
         return substr($path, strlen($prefix)) ?: '/';
     }
 
+    /** A Location header carries ASCII only, so each segment of a path like '/bilar/göteborg' is percent-encoded once. */
+    private static function encodePath(string $path): string
+    {
+        return implode('/', array_map(fn (string $segment): string => rawurlencode(rawurldecode($segment)), explode('/', $path)));
+    }
+
     /**
      * @param  array<string, array<string, mixed>>  $documents
      * @param  Closure(array<string, mixed>, string): bool  $pick
      * @return array<string, mixed>|null
      */
-    private static function first(array $documents, Closure $pick): ?array
+    private function first(array $documents, Closure $pick): ?array
     {
         foreach ($documents as $id => $document) {
-            if ($pick($document, (string) $id)) {
+            if ($this->path($document) !== null && $pick($document, (string) $id)) {
                 return $document;
             }
         }
