@@ -10,6 +10,7 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Asset;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Nav;
+use Throwable;
 
 /**
  * References to entries and assets that no longer exist: a link field or a
@@ -94,6 +95,15 @@ class DeadTargets extends Check
 
     private static function exists(string $type, string $id): bool
     {
-        return $type === 'entry' ? Entry::find($id) !== null : Asset::find($id) !== null;
+        if ($type === 'entry') {
+            return Entry::find($id) !== null;
+        }
+
+        // A bucket the site cannot reach (no key locally, an outage) says nothing about whether the file is gone.
+        try {
+            return Asset::find($id) !== null;
+        } catch (Throwable) {
+            return true;
+        }
     }
 }
