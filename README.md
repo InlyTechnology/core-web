@@ -23,6 +23,7 @@ What the package gives a site:
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
+| CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
@@ -54,6 +55,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
@@ -91,6 +93,7 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 CMS single sign-on is the site's own: Core seals its hand-offs with its own
@@ -130,6 +133,15 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
+| `features.cms_sign_in` | `false` | Switch on CMS sign-in (see [CMS sign-in](#cms-sign-in)) |
+| `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
+| `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
+| `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
+| `cms_sign_in.remote_site` | `local` | The site key a local machine signs in as through the remote Core |
+| `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route; `rate_limit` (10) a minute per address |
+| `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
+| `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
+| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
 
 ## Where snapshots live
 
@@ -911,6 +923,70 @@ return [
     'cp_link' => ['label' => 'Acme Core', 'icon' => null],
 ];
 ```
+
+## CMS sign-in
+
+`features.cms_sign_in` makes Core the only way into the control panel. The
+CP has no passwords: a person signs in to Core, Core hands them back with an
+envelope sealed with its own key, and the site asks Core again before letting
+them in, so Core's answer, not the envelope, decides what they get. Every CP
+account is created by the hand-off, stamped with `core_user_id`, and holds no
+password.
+
+```php
+return [
+    'features' => ['cms_sign_in' => true],
+    'cms_sign_in' => [
+        // Core CMS grants => Statamic role handles. Admins become super users.
+        'roles' => ['cms_editor' => 'editor'],
+    ],
+];
+```
+
+It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
+app client is the audience of every envelope and the token it calls Core back
+with. No secret is shared with Core.
+
+| Step | Request | Checks |
+|---|---|---|
+| Sign-in | `/admin/auth/login`, or any CP page a guest opens, redirects to `{core}/sso/cms?site=<key>&next=<path>`; Core hands back `GET /admin-sso?payload=…&signature=…&key_id=…&next=…` | Core's signature, `aud` = `CORE_CLIENT_ID`, expiry, purpose `cms_sso`, a `site` claim naming this site, the nonce spent here |
+| Confirm | `GET {core}/api/app/cms-sso/client/verify?site=<key>&payload=…&signature=…&key_id=…` on the client's token | Core re-reads the person's access and answers `{user_id, name, email, is_admin, cms_roles, purpose}`. Only a 403 `{"error": "not_admitted"}` strips the person; any other failure is a 503 that changes nothing |
+| Offboarding | Core posts `POST /api/core/cms-users/revoke`, sealed to the request (the `X-Core-*` headers, purpose `cms_revoke`), JSON body `{site, user_id, email}` | The account Core provisioned for that person is deleted, by a queued `ForgetCmsUserJob` |
+| Reconcile | `core:reconcile-cms-users` (nightly, `cms_sign_in.reconcile_schedule`) posts `{site, emails}` to `{core}/api/app/cms-users/client/reconcile` on the client's token | Deletes accounts whose person is gone from Core, strips the grant of those without CMS access, takes super from those no longer admins. Every verdict must be complete before anything changes; `--dry-run` reports only |
+
+What the feature holds the CP to:
+
+- Password login, password reset, account activation, registration and
+  passkey login are refused, in the CP and on the front end
+  (`RedirectCpLoginToCore`, a global middleware).
+- An expired CP session never asks for a password: Statamic's CP auth is
+  switched off per request, so the session timer sends the browser to the
+  login page, and from there through Core back to the page it was on.
+- An account without `core_user_id` cannot sign in, and the hand-off never
+  adopts one, whatever its address (`SsoUserProvider`, `CmsUsers::canBind`).
+  The feature switches the CP guard's provider to the `core-web-sso` driver
+  when it is Statamic's own (`statamic`); a site on another driver wires
+  `SsoUserProvider` in itself.
+- Roles assigned by hand outside `cms_sign_in.roles` are left alone; the
+  mapped ones and the super flag are rewritten at every sign-in.
+- Keep `users/` out of git: accounts live on the server that created them.
+
+**Several sites, one Core.** `cms_sign_in.site` (`CORE_CMS_SITE`) is this
+site's key in Core: the login redirect names it, the hand-off must carry it,
+and the confirm and reconcile calls pass it. Every site needs an app client
+of its own, since the client keeps a hand-off on the right host and the key
+keeps it on the site it was minted for.
+
+**Local development.** A local machine without `CORE_URL` signs in through
+the remote Core (`remote.*`, see [Pulling production data](#pulling-production-data))
+as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
+address as `origin`, the hand-off must name it back, and it is confirmed on
+the remote client's token at `/api/app/cms-sso/local/verify`. Without any
+Core, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
+own login, and only while `APP_ENV` is `local`.
+
+Core serves the other half: `/sso/cms`, the confirm and reconcile routes and
+the offboarding notices. Its paths are `cms_sign_in.core.*`.
 
 ## Testing a site
 

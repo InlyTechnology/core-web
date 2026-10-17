@@ -36,6 +36,11 @@ return [
     | cp_link: a link to Core right under Dashboard in the control panel
     | (`cp_link`), for every CP user, opened in a new tab.
     |
+    | cms_sign_in: the control panel signed into from Core alone
+    | (`cms_sign_in`): the hand-off and offboarding routes, the user provider
+    | that admits only the accounts Core provisioned, the redirect of the CP
+    | login to Core, and `core:reconcile-cms-users` with its schedule.
+    |
     */
 
     'features' => [
@@ -44,6 +49,7 @@ return [
         'content' => false,
         'live' => false,
         'cp_link' => false,
+        'cms_sign_in' => false,
     ],
 
     /*
@@ -340,5 +346,67 @@ return [
     'cp_link' => [
         'label' => 'Core',
         'icon' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | CMS sign-in
+    |--------------------------------------------------------------------------
+    |
+    | The CP has no passwords of its own: Core signs people in, sealing each
+    | hand-off with its own key for this site's app client (client.client_id),
+    | and the site confirms it with Core on that client's token, so Core's
+    | answer, not the hand-off, decides the grant. Admins become super users;
+    | everyone else gets the Statamic roles their Core CMS grants map to.
+    |
+    | site: this site's key among the CMS sites Core signs into. Not a secret:
+    | `production` unless a site commits another, and CORE_CMS_SITE can still
+    | override it (a staging site paired with the production Core does).
+    |
+    | roles: Core CMS grants → Statamic role handles. Core decides WHO may
+    | enter the CP, this map decides WHAT a grant means here. A grant left
+    | unmapped is inert, and a sign-in with nothing mapped is refused.
+    |
+    | local_password_sign_in: with APP_ENV `local` as well, restores
+    | Statamic's own login, for development without any Core.
+    |
+    | remote_site: the site key a local machine without CORE_URL signs in as,
+    | through the remote Core (remote, above).
+    |
+    | path / name / middleware: the hand-off route, the address Core sends
+    | the browser to. `web` gives it the session it signs into; the limiter
+    | caps the unauthenticated calls to Core it costs (rate_limit a minute).
+    |
+    | revoke: the route Core posts offboarding notices to.
+    |
+    | reconcile_schedule: the cron `core:reconcile-cms-users` runs on, the
+    | sweep under a lost notice; null schedules nothing.
+    |
+    | core: Core's own paths for signing in, confirming a hand-off (on the
+    | site's client, or on the remote client) and reconciling.
+    |
+    */
+
+    'cms_sign_in' => [
+        'site' => env('CORE_CMS_SITE') ?: 'production',
+        'roles' => [],
+        'local_password_sign_in' => false,
+        'remote_site' => 'local',
+        'path' => 'admin-sso',
+        'name' => 'core-web.cms-sign-in',
+        'middleware' => ['web', 'throttle:core-web.cms-sign-in'],
+        'rate_limit' => 10,
+        'revoke' => [
+            'path' => 'api/core/cms-users/revoke',
+            'name' => 'core-web.cms-users.revoke',
+            'middleware' => ['throttle:120,1'],
+        ],
+        'reconcile_schedule' => '45 3 * * *',
+        'core' => [
+            'sign_in' => '/sso/cms',
+            'verify' => '/api/app/cms-sso/client/verify',
+            'verify_remote' => '/api/app/cms-sso/local/verify',
+            'reconcile' => '/api/app/cms-users/client/reconcile',
+        ],
     ],
 ];

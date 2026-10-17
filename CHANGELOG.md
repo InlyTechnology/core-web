@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
+  only way into the control panel: the CP login redirects to Core, Core's
+  sealed hand-off is confirmed with Core on the site's client token before
+  anyone is let in, accounts are provisioned and stamped by it with roles
+  mapped from Core's CMS grants (`cms_sign_in.roles`), Core's offboarding
+  notices delete them, and `core:reconcile-cms-users` sweeps nightly. Local
+  machines sign in through the remote Core. See README → CMS sign-in.
 - **Control panel link**: `features.cp_link` (off by default) adds a link to
   Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
   (or locally to the remote Core when no `CORE_URL` is set).
