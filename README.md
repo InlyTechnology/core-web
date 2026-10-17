@@ -55,6 +55,7 @@ nothing.
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
 | Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
+| Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -953,6 +954,32 @@ app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($targ
 
 Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
 whose disk does not outlive a deploy names a bucket.
+
+## Content checks
+
+Checks find what is wrong in the site's content that a machine can find,
+and where the fix is mechanical, fix it as a draft or a proposal an editor
+publishes. They run nightly (`checks.schedule`) or with
+`php artisan content:check [check…] [--json]`; each check's latest findings
+are kept (`checks.disk`, `checks.path`) for the `content_checks` dashboard
+widget and for sources (Core AI) to read without running a check.
+
+| Check | Finds | Fix |
+|---|---|---|
+| `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
+| `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
+| `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
+
+```php
+$checks = app(ContentChecks::class);
+$checks->latest('own-url-links');                 // the last run's findings
+$checks->fix('own-url-links', $findingId, $author); // a draft or a proposal
+```
+
+A finding's `id` is stable across runs. A fix finds the finding afresh
+first, and fixes everything fixable in the same entry or tree at once. A site
+adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
+`checks.checks`, or leaves one out.
 
 ## Testing a site
 

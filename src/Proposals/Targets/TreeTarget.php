@@ -14,6 +14,9 @@ use Statamic\Facades\Entry;
  */
 abstract class TreeTarget implements ProposalTarget
 {
+    /** @var list<string> the entry ids the tree holds now */
+    private array $held = [];
+
     abstract protected function tree(): Tree;
 
     /** Whether a branch may be a URL rather than an entry (a navigation's may, a page tree's may not). */
@@ -31,6 +34,7 @@ abstract class TreeTarget implements ProposalTarget
     {
         $errors = [];
         $seen = [];
+        $this->held = $this->entryIdsIn($this->current());
         $tree = $this->branches($value, 'value', $errors, $seen, 1);
 
         if ($errors !== []) {
@@ -75,9 +79,12 @@ abstract class TreeTarget implements ProposalTarget
             if (filled($branch['entry'] ?? null)) {
                 $entry = Entry::find((string) $branch['entry']);
 
-                if (! $entry || ! in_array($entry->collectionHandle(), $this->collections(), true) || $entry->locale() !== $this->tree()->locale()) {
+                // A branch the tree holds already stays, even when its entry is gone: that is the editor's to clear.
+                $kept = ! $entry && in_array((string) $branch['entry'], $this->held, true);
+
+                if (! $kept && (! $entry || ! in_array($entry->collectionHandle(), $this->collections(), true) || $entry->locale() !== $this->tree()->locale())) {
                     $errors["{$at}.entry"][] = "No entry `{$branch['entry']}` this tree can hold.";
-                } elseif (isset($seen[$entry->id()])) {
+                } elseif (isset($seen[(string) $branch['entry']])) {
                     $errors["{$at}.entry"][] = "The entry `{$branch['entry']}` is in the tree twice.";
                 }
 
@@ -101,6 +108,25 @@ abstract class TreeTarget implements ProposalTarget
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<mixed>  $branches
+     * @return list<string>
+     */
+    protected function entryIdsIn(array $branches): array
+    {
+        $ids = [];
+
+        foreach ($branches as $branch) {
+            if (filled($branch['entry'] ?? null)) {
+                $ids[] = (string) $branch['entry'];
+            }
+
+            array_push($ids, ...$this->entryIdsIn((array) ($branch['children'] ?? [])));
+        }
+
+        return $ids;
     }
 
     public function outline(array $value): array

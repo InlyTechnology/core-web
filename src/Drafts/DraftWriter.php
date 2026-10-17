@@ -48,6 +48,9 @@ class DraftWriter
     /** Whether this write only checks: every refusal and validation, nothing saved. */
     private bool $dryRun = false;
 
+    /** The normaliser of this write: the site's, or the one its source passed. */
+    private DraftValueNormaliser $normaliser;
+
     /** Statamic's asset file rules, which look an asset up by id while a draft holds paths. */
     public const ASSET_FILE_RULES = ['dimensions', 'image', 'mimes', 'mimetypes', 'max_filesize', 'min_filesize'];
 
@@ -63,8 +66,9 @@ class DraftWriter
      *
      * @throws DraftRefused|ValidationException
      */
-    public function write(DraftAuthor $author, array $request): array
+    public function write(DraftAuthor $author, array $request, ?DraftValueNormaliser $values = null): array
     {
+        $this->normaliser = $values ?? $this->values;
         $this->dryRun = (bool) ($request['dry_run'] ?? false);
 
         if (! DraftableCollections::writable((string) $request['collection'])) {
@@ -262,7 +266,7 @@ class DraftWriter
     /** @return array<string, mixed> */
     private function create(CollectionContract $collection, string $site, array $fields, DraftAuthor $by, Blueprint $blueprint, ?EntryContract $parent): array
     {
-        $normalised = $this->values->normalise($blueprint, $collection->handle(), $site, Arr::except($fields, ['slug', 'date']), []);
+        $normalised = $this->normaliser->normalise($blueprint, $collection->handle(), $site, Arr::except($fields, ['slug', 'date']), []);
         $values = $this->process($blueprint, $normalised['data'], $normalised, $collection, $site, null);
 
         $entry = Entry::make()
@@ -375,7 +379,7 @@ class DraftWriter
         $collection = $entry->collection();
         $blueprint = $entry->blueprint();
         $current = EntryFields::stored($entry);
-        $normalised = $this->values->normalise($blueprint, $collection->handle(), $entry->locale(), Arr::except($fields, ['slug', 'date']), $current);
+        $normalised = $this->normaliser->normalise($blueprint, $collection->handle(), $entry->locale(), Arr::except($fields, ['slug', 'date']), $current);
         $values = $this->process($blueprint, [...$current, ...$normalised['data']], $normalised, $collection, $entry->locale(), $entry);
 
         // A check works on a copy: the entry found is the one the Stache holds for the rest of the request.
@@ -416,7 +420,7 @@ class DraftWriter
         $blueprint = $live->blueprint();
         $liveData = EntryFields::stored($live);
         // What the draft leaves alone in a set it restates (an image) is the copy's.
-        $normalised = $this->values->normalise($blueprint, $collection->handle(), $live->locale(), Arr::except($fields, ['slug', 'date']), EntryFields::stored($before));
+        $normalised = $this->normaliser->normalise($blueprint, $collection->handle(), $live->locale(), Arr::except($fields, ['slug', 'date']), EntryFields::stored($before));
         $values = $this->process($blueprint, [...$liveData, ...$normalised['data']], $normalised, $collection, $live->locale(), $live);
 
         $draft = (clone $live)->data([...$liveData, ...$values]);

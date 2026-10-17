@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
+use Inly\CoreWeb\Checks\ContentCheckCommand;
+use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
@@ -33,6 +35,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use InvalidArgumentException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
@@ -55,7 +58,8 @@ use Statamic\StaticCaching\Cacher;
  * that make them (Core AI, a push), each binding how its values arrive
  * (DraftValueNormaliser) and how an update names its base (DraftBase),
  * and stages changes to content without revisions as proposals an editor
- * applies in the CP.
+ * applies in the CP. The `checks` feature finds what is wrong in the
+ * site's content (`content:check`, nightly, a dashboard widget).
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -85,6 +89,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
         $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
         $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
+        $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
@@ -113,6 +118,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('drafts')) {
             $this->bootDrafts();
+        }
+
+        if (self::enabled('checks')) {
+            $this->bootChecks();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -167,6 +176,21 @@ class CoreWebServiceProvider extends ServiceProvider
                 $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
             }
         });
+    }
+
+    private function bootChecks(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->commands([ContentCheckCommand::class]);
+        ContentChecksWidget::register();
+
+        if (is_string($cron = config('core-web.checks.schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('content:check')
+                ->cron($cron)
+                ->withoutOverlapping()
+                ->runInBackground());
+        }
     }
 
     private function bootChat(): void

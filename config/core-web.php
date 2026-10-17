@@ -1,5 +1,8 @@
 <?php
 
+use Inly\CoreWeb\Checks\Checks\DeadTargets;
+use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
+use Inly\CoreWeb\Checks\Checks\SeoGaps;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 return [
@@ -38,6 +41,10 @@ return [
     | write them (Core AI, a push), with their signed preview link (`drafts`)
     | and the provenance an editor's save keeps.
     |
+    | checks: the site's content checks (`checks`) with `content:check`, its
+    | nightly schedule and the `content_checks` dashboard widget. Fixing a
+    | finding writes a draft or a proposal, so it needs `drafts` too.
+    |
     */
 
     'features' => [
@@ -46,6 +53,7 @@ return [
         'content' => false,
         'live' => false,
         'drafts' => false,
+        'checks' => false,
     ],
 
     /*
@@ -368,6 +376,46 @@ return [
             'disk' => null,
             'path' => 'core-web/proposals',
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content checks
+    |--------------------------------------------------------------------------
+    |
+    | checks: the checks that run, each an Inly\CoreWeb\Checks\Check. A site
+    | adds its own beside these, or leaves one out.
+    |
+    | collections: the collections whose entries are checked; null checks all.
+    |
+    | seo: the fields the seo-gaps check reads (Peak SEO's by default), the
+    | collections it reads (null: every one with URLs) and the lengths a
+    | search result shows.
+    |
+    | schedule: the cron expression `content:check` runs on; null schedules
+    | nothing.
+    |
+    | disk / path: where each check's latest findings are kept.
+    |
+    */
+
+    'checks' => [
+        'checks' => [
+            OwnUrlLinks::class,
+            DeadTargets::class,
+            SeoGaps::class,
+        ],
+        'collections' => null,
+        'seo' => [
+            'collections' => null,
+            'title' => 'seo_title',
+            'description' => 'seo_description',
+            'title_max' => 60,
+            'description_max' => 160,
+        ],
+        'schedule' => '30 3 * * *',
+        'disk' => null,
+        'path' => 'core-web/checks',
     ],
 
 ];

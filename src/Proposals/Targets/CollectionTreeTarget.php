@@ -42,7 +42,7 @@ class CollectionTreeTarget extends TreeTarget
     public function validate(array $value): array
     {
         $tree = parent::validate($value);
-        $missing = array_diff($this->entryIds($this->current()), $this->entryIds($tree));
+        $missing = array_diff($this->entryIdsIn($this->current()), $this->entryIdsIn($tree));
 
         // A page left out of the tree would vanish from its URL, so a proposal moves pages, never drops them.
         if ($missing !== []) {
@@ -50,25 +50,6 @@ class CollectionTreeTarget extends TreeTarget
         }
 
         return $tree;
-    }
-
-    /**
-     * @param  array<mixed>  $branches
-     * @return list<string>
-     */
-    private function entryIds(array $branches): array
-    {
-        $ids = [];
-
-        foreach ($branches as $branch) {
-            if (filled($branch['entry'] ?? null)) {
-                $ids[] = (string) $branch['entry'];
-            }
-
-            array_push($ids, ...$this->entryIds((array) ($branch['children'] ?? [])));
-        }
-
-        return $ids;
     }
 
     public function key(): string

@@ -13,6 +13,10 @@
   revisions (navigation trees, page trees, globals, terms, asset meta) are
   staged as proposals an editor applies or discards under Content →
   Proposals in the CP. See README → Proposals.
+- **Content checks**: `features.checks` (off by default) adds
+  `content:check`, run nightly, and a `content_checks` dashboard widget,
+  with three checks: `own-url-links` (fixed as drafts and proposals),
+  `dead-targets` and `seo-gaps`. See README → Content checks.
 
 ## v0.9.0
 
