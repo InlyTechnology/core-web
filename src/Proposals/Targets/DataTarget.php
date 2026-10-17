@@ -32,9 +32,55 @@ abstract class DataTarget implements ProposalTarget
         return [];
     }
 
+    /** @return array<string, string> stored keys a proposal may set beyond the blueprint (an asset's focal point), each with the pattern it must match */
+    protected function extras(): array
+    {
+        return [];
+    }
+
+    /**
+     * The values to save: the proposal's, over what is stored outside the blueprint, which the proposal never sees.
+     *
+     * @param  array<string, mixed>  $value
+     * @return array<string, mixed>
+     */
+    protected function merged(array $value): array
+    {
+        $blueprint = $this->blueprint();
+        $known = $blueprint === null ? [] : $blueprint->fields()->all()->keys()->map(fn ($handle) => (string) $handle)->all();
+        $owned = [...$known, ...array_keys($this->extras())];
+
+        return [...array_diff_key($this->stored(), array_flip($owned)), ...$value];
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     * @return array<string, mixed>
+     */
+    private function extraValues(array $value): array
+    {
+        $out = [];
+
+        foreach ($this->extras() as $key => $pattern) {
+            if (! array_key_exists($key, $value) || $value[$key] === null) {
+                continue;
+            }
+
+            if (! is_string($value[$key]) || preg_match($pattern, $value[$key]) !== 1) {
+                throw ValidationException::withMessages(["value.{$key}" => "The value of `{$key}` is not one this field takes."]);
+            }
+
+            $out[$key] = $value[$key];
+        }
+
+        return $out;
+    }
+
     public function current(): array
     {
-        return array_diff_key($this->stored(), array_flip($this->internal()));
+        $stored = array_diff_key($this->stored(), array_flip($this->internal()));
+
+        return $this->blueprint() === null ? $stored : array_diff_key($stored, $this->merged([]));
     }
 
     public function validate(array $value): array
@@ -44,6 +90,8 @@ abstract class DataTarget implements ProposalTarget
         if ($blueprint === null) {
             return array_diff_key($value, array_flip($this->internal()));
         }
+
+        $extras = $this->extraValues($value);
 
         $fields = $this->outside() === [] ? $blueprint->fields() : $blueprint->fields()->except(...$this->outside());
         $known = $fields->all()->keys()->map(fn ($handle) => (string) $handle)->all();
@@ -56,10 +104,10 @@ abstract class DataTarget implements ProposalTarget
             throw ValidationException::withMessages(collect($validator->errors()->messages())->mapWithKeys(fn (array $messages, string $key) => ["value.{$key}" => $messages])->all());
         }
 
-        return array_filter(
+        return [...array_filter(
             array_diff_key($fields->process()->values()->only(array_keys($value))->all(), array_flip($hidden)),
             fn (mixed $v) => $v !== null,
-        );
+        ), ...$extras];
     }
 
     public function outline(array $value): array

@@ -8,6 +8,7 @@ use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Structures\Tree;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
+use Statamic\Structures\BranchIds;
 
 /** A navigation's tree on one site. */
 class NavTarget extends TreeTarget
@@ -36,6 +37,17 @@ class NavTarget extends TreeTarget
     protected function collections(): array
     {
         return Nav::find($this->handle)->collections()->map->handle()->values()->all();
+    }
+
+    protected function dataFields(): ?array
+    {
+        return Nav::find($this->handle)->blueprint()?->fields()->all()->keys()->map(fn ($handle) => (string) $handle)->values()->all() ?? [];
+    }
+
+    public function validate(array $value): array
+    {
+        // The CP gives every branch an id on its first save; a proposal does too, so opening the nav does not change it under other proposals.
+        return (new BranchIds)->ensure(parent::validate($value));
     }
 
     public function key(): string

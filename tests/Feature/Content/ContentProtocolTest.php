@@ -142,7 +142,7 @@ class ContentProtocolTest extends TestCase
         $this->callSealed('GET', "/api/core/v1/proposals/{$id}", 'website.draft')
             ->assertOk()
             ->assertJsonPath('data.status', 'open')
-            ->assertJsonPath('data.value', $value);
+            ->assertJsonPath('data.value.0.entry', $this->contact->id());
 
         $this->callSealed('GET', '/api/core/v1/proposal-target?key=nav:main:default', 'website.read')
             ->assertJsonPath('data.open_proposal.id', $id);

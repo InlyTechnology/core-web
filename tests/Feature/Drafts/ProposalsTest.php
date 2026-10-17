@@ -197,6 +197,67 @@ class ProposalsTest extends TestCase
         $this->assertSame('/contact/team', Entry::find($this->pages['team'])->url());
     }
 
+    public function test_the_home_page_stays_first_and_holds_no_pages(): void
+    {
+        $target = CollectionTreeTarget::make('pages', 'default');
+        $base = Proposals::base($target);
+
+        foreach ([
+            'value.0.children' => [['entry' => $this->pages['home'], 'children' => [['entry' => $this->pages['contact']]]], ['entry' => $this->pages['about'], 'children' => [['entry' => $this->pages['team']]]]],
+            'value.0.entry' => [['entry' => $this->pages['contact']], ['entry' => $this->pages['home']], ['entry' => $this->pages['about'], 'children' => [['entry' => $this->pages['team']]]]],
+        ] as $error => $value) {
+            try {
+                $this->proposals()->propose($this->author(), $target, $value, $base);
+                $this->fail("Accepted a tree that breaks the home page ({$error}).");
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey($error, $e->errors());
+            }
+        }
+    }
+
+    public function test_a_menu_link_is_never_a_script_and_new_items_get_ids(): void
+    {
+        $target = NavTarget::make('main', 'default');
+
+        try {
+            $this->proposals()->propose($this->author(), $target, [...$target->current(), ['url' => 'javascript:alert(1)', 'title' => 'Hi']], Proposals::base($target));
+            $this->fail('A script URL was proposed.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('value.2.url', $e->errors());
+        }
+
+        $result = $this->proposals()->propose($this->author(), $target, [...$target->current(), ['url' => '/kontakt#karta', 'title' => 'Karta']], Proposals::base($target));
+        $this->proposals()->apply($result['id'], $this->user('eva@example.com'));
+
+        $this->assertNotEmpty(Nav::find('main')->in('default')->tree()[2]['id'] ?? null, 'An item a proposal adds has an id, as the CP gives it.');
+    }
+
+    public function test_applying_keeps_what_is_stored_outside_the_blueprint(): void
+    {
+        GlobalSet::find('settings')->in('default')->data(['phone' => '123', 'legacy' => 'kept'])->save();
+        $target = GlobalTarget::make('settings', 'default');
+
+        $this->assertSame(['phone' => '123'], $target->current(), 'A proposal sees only what the blueprint holds.');
+
+        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '456'], Proposals::base($target));
+        $this->proposals()->apply($result['id'], $this->user('eva@example.com'));
+
+        $this->assertEqualsCanonicalizing(['phone' => '456', 'legacy' => 'kept'], GlobalSet::find('settings')->in('default')->data()->all());
+    }
+
+    public function test_decided_proposals_leave_the_open_folder(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, array_reverse($target->current()), Proposals::base($target));
+
+        $this->assertCount(1, Storage::disk('local')->files('core-web/proposals/open'));
+
+        $this->proposals()->discard($result['id'], $this->user('eva@example.com'));
+
+        $this->assertCount(0, Storage::disk('local')->files('core-web/proposals/open'));
+        $this->assertSame(Proposal::DISCARDED, $this->proposals()->find($result['id'])->status);
+    }
+
     public function test_a_global_proposal_is_validated_against_its_blueprint(): void
     {
         $target = GlobalTarget::make('settings', 'default');

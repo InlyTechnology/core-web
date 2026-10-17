@@ -17,7 +17,11 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
             Route::controller(CoreChecksController::class)->group(function (): void {
                 Route::get('checks', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('checks.index');
                 Route::get('checks/{check}/findings', 'findings')->where('check', '[a-z0-9-]+')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('checks.findings');
-                Route::post('checks/{check}/fix', 'fix')->where('check', '[a-z0-9-]+')->middleware(VerifyCoreEnvelope::ALIAS.':website.draft')->name('checks.fix');
+
+                // A fix lands as a draft or a proposal, so only a site that takes drafts offers one.
+                if (CoreWebServiceProvider::enabled('drafts')) {
+                    Route::post('checks/{check}/fix', 'fix')->where('check', '[a-z0-9-]+')->middleware(VerifyCoreEnvelope::ALIAS.':website.draft')->name('checks.fix');
+                }
             });
         }
 

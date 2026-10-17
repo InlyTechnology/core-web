@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Content;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inly\CoreWeb\Checks\ContentChecks;
+use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
  * The site's content checks as Core reads them (protocol v1.2): each check
@@ -27,7 +28,7 @@ class CoreChecksController
                 'ran_at' => $latest['ran_at'] ?? null,
                 'error' => $latest['error'] ?? null,
                 'count' => count($findings),
-                'fixable' => count(array_filter($findings, fn (array $finding) => $finding['fixable'])),
+                'fixable' => CoreWebServiceProvider::enabled('drafts') ? count(array_filter($findings, fn (array $finding) => $finding['fixable'])) : 0,
             ];
         }
 
@@ -56,6 +57,6 @@ class CoreChecksController
     {
         $request->validate(['finding_id' => ['required', 'string', 'max:64'], ...CoreAiAuthor::rules()]);
 
-        return response()->json(['data' => $checks->fix($check, (string) $request->input('finding_id'), CoreAiAuthor::from($request))], 201);
+        return response()->json(['data' => $checks->fix($check, (string) $request->input('finding_id'), CoreAiAuthor::from($request, 'fix'))], 201);
     }
 }

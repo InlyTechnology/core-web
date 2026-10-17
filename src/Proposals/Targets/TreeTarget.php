@@ -25,6 +25,12 @@ abstract class TreeTarget implements ProposalTarget
     /** @return list<string> the collections a branch's entry may come from */
     abstract protected function collections(): array;
 
+    /** @return list<string>|null the handles a branch's `data` may hold; null when a branch holds none */
+    protected function dataFields(): ?array
+    {
+        return null;
+    }
+
     public function current(): array
     {
         return $this->tree()->tree();
@@ -74,7 +80,17 @@ abstract class TreeTarget implements ProposalTarget
                 $errors[$at][] = "The tree is at most {$max} levels deep.";
             }
 
-            $clean = array_intersect_key($branch, array_flip(['id', 'entry', 'url', 'title', 'data']));
+            $clean = array_intersect_key($branch, array_flip($this->allowsUrls() ? ['id', 'entry', 'url', 'title'] : ['id', 'entry']));
+            $data = $this->dataFields() === null ? [] : array_intersect_key(is_array($branch['data'] ?? null) ? $branch['data'] : [], array_flip($this->dataFields()));
+
+            if ($data !== []) {
+                $clean['data'] = $data;
+            }
+
+            // A menu link a proposal adds goes to a page, a mail or a phone, never a script.
+            if (filled($branch['url'] ?? null) && ! self::safeUrl((string) $branch['url'])) {
+                $errors["{$at}.url"][] = 'A branch URL is a web address, a path, an anchor, mailto: or tel:.';
+            }
 
             if (filled($branch['entry'] ?? null)) {
                 $entry = Entry::find((string) $branch['entry']);
@@ -108,6 +124,15 @@ abstract class TreeTarget implements ProposalTarget
         }
 
         return $out;
+    }
+
+    private static function safeUrl(string $url): bool
+    {
+        if (preg_match('~^(/(?!/)|#|\?)~', $url) === 1 || $url === '/') {
+            return true;
+        }
+
+        return preg_match('~^(https?://[^\s]+|mailto:[^\s]+|tel:[+0-9 ()-]+)$~i', $url) === 1;
     }
 
     /**

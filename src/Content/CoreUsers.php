@@ -19,6 +19,6 @@ class CoreUsers
             return null;
         }
 
-        return User::all()->first(fn (UserContract $user): bool => (string) $user->get(DraftPerson::CORE_USER_MARKER) === $coreUserId);
+        return User::query()->where(DraftPerson::CORE_USER_MARKER, $coreUserId)->first();
     }
 }

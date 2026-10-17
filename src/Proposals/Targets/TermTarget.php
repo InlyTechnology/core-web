@@ -67,9 +67,7 @@ class TermTarget extends DataTarget
     public function apply(array $value, User $user): void
     {
         $term = $this->term();
-        $internal = array_intersect_key($term->data()->all(), array_flip($this->internal()));
-
-        $term->data([...$internal, ...$value])->set('updated_by', $user->id())->set('updated_at', now()->timestamp)->save();
+        $term->data($this->merged($value))->set('updated_by', $user->id())->set('updated_at', now()->timestamp)->save();
     }
 
     public function cpUrl(): ?string

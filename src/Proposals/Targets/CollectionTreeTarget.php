@@ -49,6 +49,19 @@ class CollectionTreeTarget extends TreeTarget
             throw ValidationException::withMessages(['value' => 'The tree leaves out entries it holds now: '.implode(', ', $missing).'. A proposal moves pages; delete them in the CP.']);
         }
 
+        // The first page of a tree with a root is the home page: it stays where it is and holds no children.
+        if ($this->tree()->structure()->expectsRoot()) {
+            $root = $this->current()[0]['entry'] ?? null;
+
+            if (($tree[0]['entry'] ?? null) !== $root) {
+                throw ValidationException::withMessages(['value.0.entry' => 'The first page is the home page and stays first.']);
+            }
+
+            if (isset($tree[0]['children'])) {
+                throw ValidationException::withMessages(['value.0.children' => 'The home page holds no pages under it.']);
+            }
+        }
+
         return $tree;
     }
 

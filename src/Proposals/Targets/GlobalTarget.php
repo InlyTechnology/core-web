@@ -56,7 +56,7 @@ class GlobalTarget extends DataTarget
 
     public function apply(array $value, User $user): void
     {
-        $this->variables()->data($value)->save();
+        $this->variables()->data($this->merged($value))->save();
     }
 
     public function cpUrl(): ?string

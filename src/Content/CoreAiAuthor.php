@@ -31,6 +31,7 @@ final class CoreAiAuthor
     }
 
     /** @throws DraftRefused for a person without a CP account */
+    /** @param  'draft'|'proposal'|'fix'  $what */
     public static function from(Request $request, string $what = 'draft'): DraftAuthor
     {
         $actor = (array) $request->input('actor');

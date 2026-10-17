@@ -150,6 +150,40 @@ class ContentChecksTest extends TestCase
         $this->assertSame('/kontakt', Nav::find('main')->in('default')->tree()[0]['url'], 'The nav waits for an editor to apply it.');
     }
 
+    public function test_a_known_unfixable_finding_is_refused_without_reading_the_site_again(): void
+    {
+        $this->page('om-oss', ['title' => 'Om oss', 'cta_link' => 'entry::gone']);
+        $this->artisan('content:check', ['check' => ['dead-targets']]);
+        $finding = app(ContentChecks::class)->latest('dead-targets')['findings'][0];
+
+        try {
+            app(ContentChecks::class)->fix('dead-targets', $finding['id'], $this->author());
+            $this->fail('An unfixable finding was fixed.');
+        } catch (DraftRefused $e) {
+            $this->assertSame('not_fixable', $e->error);
+        }
+    }
+
+    public function test_a_fix_rereads_only_the_findings_own_page(): void
+    {
+        $page = $this->page('om-oss', ['title' => 'Om oss', 'cta_link' => '/kontakt']);
+        $this->artisan('content:check', ['check' => ['own-url-links']]);
+        $finding = collect(app(ContentChecks::class)->latest('own-url-links')['findings'])->firstWhere('path', 'cta_link');
+
+        $result = app(ContentChecks::class)->fix('own-url-links', $finding['id'], $this->author());
+
+        $this->assertSame($page->id(), $result['entry_id']);
+    }
+
+    public function test_fixes_need_the_drafts_feature(): void
+    {
+        config(['core-web.features.drafts' => false]);
+
+        $this->expectException(DraftRefused::class);
+
+        app(ContentChecks::class)->fix('own-url-links', 'any', $this->author());
+    }
+
     public function test_a_finding_that_is_gone_is_not_fixed(): void
     {
         $this->expectException(DraftRefused::class);

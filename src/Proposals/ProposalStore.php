@@ -3,13 +3,15 @@
 namespace Inly\CoreWeb\Proposals;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Where proposals are kept: one JSON file each, on a filesystem disk
  * (core-web.drafts.proposals: `disk`, `path`), so a host whose local disk
  * does not outlive a deploy names a bucket. Decided proposals stay as the
- * record of what was applied or discarded, and by whom.
+ * record of what was applied or discarded, and by whom, in their own folder,
+ * so reading the open ones (every CP page, for the nav) stays small.
  */
 class ProposalStore
 {
@@ -25,33 +27,44 @@ class ProposalStore
 
     public function find(string $id): ?Proposal
     {
-        if (preg_match('/^[0-9a-f-]{36}$/', $id) !== 1 || ! $this->disk->exists($file = $this->file($id))) {
+        if (preg_match('/^[0-9a-f-]{36}$/', $id) !== 1) {
             return null;
         }
 
-        return Proposal::fromArray(json_decode((string) $this->disk->get($file), true, flags: JSON_THROW_ON_ERROR));
+        foreach ([true, false] as $open) {
+            if ($this->disk->exists($file = $this->file($id, $open))) {
+                return $this->read($file);
+            }
+        }
+
+        return null;
     }
 
     public function save(Proposal $proposal): void
     {
-        $this->disk->put($this->file($proposal->id), json_encode($proposal->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        $this->disk->put($this->file($proposal->id, $proposal->open()), json_encode($proposal->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+
+        if (! $proposal->open()) {
+            $this->disk->delete($this->file($proposal->id, true));
+        }
     }
 
     /** @return list<Proposal> newest first */
     public function all(): array
     {
-        return collect($this->disk->files($this->path))
-            ->filter(fn (string $file) => str_ends_with($file, '.json'))
-            ->map(fn (string $file) => Proposal::fromArray(json_decode((string) $this->disk->get($file), true, flags: JSON_THROW_ON_ERROR)))
+        return $this->in(true)->merge($this->in(false))
             ->sortByDesc(fn (Proposal $proposal) => $proposal->createdAt->getTimestamp())
             ->values()
             ->all();
     }
 
-    /** @return list<Proposal> */
+    /** @return list<Proposal> newest first */
     public function open(): array
     {
-        return array_values(array_filter($this->all(), fn (Proposal $proposal) => $proposal->open()));
+        return $this->in(true)
+            ->sortByDesc(fn (Proposal $proposal) => $proposal->createdAt->getTimestamp())
+            ->values()
+            ->all();
     }
 
     public function openFor(string $target): ?Proposal
@@ -59,8 +72,26 @@ class ProposalStore
         return collect($this->open())->first(fn (Proposal $proposal) => $proposal->target === $target);
     }
 
-    private function file(string $id): string
+    /** @return Collection<int, Proposal> */
+    private function in(bool $open): Collection
     {
-        return $this->path.'/'.$id.'.json';
+        return collect($this->disk->files($this->folder($open)))
+            ->filter(fn (string $file) => str_ends_with($file, '.json'))
+            ->map(fn (string $file) => $this->read($file));
+    }
+
+    private function read(string $file): Proposal
+    {
+        return Proposal::fromArray(json_decode((string) $this->disk->get($file), true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    private function folder(bool $open): string
+    {
+        return $this->path.'/'.($open ? 'open' : 'decided');
+    }
+
+    private function file(string $id, bool $open): string
+    {
+        return $this->folder($open).'/'.$id.'.json';
     }
 }

@@ -38,6 +38,12 @@ class AssetTarget extends DataTarget
         return $this->asset()->data()->all();
     }
 
+    protected function extras(): array
+    {
+        // The CP saves the focal point beside the blueprint's fields: x%-y%, with an optional zoom.
+        return ['focus' => '/^\d{1,3}-\d{1,3}(-\d+(\.\d+)?)?$/'];
+    }
+
     public function key(): string
     {
         return "asset:{$this->id}";
@@ -55,7 +61,7 @@ class AssetTarget extends DataTarget
 
     public function apply(array $value, User $user): void
     {
-        $this->asset()->data($value)->save();
+        $this->asset()->data($this->merged($value))->save();
     }
 
     public function cpUrl(): ?string

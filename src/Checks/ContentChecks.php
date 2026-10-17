@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Checks;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use InvalidArgumentException;
@@ -90,8 +91,21 @@ class ContentChecks
      */
     public function fix(string $key, string $findingId, DraftAuthor $author): array
     {
+        // A fix is a draft or a proposal, both of which belong to the drafts feature.
+        if (! CoreWebServiceProvider::enabled('drafts')) {
+            throw new DraftRefused('not_fixable', __('core-web::drafts.fixes_need_drafts'), status: 422);
+        }
+
         $check = $this->get($key) ?? throw new DraftRefused('not_found', __('core-web::drafts.no_check', ['check' => $key]), status: 404);
-        $finding = collect([...$check->detect()])->first(fn (Finding $finding) => $finding->id() === $findingId);
+        $known = collect($this->latest($key)['findings'] ?? [])->firstWhere('id', $findingId);
+
+        // The last run already knows the finding: refuse what cannot be fixed without reading anything, and re-read only its subject.
+        if (is_array($known) && ! ($known['fixable'] ?? false)) {
+            throw new DraftRefused('not_fixable', __('core-web::drafts.not_fixable', ['check' => $key]), status: 422);
+        }
+
+        $detect = fn () => collect([...$check->detect()])->first(fn (Finding $finding) => $finding->id() === $findingId);
+        $finding = is_array($known) && is_string($known['subject'] ?? null) ? ContentWalk::scoped($known['subject'], $detect) : $detect();
 
         if ($finding === null) {
             throw new DraftRefused('finding_gone', __('core-web::drafts.finding_gone'), status: 404);
