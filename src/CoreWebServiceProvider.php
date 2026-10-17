@@ -7,6 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
@@ -17,6 +18,10 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\SyncMediaCommand;
+use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -40,6 +45,8 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `media` feature renders images and videos through the CDN and defines
+ * the asset disks on the bucket.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -51,6 +58,10 @@ class CoreWebServiceProvider extends ServiceProvider
         $merge = function (): void {
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
+            }
+
+            if (self::enabled('media')) {
+                MediaDisks::define($this->app);
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
@@ -66,6 +77,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(CoreSigningKeys::class, fn () => CoreSigningKeys::fromConfig());
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
+
+        $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -89,6 +102,15 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('live')) {
             self::liveReads();
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
+        }
+
+        if (self::enabled('media')) {
+            MediaDisks::registerDriver();
+            Blade::anonymousComponentPath(__DIR__.'/../resources/views/media');
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

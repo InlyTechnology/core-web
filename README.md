@@ -23,6 +23,7 @@ What the package gives a site:
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
+| Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
@@ -54,6 +55,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check` (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -90,6 +92,7 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally (see [Media](#media)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 CMS single sign-on is the site's own: Core seals its hand-offs with its own
@@ -128,6 +131,15 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `content.environment` | `CORE_CONTENT_ENVIRONMENT` | The environment a draft or publish must be sealed for; empty is `app()->environment()` |
 | `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
+| `features.media` | `false` | Switch on the media components and disks (see [Media](#media)) |
+| `media.cdn.origins` | `['https://cdn.inlycore.com']` | The transforming CDN's base URLs; only URLs under one get transform params. `[]` turns transforms off |
+| `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
+| `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
+| `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
+| `media.writes.everywhere` | `false` | Outside production, write the bucket directly instead of a layer |
+| `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
+| `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
+| `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 
 ## Where snapshots live
@@ -753,6 +765,120 @@ $result->successful(); // $result->data, or $result->status and $result->errors
 | `{error: "invalid", errors: {field: [...]}}` | 422 | The site's rules refused the input, or Core did (its messages passed on for the fields in `rules()` only) |
 | `{error: "not_found"}` | 404 | Core answered 404, `request()` returned null, or the route was asked for a read that is not `public()` |
 | `{error: "unavailable"}` | 503 | Core failed, timed out (`live.timeouts`), is not configured, or `present()` returned null; logged as a warning |
+
+## Media
+
+`features.media` renders a site's pictures and videos through the
+transforming CDN (core-cdn), whatever they are: a Statamic Asset, an assets
+field (its Value, Collection or query builder), a URL, or a file from Core
+(`url`/`original_url`, `alt`, `focus`/`focal_point`, `width`, `height`,
+`mime_type`). It also defines the asset disks on the site's bucket.
+
+### The components
+
+```blade
+<x-core-img :src="$set['image']" :widths="[480, 960, 1440]" sizes="(min-width: 1024px) 50vw, 100vw" ratio="4/3" class="h-full w-full object-cover" />
+<x-core-video :src="$set['video']" class="h-full w-full object-cover" />
+<x-core-media :src="$set['media']" ... />
+```
+
+- **`<x-core-img>`**: an image under a CDN origin gets `format=auto` (the CDN
+  picks AVIF, WebP or the original per browser), the `width`, `height`,
+  `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
+  blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
+  the box and bounds each rendition's height. Anything else (a local file, a
+  foreign host, an SVG) renders as is; a local raster Asset gets a srcset from
+  the site's `w<px>` Glide presets instead. The editor's focal point (an
+  Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
+  pass a `style`, and `alt` defaults to the file's own.
+- **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
+  wide and 720px on phones (`width`, `small-width`), silent when it plays
+  muted (`audio=false` makes them smaller), with a frame of the video as its
+  poster (`poster-time`, or `poster` for an image of your own). Anything else
+  plays the file itself. It autoplays muted in a loop by default: `:autoplay`,
+  `:muted`, `:loop`, `controls`, `preload`.
+- **`<x-core-media>`**: one or the other, by the source, with each getting only
+  its own options: for a field an editor fills with either.
+
+The CDN builds a video version on its first request (30 to 60 seconds for a
+large file) and keeps it a year, so open each new video once after uploading.
+Its limits are Cloudflare's: under 100 MB and 10 minutes.
+
+The placeholder and the reduced-motion pause need the shipped CSS and script:
+
+```css
+@import '../../vendor/inly/core-web/resources/css/core-media.css';
+```
+
+```js
+import coreMedia from '../../vendor/inly/core-web/resources/js/core-media.js'
+
+coreMedia() // before Alpine.start()
+```
+
+### The disks
+
+Each disk in `media.disks` is defined unless the app's
+`config/filesystems.php` has one by that name (`composer require
+league/flysystem-aws-s3-v3` for the bucket):
+
+| Where | With `CORE_MEDIA_KEY` | Without |
+|---|---|---|
+| production | the bucket | the local folder `public/<folder>` |
+| anywhere else | the bucket, behind a layer | the local folder |
+
+The layer is what makes the shared bucket safe outside production. Writes,
+edits (an asset's `.meta` included) and deletes land in it, reads try it
+first, and a file only the bucket holds cannot be deleted or moved: staging
+and a laptop see production's files and never change them. On staging the
+layer is `_staging/` in the bucket; in the `local` environment it is
+`public/media-layer/` (add it to `.gitignore`). `media.writes.everywhere`
+turns it off.
+
+A file in the layer renders from the layer's URL in the components. Statamic's
+own links to it in the control panel point at the bucket, where it is not, so
+they 404; its thumbnails, which Glide reads through the disk, show.
+
+Without a key a disk is its committed local folder: a fresh clone, CI and a
+server missing the key all render from it.
+
+Everything but the key and secret is committed in the site's
+`config/core-web.php`:
+
+```php
+'media' => [
+    'bucket' => [
+        'endpoint' => 'https://ams3.digitaloceanspaces.com',
+        'region' => 'ams3',
+        'bucket' => 'my-site',
+        'url' => 'https://cdn.inlycore.com/my-client/my-site',
+    ],
+    'disks' => ['assets' => 'assets', 'files' => 'files'],
+],
+```
+
+Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
+`social_images`). For R2, set `endpoint` to the account's R2 endpoint and
+`acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
+
+### Commands
+
+- **`media:sync push|pull [--disk=] [--dry-run]`** copies each disk's files,
+  `.meta` folders included, between its local folder and the bucket, skipping
+  files of the same size and never deleting. `push` writes production's
+  bucket, so it asks first (`--force` skips the question). Dry run first; a
+  second dry run after a push finds nothing.
+- **`media:check [path] [--disk=assets]`** says what the disk is here and, with
+  a key, checks a file (the first image when no path is given): its URL is
+  under a CDN origin, the raw file answers with `Cache-Control` and CORS, and a
+  CDN rendition answers with an image.
+
+### Another CDN
+
+`media.cdn.scheme` names the `Inly\CoreWeb\Media\UrlScheme` that builds the
+transform URLs: `serves()` (which URLs it transforms), `image()`, `video()`
+and `frame()`. `CoreCdnScheme` speaks core-cdn's v1 query params and clamps
+every value to the ranges the CDN accepts.
 
 ## Website content
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **Media**: `features.media` (off by default) renders a site's pictures and
+  videos through the transforming CDN, and defines its asset disks on the
+  bucket. See README → Media.
+  - `<x-core-img>`, `<x-core-video>` and `<x-core-media>` take a Statamic
+    Asset, an assets field, a URL or a file from Core alike. Images get
+    `format=auto`, a srcset, the focal point and a blurred placeholder;
+    videos get CDN versions for wide and small screens and a frame poster.
+    URLs the CDN does not serve render as is.
+  - The disks in `media.disks` are the bucket in production and the local
+    folder without a key. Elsewhere they sit behind a layer: writes and
+    deletes never reach production's files.
+  - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
+    bucket is committed config. `acl: false` for R2.
+  - `media:sync push|pull` copies a disk between its folder and the bucket;
+    `media:check` checks the bucket's headers and a CDN rendition.
+
 ## v0.9.0
 
 - **Chat**: messages and handoffs also have a limit per address,

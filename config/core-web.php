@@ -1,5 +1,6 @@
 <?php
 
+use Inly\CoreWeb\Media\CoreCdnScheme;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 return [
@@ -33,6 +34,10 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | media: the <x-core-img>, <x-core-video> and <x-core-media> components,
+    | the asset disks in `media.disks` (a bucket, with a local fallback and a
+    | layer outside production), `media:sync` and `media:check`.
+    |
     */
 
     'features' => [
@@ -40,6 +45,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'media' => false,
     ],
 
     /*
@@ -316,6 +322,87 @@ return [
         'store' => null,
         'name' => 'core-web.live',
         'middleware' => ['throttle:60,1'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Media
+    |--------------------------------------------------------------------------
+    |
+    | cdn: the transforming CDN in front of the bucket and Core's storage.
+    | `origins` are its base URLs; only URLs under one get transform params,
+    | every other URL (a local file, a foreign host) renders untouched. Empty
+    | turns transforms off. `scheme` builds the URLs (Inly\CoreWeb\Media\UrlScheme);
+    | the default speaks core-cdn's query params.
+    |
+    | bucket: the S3-compatible bucket the asset disks live in (DigitalOcean
+    | Spaces, R2, S3). Everything but the key and secret is the same in every
+    | environment, so the site commits it in its own config/core-web.php; only
+    | CORE_MEDIA_KEY and CORE_MEDIA_SECRET are env. `url` is the files' public
+    | base URL (the CDN's, for transforms); `root` a folder all disks share.
+    | `acl` false leaves out `visibility: public` for a bucket without
+    | per-object ACLs, such as R2, which rejects it; the bucket itself is then
+    | public. Without a key the disks are the local folders below. A failing
+    | read is bounded: 3 seconds to connect and two attempts, since rendering
+    | an asset can read the bucket.
+    |
+    | disks: each Statamic asset disk core-web defines, by name, with the
+    | folder it lives in, in the bucket and locally (public/<folder>). Leave
+    | out disks Statamic addons hardcode as local (favicons, social_images).
+    |
+    | writes: outside production a disk never writes the bucket's own files.
+    | Writes, edits and deletes land in a layer in front of it, and reads try
+    | the layer first: `layer.prefix` in the bucket (staging), or the local
+    | folder `layer.local` (the `local` environment). Files that are only in
+    | the bucket cannot be deleted or moved there. `writes.everywhere` true
+    | turns the layer off and writes the bucket directly.
+    |
+    | images: the defaults <x-core-img> renders with. `glide_presets` is the
+    | srcset of a site without a CDN: its `w<px>` Glide presets, which
+    | config/statamic/assets.php defines.
+    |
+    | videos: the widths <x-core-video> asks the CDN for, `small_width` for
+    | phones, and the second of the frame it shows as the poster when none is
+    | given (null: no poster). Sources the CDN does not serve play as is.
+    |
+    */
+
+    'media' => [
+        'cdn' => [
+            'origins' => ['https://cdn.inlycore.com'],
+            'scheme' => CoreCdnScheme::class,
+        ],
+        'bucket' => [
+            'key' => env('CORE_MEDIA_KEY', ''),
+            'secret' => env('CORE_MEDIA_SECRET', ''),
+            'endpoint' => '',
+            'region' => 'auto',
+            'bucket' => '',
+            'url' => '',
+            'root' => '',
+            'acl' => true,
+            'cache_control' => 'public, max-age=2592000',
+        ],
+        'disks' => [
+            'assets' => 'assets',
+        ],
+        'writes' => [
+            'everywhere' => false,
+        ],
+        'layer' => [
+            'prefix' => '_staging',
+            'local' => 'media-layer',
+        ],
+        'images' => [
+            'format' => 'auto',
+            'placeholder' => 'blur',
+            'glide_presets' => true,
+        ],
+        'videos' => [
+            'width' => 1280,
+            'small_width' => 720,
+            'poster_time' => 0,
+        ],
     ],
 
 ];

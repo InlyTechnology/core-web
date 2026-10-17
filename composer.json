@@ -1,6 +1,6 @@
 {
     "name": "inly/core-web",
-    "description": "Core snapshots, the Core API client, Core's signed pings, snapshot sitemaps, a chat relay and the website content protocol for Statamic websites fed by an Inly Core backoffice.",
+    "description": "Core snapshots, the Core API client, Core's signed pings, snapshot sitemaps, a chat relay, CDN media components and the website content protocol for Statamic websites fed by an Inly Core backoffice.",
     "type": "library",
     "license": "MIT",
     "keywords": [
@@ -29,6 +29,9 @@
         "orchestra/testbench": "^10.0|^11.0",
         "phpunit/phpunit": "^11.5|^12.0",
         "laravel/pint": "^1.27"
+    },
+    "suggest": {
+        "league/flysystem-aws-s3-v3": "For the media feature's disks on an S3-compatible bucket (DigitalOcean Spaces, R2, S3)"
     },
     "autoload": {
         "psr-4": {
