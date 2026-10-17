@@ -61,9 +61,12 @@ class CoreProposalsController
     public function show(string $id, Proposals $proposals): JsonResponse
     {
         $proposal = $proposals->find($id);
-        $target = $proposal ? $proposals->target($proposal) : null;
 
-        abort_if($proposal === null, 404);
+        if ($proposal === null) {
+            return response()->json(['error' => 'not_found', 'message' => __('core-web::drafts.no_proposal')], 404);
+        }
+
+        $target = $proposals->target($proposal);
 
         return response()->json(['data' => [
             ...$proposals->describe($proposal),

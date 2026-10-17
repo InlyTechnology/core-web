@@ -92,7 +92,8 @@ class ContentProtocolTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.path', 'cta_link');
 
-        $this->callSealed('GET', '/api/core/v1/checks/nope/findings', 'website.read')->assertNotFound();
+        $this->callSealed('GET', '/api/core/v1/checks/nope/findings', 'website.read')->assertNotFound()->assertJsonPath('error', 'not_found');
+        $this->callSealed('POST', '/api/core/v1/checks/nope/fix', 'website.draft', ['finding_id' => 'x', ...$this->actor()])->assertNotFound()->assertJsonPath('error', 'not_found');
     }
 
     public function test_a_fix_core_asks_for_lands_as_a_draft_marked_as_core_ai(): void
@@ -147,8 +148,9 @@ class ContentProtocolTest extends TestCase
             ->assertJsonPath('data.open_proposal.id', $id);
     }
 
-    public function test_an_unknown_target_is_not_found(): void
+    public function test_an_unknown_target_or_proposal_is_not_found(): void
     {
-        $this->callSealed('GET', '/api/core/v1/proposal-target?key=nav:nope:default', 'website.read')->assertNotFound();
+        $this->callSealed('GET', '/api/core/v1/proposal-target?key=nav:nope:default', 'website.read')->assertNotFound()->assertJsonPath('error', 'not_found');
+        $this->callSealed('GET', '/api/core/v1/proposals/00000000-0000-0000-0000-000000000000', 'website.draft')->assertNotFound()->assertJsonPath('error', 'not_found');
     }
 }

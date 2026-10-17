@@ -90,7 +90,7 @@ class ContentChecks
      */
     public function fix(string $key, string $findingId, DraftAuthor $author): array
     {
-        $check = $this->get($key) ?? abort(404);
+        $check = $this->get($key) ?? throw new DraftRefused('not_found', __('core-web::drafts.no_check', ['check' => $key]), status: 404);
         $finding = collect([...$check->detect()])->first(fn (Finding $finding) => $finding->id() === $findingId);
 
         if ($finding === null) {

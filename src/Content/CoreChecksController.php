@@ -36,7 +36,9 @@ class CoreChecksController
 
     public function findings(string $check, Request $request, ContentChecks $checks): JsonResponse
     {
-        abort_if($checks->get($check) === null, 404);
+        if ($checks->get($check) === null) {
+            return response()->json(['error' => 'not_found', 'message' => __('core-web::drafts.no_check', ['check' => $check])], 404);
+        }
 
         $request->validate(['site' => ['nullable', 'string', 'max:64'], 'subject' => ['nullable', 'string', 'max:200']]);
 
