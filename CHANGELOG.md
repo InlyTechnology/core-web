@@ -1,5 +1,11 @@
 # Changelog
 
+A release that a site breaks on, or that silently changes how a site behaves,
+carries an `### Upgrade notes` section: one entry per required action, each
+saying what breaks, how to find the affected code, how to migrate and how to
+verify. Read the notes of every version between the one a site had and the
+one it moves to. Before 1.0 such a release bumps the minor version.
+
 ## v0.11.0
 
 - **Control panel link**: `features.cp_link` (off by default) adds a link to
@@ -80,6 +86,39 @@
   - A path with a raw `?`, `#`, backslash, space or control character is
     refused: `rawurlencode()` the input a path carries.
 
+### Upgrade notes
+
+- **The Core URL must be https outside `local` and `testing`**: the token
+  request throws a `RuntimeException` ("core-web sends its client secret to
+  Core over https only") on a staging or production site whose `CORE_URL`
+  is `http://`, so every call that needs a token fails: snapshot pulls
+  (also those a ping starts), page pings to Core, chat turns and live
+  reads. Find it: `grep -n "CORE_URL" .env` on each server. Migrate: set
+  `CORE_URL` to Core's `https://` address. Verify: `php artisan cache:forget core_web_access_token`, then
+  `php artisan core:warm` prints a document count for every type and no
+  `pull failed` (a site without `features.snapshots`: send a chat message or
+  run a live read).
+- **A Core URL that redirects no longer gets a token**: the token request
+  follows no redirect, so a `CORE_URL` (or `core:pull`'s `pull.base_url`)
+  that answers with a redirect, such as http to https or a `www` variant,
+  throws `TokenRefused` with the 3xx status. Find it:
+  `curl -s -o /dev/null -w '%{http_code}' -X POST https://<core>/oauth/token`
+  prints a 3xx. Migrate: set the URL to the address the redirect lands on.
+  Verify: as above.
+- **A refused token throws `TokenRefused`**: it extends `RuntimeException`,
+  so code catching that keeps working, but code that matched the message
+  `Failed to obtain a Core access token: ` now sees the status in brackets
+  after it. Find it: `grep -rn "Failed to obtain a Core access token" app/ tests/`.
+  Migrate: catch `Inly\CoreWeb\Client\TokenRefused` and read `->status`;
+  the https refusal above stays a plain `RuntimeException`.
+- **`CoreSigningKeys::secureBaseUrl()` is removed**: a subclass calling it
+  fails. Find it: `grep -rn "secureBaseUrl" app/`. Migrate: call
+  `CoreClient::secureUrl($url)`.
+- **Chat turns are capped per address too** (30 a minute): visitors sharing
+  one address, such as an office network, share the cap. Find it: the site
+  has `features.chat` on. Migrate: raise `chat.turn_rate_limit_per_address`
+  in the published config if that is too low. Verify: nothing to run.
+
 ## v0.8.0
 
 - **Pings sealed with Core's key**: the ping endpoint opens a ping Core seals
@@ -134,6 +173,19 @@
 - core-web requires `ext-sodium`.
 - `CoreClient::sendResponse()` widens `$data` to `array|Closure`, so a subclass
   that overrides it with `array $data` must widen it too.
+
+### Upgrade notes
+
+- **`ext-sodium` is required**: `composer install` refuses the package on a
+  PHP without the sodium extension. Find it: `php -m | grep -i sodium` on
+  each server and in CI prints nothing. Migrate: install or enable the
+  extension (bundled with PHP builds on Forge and Laravel Cloud). Verify:
+  `composer check-platform-reqs` passes.
+- **A `CoreClient` subclass overriding `sendResponse()` must widen `$data`**:
+  PHP refuses an override typed `array $data` with a fatal error at boot.
+  Find it: `grep -rn "function sendResponse" app/`. Migrate: type the
+  parameter `array|Closure $data` and resolve a closure before use. Verify:
+  the site boots (`php artisan about`).
 
 ## v0.6.0 (2026-10-15)
 
@@ -250,6 +302,28 @@
   at a site's own path; `SiteCache::flush()` forgets only the pages under the
   flushed site's path on a shared host, not every page of the host.
 
+### Upgrade notes
+
+- **Rows come without `meta.schema` and `meta.object`**: on Core 9.0 and
+  later, `objects()` and `object()` ask for compact meta, so a snapshot that
+  reads a row's `meta.schema` (a money field's currency, for one) silently
+  gets nothing. Find it: `grep -rnE "meta\.(schema|object)|\['meta'\]\['(schema|object)'\]" app/`.
+  Migrate: pass `'meta' => 'full'` in that snapshot's query. Verify: the
+  page shows the value again after `php artisan core:warm`.
+- **`core:warm` runs nightly, not every ten minutes**: a site that Core does
+  not ping shows changes up to a day late, with nothing failing. Find it:
+  no ping URL for the site in Core's connector setup. Migrate: in the
+  site's published `config/core-web.php` set `snapshots.warm_schedule` to
+  `*/10 * * * *`; a partial config file must copy the whole `snapshots`
+  array, since a top-level key replaces the package's default whole.
+  Verify: `php artisan schedule:list` shows `core:warm` every ten minutes.
+- **A fresh TTL under a day now serves stale copies between nightly
+  pulls**: a stale copy no longer starts a pull, and a ping for one object
+  pulls the whole snapshot instead of patching it. Find it: a snapshot
+  whose fresh TTL is under a day. Migrate: give it a fresh TTL longer than
+  a day (README § Schedule). Verify: a ping for one object updates only
+  that document.
+
 ## v0.2.0 (2026-09-29)
 
 - **Env names**: the defaults read `CORE_URL`, `CORE_CLIENT_ID`,
@@ -262,6 +336,17 @@
   `core_snapshots_cache` / `core_snapshots_cache_locks` tables for hosts whose
   disk does not outlive a deploy (Laravel Cloud). The migration publishes with
   `--tag=core-web-migrations`. An unknown driver is refused at boot.
+
+### Upgrade notes
+
+- **The env names change**: with the old names the client has no URL or
+  credentials and every call to Core fails. Find it: `grep -n "CORE_WEB_" .env .env.example`
+  on each server and in the repo. Migrate: rename each `CORE_WEB_*` variable to
+  the matching `CORE_URL`, `CORE_CLIENT_ID`, `CORE_CLIENT_SECRET` or
+  `CORE_CA_BUNDLE`;
+  a `config/core-web.php` published only to map env names can be deleted.
+  Verify: `php artisan core:warm` prints a document count for every type
+  and no `pull failed`.
 
 ## v0.1.0 (2026-09-29)
 
