@@ -36,7 +36,10 @@ class AssetExportTest extends TestCase
         AssetContainer::make('photos')->disk('photos')->save();
         AssetContainer::make('secret')->disk('secret')->save();
 
-        $this->roles(['photographer' => ['access cp', 'pull content', 'view photos assets']]);
+        $this->roles([
+            'photographer' => ['access cp', 'pull content', 'view photos assets'],
+            'viewer' => ['access cp', 'view photos assets'],
+        ]);
     }
 
     protected function tearDown(): void
@@ -91,5 +94,12 @@ class AssetExportTest extends TestCase
 
         $boss = $this->tokenFor($this->cmsUser('boss@example.com', super: true));
         $this->assertSame(['photos', 'secret'], array_values(array_unique(array_column($this->export($boss, [])->json('data'), 'container'))));
+    }
+
+    public function test_a_user_who_may_view_the_container_but_not_pull_content_is_refused(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('vic@example.com', roles: ['viewer']));
+
+        $this->export($token, ['handle' => 'photos'])->assertUnauthorized()->assertJsonPath('error', 'sync_token_refused')->assertJsonMissingPath('data');
     }
 }

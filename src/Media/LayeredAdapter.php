@@ -26,6 +26,7 @@ final class LayeredAdapter implements FilesystemAdapter
     /**
      * @param  Closure(string): string  $upperUrl
      * @param  Closure(string): string  $lowerUrl
+     * @param  string|null  $containerUrl  the disk's own URL, when it is not the bucket's: the base Statamic builds Asset::url() on
      */
     public function __construct(
         private readonly FilesystemAdapter $upper,
@@ -35,12 +36,17 @@ final class LayeredAdapter implements FilesystemAdapter
         private readonly Cache $cache,
         private readonly string $indexKey,
         private readonly int $indexSeconds = 300,
+        private readonly ?string $containerUrl = null,
     ) {}
 
-    /** The layer's URL for a file it holds, else the bucket's. */
+    /** The layer's URL for a file it holds, else the bucket's; a URL path arrives encoded, as Statamic encodes it. */
     public function getUrl(string $path): string
     {
-        return $this->inLayer($path) ? ($this->upperUrl)($path) : ($this->lowerUrl)($path);
+        if ($this->containerUrl !== null && self::key($path) === '') {
+            return $this->containerUrl;
+        }
+
+        return $this->inLayer(rawurldecode($path)) ? ($this->upperUrl)($path) : ($this->lowerUrl)($path);
     }
 
     /**

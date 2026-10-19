@@ -22,8 +22,16 @@ use Throwable;
  */
 final class RemoteIndexAdapter implements FilesystemAdapter
 {
+    /** read() holds the whole file in memory, so a file past this is refused there; readStream() spools any size to a temp file. */
+    public const MAX_READ_BYTES = 32 * 1024 * 1024;
+
+    private const CHUNK_BYTES = 1024 * 1024;
+
     /** @var array{signature: string, entries: array<string, array{url: ?string, contents: ?string, size: ?int, last_modified: ?int, mime_type: ?string}>}|null */
     private ?array $built = null;
+
+    /** @var array<string, array{size: ?int, last_modified: ?int}> */
+    private array $heads = [];
 
     public function __construct(
         private readonly RemoteIndex $index,
@@ -70,36 +78,18 @@ final class RemoteIndexAdapter implements FilesystemAdapter
 
     public function read(string $path): string
     {
-        $entry = $this->entry($path) ?? throw UnableToReadFile::fromLocation($path, 'not in the pulled index');
-
-        if ($entry['contents'] !== null) {
-            return $entry['contents'];
-        }
-
-        if ($entry['url'] === null || ! in_array(parse_url($entry['url'], PHP_URL_SCHEME), ['http', 'https'], true)) {
-            throw UnableToReadFile::fromLocation($path, 'the live site gave it no public URL');
-        }
+        $stream = $this->download($path, self::MAX_READ_BYTES);
 
         try {
-            $response = Http::connectTimeout($this->connectTimeout)->timeout($this->timeout)->get($entry['url']);
-        } catch (Throwable $e) {
-            throw UnableToReadFile::fromLocation($path, $e->getMessage(), $e);
+            return (string) stream_get_contents($stream);
+        } finally {
+            fclose($stream);
         }
-
-        if (! $response->successful()) {
-            throw UnableToReadFile::fromLocation($path, "{$entry['url']} answered HTTP {$response->status()}");
-        }
-
-        return $response->body();
     }
 
     public function readStream(string $path)
     {
-        $stream = fopen('php://temp', 'w+b');
-        fwrite($stream, $this->read($path));
-        rewind($stream);
-
-        return $stream;
+        return $this->download($path, null);
     }
 
     public function write(string $path, string $contents, Config $config): void
@@ -150,14 +140,28 @@ final class RemoteIndexAdapter implements FilesystemAdapter
     {
         $attributes = $this->attributes($path) ?? throw UnableToRetrieveMetadata::lastModified($path, 'not in the pulled index');
 
-        return $attributes->lastModified() !== null ? $attributes : throw UnableToRetrieveMetadata::lastModified($path, 'unknown');
+        if ($attributes->lastModified() !== null) {
+            return $attributes;
+        }
+
+        $lastModified = $this->head($path)['last_modified'] ?? $this->index->pulledAt();
+
+        return $lastModified !== null
+            ? new FileAttributes($attributes->path(), lastModified: $lastModified)
+            : throw UnableToRetrieveMetadata::lastModified($path, 'unknown');
     }
 
     public function fileSize(string $path): FileAttributes
     {
         $attributes = $this->attributes($path) ?? throw UnableToRetrieveMetadata::fileSize($path, 'not in the pulled index');
 
-        return $attributes->fileSize() !== null ? $attributes : throw UnableToRetrieveMetadata::fileSize($path, 'unknown');
+        if ($attributes->fileSize() !== null) {
+            return $attributes;
+        }
+
+        $size = $this->head($path)['size'] ?? $this->measure($path);
+
+        return $size !== null ? new FileAttributes($attributes->path(), $size) : throw UnableToRetrieveMetadata::fileSize($path, 'unknown');
     }
 
     public function listContents(string $path, bool $deep): iterable
@@ -199,6 +203,110 @@ final class RemoteIndexAdapter implements FilesystemAdapter
     public function copy(string $source, string $destination, Config $config): void
     {
         throw UnableToWriteFile::atLocation($destination, 'the live site\'s files are read only here');
+    }
+
+    /**
+     * The file's bytes from its public URL, copied a chunk at a time into a temp stream that spills to disk.
+     *
+     * @return resource
+     */
+    private function download(string $path, ?int $limit)
+    {
+        $entry = $this->entry($path) ?? throw UnableToReadFile::fromLocation($path, 'not in the pulled index');
+        $stream = fopen('php://temp', 'w+b');
+
+        if ($entry['contents'] !== null) {
+            fwrite($stream, $entry['contents']);
+            rewind($stream);
+
+            return $stream;
+        }
+
+        if ($entry['url'] === null) {
+            fclose($stream);
+
+            throw UnableToReadFile::fromLocation($path, 'the live site gave it no public URL on its own hosts');
+        }
+
+        try {
+            // No redirects: the index's hosts were checked, wherever a redirect would lead was not.
+            $response = Http::connectTimeout($this->connectTimeout)->timeout($this->timeout)->withoutRedirecting()->withOptions(['stream' => true])->get($entry['url']);
+
+            if (! $response->successful()) {
+                throw UnableToReadFile::fromLocation($path, "{$entry['url']} answered HTTP {$response->status()}");
+            }
+
+            if ($limit !== null && (int) $response->header('Content-Length') > $limit) {
+                throw UnableToReadFile::fromLocation($path, "{$entry['url']} is larger than {$limit} bytes; read it as a stream");
+            }
+
+            $body = $response->toPsrResponse()->getBody();
+            $copied = 0;
+
+            while (! $body->eof()) {
+                $chunk = $body->read(self::CHUNK_BYTES);
+                $copied += strlen($chunk);
+
+                if ($limit !== null && $copied > $limit) {
+                    throw UnableToReadFile::fromLocation($path, "{$entry['url']} is larger than {$limit} bytes; read it as a stream");
+                }
+
+                fwrite($stream, $chunk);
+            }
+        } catch (Throwable $e) {
+            fclose($stream);
+
+            throw $e instanceof UnableToReadFile ? $e : UnableToReadFile::fromLocation($path, $e->getMessage(), $e);
+        }
+
+        rewind($stream);
+
+        return $stream;
+    }
+
+    /**
+     * What the live site says of a file the index has no `.meta` for, which Statamic measures it by once and keeps in the layer.
+     *
+     * @return array{size: ?int, last_modified: ?int}
+     */
+    private function head(string $path): array
+    {
+        $url = $this->entry($path)['url'] ?? null;
+
+        if ($url === null) {
+            return ['size' => null, 'last_modified' => null];
+        }
+
+        return $this->heads[$url] ??= (function () use ($url): array {
+            try {
+                $response = Http::connectTimeout($this->connectTimeout)->timeout($this->timeout)->withoutRedirecting()->head($url);
+            } catch (Throwable) {
+                return ['size' => null, 'last_modified' => null];
+            }
+
+            $length = $response->header('Content-Length');
+            $modified = $response->header('Last-Modified');
+
+            return [
+                'size' => $response->successful() && ctype_digit($length) ? (int) $length : null,
+                'last_modified' => $response->successful() && $modified !== '' ? (strtotime($modified) ?: null) : null,
+            ];
+        })();
+    }
+
+    /** The size of the file's bytes, for a site that answers HEAD without a length. */
+    private function measure(string $path): ?int
+    {
+        try {
+            $stream = $this->download($path, null);
+        } catch (UnableToReadFile) {
+            return null;
+        }
+
+        $size = fstat($stream)['size'] ?? null;
+        fclose($stream);
+
+        return is_int($size) ? $size : null;
     }
 
     private function attributes(string $path): ?FileAttributes

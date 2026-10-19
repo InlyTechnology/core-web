@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\ProductionFileLocked;
@@ -41,6 +42,11 @@ class MediaDisksTest extends TestCase
             $this->assertSame(public_path('assets'), $disk['root']);
             $this->assertSame('/assets', $disk['url']);
         }
+    }
+
+    public function test_without_content_sync_there_is_no_media_file_route(): void
+    {
+        $this->assertFalse(Route::has('core-web.media.file'));
     }
 
     public function test_production_writes_the_bucket(): void

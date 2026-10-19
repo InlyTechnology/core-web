@@ -38,8 +38,17 @@ class AssetExport
             ->slice($offset, $size + 1)
             ->values();
 
+        // Each container's `.meta` files as a set, once a page, not searched per item.
+        $metaFiles = [];
+        $page = $candidates->take($size)->map(function (array $candidate) use (&$metaFiles): array {
+            [$container, $path] = $candidate;
+            $metaFiles[$container->handle()] ??= array_flip($container->metaFiles()->all());
+
+            return $this->item($container, $path, $metaFiles[$container->handle()]);
+        });
+
         return [
-            'data' => $candidates->take($size)->map(fn (array $candidate) => $this->item(...$candidate))->all(),
+            'data' => $page->all(),
             'next_cursor' => $candidates->count() > $size ? (string) ($offset + $size) : null,
             'containers' => $containers->mapWithKeys(fn (Container $container) => [$container->handle() => ['url' => self::absolute($container->url())]])->all(),
         ];
@@ -53,8 +62,11 @@ class AssetExport
         return $container === null ? null : $user->can('view', $container);
     }
 
-    /** @return array{type: string, id: string, container: string, path: string, url: ?string, meta: ?array<string, mixed>} */
-    private function item(Container $container, string $path): array
+    /**
+     * @param  array<string, int>  $metaFiles
+     * @return array{type: string, id: string, container: string, path: string, url: ?string, meta: ?array<string, mixed>}
+     */
+    private function item(Container $container, string $path, array $metaFiles): array
     {
         $asset = $container->makeAsset($path);
 
@@ -64,7 +76,7 @@ class AssetExport
             'container' => $container->handle(),
             'path' => $path,
             'url' => $this->url($asset),
-            'meta' => $this->meta($container, $asset),
+            'meta' => $this->meta($container, $asset, $metaFiles),
         ];
     }
 
@@ -79,9 +91,10 @@ class AssetExport
     /**
      * The meta Statamic keeps for the file: its cache, else its `.meta` file.
      *
+     * @param  array<string, int>  $metaFiles
      * @return array<string, mixed>|null
      */
-    private function meta(Container $container, Asset $asset): ?array
+    private function meta(Container $container, Asset $asset, array $metaFiles): ?array
     {
         try {
             $cached = $asset->cacheStore()->get($asset->metaCacheKey());
@@ -90,7 +103,7 @@ class AssetExport
                 return $cached;
             }
 
-            if (! $container->metaFiles()->contains($asset->metaPath())) {
+            if (! isset($metaFiles[$asset->metaPath()])) {
                 return null;
             }
 

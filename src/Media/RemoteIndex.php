@@ -17,6 +17,13 @@ final class RemoteIndex
     /** @var array{signature: string, files: array<string, array{url: ?string, meta: ?array<string, mixed>}>, url: ?string}|null */
     private ?array $loaded = null;
 
+    /**
+     * Each index file as last parsed, by path, so a disk built again in the same process does not parse it again.
+     *
+     * @var array<string, array{stamp: string, data: ?array<string, mixed>}>
+     */
+    private static array $parsed = [];
+
     public function __construct(private readonly string $root) {}
 
     public static function root(): string
@@ -50,6 +57,14 @@ final class RemoteIndex
         return $this->load()['signature'];
     }
 
+    /** When the index was last written, the date a file the live site gives none for is taken to be from; null before a pull. */
+    public function pulledAt(): ?int
+    {
+        $times = array_map(fn (string $file) => (int) @filemtime($file), $this->indexFiles());
+
+        return $times === [] ? null : max($times);
+    }
+
     /** The live container's own URL, the base Statamic builds an asset's URL on; null before a pull. */
     public function url(): ?string
     {
@@ -59,7 +74,7 @@ final class RemoteIndex
     /** @return list<string> the paths a container's index holds now */
     public function paths(string $container): array
     {
-        $data = $this->read($this->file($container));
+        $data = $this->read($this->file($container)) ?? [];
 
         return array_keys($data['files'] ?? []);
     }
@@ -84,21 +99,96 @@ final class RemoteIndex
 
         // A rename, so a request reading the index mid-pull sees the old one or the new one, never half of either.
         rename($temporary, $file);
+        unset(self::$parsed[$file]);
         $this->loaded = null;
     }
 
     public function forget(string $container): void
     {
         File::delete($this->file($container));
+        unset(self::$parsed[$this->file($container)]);
         $this->loaded = null;
+    }
+
+    /**
+     * Removes the index of every container not in the list: one renamed or moved to another disk would otherwise list its files here still.
+     *
+     * @param  list<string>  $containers
+     * @return list<string> the containers whose index was removed
+     */
+    public function prune(array $containers): array
+    {
+        $removed = [];
+
+        foreach ($this->indexFiles() as $file) {
+            $container = basename($file, '.json');
+
+            if (! in_array($container, $containers, true)) {
+                File::delete($file);
+                unset(self::$parsed[$file]);
+                $removed[] = $container;
+            }
+        }
+
+        $this->loaded = null;
+
+        return $removed;
+    }
+
+    /**
+     * The containers whose index is here, each with whether it reads: an unreadable one lists nothing.
+     *
+     * @return array<string, bool>
+     */
+    public function status(): array
+    {
+        $status = [];
+
+        foreach ($this->indexFiles() as $file) {
+            $status[basename($file, '.json')] = $this->read($file) !== null;
+        }
+
+        return $status;
+    }
+
+    /**
+     * The URL when it is http(s) on one of the hosts, else null: an index points only at the live site and its container's own host.
+     *
+     * @param  list<string>  $hosts
+     */
+    public static function allowedUrl(mixed $url, array $hosts): ?string
+    {
+        if (! is_string($url) || ! in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true)) {
+            return null;
+        }
+
+        return in_array(strtolower((string) parse_url($url, PHP_URL_HOST)), $hosts, true) ? $url : null;
+    }
+
+    /**
+     * The hosts an index's URLs may name: the live site's and the container's own.
+     *
+     * @return list<string>
+     */
+    public static function hosts(?string ...$urls): array
+    {
+        $hosts = [];
+
+        foreach ($urls as $url) {
+            $host = strtolower((string) parse_url((string) $url, PHP_URL_HOST));
+
+            if ($host !== '' && in_array(parse_url((string) $url, PHP_URL_SCHEME), ['http', 'https'], true)) {
+                $hosts[] = $host;
+            }
+        }
+
+        return array_values(array_unique($hosts));
     }
 
     /** @return array{signature: string, files: array<string, array{url: ?string, meta: ?array<string, mixed>}>, url: ?string} */
     private function load(): array
     {
-        $indexes = is_dir($this->root) ? glob($this->root.'/*.json') ?: [] : [];
-        sort($indexes);
-        clearstatcache();
+        $indexes = $this->indexFiles();
         $signature = implode('|', array_map(fn (string $file) => $file.':'.@filemtime($file).':'.@filesize($file), $indexes));
 
         if ($this->loaded !== null && $this->loaded['signature'] === $signature) {
@@ -109,13 +199,16 @@ final class RemoteIndex
         $url = null;
 
         foreach ($indexes as $index) {
-            $data = $this->read($index);
-            $url ??= is_string($data['url'] ?? null) ? $data['url'] : null;
+            $data = $this->read($index) ?? [];
+            $containerUrl = is_string($data['url'] ?? null) ? $data['url'] : null;
+            $hosts = self::hosts(is_string($data['remote'] ?? null) ? $data['remote'] : null, $containerUrl);
+            $url ??= self::allowedUrl($containerUrl, $hosts);
 
             foreach ((array) ($data['files'] ?? []) as $path => $entry) {
                 if (is_string($path) && is_array($entry)) {
                     $files[$path] = [
-                        'url' => is_string($entry['url'] ?? null) ? $entry['url'] : null,
+                        // Checked again on reading: the file is on this disk, and anything that writes it could point it anywhere.
+                        'url' => self::allowedUrl($entry['url'] ?? null, $hosts),
                         'meta' => is_array($entry['meta'] ?? null) ? $entry['meta'] : null,
                     ];
                 }
@@ -125,12 +218,30 @@ final class RemoteIndex
         return $this->loaded = ['signature' => $signature, 'files' => $files, 'url' => $url];
     }
 
-    /** @return array<string, mixed> */
-    private function read(string $file): array
+    /** @return list<string> */
+    private function indexFiles(): array
     {
-        $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+        $indexes = is_dir($this->root) ? glob($this->root.'/*.json') ?: [] : [];
+        sort($indexes);
+        clearstatcache();
 
-        return is_array($data) ? $data : [];
+        return $indexes;
+    }
+
+    /** @return array<string, mixed>|null null when the file is missing or no index */
+    private function read(string $file): ?array
+    {
+        $stamp = @filemtime($file).':'.@filesize($file);
+
+        if ((self::$parsed[$file]['stamp'] ?? null) === $stamp) {
+            return self::$parsed[$file]['data'];
+        }
+
+        $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+        $data = is_array($data) && is_array($data['files'] ?? null) ? $data : null;
+        self::$parsed[$file] = ['stamp' => $stamp, 'data' => $data];
+
+        return $data;
     }
 
     private function file(string $container): string

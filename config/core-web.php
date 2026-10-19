@@ -531,12 +531,13 @@ return [
     | timeouts: seconds the checkout waits to connect to the live site and
     | for each answer, and for each file it reads from the site's assets.
     |
-    | pull_assets: with `features.media` on a checkout without the bucket's
-    | key, the asset disks list the live site's files as last pulled, read
-    | through their public URLs, with uploads landing in the local layer
-    | (media.layer.local). content:pull brings the index (paths, URLs and
-    | `.meta`, never the files) into storage/core-web/remote-assets. False
-    | keeps those disks the plain local folder.
+    | pull_assets: with `features.media` on a local checkout without the
+    | bucket's key, the asset disks list the live site's files as last
+    | pulled, read through their public URLs, under the committed folder and
+    | the local layer uploads land in (media.layer.local). content:pull
+    | brings the index (paths, URLs and `.meta`, never the files) into
+    | storage/core-web/remote-assets. False keeps those disks the plain
+    | local folder.
     |
     */
 

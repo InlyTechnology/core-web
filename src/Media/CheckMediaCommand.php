@@ -36,11 +36,15 @@ class CheckMediaCommand extends Command
 
         $driver = MediaDisks::isRemoteIndexed($name) ? MediaDisks::REMOTE_INDEX_DRIVER : config("filesystems.disks.{$name}.driver");
         $this->line(sprintf('%s: %s', $name, match ($driver) {
-            MediaDisks::REMOTE_INDEX_DRIVER => 'the live site\'s files as content:pull last listed them, behind a local layer (uploads stay here)',
+            MediaDisks::REMOTE_INDEX_DRIVER => 'the live site\'s files as content:pull last listed them, under the committed folder and a local layer (uploads stay here)',
             MediaDisks::LAYERED_DRIVER => 'the bucket, behind a layer (writes never reach production\'s files)',
             's3' => 'the bucket',
             default => 'the local folder public/'.trim($folder, '/'),
         }));
+
+        if ($driver === MediaDisks::REMOTE_INDEX_DRIVER) {
+            return $this->checkIndex($name);
+        }
 
         if (! MediaDisks::bucketConfigured()) {
             $this->line('No bucket key here, so nothing more to check.');
@@ -73,6 +77,23 @@ class CheckMediaCommand extends Command
             }
         } catch (Throwable $e) {
             $this->check(false, "the file is reachable ({$e->getMessage()})");
+        }
+
+        return $this->failed ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function checkIndex(string $disk): int
+    {
+        $status = RemoteIndex::forDisk($disk)->status();
+
+        if ($status === []) {
+            $this->warn('  No asset index pulled yet: run php please content:pull --only=assets.');
+
+            return self::SUCCESS;
+        }
+
+        foreach ($status as $container => $readable) {
+            $this->check($readable, "the index of [{$container}] reads".($readable ? '' : ' (run content:pull --only=assets:'.$container.' to replace it)'));
         }
 
         return $this->failed ? self::FAILURE : self::SUCCESS;

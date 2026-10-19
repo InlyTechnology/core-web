@@ -15,9 +15,9 @@ use Throwable;
 /**
  * The asset disks in core-web.media.disks: the bucket in production, the
  * bucket behind a layer elsewhere (LayeredAdapter), the local folder when
- * the environment has no key, and on a checkout that pulls content, the live
- * site's pulled index behind a local layer. A disk the app defines itself is
- * left alone.
+ * the environment has no key, and on a checkout that pulls content, the
+ * committed folder over the live site's pulled index, behind a local layer.
+ * A disk the app defines itself is left alone.
  */
 final class MediaDisks
 {
@@ -67,6 +67,7 @@ final class MediaDisks
                 fn (string $path): string => $lower->url($path),
                 $app['cache']->store(),
                 'core-web.media.layer.'.$config['name'],
+                containerUrl: $config['container_url'] ?? null,
             );
 
             return new FilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
@@ -100,7 +101,13 @@ final class MediaDisks
     /** Whether the disk is core-web's layer over the live site's pulled index, the one an asset pull fills. */
     public static function isRemoteIndexed(string $disk): bool
     {
-        return self::defines($disk) && config("filesystems.disks.{$disk}.lower.driver") === self::REMOTE_INDEX_DRIVER;
+        return self::defines($disk) && config("filesystems.disks.{$disk}.remote_index") === true;
+    }
+
+    /** The local route a remote-indexed disk's files resolve through (MediaFileController), as a path from the site's root. */
+    public static function fileRoute(string $disk): string
+    {
+        return '/'.trim((string) config('statamic.routes.action', '!'), '/').'/core-web/media/'.$disk;
     }
 
     /** Whether this server keeps production's files behind a layer: on, unless a server set up before go-live turns it off. */
@@ -157,14 +164,18 @@ final class MediaDisks
         ];
     }
 
-    /** The layer's URL for an asset whose file the layer holds, or null (no layered disk, or the bucket's file). */
+    /**
+     * The file's own URL where Asset::url() would not give it: the layer's for a file the layer holds, and any file's
+     * on a remote-indexed disk, whose Asset::url() is the local redirect route the CDN cannot transform. Else null.
+     */
     public static function layerUrl(Asset $asset): ?string
     {
         try {
-            $disk = Storage::disk($asset->container()->diskHandle());
+            $handle = (string) $asset->container()->diskHandle();
+            $disk = Storage::disk($handle);
             $adapter = $disk instanceof FilesystemAdapter ? $disk->getAdapter() : null;
 
-            if (! $adapter instanceof LayeredAdapter || ! $adapter->inLayer($asset->path())) {
+            if (! $adapter instanceof LayeredAdapter || (! $adapter->inLayer($asset->path()) && ! self::isRemoteIndexed($handle))) {
                 return null;
             }
 
@@ -188,15 +199,28 @@ final class MediaDisks
                 return self::local($folder);
             }
 
-            $upper = $localLayer();
+            // Lazily: reading the disk (a pull clearing Statamic's caches) creates no folder.
+            $upper = [...$localLayer(), 'lazy_root_creation' => true];
+            $committed = [...self::local($folder), 'lazy_root_creation' => true];
 
-            // No key: the live site's files as last pulled, read through their public URLs.
+            // No key: the layer, then the committed folder, then the live site's files as last pulled, read through their public URLs.
             return [
                 'driver' => self::LAYERED_DRIVER,
                 'name' => $name,
                 'upper' => $upper,
-                'lower' => ['driver' => self::REMOTE_INDEX_DRIVER, 'name' => $name, 'url' => $upper['url'], 'throw' => false, 'report' => false],
-                'url' => $upper['url'],
+                'lower' => [
+                    'driver' => self::LAYERED_DRIVER,
+                    'name' => $name.'-committed',
+                    'upper' => $committed,
+                    'lower' => ['driver' => self::REMOTE_INDEX_DRIVER, 'name' => $name, 'url' => $committed['url'], 'throw' => false, 'report' => false],
+                    'url' => $committed['url'],
+                    'throw' => false,
+                    'report' => false,
+                ],
+                // Statamic builds Asset::url() on the container's URL, so it points at a route that finds the file in whichever layer holds it.
+                'url' => self::fileRoute($name),
+                'container_url' => self::fileRoute($name),
+                'remote_index' => true,
                 'visibility' => 'public',
                 'throw' => false,
                 'report' => false,

@@ -60,7 +60,7 @@ nothing.
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
-| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check` (see [Media](#media)) |
+| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 | Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
 
@@ -1036,16 +1036,26 @@ Glide reads through the disk, show.
 
 Without a key a disk is its committed local folder: a fresh clone, CI and a
 server missing the key all render from it. The exception is a laptop that
-pulls content: there the lower layer is the live site's asset index as
-`content:pull` last brought it ([Content pull](#content-pull) → Assets), so
-no key is needed to see and use production's files. It lists them, serves
-their `.meta` from the index and reads their bytes from their public URLs
-(Glide's CP thumbnails fetch them over HTTP); `Asset::url()` and the
-components point at those URLs. The layer on top is `public/media-layer/`,
-as with a key: uploads, and edits to a pulled file's alt or focus, land
-there and survive the next pull, and deleting or moving a pulled file
-throws `ProductionFileLocked`. Until the first pull the disk lists only the
-layer; the committed folder is not read in this mode.
+pulls content (`APP_ENV=local`, `features.content_sync` and `features.media`
+on, `content_sync.remote_url` set): there the disk reads three layers, first
+match wins. On top is `public/media-layer/`, as with a key: uploads, and
+edits to a pulled file's alt or focus, land there and survive the next
+pull. Below it the committed folder `public/<folder>`, read only. At the
+bottom the live site's asset index as `content:pull` last brought it
+([Content pull](#content-pull) → Assets), so no key is needed to see and
+use production's files: it lists them, serves their `.meta` from the index
+and reads their bytes from their public URLs (Glide's CP thumbnails fetch
+them over HTTP, a file at a time, never following a redirect). Deleting or
+moving a committed or pulled file throws `ProductionFileLocked`. Before the
+first pull the disk shows the layer and the committed folder.
+
+In this mode `Asset::url()` is a local route, `/!/core-web/media/<disk>/<path>`
+(registered only when `APP_ENV` is `local` or `testing`), that redirects to
+whichever layer holds the file: the layer's or the committed folder's URL,
+else the live file's public URL from the index, else a 404. Statamic builds
+every asset's URL on its container's one URL, so the route is what lets a
+local upload and a live file both resolve. The components skip the redirect
+and render the file's own URL, so the CDN still transforms live files.
 
 Everything but the key and secret is committed in the site's
 `config/core-web.php`:
@@ -1447,8 +1457,18 @@ then list the live site's files over the local layer (see
 [Media → The disks](#the-disks)), so the CP shows and renders them and
 `<x-core-img>` points at their public URLs, while uploads stay on the
 laptop. A container the site does not have, or the developer may not view,
-has its index cleared. A path in the index with a way out of the container,
-or into a `.meta` folder, stops the pull before anything is written.
+has its index cleared; any other refusal (a proxy's 403, a 500 on a later
+page) fails the pull and keeps the index as it was. A live site on a
+core-web from before the asset export refuses the `assets` type: the pull
+says so, keeps the index and pulls content as usual. A path in the index
+with a way out of the container, or into a `.meta` folder, stops the pull
+before anything is written; a file whose URL is not http(s) on the live
+site's host or its container's is left out (and counted), so the index can
+never have this machine fetch an address the site chose. Oversized `.meta`
+is cut to the keys Statamic writes, the index of a container no longer on
+the disk is removed, and `media:check` reports an index that does not read.
+An assets-only pull does not rebuild the Stache: it clears Statamic's
+listing and path caches for each container itself.
 `content_sync.pull_assets: false` turns this off; the live site only ever
 reads (a file without `.meta` there is sent without it, not measured).
 

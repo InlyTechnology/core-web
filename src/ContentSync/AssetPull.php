@@ -7,6 +7,7 @@ use Inly\CoreWeb\Media\RemoteIndex;
 use Statamic\Contracts\Assets\AssetContainer as Container;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Blink;
+use Statamic\Facades\Stache;
 
 /**
  * The asset half of a pull: the live site's index of each local container
@@ -16,7 +17,14 @@ use Statamic\Facades\Blink;
  */
 class AssetPull
 {
-    private const MAX_PAGES = 10000;
+    public const MAX_PAGES = 10000;
+
+    /** A file's `.meta` past this is cut to the keys Statamic itself writes, so one oversized entry cannot swell the index. */
+    public const MAX_META_BYTES = 16 * 1024;
+
+    private const META_KEYS = ['data', 'size', 'last_modified', 'width', 'height', 'mime_type', 'duration'];
+
+    public function __construct(private readonly int $maxPages = self::MAX_PAGES) {}
 
     /**
      * The local containers an asset pull fills, narrowed to a handle, and those it cannot (their disk reads no pulled index).
@@ -41,31 +49,46 @@ class AssetPull
     /**
      * Every file the site lists in the container, each path checked before anything is written.
      *
-     * @return array{url: ?string, files: array<string, array{url: ?string, meta: ?array<string, mixed>}>}|null null when the site has no such container or the user may not view it
+     * @return array{url: ?string, files: array<string, array{url: ?string, meta: ?array<string, mixed>}>, dropped: int}|null null when the site has no such container or the user may not view it
+     *
+     * @throws AssetsNotExported when the site's core-web predates the asset export
      */
     public function fetch(RemoteSite $remote, Container $container): ?array
     {
         $handle = $container->handle();
         $files = [];
         $url = null;
+        $hosts = [];
+        $dropped = 0;
         $cursor = '0';
 
         for ($page = 0; $cursor !== null; $page++) {
-            if ($page >= self::MAX_PAGES) {
-                throw new RemoteSiteError('The site kept paging assets past '.self::MAX_PAGES.' pages.');
+            if ($page >= $this->maxPages) {
+                throw new RemoteSiteError("The site kept paging assets past {$this->maxPages} pages.");
             }
 
             $response = $remote->get('export', ['type' => AssetExport::TYPE, 'handle' => $handle, 'cursor' => $cursor]);
+            $error = $response->json('error');
 
-            if (in_array($response->status(), [403, 404], true)) {
+            // Only the export's own answers: a proxy's or a firewall's 403 says nothing about the container.
+            if (($response->status() === 404 && $error === 'not_found') || ($response->status() === 403 && $error === 'forbidden')) {
                 return null;
             }
 
-            if (! $response->successful() || ! is_array($response->json('data'))) {
-                throw new RemoteSiteError("{$remote->url()} answered HTTP {$response->status()} for assets: ".($response->json('message') ?? $response->json('error') ?? 'no reason given').'.');
+            // An older core-web lists the types it exports and refuses `assets` as one it does not know.
+            if ($response->status() === 422 && $error === 'invalid_request') {
+                throw new AssetsNotExported($remote->url());
             }
 
-            $url ??= self::url($response->json("containers.{$handle}.url"));
+            if (! $response->successful() || ! is_array($response->json('data'))) {
+                throw new RemoteSiteError("{$remote->url()} answered HTTP {$response->status()} for assets: ".($response->json('message') ?? $error ?? 'no reason given').'.');
+            }
+
+            if ($page === 0) {
+                $reported = $response->json("containers.{$handle}.url");
+                $hosts = RemoteIndex::hosts($remote->url(), is_string($reported) ? $reported : null);
+                $url = RemoteIndex::allowedUrl($reported, $hosts);
+            }
 
             foreach ($response->json('data') as $item) {
                 $path = is_array($item) ? ($item['path'] ?? null) : null;
@@ -74,9 +97,18 @@ class AssetPull
                     throw new RemoteSiteError('The site sent an asset at ['.(is_string($path) ? $path : '?')."] in [{$handle}], which is no file path inside the container; nothing was written.");
                 }
 
+                $fileUrl = RemoteIndex::allowedUrl($item['url'] ?? null, $hosts);
+
+                // A URL off the site's own hosts would have this machine fetch whatever it names.
+                if (($item['url'] ?? null) !== null && $fileUrl === null) {
+                    $dropped++;
+
+                    continue;
+                }
+
                 $files[$path] = [
-                    'url' => self::url($item['url'] ?? null),
-                    'meta' => is_array($item['meta'] ?? null) ? $item['meta'] : null,
+                    'url' => $fileUrl,
+                    'meta' => self::meta($item['meta'] ?? null),
                 ];
             }
 
@@ -84,7 +116,7 @@ class AssetPull
             $cursor = is_scalar($next) && (string) $next !== '' ? (string) $next : null;
         }
 
-        return ['url' => $url, 'files' => $files];
+        return ['url' => $url, 'files' => $files, 'dropped' => $dropped];
     }
 
     /**
@@ -94,8 +126,15 @@ class AssetPull
      */
     public function apply(RemoteSite $remote, Container $container, ?array $index): void
     {
-        $store = RemoteIndex::forDisk((string) $container->diskHandle());
+        $disk = (string) $container->diskHandle();
+        $store = RemoteIndex::forDisk($disk);
         $before = $store->paths($container->handle());
+
+        $store->prune(AssetContainer::all()
+            ->filter(fn (Container $other) => $other->diskHandle() === $disk)
+            ->map(fn (Container $other) => $other->handle())
+            ->values()
+            ->all());
 
         if ($index === null) {
             $store->forget($container->handle());
@@ -113,6 +152,9 @@ class AssetPull
      */
     private function forgetCaches(Container $container, array $paths): void
     {
+        // First: clearing the Stache's paths lists the container, which would cache the listing again.
+        Stache::store('assets')->store($container->handle())->clear();
+
         // AssetContainerContents' own key: it offers no public way to drop its listing.
         $container->contents()->cacheStore()->forget('asset-list-contents-'.$container->handle());
         Blink::forget('asset-listing-cache-'.$container->handle());
@@ -129,8 +171,19 @@ class AssetPull
         return ContentPaths::safe($path) && ! in_array('.meta', explode('/', $path), true);
     }
 
-    private static function url(mixed $url): ?string
+    /** @return array<string, mixed>|null */
+    private static function meta(mixed $meta): ?array
     {
-        return is_string($url) && in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true) ? $url : null;
+        if (! is_array($meta)) {
+            return null;
+        }
+
+        if (strlen((string) json_encode($meta)) <= self::MAX_META_BYTES) {
+            return $meta;
+        }
+
+        $meta = array_intersect_key($meta, array_flip(self::META_KEYS));
+
+        return strlen((string) json_encode($meta)) <= self::MAX_META_BYTES ? $meta : array_diff_key($meta, ['data' => true]);
     }
 }

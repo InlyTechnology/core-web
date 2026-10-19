@@ -64,7 +64,7 @@ class ContentPullCommand extends Command
 
         $fetch = fn (RemoteSite $remote): array => [
             ...$this->fetch($local, $remote, $contentScopes, $site),
-            array_map(fn ($container) => $assets->fetch($remote, $container), $containers),
+            $this->fetchAssets($assets, $remote, $containers),
         ];
 
         try {
@@ -97,8 +97,11 @@ class ContentPullCommand extends Command
             return self::FAILURE;
         }
 
-        $wrote = $this->applyAssets($assets, $remote, $containers, $indexes) || $wrote;
+        if ($indexes !== null) {
+            $this->applyAssets($assets, $remote, $containers, $indexes);
+        }
 
+        // AssetPull clears what Statamic cached of the containers itself, so only content needs the Stache rebuilt.
         if ($wrote) {
             $local->refreshStache();
         }
@@ -141,10 +144,27 @@ class ContentPullCommand extends Command
     }
 
     /**
+     * Each container's index; null when the site exports no assets, so every index is kept as it was.
+     *
      * @param  list<AssetContainer>  $containers
-     * @param  list<array{url: ?string, files: array<string, mixed>}|null>  $indexes
+     * @return list<array{url: ?string, files: array<string, mixed>, dropped: int}|null>|null
      */
-    private function applyAssets(AssetPull $assets, RemoteSite $remote, array $containers, array $indexes): bool
+    private function fetchAssets(AssetPull $assets, RemoteSite $remote, array $containers): ?array
+    {
+        try {
+            return array_map(fn (AssetContainer $container) => $assets->fetch($remote, $container), $containers);
+        } catch (AssetsNotExported $e) {
+            $this->warn("Assets: {$e->getMessage()} The asset index here is left as it was; content is pulled as usual.");
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<AssetContainer>  $containers
+     * @param  list<array{url: ?string, files: array<string, mixed>, dropped: int}|null>  $indexes
+     */
+    private function applyAssets(AssetPull $assets, RemoteSite $remote, array $containers, array $indexes): void
     {
         foreach ($containers as $i => $container) {
             $index = $indexes[$i];
@@ -152,12 +172,14 @@ class ContentPullCommand extends Command
                 ? "Assets {$container->handle()}: the site has no such container or you may not view it, so its index is cleared."
                 : sprintf('Assets %s: %d files indexed; their bytes stay on the site.', $container->handle(), count($index['files'])));
 
+            if (($index['dropped'] ?? 0) > 0) {
+                $this->warn(sprintf('Assets %s: %d files left out, their URLs on a host other than the site\'s or the container\'s.', $container->handle(), $index['dropped']));
+            }
+
             if (! $this->option('dry-run')) {
                 $assets->apply($remote, $container, $index);
             }
         }
-
-        return $containers !== [] && ! $this->option('dry-run');
     }
 
     /**

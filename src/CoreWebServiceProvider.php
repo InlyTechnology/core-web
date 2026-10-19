@@ -196,6 +196,11 @@ class CoreWebServiceProvider extends ServiceProvider
             MediaDisks::registerDriver();
             Blade::anonymousComponentPath(__DIR__.'/../resources/views/media');
 
+            // Asset::url() on a disk reading the live site's pulled index; never on a server.
+            if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
+            }
+
             if ($this->app->runningInConsole()) {
                 $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
             }
