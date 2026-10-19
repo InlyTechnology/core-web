@@ -126,7 +126,8 @@ abstract class TreeTarget implements ProposalTarget
         return $out;
     }
 
-    private static function safeUrl(string $url): bool
+    /** Whether a branch URL is one a proposal may add. */
+    public static function safeUrl(string $url): bool
     {
         if (preg_match('~^(/(?!/)|#|\?)~', $url) === 1 || $url === '/') {
             return true;

@@ -1126,15 +1126,18 @@ whose disk does not outlive a deploy names a bucket.
 Checks find what is wrong in the site's content that a machine can find,
 and where the fix is mechanical, fix it as a draft or a proposal an editor
 publishes. They run nightly (`checks.schedule`) or with
-`php artisan content:check [check…] [--json]`; each check's latest findings
+`php artisan content:check [check…] [--json] [--fix --as=<email>]`; each check's latest findings
 are kept (`checks.disk`, `checks.path`) for the `content_checks` dashboard
-widget and for sources (Core AI) to read without running a check.
+widget and for sources (Core AI) to read without running a check. `--fix`
+fixes what it found, as drafts and proposals made as the CP user named by
+`--as`.
 
 | Check | Finds | Fix |
 |---|---|---|
 | `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
 | `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
 | `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
+| `nav-sync` (opt-in) | A translated site's menus and page trees that differ from the site it translates | The source tree mapped through each entry's localization, in a proposal (below) |
 
 ```php
 $checks = app(ContentChecks::class);
@@ -1146,6 +1149,51 @@ A finding's `id` is stable across runs. A fix finds the finding afresh
 first, and fixes everything fixable in the same entry or tree at once. A site
 adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
 `checks.checks`, or leaves one out.
+
+### Keeping a translation's menus in step (nav-sync)
+
+On a site that translates another, `nav-sync` compares each navigation and
+structured collection's tree with the source site's and proposes the source
+tree in the translation's terms. Add it to `checks.checks` and name the
+translations:
+
+```php
+'checks' => [
+    'checks' => [/* … */, \Inly\CoreWeb\Checks\Checks\NavSync::class],
+    'sync' => [
+        'sites' => ['english' => 'default'], // translation => source
+        'navs' => null,                      // or a list of handles
+        'trees' => null,                     // or a list of collections
+        'keep' => 'sync',
+    ],
+],
+```
+
+`php artisan content:check nav-sync --fix --as=editor@example.com` stages
+one proposal per menu and tree; an editor applies it under Content →
+Proposals. What the mirror does:
+
+- An entry becomes its localization. A branch the translation already has
+  keeps its own label, id and data, and moves to the source's place.
+- A page with no translation yet is left out and its children take its
+  place; a link no proposal may add (no scheme, an unknown one) is left
+  out too. The finding names both under `left_out`.
+- A menu link keeps the translation's label when the translation links to
+  the same URL; a heading keeps the label of the translation's heading at
+  the same place. Otherwise the source's label and URL are copied, for an
+  editor to translate before applying.
+- A menu item whose `keep` data field (a toggle in the nav's blueprint) is
+  false and that the source lacks stays, under the same parent, or at the
+  top when that parent is gone. Other items only the translation has are
+  dropped.
+- A page tree drops no page: pages only the translation has stay under the
+  same parent, and the home page stays first.
+- A mirror the menu or tree would refuse (deeper than its max depth, say)
+  is reported as not fixable, with the reasons under `refused`.
+- A translation with no tree yet for a menu is skipped.
+
+`--fix` makes one draft or proposal per page or menu per run: when two
+checks fix the same one, the second waits for the next run.
 
 ### Core reads checks and proposes (protocol v1.2)
 

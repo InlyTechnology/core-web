@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## v0.14.0
+
+- **nav-sync**: an opt-in check (`NavSync`, `checks.sync`) that finds a
+  translated site's menus and page trees that differ from the site it
+  translates, and fixes each as a proposal of the source tree mapped
+  through entry localizations. `content:check --fix --as=<email>` fixes
+  findings from the command line. See README → Keeping a translation's
+  menus in step.
+
 ## v0.13.0
 
 - **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
