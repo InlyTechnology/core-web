@@ -20,11 +20,13 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
 use Inly\CoreWeb\Drafts\FieldsHash;
 use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
+use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
@@ -37,7 +39,9 @@ use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
+use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
+use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\User;
@@ -61,6 +65,8 @@ use Statamic\StaticCaching\Cacher;
  * and stages changes to content without revisions as proposals an editor
  * applies in the CP. The `checks` feature finds what is wrong in the
  * site's content (`content:check`, nightly, a dashboard widget).
+ * The `forms` feature keeps the Core forms the site renders itself.
+ * The `cp_link` feature links the control panel to Core under Dashboard.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -70,6 +76,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
+            $this->mergeLegacyRemote();
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -98,6 +106,21 @@ class CoreWebServiceProvider extends ServiceProvider
             $app[Cacher::class],
             $app['config']['statamic.static_caching.invalidation.rules'],
         ));
+    }
+
+    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
+    private function mergeLegacyRemote(): void
+    {
+        $legacy = config('core-web.pull');
+
+        if (! is_array($legacy)) {
+            return;
+        }
+
+        config(['core-web.remote' => array_replace(
+            $legacy,
+            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
+        )]);
     }
 
     public function boot(): void
@@ -131,6 +154,14 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
         }
 
+        if (self::enabled('forms')) {
+            $this->bootForms();
+        }
+
+        if (self::enabled('cp_link')) {
+            CoreNavLink::register();
+        }
+
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
         $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
     }
@@ -149,6 +180,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
+        CoreSnapshotWidget::register();
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
             // After Statamic's static cache middleware (Statamic builds the group once the app has booted, then runs
@@ -205,7 +239,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $agents = self::chatAgents();
 
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
         RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [
@@ -217,6 +252,25 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));
+    }
+
+    private function bootForms(): void
+    {
+        if (! self::enabled('snapshots')) {
+            throw new LogicException('core-web.features.forms needs core-web.features.snapshots: the forms are a snapshot, refreshed by Core\'s pings.');
+        }
+
+        CoreForms::classes();
+
+        $this->loadViews();
+        $this->app->extend(SnapshotRegistry::class, fn (SnapshotRegistry $registry) => $registry->register(CoreForms::snapshot(), [CoreForms::PING]));
+    }
+
+    private function loadViews(): void
+    {
+        if (! array_key_exists('core-web', $this->app['view']->getFinder()->getHints())) {
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        }
     }
 
     /**

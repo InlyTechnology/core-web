@@ -22,8 +22,9 @@ return [
     |     return ['features' => ['snapshots' => true]];
     |
     | snapshots: Core snapshots with their store, `core:warm` and its schedule,
-    | `core:pull`, the degraded guard, Core's pings (`ping`) and the snapshot
-    | sitemaps (`sitemaps`). The Core client below needs no switch.
+    | `core:pull`, the degraded guard, Core's pings (`ping`), the snapshot
+    | sitemaps (`sitemaps`) and the `core_snapshot` control panel widget. The
+    | Core client below needs no switch.
     |
     | chat: the relay between the site's visitors and Core's chat agents
     | (`chat`), with its routes and the <x-core-web::chat> component.
@@ -45,6 +46,13 @@ return [
     | nightly schedule and the `content_checks` dashboard widget. Fixing a
     | finding writes a draft or a proposal, so it needs `drafts` too.
     |
+    | forms: the Core forms the site renders with its own Livewire markup
+    | (Inly\CoreWeb\Forms\CoreForm), kept as a snapshot refreshed by Core's
+    | `forms` ping. Needs `snapshots` on too.
+    |
+    | cp_link: a link to Core right under Dashboard in the control panel
+    | (`cp_link`), for every CP user, opened in a new tab.
+    |
     */
 
     'features' => [
@@ -54,6 +62,8 @@ return [
         'live' => false,
         'drafts' => false,
         'checks' => false,
+        'forms' => false,
+        'cp_link' => false,
     ],
 
     /*
@@ -81,24 +91,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pulling another Core's data
+    | The remote Core
     |--------------------------------------------------------------------------
     |
-    | Local only: the Core `core:pull` reads the snapshots from (production, as
-    | a rule) and its own client, which Core should let read and nothing more.
-    | The URL and client id are the same for every developer, so the site
-    | commits them as the defaults in its own config/core-web.php (env can
-    | still override them); only the secret has to be set
-    | (CORE_PULL_CLIENT_SECRET). The copies it stores are pinned until the
-    | next pull or `core:pull --release`.
+    | Local only: the Core a local machine uses in place of its own
+    | (production, as a rule), with a client Core should let read and nothing
+    | more. `core:pull` copies its snapshots, and without a CORE_URL the
+    | control panel link points at it. The URL and client id are the same for
+    | every developer, so the site commits them as the defaults in its own
+    | config/core-web.php (env can still override them); only the secret has
+    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
+    | `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
 
-    'pull' => [
-        'base_url' => env('CORE_PULL_URL', ''),
-        'client_id' => env('CORE_PULL_CLIENT_ID', ''),
-        'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
-        'token_cache_key' => 'core_web_pull_access_token',
+    'remote' => [
+        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
+        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
+        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
+        'token_cache_key' => 'core_web_remote_access_token',
     ],
 
     /*
@@ -380,6 +391,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Forms
+    |--------------------------------------------------------------------------
+    |
+    | Forms the site renders with its own markup and posts to a Core form,
+    | server to server on the site's client token. Every other Core form is
+    | better served by Core's own embed.
+    |
+    | classes: the site's form classes (Inly\CoreWeb\Forms\CoreForm). The
+    | definitions of the Core forms they post to are kept in the
+    | `core-web-forms` snapshot. Mark each of those forms a custom embed in
+    | Core, so its admins are warned before changing its fields.
+    |
+    |     'classes' => [App\Livewire\DamageInspection::class],
+    |
+    | submit_rate_limit: entries per minute from one address, per form. Core
+    | does not limit what the site sends on its client token, so the site
+    | limits its visitors itself.
+    |
+    | timeouts: seconds to connect to Core, to read a definition (from a pull,
+    | never a render) and to send an entry, files included.
+    |
+    */
+
+    'forms' => [
+        'classes' => [],
+        'submit_rate_limit' => 5,
+        'timeouts' => [
+            'connect' => 3,
+            'definition' => 5,
+            'submit' => 20,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Content checks
     |--------------------------------------------------------------------------
     |
@@ -418,4 +464,22 @@ return [
         'path' => 'core-web/checks',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Control panel link
+    |--------------------------------------------------------------------------
+    |
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
+    | or on a local machine without one at the remote Core, once its client
+    | is set up; with neither there is no link.
+    |
+    | label: what the link says, such as the backoffice's own name.
+    | icon: a Statamic icon name or an SVG; null is Core's mark.
+    |
+    */
+
+    'cp_link' => [
+        'label' => 'Core',
+        'icon' => null,
+    ],
 ];
