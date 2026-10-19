@@ -438,6 +438,12 @@ return [
     | collections it reads (null: every one with URLs) and the lengths a
     | search result shows.
     |
+    | sync: for the nav-sync check (Inly\CoreWeb\Checks\Checks\NavSync, add
+    | it to `checks`), the sites that translate another, as translation =>
+    | source (['english' => 'default']), the navigations and structured
+    | collections it compares (null: every one on both sites), and the branch
+    | data field that, set to false, keeps a menu item the source lacks.
+    |
     | schedule: the cron expression `content:check` runs on; null schedules
     | nothing.
     |
@@ -458,6 +464,12 @@ return [
             'description' => 'seo_description',
             'title_max' => 60,
             'description_max' => 160,
+        ],
+        'sync' => [
+            'sites' => [],
+            'navs' => null,
+            'trees' => null,
+            'keep' => 'sync',
         ],
         'schedule' => '30 3 * * *',
         'disk' => null,

@@ -35,6 +35,12 @@ final class ContentWalk
         }
     }
 
+    /** Whether a walk reads the subject: every subject, or only the one it is scoped to. */
+    public static function covers(string $subject): bool
+    {
+        return self::$subject === null || self::$subject === $subject;
+    }
+
     /** @return iterable<EntryContract> */
     public static function entries(): iterable
     {
