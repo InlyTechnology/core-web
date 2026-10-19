@@ -60,23 +60,33 @@ class SyncApiController
         return new JsonResponse(['status' => 'revoked']);
     }
 
-    public function export(Request $request, ContentExport $export): JsonResponse
+    public function export(Request $request, ContentExport $export, AssetExport $assets): JsonResponse
     {
         $type = (string) $request->query('type');
         $cursor = (string) $request->query('cursor', '0');
+        $types = [...array_keys(ContentPaths::TYPES), AssetExport::TYPE];
 
-        if (! array_key_exists($type, ContentPaths::TYPES) || ! ctype_digit($cursor)) {
-            return new JsonResponse(['error' => 'invalid_request', 'message' => __('core-web::sync.unknown_type', ['types' => implode(', ', array_keys(ContentPaths::TYPES))])], 422);
+        if (! in_array($type, $types, true) || ! ctype_digit($cursor)) {
+            return new JsonResponse(['error' => 'invalid_request', 'message' => __('core-web::sync.unknown_type', ['types' => implode(', ', $types)])], 422);
         }
 
-        return new JsonResponse($export->page(
-            User::current(),
-            $type,
-            self::filter($request->query('handle')),
-            self::filter($request->query('site')),
-            (int) $cursor,
-            max(1, (int) config('core-web.content_sync.page_size', 200)),
-        ));
+        $handle = self::filter($request->query('handle'));
+        $size = max(1, (int) config('core-web.content_sync.page_size', 200));
+
+        if ($type !== AssetExport::TYPE) {
+            return new JsonResponse($export->page(User::current(), $type, $handle, self::filter($request->query('site')), (int) $cursor, $size));
+        }
+
+        // A named container is answered for, so a pull can tell one it may not see from an empty one.
+        $viewable = $handle === null ? true : $assets->viewable(User::current(), $handle);
+
+        if ($viewable !== true) {
+            return $viewable === null
+                ? new JsonResponse(['error' => 'not_found', 'message' => __('core-web::sync.no_container', ['handle' => $handle])], 404)
+                : new JsonResponse(['error' => 'forbidden', 'message' => __('core-web::sync.container_forbidden', ['handle' => $handle])], 403);
+        }
+
+        return new JsonResponse($assets->page(User::current(), $handle, (int) $cursor, $size));
     }
 
     private static function filter(mixed $value): ?string

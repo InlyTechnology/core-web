@@ -17,6 +17,17 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   writes what changed on the site and keeps local edits, tracked in a
   committed `content.lock`. Set `content_sync.remote_url` in the site's
   config. See README → Content pull.
+- **Asset index pull**: with `features.media` too, `content:pull` (and
+  `--only=assets[:container]`) brings the live site's asset index (each
+  file's path, public URL and `.meta`, never its bytes) into
+  `storage/core-web/remote-assets/`, replaced on every pull. On a local
+  checkout without the bucket's key the asset disks then list those files
+  under the local layer (`public/media-layer/`), so the CP browses and
+  renders production's assets and uploads stay local; deleting or moving a
+  pulled file throws `ProductionFileLocked`. The export gains an `assets`
+  type, limited to containers the user may view.
+  `content_sync.pull_assets: false` keeps the plain local folder. See
+  README → Content pull → Assets and README → Media → The disks.
 - **Media**: `features.media` (off by default) renders a site's pictures and
   videos through the transforming CDN, and defines its asset disks on the
   bucket. See README → Media.

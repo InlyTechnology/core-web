@@ -34,8 +34,9 @@ class CheckMediaCommand extends Command
             return self::SUCCESS;
         }
 
-        $driver = config("filesystems.disks.{$name}.driver");
+        $driver = MediaDisks::isRemoteIndexed($name) ? MediaDisks::REMOTE_INDEX_DRIVER : config("filesystems.disks.{$name}.driver");
         $this->line(sprintf('%s: %s', $name, match ($driver) {
+            MediaDisks::REMOTE_INDEX_DRIVER => 'the live site\'s files as content:pull last listed them, behind a local layer (uploads stay here)',
             MediaDisks::LAYERED_DRIVER => 'the bucket, behind a layer (writes never reach production\'s files)',
             's3' => 'the bucket',
             default => 'the local folder public/'.trim($folder, '/'),

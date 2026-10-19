@@ -5,6 +5,8 @@ namespace Inly\CoreWeb\Media;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
+use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use InvalidArgumentException;
 use League\Flysystem\Filesystem;
 use Statamic\Contracts\Assets\Asset;
@@ -13,11 +15,15 @@ use Throwable;
 /**
  * The asset disks in core-web.media.disks: the bucket in production, the
  * bucket behind a layer elsewhere (LayeredAdapter), the local folder when
- * the environment has no key. A disk the app defines itself is left alone.
+ * the environment has no key, and on a checkout that pulls content, the live
+ * site's pulled index behind a local layer. A disk the app defines itself is
+ * left alone.
  */
 final class MediaDisks
 {
     public const LAYERED_DRIVER = 'core-web-layered';
+
+    public const REMOTE_INDEX_DRIVER = 'core-web-remote-index';
 
     /** @var list<string> */
     private static array $defined = [];
@@ -65,6 +71,36 @@ final class MediaDisks
 
             return new FilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
         });
+
+        Storage::extend(self::REMOTE_INDEX_DRIVER, function (Application $app, array $config): FilesystemAdapter {
+            $adapter = new RemoteIndexAdapter(
+                RemoteIndex::forDisk($config['name']),
+                (string) ($config['url'] ?? ''),
+                max(1, (int) $app['config']->get('core-web.content_sync.timeouts.connect', 5)),
+                max(1, (int) $app['config']->get('core-web.content_sync.timeouts.request', 30)),
+            );
+
+            return new FilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
+        });
+    }
+
+    /**
+     * Whether a disk without the bucket's key reads the live site's pulled
+     * asset index here: on a local checkout pulling content from a live site.
+     */
+    public static function readsRemoteIndex(Application $app): bool
+    {
+        return $app->environment('local')
+            && ! self::bucketConfigured()
+            && CoreWebServiceProvider::enabled('content_sync')
+            && filter_var(config('core-web.content_sync.pull_assets', true), FILTER_VALIDATE_BOOLEAN)
+            && RemoteSite::configuredUrl() !== '';
+    }
+
+    /** Whether the disk is core-web's layer over the live site's pulled index, the one an asset pull fills. */
+    public static function isRemoteIndexed(string $disk): bool
+    {
+        return self::defines($disk) && config("filesystems.disks.{$disk}.lower.driver") === self::REMOTE_INDEX_DRIVER;
     }
 
     /** Whether this server keeps production's files behind a layer: on, unless a server set up before go-live turns it off. */
@@ -144,18 +180,34 @@ final class MediaDisks
     /** @return array<string, mixed> */
     private static function disk(string $name, string $folder, Application $app): array
     {
+        $layer = (array) config('core-web.media.layer', []);
+        $localLayer = fn (): array => self::local(trim((string) ($layer['local'] ?? 'media-layer'), '/').'/'.$folder);
+
         if (! self::bucketConfigured()) {
-            return self::local($folder);
+            if (! self::readsRemoteIndex($app)) {
+                return self::local($folder);
+            }
+
+            $upper = $localLayer();
+
+            // No key: the live site's files as last pulled, read through their public URLs.
+            return [
+                'driver' => self::LAYERED_DRIVER,
+                'name' => $name,
+                'upper' => $upper,
+                'lower' => ['driver' => self::REMOTE_INDEX_DRIVER, 'name' => $name, 'url' => $upper['url'], 'throw' => false, 'report' => false],
+                'url' => $upper['url'],
+                'visibility' => 'public',
+                'throw' => false,
+                'report' => false,
+            ];
         }
 
         if ($app->environment('production') || ! self::layered()) {
             return self::bucket($folder);
         }
 
-        $layer = (array) config('core-web.media.layer', []);
-        $upper = $app->environment('local')
-            ? self::local(trim((string) ($layer['local'] ?? 'media-layer'), '/').'/'.$folder)
-            : self::bucket($folder, (string) ($layer['prefix'] ?? '_staging'));
+        $upper = $app->environment('local') ? $localLayer() : self::bucket($folder, (string) ($layer['prefix'] ?? '_staging'));
 
         $lower = self::bucket($folder);
 

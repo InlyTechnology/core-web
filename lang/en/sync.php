@@ -6,6 +6,8 @@ return [
     'https_required' => 'Content sync runs over HTTPS only.',
     'machine_required' => 'Name the machine asking to sign in.',
     'unknown_type' => 'Name a type to export: :types.',
+    'no_container' => 'There is no asset container [:handle] here.',
+    'container_forbidden' => 'You may not view the asset container [:handle].',
     'authorize_title' => 'Sign in a machine',
     'allow' => 'Allow :machine to pull this site\'s content as you?',
     'allow_detail' => 'It gets a personal token for :site that reads (and later pushes) content with your permissions, for as long as it keeps being used, until you revoke it under Tools → Content sync. Code: :code. Only approve a request you started yourself.',

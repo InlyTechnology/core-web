@@ -1004,6 +1004,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 |---|---|---|
 | production | the bucket | the local folder `public/<folder>` |
 | staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
+| `local`, pulling content (`features.content_sync` and a `remote_url`) | the bucket, behind a layer | the live site's pulled index, behind a layer |
 | anywhere else | the bucket, behind a layer | the local folder |
 
 The layer is what makes the shared bucket safe outside production. Writes,
@@ -1035,7 +1036,17 @@ og:image, a feed). The control panel's links to it 404; its thumbnails, which
 Glide reads through the disk, show.
 
 Without a key a disk is its committed local folder: a fresh clone, CI and a
-server missing the key all render from it.
+server missing the key all render from it. The exception is a laptop that
+pulls content: there the lower layer is the live site's asset index as
+`content:pull` last brought it ([Content pull](#content-pull) → Assets), so
+no key is needed to see and use production's files. It lists them, serves
+their `.meta` from the index and reads their bytes from their public URLs
+(Glide's CP thumbnails fetch them over HTTP); `Asset::url()` and the
+components point at those URLs. The layer on top is `public/media-layer/`,
+as with a key: uploads, and edits to a pulled file's alt or focus, land
+there and survive the next pull, and deleting or moving a pulled file
+throws `ProductionFileLocked`. Until the first pull the disk lists only the
+layer; the committed folder is not read in this mode.
 
 Everything but the key and secret is committed in the site's
 `config/core-web.php`:
@@ -1369,6 +1380,7 @@ return [
 php please content:login     # once per machine
 php please content:pull      # every type
 php please content:pull --only=entries:pages,globals --site=default
+php please content:pull --only=assets   # only the asset index (assets:<container> for one)
 php please content:pull --dry-run   # what would change; writes nothing
 php please content:pull --force     # overwrite (and delete) files changed here too
 php please content:logout    # revoke this machine's token
@@ -1389,7 +1401,8 @@ disk does not outlive a deploy names a bucket).
 **Pulling.** The live site exports entries (published or not, every site),
 terms, global variables, collection trees and nav trees, each as the exact
 file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
-config, users, form submissions and assets are not pulled. `content.lock`
+config, users and form submissions are not pulled, and assets come as an
+index only (below). `content.lock`
 (committed, beside `content/`) holds the hash of every file as last pulled:
 
 - a file unchanged here since the last pull, or missing here, is written;
@@ -1401,6 +1414,22 @@ Then the Stache is refreshed. A path the site sends that is not one of its
 type's files under `content/` stops the pull before anything is written,
 and nothing is written outside `content/`. The command runs only where
 `APP_ENV` is `local`.
+
+**Assets.** With `features.media` on a checkout without the bucket's key,
+the pull also brings the live site's asset index: for every asset container
+the developer may view there, each file's path, its public URL and its
+Statamic `.meta` data (alt, focus, size, dimensions), never the file
+itself. It is written to `storage/core-web/remote-assets/<disk>/` (ignored
+by git), never to the repo or a bucket, and replaced whole on every pull:
+it is disposable, so there is no lock and nothing to keep. The asset disks
+then list the live site's files over the local layer (see
+[Media → The disks](#the-disks)), so the CP shows and renders them and
+`<x-core-img>` points at their public URLs, while uploads stay on the
+laptop. A container the site does not have, or the developer may not view,
+has its index cleared. A path in the index with a way out of the container,
+or into a `.meta` folder, stops the pull before anything is written.
+`content_sync.pull_assets: false` turns this off; the live site only ever
+reads (a file without `.meta` there is sent without it, not measured).
 
 **Revoking.** **Tools → Content sync** in the live site's CP lists the
 machines signed in as the user (a super user sees everyone's), with when
