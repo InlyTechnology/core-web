@@ -115,6 +115,34 @@ final class SnapshotStore
         return $this->coldPull($snapshot, $partition);
     }
 
+    /**
+     * What the store already holds, without pulling: null while nothing is
+     * cached. For a reader that must not wait on Core, such as the control
+     * panel's widget.
+     */
+    public function cached(Snapshot $snapshot, ?string $partition = null): ?SnapshotRead
+    {
+        $snapshot->assertPartition($partition);
+
+        if (isset($this->reads[$memo = self::memo($snapshot, $partition)])) {
+            return $this->reads[$memo];
+        }
+
+        $fresh = $this->cache->get($snapshot->key('fresh', $partition));
+
+        if (is_array($fresh)) {
+            return new SnapshotRead($fresh);
+        }
+
+        $lastGood = $this->cache->get($snapshot->key('last_good', $partition));
+
+        if (! is_array($lastGood)) {
+            return null;
+        }
+
+        return new SnapshotRead($lastGood, stale: $fresh === null);
+    }
+
     /** One render pulls a cold snapshot; every render that arrives meanwhile is served degraded instead of pulling too. */
     private function coldPull(Snapshot $snapshot, ?string $partition): SnapshotRead
     {

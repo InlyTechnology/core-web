@@ -35,6 +35,17 @@ class CoreClientTest extends TestCase
         return count(Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/oauth/token')));
     }
 
+    public function test_open_url_points_at_core_s_open_route(): void
+    {
+        $core = new CoreClient('https://core.test/', 'web', 'secret');
+
+        $this->assertSame('https://core.test/open/employee/7', $core->openUrl('employee', 7));
+        $this->assertSame('https://core.test/open/sales/order/a%20b', $core->openUrl('sales/order', 'a b'));
+        $this->assertNull($core->openUrl('', 7));
+        $this->assertNull($core->openUrl('employee', 'a/b'));
+        $this->assertNull((new CoreClient('', '', ''))->openUrl('employee', 7));
+    }
+
     public function test_it_is_built_from_config_each_time_it_is_resolved(): void
     {
         $this->assertFalse($this->client()->configured());

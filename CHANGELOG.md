@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.11.0
 
 - **Control panel link**: `features.cp_link` (off by default) adds a link to
   Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
@@ -33,6 +33,15 @@
   and replace `core-web.pull` with `core-web.remote` in code and tests.
   Verify: `php artisan config:show core-web.remote` shows the base URL,
   client id and a secret, and `php artisan core:pull` runs.
+
+## v0.10.0
+
+- **Snapshots**: a `core_snapshot` control panel widget lists a snapshot's
+  documents, paginated, each linked to its record in Core. A snapshot opts in
+  with `->listing(title:, coreType:, coreId:)`; `CoreClient::openUrl()` builds
+  the link to Core's `/open/{object}/{id}`. See README → Control panel widget.
+  Its labels are translatable, with Swedish shipped in `lang/sv.json`; `icon`
+  sets the widget's icon.
 
 ## v0.9.0
 

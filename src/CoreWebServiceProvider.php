@@ -26,6 +26,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -132,6 +133,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
+        CoreSnapshotWidget::register();
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
             // After Statamic's static cache middleware (Statamic builds the group once the app has booted, then runs
@@ -153,6 +157,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
         RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [
