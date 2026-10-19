@@ -276,11 +276,21 @@ class CoreFormTest extends TestCase
         $this->assertSame(['photos', 'contact_method', 'email'], CoreForm::missingFrom($definition, InspectionForm::renders()));
     }
 
+    public function test_an_abstract_form_class_is_refused(): void
+    {
+        config(['core-web.forms.classes' => [CoreForm::class]]);
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        CoreForms::classes();
+    }
+
     public function test_a_listed_class_must_be_a_form_class(): void
     {
         config(['core-web.forms.classes' => [\stdClass::class]]);
 
         $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('core-web.forms.classes');
 
         CoreForms::classes();
     }

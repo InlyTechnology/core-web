@@ -8,6 +8,7 @@ use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use InvalidArgumentException;
+use ReflectionClass;
 use RuntimeException;
 
 /**
@@ -45,7 +46,7 @@ final class CoreForms
     }
 
     /**
-     * The site's form classes, checked once at boot so a typo fails loudly.
+     * The site's form classes, checked at boot so a typo fails loudly.
      *
      * @return list<class-string<CoreForm>>
      */
@@ -54,8 +55,8 @@ final class CoreForms
         $classes = [];
 
         foreach ((array) config('core-web.forms.classes', []) as $class) {
-            if (! is_string($class) || ! is_subclass_of($class, CoreForm::class)) {
-                throw new InvalidArgumentException('core-web.forms.classes: ['.(is_string($class) ? $class : get_debug_type($class)).'] must name a class extending '.CoreForm::class.'.');
+            if (! is_string($class) || ! is_subclass_of($class, CoreForm::class) || (new ReflectionClass($class))->isAbstract()) {
+                throw new InvalidArgumentException('core-web.forms.classes: ['.(is_string($class) ? $class : get_debug_type($class)).'] must name a concrete class extending '.CoreForm::class.'.');
             }
 
             $classes[] = $class;
