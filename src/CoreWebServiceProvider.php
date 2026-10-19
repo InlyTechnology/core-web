@@ -16,6 +16,7 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
@@ -26,6 +27,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
 use LogicException;
 use Statamic\Statamic;
@@ -43,6 +45,7 @@ use Statamic\StaticCaching\Cacher;
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
  * The `forms` feature keeps the Core forms the site renders itself.
+ * The `cp_link` feature links the control panel to Core under Dashboard.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -52,6 +55,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
+            $this->mergeLegacyRemote();
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -76,6 +81,21 @@ class CoreWebServiceProvider extends ServiceProvider
         ));
     }
 
+    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
+    private function mergeLegacyRemote(): void
+    {
+        $legacy = config('core-web.pull');
+
+        if (! is_array($legacy)) {
+            return;
+        }
+
+        config(['core-web.remote' => array_replace(
+            $legacy,
+            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
+        )]);
+    }
+
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
@@ -98,6 +118,10 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootForms();
         }
 
+        if (self::enabled('cp_link')) {
+            CoreNavLink::register();
+        }
+
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
         $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
     }
@@ -116,6 +140,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
+        CoreSnapshotWidget::register();
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
             // After Statamic's static cache middleware (Statamic builds the group once the app has booted, then runs
@@ -137,6 +164,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
         $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
         RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [

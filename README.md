@@ -52,10 +52,11 @@ nothing.
 
 | Feature | Switch | What it registers |
 |---|---|---|
-| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
+| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`), and the `core_snapshot` dashboard widget (see [Control panel widget](#control-panel-widget)) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
+| Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -87,8 +88,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_PULL_CLIENT_SECRET` | `pull.client_secret` | Local only: the secret of `core:pull`'s read-only client (see [Pulling production data](#pulling-production-data)) |
-| `CORE_PULL_URL` / `CORE_PULL_CLIENT_ID` | `pull.base_url` / `pull.client_id` | Optional overrides of the defaults the site commits |
+| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
@@ -103,7 +104,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 |---|---|---|
 | `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
-| `pull.token_cache_key` | `core_web_pull_access_token` | Where `core:pull`'s access token is cached, apart from the site's own |
+| `remote.token_cache_key` | `core_web_remote_access_token` | Where the remote Core's access token is cached, apart from the site's own |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |
 | `ping.middleware` | `['throttle:120,1']` | Outside the `web` group, so no CSRF exemption is needed |
@@ -305,21 +306,27 @@ php artisan core:pull --release  # unpin and forget: the site reads CORE_URL aga
 
 The Core and the client are the same on every machine, so the site commits
 them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_PULL_CLIENT_SECRET`). A `pull` key there
-replaces the package's whole, so it names all three:
+developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
+there replaces the package's whole, so it names all three:
 
 ```php
-'pull' => [
-    'base_url' => env('CORE_PULL_URL', 'https://core.example.com'),
-    'client_id' => env('CORE_PULL_CLIENT_ID', '…'),
-    'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
+'remote' => [
+    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
+    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
+    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
 ],
 ```
+
+The key was called `pull` before. A site config still naming it keeps
+working, and so do the `CORE_PULL_*` variables while the site leaves the key
+to the package; a site that writes its own `remote` block reads only the
+variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
+default to keep developers' `.env` files working.
 
 The client is an app client in that Core (Settings → Apps, client
 credentials grant): Core shows its id and secret when it is created.
 
-It runs each snapshot's own pull (or its warmer) on the `pull.*` client in
+It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
 place of `client.*`, so the documents are exactly what the site's
 projections make of that Core's data. What it stores is **pinned**: kept
 without expiry, and no `core:warm`, ping or render replaces it until the next
@@ -423,6 +430,54 @@ needs):
 Sitemap: {{ url }}
 {{ /core_sitemaps }}
 ```
+
+## Control panel widget
+
+A snapshot that declares `->listing()` can be shown on the control panel
+dashboard by the `core_snapshot` widget: its documents, a page at a time, each
+with a link to the record in Core. The widget only reads what the store already
+holds (`SnapshotStore::cached()`), so a dashboard visit never waits on Core. A
+snapshot with nothing cached yet shows "Loading" and queues its warm job
+(one at a time per snapshot).
+
+```php
+Snapshot::make('staff')
+    // ...
+    ->listing(
+        title: fn (array $doc, string $id) => $doc['name'],
+        coreType: 'employee',                         // Core's lookup key; no link without it
+        coreId: fn (array $doc, string $id) => $doc['core_id'] ?? null, // Core's primary key; defaults to the document id
+    );
+```
+
+```php
+// config/statamic/cp.php
+'widgets' => [
+    ['type' => 'core_snapshot', 'snapshot' => 'staff', 'per_page' => 10, 'width' => 50],
+],
+```
+
+Options: `snapshot` (required), `title` (the type as a headline by default),
+`icon` (a Statamic CP icon name, `link` by default), `per_page` (10, at most
+100), `partition` (one partition; every partition by default), and Statamic's
+own `width`, `can` and `sites`. Rows are sorted by
+title in the selected site's language (with intl). Each snapshot and partition
+pages on its own query parameter (`?core_{type}_page=2`,
+`?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
+badge says when the copy may be out of date or is a local `core:pull` copy. A
+document the `title` closure fails on is listed by its id, unlinked, and logged.
+Every label, the configured `title` included, goes through `__()`; core-web
+ships Swedish in `lang/sv.json`, and a site adds its titles and any other
+locale in its own `lang/<locale>.json`.
+
+The link is Core's `/open/{object}/{id}` (`CoreClient::openUrl()`), which sends
+a signed-in person to the record's page in Core, whatever its route; it needs
+a Core release with that route (inly-core, `GET /open/{object}/{id}`); until
+then the links answer 404. It opens in a new tab with the person's own Core session, so
+CMS editors who sign in through Core are already signed in there. Store Core's
+primary key in the document when the snapshot is keyed by something else (a
+public id, say): the API answers with it as each resource's `id`. An id with a
+`/` gets no link.
 
 ## Static cache
 
@@ -995,6 +1050,26 @@ core-web's own suite runs the protocol's test vectors
 (`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
+
+## Control panel link
+
+`features.cp_link` adds a link to Core right under Dashboard in the control
+panel, for every CP user, opened in a new tab so unsaved CP work stays open.
+It points at `client.base_url` (`CORE_URL`). On a local machine without one it
+points at the remote Core (`remote.base_url`), once its client id and secret
+are set, since that is the Core the developer's data came from.
+With neither there is no link.
+
+The site names the link and may pick its icon, in its own
+`config/core-web.php`; the icon is a Statamic icon name or an SVG, and null
+keeps Core's mark:
+
+```php
+return [
+    'features' => ['cp_link' => true],
+    'cp_link' => ['label' => 'Acme Core', 'icon' => null],
+];
+```
 
 ## Testing a site
 

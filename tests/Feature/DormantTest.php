@@ -14,6 +14,8 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
+use Statamic\Facades\CP\Nav as CpNav;
+use Statamic\Facades\User;
 use Statamic\Tags\Loader as TagLoader;
 use Statamic\Tags\TagNotFoundException;
 
@@ -23,7 +25,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'forms' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'forms' => false, 'cp_link' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -85,6 +87,23 @@ class DormantTest extends TestCase
         }
 
         $this->assertFalse($registered);
+    }
+
+    public function test_no_control_panel_link_is_added(): void
+    {
+        $this->withRealNav();
+        config(['core-web.client.base_url' => 'https://core.test']);
+        $this->actingAs(User::make()->id('dormant-super')->email('dormant-super@example.com')->makeSuper());
+
+        $items = CpNav::build()->flatMap(fn (array $section) => $section['items'])->map->display()->all();
+
+        $this->assertContains('Dashboard', $items);
+        $this->assertNotContains('Core', $items);
+    }
+
+    public function test_no_widget_is_registered(): void
+    {
+        $this->assertFalse(app('statamic.widgets')->has('core_snapshot'));
     }
 
     public function test_no_cache_store_is_added(): void
