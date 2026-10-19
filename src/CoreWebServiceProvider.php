@@ -20,6 +20,13 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\ContentLoginCommand;
+use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
+use Inly\CoreWeb\ContentSync\ContentPullCommand;
+use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
+use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
@@ -67,6 +74,8 @@ use Statamic\StaticCaching\Cacher;
  * site's content (`content:check`, nightly, a dashboard widget).
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
+ * The `content_sync` feature lets a local checkout pull the live site's
+ * content as the developer's CMS user.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -101,6 +110,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
+        $this->app->bind(SyncTokens::class, fn () => SyncTokens::fromConfig());
+        $this->app->bind(DeviceAuthorizations::class, fn () => DeviceAuthorizations::fromConfig());
+        $this->app->bindIf(LocalContent::class, fn () => LocalContent::fromApp());
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -160,6 +172,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
+        }
+
+        if (self::enabled('content_sync')) {
+            $this->bootContentSync();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -232,6 +248,25 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    private function bootContentSync(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViews();
+        $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
+        $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
+
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+
+            if ($user !== null && AuthenticateSyncToken::hasCpAccess($user)) {
+                $nav->tools(__('core-web::sync.tokens_title'))->route('core-web.sync.tokens')->icon('key');
+            }
+        });
     }
 
     private function bootChat(): void

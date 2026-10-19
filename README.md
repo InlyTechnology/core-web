@@ -60,6 +60,7 @@ nothing.
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -96,6 +97,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
+| `CORE_WEB_REMOTE_SITE_URL` | `content_sync.remote_url` | Optional override of the live site a checkout pulls content from; the site commits the URL itself (see [Content pull](#content-pull)) |
 
 CMS single sign-on is the site's own: Core seals its hand-offs with its own
 key, which `CoreEnvelope::open()` opens with no secret.
@@ -1189,6 +1191,87 @@ return [
     'cp_link' => ['label' => 'Acme Core', 'icon' => null],
 ];
 ```
+
+## Content pull
+
+`features.content_sync` lets a developer's checkout pull the live site's
+content into its own `content/` directory, signed in as their own CMS user:
+no shared secret, no env var, and no Core needed. Switch it on in the site's
+`config/core-web.php` (the live site serves the content, the checkout pulls
+it, and both run the same config) and commit the live site's URL there.
+A `content_sync` block that names only `remote_url` keeps every other
+setting's default:
+
+```php
+return [
+    'features' => ['content_sync' => true],
+    'content_sync' => [
+        'remote_url' => env('CORE_WEB_REMOTE_SITE_URL', 'https://www.example.com'),
+    ],
+];
+```
+
+```bash
+php please content:login     # once per machine
+php please content:pull      # every type
+php please content:pull --only=entries:pages,globals --site=default
+php please content:pull --dry-run   # what would change; writes nothing
+php please content:pull --force     # overwrite (and delete) files changed here too
+php please content:logout    # revoke this machine's token
+```
+
+**Signing in.** `content:login` (or the first `content:pull` in a terminal)
+prints a link to the live site's CP and a code, and opens the browser where
+it can. The developer signs in to the CP the way the site allows (Core
+single sign-on or a native login), checks the code and approves; the
+terminal then gets a personal token that acts as them, so the pull reads
+exactly what they may view. Any user with CP access may approve. The token
+is kept in `storage/core-web/remote-site.json` (readable by the developer
+only, in a folder that ignores itself in git) and lives 30 days from its
+last use (`content_sync.token_days`). On the live site only its sha256 is
+kept, as a file on a filesystem disk (`content_sync.tokens`: a host whose
+disk does not outlive a deploy names a bucket).
+
+**Pulling.** The live site exports entries (published or not, every site),
+terms, global variables, collection trees and nav trees, each as the exact
+file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
+config, users, form submissions and assets are not pulled. `content.lock`
+(committed, beside `content/`) holds the hash of every file as last pulled:
+
+- a file unchanged here since the last pull, or missing here, is written;
+- a file changed here is left alone and listed, unless `--force`;
+- a file the site no longer has is deleted only when it is unchanged here
+  since the last pull; otherwise it is listed and kept, unless `--force`.
+
+Then the Stache is refreshed. A path the site sends that is not one of its
+type's files under `content/` stops the pull before anything is written,
+and nothing is written outside `content/`. The command runs only where
+`APP_ENV` is `local`.
+
+**Revoking.** **Tools → Content sync** in the live site's CP lists the
+machines signed in as the user (a super user sees everyone's), with when
+each was last used and when it expires, and revokes any of them. A token
+also stops working when its user loses CP access or is deleted, and
+`content:logout` revokes its own.
+
+**Guards.** The sync endpoints answer over HTTPS only (a `.test` host and a
+local or testing app excepted), are throttled (`content_sync.middleware`),
+and a site running as `APP_ENV=local` refuses them, so no one pulls from a
+developer's checkout by mistake (`content_sync.allow_local_remote` lets
+one serve, to try the flow between two checkouts). Pending logins wait in
+the cache (`content_sync.store`), which every server behind the site must
+share.
+
+### Building on the login
+
+`Inly\CoreWeb\ContentSync\RemoteSite` is the checkout's client:
+`RemoteSite::fromStorage()` is this machine's login to the configured site
+(null without one), and `get($endpoint, $query)` / `post($endpoint, $data)`
+call a sync endpoint by name (`export`), or any path from the site's root
+when it starts with `/`, with the token as bearer. A 401 forgets the login
+and throws `RemoteLoginNeeded`; a site that cannot be reached throws
+`RemoteSiteError`. On the live site, a route behind the `core-web.sync`
+middleware runs as the token's CMS user (`User::current()`).
 
 ## Testing a site
 

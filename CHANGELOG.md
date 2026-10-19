@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Content pull**: `features.content_sync` (off by default) lets a local
+  checkout pull the live site's content (entries, terms, global variables,
+  collection and nav trees) into `content/` as the files the Stache
+  writes, signed in as the developer's CMS user: `content:login` approves
+  the machine in the live site's CP and stores a personal token (30 days
+  from its last use, revocable under Tools → Content sync), `content:pull`
+  writes what changed on the site and keeps local edits, tracked in a
+  committed `content.lock`. Set `content_sync.remote_url` in the site's
+  config. See README → Content pull.
+
 ## v0.13.0
 
 - **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
