@@ -59,6 +59,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
 
+## v0.13.1
+
+- **Naming**: the website content protocol is now called the Statamic
+  connector API, matching Core's Statamic connector, in the README, config
+  comments and package description. The test-vector fixture moved to
+  `tests/fixtures/statamic-connector-api-v1-test-vectors.json`. Nothing on the
+  wire, in config keys or in the version numbers changes.
+
 ## v0.13.0
 
 - **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
