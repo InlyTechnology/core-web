@@ -9,10 +9,13 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
+use Inly\CoreWeb\Checks\ContentCheckCommand;
+use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
@@ -20,9 +23,18 @@ use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
+use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
+use Inly\CoreWeb\Drafts\DraftBase;
+use Inly\CoreWeb\Drafts\DraftValueNormaliser;
+use Inly\CoreWeb\Drafts\FieldsHash;
+use Inly\CoreWeb\Drafts\KeepDraftProvenance;
+use Inly\CoreWeb\Drafts\StoredValues;
+use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -31,7 +43,13 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Widgets\ContentChecksWidget;
+use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
+use LogicException;
+use Statamic\Events\RevisionSaving;
+use Statamic\Facades\CP\Nav;
+use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -46,6 +64,13 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `drafts` feature writes drafts of the site's entries for the sources
+ * that make them (Core AI, a push), each binding how its values arrive
+ * (DraftValueNormaliser) and how an update names its base (DraftBase),
+ * and stages changes to content without revisions as proposals an editor
+ * applies in the CP. The `checks` feature finds what is wrong in the
+ * site's content (`content:check`, nightly, a dashboard widget).
+ * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
  * The `cms_sign_in` feature signs the control panel in from Core alone.
  */
@@ -81,6 +106,12 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(CoreSigningKeys::class, fn () => CoreSigningKeys::fromConfig());
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
+
+        $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
+        $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
+        $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
+        $this->app->bindIf(CoreUsers::class);
+        $this->app->bindIf(DraftBase::class, FieldsHash::class);
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -121,6 +152,23 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
         }
 
+        if (self::enabled('drafts')) {
+            $this->bootDrafts();
+        }
+
+        if (self::enabled('checks')) {
+            $this->bootChecks();
+        }
+
+        // Protocol v1.2: Core reads the checks and proposes, where the site speaks the protocol.
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts'))) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
+        }
+
+        if (self::enabled('forms')) {
+            $this->bootForms();
+        }
+
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
         }
@@ -147,6 +195,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->commands([WarmSnapshotsCommand::class, PullSnapshotsCommand::class]);
 
         SnapshotSitemapsTag::register();
+        CoreSnapshotWidget::register();
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
             // After Statamic's static cache middleware (Statamic builds the group once the app has booted, then runs
@@ -156,6 +207,42 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (is_string($cron = config('core-web.snapshots.warm_schedule')) && $cron !== '') {
             $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('core:warm')
+                ->cron($cron)
+                ->withoutOverlapping()
+                ->runInBackground());
+        }
+    }
+
+    private function bootDrafts(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
+        Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');
+
+        // Only for editors with open proposals they may apply, so the entry stays out of the way until there is one.
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+            $proposals = app(Proposals::class);
+            $count = $user === null ? 0 : collect($proposals->open())->filter(fn ($proposal) => $proposals->target($proposal)?->mayEdit($user))->count();
+
+            if ($count > 0) {
+                $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
+            }
+        });
+    }
+
+    private function bootChecks(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->commands([ContentCheckCommand::class]);
+        ContentChecksWidget::register();
+
+        if (is_string($cron = config('core-web.checks.schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('content:check')
                 ->cron($cron)
                 ->withoutOverlapping()
                 ->runInBackground());
@@ -228,7 +315,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $agents = self::chatAgents();
 
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
         RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [
@@ -240,6 +328,25 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));
+    }
+
+    private function bootForms(): void
+    {
+        if (! self::enabled('snapshots')) {
+            throw new LogicException('core-web.features.forms needs core-web.features.snapshots: the forms are a snapshot, refreshed by Core\'s pings.');
+        }
+
+        CoreForms::classes();
+
+        $this->loadViews();
+        $this->app->extend(SnapshotRegistry::class, fn (SnapshotRegistry $registry) => $registry->register(CoreForms::snapshot(), [CoreForms::PING]));
+    }
+
+    private function loadViews(): void
+    {
+        if (! array_key_exists('core-web', $this->app['view']->getFinder()->getHints())) {
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        }
     }
 
     /**

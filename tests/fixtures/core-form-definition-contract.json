@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "input_schema": [
+    {
+      "kind": "layout",
+      "type": "step",
+      "title": "Your car",
+      "description": "Tell us about the car."
+    },
+    {
+      "kind": "layout",
+      "type": "section",
+      "title": "Vehicle",
+      "description": "As on the registration."
+    },
+    {
+      "kind": "property",
+      "type": "string",
+      "name": "plate",
+      "label": "Registration number",
+      "placeholder": "ABC 123",
+      "required": true,
+      "width": "1/2"
+    },
+    {
+      "kind": "property",
+      "type": "number",
+      "name": "mileage",
+      "label": "Mileage",
+      "description": "In kilometres.",
+      "width": "1/2"
+    },
+    {
+      "kind": "property",
+      "type": "enum",
+      "name": "fuel",
+      "label": "Fuel",
+      "display": "radio",
+      "default": "petrol",
+      "options": [
+        {
+          "value": "petrol",
+          "label": "Petrol"
+        },
+        {
+          "value": "diesel",
+          "label": "Diesel"
+        },
+        {
+          "value": "electric",
+          "label": "Electric"
+        }
+      ]
+    },
+    {
+      "kind": "property",
+      "type": "multi_enum",
+      "name": "extras",
+      "label": "Extras",
+      "display": "checkbox",
+      "options": [
+        {
+          "value": "towbar",
+          "label": "Towbar"
+        },
+        {
+          "value": "charger",
+          "label": "Home charger",
+          "visibleWhen": {
+            "field": "fuel",
+            "operator": "equals",
+            "value": "electric"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "property",
+      "type": "date",
+      "name": "preferred_date",
+      "label": "Preferred time",
+      "withTime": true
+    },
+    {
+      "kind": "property",
+      "type": "image",
+      "name": "photos",
+      "label": "Photos",
+      "required": true,
+      "multiple": true,
+      "maxFiles": 3,
+      "minFiles": 1,
+      "maxSide": 2048,
+      "capture": "environment",
+      "slots": [
+        {
+          "title": "Whole car",
+          "hint": "From the front corner."
+        },
+        {
+          "title": "Damage",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "kind": "layout",
+      "type": "note",
+      "text": "We answer within **one working day**."
+    },
+    {
+      "kind": "layout",
+      "type": "step",
+      "title": "You"
+    },
+    {
+      "kind": "layout",
+      "type": "section",
+      "title": "Contact"
+    },
+    {
+      "kind": "property",
+      "type": "string",
+      "name": "name",
+      "label": "Name",
+      "required": true,
+      "autocomplete": "name"
+    },
+    {
+      "kind": "property",
+      "type": "enum",
+      "name": "contact_method",
+      "label": "Contact me by",
+      "required": true,
+      "options": [
+        {
+          "value": "email",
+          "label": "Email"
+        },
+        {
+          "value": "phone",
+          "label": "Phone"
+        }
+      ]
+    },
+    {
+      "kind": "property",
+      "type": "email",
+      "name": "email",
+      "label": "Email",
+      "required": true
+    },
+    {
+      "kind": "property",
+      "type": "phone",
+      "name": "phone",
+      "label": "Phone",
+      "required": true,
+      "visibleWhen": {
+        "field": "contact_method",
+        "operator": "equals",
+        "value": "phone"
+      }
+    },
+    {
+      "kind": "property",
+      "type": "url",
+      "name": "website",
+      "label": "Website"
+    },
+    {
+      "kind": "property",
+      "type": "text",
+      "name": "message",
+      "label": "Message"
+    },
+    {
+      "kind": "property",
+      "type": "file",
+      "name": "attachment",
+      "label": "Attachment",
+      "accept": "application/pdf",
+      "maxKb": 2048
+    },
+    {
+      "kind": "property",
+      "type": "boolean",
+      "name": "callback",
+      "label": "Call me back"
+    },
+    {
+      "kind": "property",
+      "type": "consent",
+      "name": "marketing",
+      "label": "Send me news"
+    },
+    {
+      "kind": "property",
+      "type": "string",
+      "name": "utm_source",
+      "label": "Source",
+      "hidden": true,
+      "source": "query.utm_source",
+      "default": "direct"
+    }
+  ],
+  "definition": {
+    "sections": [
+      {
+        "title": "Vehicle",
+        "description": "As on the registration."
+      },
+      {
+        "title": "Contact"
+      }
+    ],
+    "steps": [
+      {
+        "title": "Your car",
+        "description": "Tell us about the car."
+      },
+      {
+        "title": "You"
+      }
+    ],
+    "notes": [
+      {
+        "text": "We answer within **one working day**.",
+        "before": 6,
+        "section": 0,
+        "step": 0
+      }
+    ],
+    "fields": [
+      {
+        "name": "plate",
+        "type": "string",
+        "label": "Registration number",
+        "placeholder": "ABC 123",
+        "required": true,
+        "width": "1/2",
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "mileage",
+        "type": "number",
+        "label": "Mileage",
+        "description": "In kilometres.",
+        "required": false,
+        "width": "1/2",
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "fuel",
+        "type": "enum",
+        "label": "Fuel",
+        "required": false,
+        "default": "petrol",
+        "options": [
+          {
+            "value": "petrol",
+            "label": "Petrol"
+          },
+          {
+            "value": "diesel",
+            "label": "Diesel"
+          },
+          {
+            "value": "electric",
+            "label": "Electric"
+          }
+        ],
+        "display": "radio",
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "extras",
+        "type": "multi_enum",
+        "label": "Extras",
+        "required": false,
+        "options": [
+          {
+            "value": "towbar",
+            "label": "Towbar"
+          },
+          {
+            "value": "charger",
+            "label": "Home charger",
+            "visibleWhen": {
+              "field": "fuel",
+              "operator": "equals",
+              "value": "electric"
+            }
+          }
+        ],
+        "display": "checkbox",
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "preferred_date",
+        "type": "date",
+        "label": "Preferred time",
+        "required": false,
+        "withTime": true,
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "photos",
+        "type": "image",
+        "label": "Photos",
+        "required": true,
+        "accept": "image/*",
+        "maxKb": 10240,
+        "multiple": true,
+        "maxFiles": 3,
+        "minFiles": 1,
+        "slots": [
+          {
+            "title": "Whole car",
+            "hint": "From the front corner."
+          },
+          {
+            "title": "Damage",
+            "optional": true
+          }
+        ],
+        "maxSide": 2048,
+        "capture": "environment",
+        "section": 0,
+        "step": 0
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "autocomplete": "name",
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "contact_method",
+        "type": "enum",
+        "label": "Contact me by",
+        "required": true,
+        "options": [
+          {
+            "value": "email",
+            "label": "Email"
+          },
+          {
+            "value": "phone",
+            "label": "Phone"
+          }
+        ],
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "label": "Email",
+        "required": true,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "phone",
+        "type": "phone",
+        "label": "Phone",
+        "required": true,
+        "visibleWhen": {
+          "field": "contact_method",
+          "operator": "equals",
+          "value": "phone"
+        },
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "website",
+        "type": "url",
+        "label": "Website",
+        "required": false,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "message",
+        "type": "text",
+        "label": "Message",
+        "required": false,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "attachment",
+        "type": "file",
+        "label": "Attachment",
+        "required": false,
+        "accept": "application/pdf",
+        "maxKb": 2048,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "callback",
+        "type": "boolean",
+        "label": "Call me back",
+        "required": false,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "marketing",
+        "type": "boolean",
+        "label": "Send me news",
+        "required": false,
+        "section": 1,
+        "step": 1
+      },
+      {
+        "name": "utm_source",
+        "type": "string",
+        "label": "Source",
+        "required": false,
+        "hidden": true,
+        "source": "query.utm_source",
+        "default": "direct",
+        "section": 1,
+        "step": 1
+      }
+    ]
+  }
+}

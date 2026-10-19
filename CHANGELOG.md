@@ -1,5 +1,11 @@
 # Changelog
 
+A release that a site breaks on, or that silently changes how a site behaves,
+carries an `### Upgrade notes` section: one entry per required action, each
+saying what breaks, how to find the affected code, how to migrate and how to
+verify. Read the notes of every version between the one a site had and the
+one it moves to. Before 1.0 such a release bumps the minor version.
+
 ## Unreleased
 
 - **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
@@ -8,7 +14,54 @@
   anyone is let in, accounts are provisioned and stamped by it with roles
   mapped from Core's CMS grants (`cms_sign_in.roles`), Core's offboarding
   notices delete them, and `core:reconcile-cms-users` sweeps nightly. Local
-  machines sign in through the remote Core. See README → CMS sign-in.
+  machines sign in through the remote Core. A site that signs its CP in from
+  Core with its own code removes that code when it switches this on. See
+  README → CMS sign-in.
+- **Snapshots**: a snapshot can opt into pages with `->pages(fn (array $doc,
+  string $site) => '/path')`, and `SnapshotPage` serves one from the site's
+  own route: `find()` (503 while nothing can be read, Statamic's 404 when
+  gone), `canonical()` (a 301 to the document's own path, query string kept)
+  and `render()` (Statamic's View with an optional cascade entry). Snapshots
+  without `->pages()` are unchanged. See README → Pages.
+
+## v0.13.0
+
+- **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
+  writes drafts of a site's entries as an editor's CP save does, for any
+  source (Core AI, a content push): unpublished entries and working copies
+  saved as the author's CP user with their provenance and message, the
+  holder guard, the restate rule, a base hash check, field conditions, dry
+  runs, publishing and a signed Live Preview link. The site names its
+  draftable collections in `drafts.collections`. See README → Drafts.
+- **Proposals**: with `features.drafts`, changes to content without
+  revisions (navigation trees, page trees, globals, terms, asset meta) are
+  staged as proposals an editor applies or discards under Content →
+  Proposals in the CP. See README → Proposals.
+- **Content checks**: `features.checks` (off by default) adds
+  `content:check`, run nightly, and a `content_checks` dashboard widget,
+  with three checks: `own-url-links` (fixed as drafts and proposals),
+  `dead-targets` and `seo-gaps`. See README → Content checks.
+- **Protocol v1.2**: with `features.content` and `checks` or `drafts`, Core
+  reads a site's checks and findings, asks for fixes, reads proposal targets
+  and makes proposals for a person in Core, sealed with Core's key. See
+  README → Core reads checks and proposes.
+
+## v0.12.0
+
+- **Forms**: `features.forms` (off by default) for a form with the site's
+  own Livewire markup that posts to a Core form (`CoreForm`). Core's
+  definition, kept in the `core-web-forms` snapshot, gives it defaults,
+  validation, the hidden page fields, and any required field the markup
+  leaves out, rendered after it (with a warning in `local`). Entries go on
+  the site's client token, behind a honeypot and capped per address by
+  `forms.submit_rate_limit`. Mark each such form **Custom form embed** in
+  Core, so its admins are warned before changing its fields. Needs
+  Livewire. See README → Forms.
+- **Core client**: `withToken()` sends a request it builds itself (a
+  multipart body) on the client token.
+
+## v0.11.0
+
 - **Control panel link**: `features.cp_link` (off by default) adds a link to
   Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
   (or locally to the remote Core when no `CORE_URL` is set).
@@ -18,13 +71,37 @@
   `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`), since it is the Core
   a local machine uses, not only `core:pull`'s source. A site config naming
   `pull` keeps working, as do the `CORE_PULL_*` variables unless the site
-  writes its own `remote` block (README → Pulling production data).
-- **Snapshots**: a snapshot can opt into pages with `->pages(fn (array $doc,
-  string $site) => '/path')`, and `SnapshotPage` serves one from the site's
-  own route: `find()` (503 while nothing can be read, Statamic's 404 when
-  gone), `canonical()` (a 301 to the document's own path, query string kept)
-  and `render()` (Statamic's View with an optional cascade entry). Snapshots
-  without `->pages()` are unchanged. See README → Pages.
+  writes its own `remote` block (README → Pulling production data). `pull`
+  and `CORE_PULL_*` are deprecated.
+
+### Upgrade notes
+
+- **`pull` is deprecated**: the config key `pull` is now `remote`, and
+  `CORE_PULL_URL`, `CORE_PULL_CLIENT_ID` and `CORE_PULL_CLIENT_SECRET` are
+  now `CORE_REMOTE_URL`, `CORE_REMOTE_CLIENT_ID` and
+  `CORE_REMOTE_CLIENT_SECRET`. The old names are still read and will be
+  removed in a later release. Two cases stop working now: a site that
+  writes its own `remote` block reads only the variables that block names,
+  so a `.env` holding only `CORE_PULL_*` fails `core:pull`; and code or
+  tests that set `core-web.pull.*` at runtime are no longer read, since the
+  `pull` block is copied into `remote` once, at boot. Find it:
+  `grep -rn "'pull'\|core-web\.pull\|CORE_PULL_" config/ app/ tests/ .env*`.
+  Migrate: rename the `pull` block in `config/core-web.php` to `remote` and
+  its variables to `CORE_REMOTE_*` (nest the old name as the default,
+  `env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', ''))`,
+  until every developer's `.env` has moved), rename them in `.env.example`,
+  and replace `core-web.pull` with `core-web.remote` in code and tests.
+  Verify: `php artisan config:show core-web.remote` shows the base URL,
+  client id and a secret, and `php artisan core:pull` runs.
+
+## v0.10.0
+
+- **Snapshots**: a `core_snapshot` control panel widget lists a snapshot's
+  documents, paginated, each linked to its record in Core. A snapshot opts in
+  with `->listing(title:, coreType:, coreId:)`; `CoreClient::openUrl()` builds
+  the link to Core's `/open/{object}/{id}`. See README → Control panel widget.
+  Its labels are translatable, with Swedish shipped in `lang/sv.json`; `icon`
+  sets the widget's icon.
 
 ## v0.9.0
 
@@ -62,6 +139,39 @@
     which one visitor's input can cause, switches nothing off.
   - A path with a raw `?`, `#`, backslash, space or control character is
     refused: `rawurlencode()` the input a path carries.
+
+### Upgrade notes
+
+- **The Core URL must be https outside `local` and `testing`**: the token
+  request throws a `RuntimeException` ("core-web sends its client secret to
+  Core over https only") on a staging or production site whose `CORE_URL`
+  is `http://`, so every call that needs a token fails: snapshot pulls
+  (also those a ping starts), page pings to Core, chat turns and live
+  reads. Find it: `grep -n "CORE_URL" .env` on each server. Migrate: set
+  `CORE_URL` to Core's `https://` address. Verify: `php artisan cache:forget core_web_access_token`, then
+  `php artisan core:warm` prints a document count for every type and no
+  `pull failed` (a site without `features.snapshots`: send a chat message or
+  run a live read).
+- **A Core URL that redirects no longer gets a token**: the token request
+  follows no redirect, so a `CORE_URL` (or `core:pull`'s `pull.base_url`)
+  that answers with a redirect, such as http to https or a `www` variant,
+  throws `TokenRefused` with the 3xx status. Find it:
+  `curl -s -o /dev/null -w '%{http_code}' -X POST https://<core>/oauth/token`
+  prints a 3xx. Migrate: set the URL to the address the redirect lands on.
+  Verify: as above.
+- **A refused token throws `TokenRefused`**: it extends `RuntimeException`,
+  so code catching that keeps working, but code that matched the message
+  `Failed to obtain a Core access token: ` now sees the status in brackets
+  after it. Find it: `grep -rn "Failed to obtain a Core access token" app/ tests/`.
+  Migrate: catch `Inly\CoreWeb\Client\TokenRefused` and read `->status`;
+  the https refusal above stays a plain `RuntimeException`.
+- **`CoreSigningKeys::secureBaseUrl()` is removed**: a subclass calling it
+  fails. Find it: `grep -rn "secureBaseUrl" app/`. Migrate: call
+  `CoreClient::secureUrl($url)`.
+- **Chat turns are capped per address too** (30 a minute): visitors sharing
+  one address, such as an office network, share the cap. Find it: the site
+  has `features.chat` on. Migrate: raise `chat.turn_rate_limit_per_address`
+  in the published config if that is too low. Verify: nothing to run.
 
 ## v0.8.0
 
@@ -117,6 +227,19 @@
 - core-web requires `ext-sodium`.
 - `CoreClient::sendResponse()` widens `$data` to `array|Closure`, so a subclass
   that overrides it with `array $data` must widen it too.
+
+### Upgrade notes
+
+- **`ext-sodium` is required**: `composer install` refuses the package on a
+  PHP without the sodium extension. Find it: `php -m | grep -i sodium` on
+  each server and in CI prints nothing. Migrate: install or enable the
+  extension (bundled with PHP builds on Forge and Laravel Cloud). Verify:
+  `composer check-platform-reqs` passes.
+- **A `CoreClient` subclass overriding `sendResponse()` must widen `$data`**:
+  PHP refuses an override typed `array $data` with a fatal error at boot.
+  Find it: `grep -rn "function sendResponse" app/`. Migrate: type the
+  parameter `array|Closure $data` and resolve a closure before use. Verify:
+  the site boots (`php artisan about`).
 
 ## v0.6.0 (2026-10-15)
 
@@ -233,6 +356,28 @@
   at a site's own path; `SiteCache::flush()` forgets only the pages under the
   flushed site's path on a shared host, not every page of the host.
 
+### Upgrade notes
+
+- **Rows come without `meta.schema` and `meta.object`**: on Core 9.0 and
+  later, `objects()` and `object()` ask for compact meta, so a snapshot that
+  reads a row's `meta.schema` (a money field's currency, for one) silently
+  gets nothing. Find it: `grep -rnE "meta\.(schema|object)|\['meta'\]\['(schema|object)'\]" app/`.
+  Migrate: pass `'meta' => 'full'` in that snapshot's query. Verify: the
+  page shows the value again after `php artisan core:warm`.
+- **`core:warm` runs nightly, not every ten minutes**: a site that Core does
+  not ping shows changes up to a day late, with nothing failing. Find it:
+  no ping URL for the site in Core's connector setup. Migrate: in the
+  site's published `config/core-web.php` set `snapshots.warm_schedule` to
+  `*/10 * * * *`; a partial config file must copy the whole `snapshots`
+  array, since a top-level key replaces the package's default whole.
+  Verify: `php artisan schedule:list` shows `core:warm` every ten minutes.
+- **A fresh TTL under a day now serves stale copies between nightly
+  pulls**: a stale copy no longer starts a pull, and a ping for one object
+  pulls the whole snapshot instead of patching it. Find it: a snapshot
+  whose fresh TTL is under a day. Migrate: give it a fresh TTL longer than
+  a day (README § Schedule). Verify: a ping for one object updates only
+  that document.
+
 ## v0.2.0 (2026-09-29)
 
 - **Env names**: the defaults read `CORE_URL`, `CORE_CLIENT_ID`,
@@ -245,6 +390,17 @@
   `core_snapshots_cache` / `core_snapshots_cache_locks` tables for hosts whose
   disk does not outlive a deploy (Laravel Cloud). The migration publishes with
   `--tag=core-web-migrations`. An unknown driver is refused at boot.
+
+### Upgrade notes
+
+- **The env names change**: with the old names the client has no URL or
+  credentials and every call to Core fails. Find it: `grep -n "CORE_WEB_" .env .env.example`
+  on each server and in the repo. Migrate: rename each `CORE_WEB_*` variable to
+  the matching `CORE_URL`, `CORE_CLIENT_ID`, `CORE_CLIENT_SECRET` or
+  `CORE_CA_BUNDLE`;
+  a `config/core-web.php` published only to map env names can be deleted.
+  Verify: `php artisan core:warm` prints a document count for every type
+  and no `pull failed`.
 
 ## v0.1.0 (2026-09-29)
 

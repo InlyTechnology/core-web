@@ -6,6 +6,7 @@ use Inly\CoreWeb\CoreWebServiceProvider;
 use Statamic\CP\Navigation\Nav;
 use Statamic\Facades\CP\Nav as CpNav;
 use Statamic\Facades\Site;
+use Statamic\Statamic;
 use Statamic\Testing\AddonTestCase;
 
 abstract class TestCase extends AddonTestCase
@@ -17,6 +18,9 @@ abstract class TestCase extends AddonTestCase
 
     protected function setUp(): void
     {
+        // Statamic keeps pushed CP routes in a static, so one test's features would register routes in the next.
+        (fn () => static::$cpRoutes = [])->bindTo(null, Statamic::class)();
+
         parent::setUp();
 
         // Snapshots in the test's array store, which each test starts empty (SnapshotCacheStoreTest checks the real one).

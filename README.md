@@ -23,6 +23,7 @@ What the package gives a site:
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
+| Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
@@ -53,9 +54,12 @@ nothing.
 
 | Feature | Switch | What it registers |
 |---|---|---|
-| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
+| Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`), and the `core_snapshot` dashboard widget (see [Control panel widget](#control-panel-widget)) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
+| Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
+| Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
@@ -480,6 +484,54 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
+## Control panel widget
+
+A snapshot that declares `->listing()` can be shown on the control panel
+dashboard by the `core_snapshot` widget: its documents, a page at a time, each
+with a link to the record in Core. The widget only reads what the store already
+holds (`SnapshotStore::cached()`), so a dashboard visit never waits on Core. A
+snapshot with nothing cached yet shows "Loading" and queues its warm job
+(one at a time per snapshot).
+
+```php
+Snapshot::make('staff')
+    // ...
+    ->listing(
+        title: fn (array $doc, string $id) => $doc['name'],
+        coreType: 'employee',                         // Core's lookup key; no link without it
+        coreId: fn (array $doc, string $id) => $doc['core_id'] ?? null, // Core's primary key; defaults to the document id
+    );
+```
+
+```php
+// config/statamic/cp.php
+'widgets' => [
+    ['type' => 'core_snapshot', 'snapshot' => 'staff', 'per_page' => 10, 'width' => 50],
+],
+```
+
+Options: `snapshot` (required), `title` (the type as a headline by default),
+`icon` (a Statamic CP icon name, `link` by default), `per_page` (10, at most
+100), `partition` (one partition; every partition by default), and Statamic's
+own `width`, `can` and `sites`. Rows are sorted by
+title in the selected site's language (with intl). Each snapshot and partition
+pages on its own query parameter (`?core_{type}_page=2`,
+`?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
+badge says when the copy may be out of date or is a local `core:pull` copy. A
+document the `title` closure fails on is listed by its id, unlinked, and logged.
+Every label, the configured `title` included, goes through `__()`; core-web
+ships Swedish in `lang/sv.json`, and a site adds its titles and any other
+locale in its own `lang/<locale>.json`.
+
+The link is Core's `/open/{object}/{id}` (`CoreClient::openUrl()`), which sends
+a signed-in person to the record's page in Core, whatever its route; it needs
+a Core release with that route (inly-core, `GET /open/{object}/{id}`); until
+then the links answer 404. It opens in a new tab with the person's own Core session, so
+CMS editors who sign in through Core are already signed in there. Store Core's
+primary key in the document when the snapshot is keyed by something else (a
+public id, say): the API answers with it as each resource's `id`. An id with a
+`/` gets no link.
+
 ## Static cache
 
 A snapshot moving saves no entry, so Statamic's invalidation never hears of
@@ -812,6 +864,115 @@ $result->successful(); // $result->data, or $result->status and $result->errors
 | `{error: "not_found"}` | 404 | Core answered 404, `request()` returned null, or the route was asked for a read that is not `public()` |
 | `{error: "unavailable"}` | 503 | Core failed, timed out (`live.timeouts`), is not configured, or `present()` returned null; logged as a warning |
 
+## Forms
+
+For the rare form Core's embed cannot render: a step flow with photo slots,
+price cards, anything that needs the site's own markup. The form is a
+Livewire component with that markup, and it still posts to a Core form, so
+the entries, the handlers and the admin's field list stay in Core. Every
+other form renders Core's embed.
+
+Needs Livewire (`livewire/livewire` ^3.6 or ^4.0, or the Statamic Livewire
+addon) and `features.snapshots`. Switch on `features.forms` and name each
+form class in `forms.classes`:
+
+```php
+// config/core-web.php
+return [
+    'features' => ['snapshots' => true, 'forms' => true],
+    'forms' => ['classes' => [App\Livewire\DamageInspection::class]],
+];
+```
+
+```php
+use Inly\CoreWeb\Forms\CoreForm;
+
+class DamageInspection extends CoreForm
+{
+    // The key of the Core form it posts to.
+    public static function coreForm(): string
+    {
+        return 'damage-inspection';
+    }
+
+    // The Core fields the view renders.
+    public static function renders(): array
+    {
+        return ['plate', 'name', 'email', 'photos', 'damage'];
+    }
+
+    protected function fieldsView(): string
+    {
+        return 'livewire.damage-inspection';
+    }
+}
+```
+
+The view holds the fields only, bound to `values.{field}`, and reads the
+definition through `$coreForm` (`FormView`: `form()`, `options()`,
+`visible()`); the component wraps it in the `<form>`, followed by any
+required field the view leaves out, the form's privacy notice and a submit
+button. What the definition carries does the rest:
+
+- **Defaults**: `values` start with each field's default.
+- **Missing required fields**: a required field the view does not render
+  (`renders()` does not name it) is rendered after the view with default
+  markup (`core-web::forms.field`), so an entry still passes Core's checks
+  when an admin adds a required field. Conditions count: a field required
+  only when another one has a value appears when it does. In `local` a
+  warning above them names them. Place them yourself with
+  `@include('core-web::forms.missing')`; `CoreForm::missingFrom()` finds
+  them in a test.
+- **Validation**: `submit` checks the visible fields against the
+  definition (required, email, url, number, date, the offered options, file
+  counts and sizes) before anything is sent; add rules with `extraRules()`.
+  Conditions are read as Core reads them: a field a condition hid reads
+  blank to the fields after it, and a choice with no option left is hidden.
+- **Hidden fields** with a `source` are filled from the page the form was
+  rendered on (`page.url`, `referrer`, `page.lang`, `query.{key}`);
+  `pageTitle()` and `context()` supply `page.title` and `context.{key}`.
+- **Sending**: the entry goes to `POST {core}/api/forms/{uuid}/submit` on
+  the site's client token (files as multipart parts with neutral names),
+  which Core takes for a form linked to the site's app client. Core's 422
+  errors show on their fields. `$status` is then `sent`, `invalid`,
+  `throttled` or `unavailable`; `sent()` runs after Core took an entry.
+- **Bots**: Core's honeypot, Turnstile and nonce guard the embed, not an
+  entry the site sends on its token, so the site guards its own forms: a
+  honeypot field in the wrapper (a filled one is answered `sent` and goes
+  nowhere), and `forms.submit_rate_limit` (5) entries per minute per address
+  and form. The address is `request()->ip()`: behind a proxy, trust it
+  (TrustProxies) or every visitor shares one limit. Add more (Turnstile, a
+  question) in the view and `extraRules()` when a form draws spam.
+- **Static cache**: the component captures the visitor's page (referrer,
+  query string) when it renders, so on a statically cached page render it
+  inside `@nocache`, or the first visitor's values go to everyone.
+- **Language**: the definition is read in the app's locale when the
+  snapshot is pulled, so labels and messages are in the site's default
+  language.
+
+Override `submitView()` for another button (null when the view has its own),
+and put your own `resources/views/vendor/core-web/forms/*.blade.php` in
+place of the default markup.
+
+### Marking the form in Core
+
+Core cannot tell that a site renders a form with its own markup, so tick
+**Custom form embed** on the form's General tab in Core. Its Fields tab then
+warns admins not to change the fields without asking a developer. A form
+the site renders must also take server entries (`accepts_server`); the pull
+logs a warning when it does not.
+
+### Keeping up with Core
+
+`tests/fixtures/core-form-definition-contract.json` is a copy of Core's
+definition contract (docs/learn/forms/definition-contract.md in inly-core):
+one schema that uses every field type and key, and the definition Core
+serves for it. `FormDefinitionContractTest` checks the reader against it,
+including that every key a field carries is one `FormDefinition::KEYS`
+knows. When Core's contract changes, replace the copy and catch up on what
+fails. A field type the reader does not know renders as a text input and is
+logged.
+
 ## Website content
 
 The site half of Core's website content protocol v1.1 (inly-core
@@ -943,6 +1104,123 @@ core-web's own suite runs the protocol's test vectors
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
 
+## Drafts
+
+`Inly\CoreWeb\Drafts\DraftWriter` writes drafts of the site's entries the
+way an editor's CP save writes them, for whatever source makes them: Core AI,
+a content push. It needs revisions on, and refuses a draft when they are off
+rather than change a live entry.
+
+- A new entry is saved unpublished; a published one gets a working copy and
+  its live entry is left alone. A structured collection's new entry goes
+  under its parent (`parent_id`) in the tree.
+- Each draft is saved as its author's CP user, who must be allowed to make
+  the change, with the author's provenance on the revision (`via` plus the
+  source's own details) and its message. An editor's later CP save keeps the
+  provenance.
+- A draft never touches a working copy someone else holds, and the author's
+  own must restate what it already changed. An update names the hash of the
+  entry it was written against (`base_hash`), so it never undoes a later edit.
+- Values are validated against the blueprint, values their field conditions
+  hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
+  checks without saving.
+- `publish()` makes the draft live; `read()` returns it with who holds it.
+
+```php
+$author = new DraftAuthor($cpUser, $name, DraftProvenance::make('content-push', ['by' => $email]), 'Pushed from local');
+
+app(DraftWriter::class)->write($author, [
+    'collection' => 'articles',
+    'entry_id' => $id,            // omit for a new entry
+    'fields' => ['title' => '…'],
+    'base_hash' => $hash,         // the DraftBase hash read before the change
+]);
+```
+
+The site names the collections sources may draft in `drafts.collections`
+(see the config file). Two bindings shape a source's input:
+`DraftValueNormaliser` turns the fields sent into stored values
+(`StoredValues` keeps them as they are), and `DraftBase` is the hash an
+update names (`FieldsHash` hashes the draft's fields). Refusals throw
+`DraftRefused`, which renders as JSON (`error`, `message`, details); the
+messages are translations a site rewords in
+`lang/vendor/core-web/{locale}/drafts.php`.
+
+### Proposals
+
+Content Statamic keeps no revisions of (a navigation tree, a collection's
+page tree, a global's values, a term, an asset's meta) is changed by
+proposal: a source stages the target's whole new value, and an editor
+applies or discards it under **Content → Proposals** in the CP, which shows
+what changes. The entry appears only while an editor has proposals to decide.
+
+```php
+$target = ProposalTargets::resolve('nav:main:default'); // tree:{collection}:{site}, global:{handle}:{site}, term:{taxonomy}:{slug}:{site}, asset:{container}::{path}
+
+app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($target));
+```
+
+- The proposer and the editor must both be allowed to edit the target.
+- A proposal names the fingerprint of the value it was made from; it is
+  refused when the target changed since, and never applied over a later
+  change.
+- One open proposal per target: its author's next one replaces it, anyone
+  else's is refused until it is decided.
+- Values are validated as the CP validates a save; a page tree proposal
+  moves pages and never drops one.
+
+Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
+whose disk does not outlive a deploy names a bucket.
+
+## Content checks
+
+Checks find what is wrong in the site's content that a machine can find,
+and where the fix is mechanical, fix it as a draft or a proposal an editor
+publishes. They run nightly (`checks.schedule`) or with
+`php artisan content:check [check…] [--json]`; each check's latest findings
+are kept (`checks.disk`, `checks.path`) for the `content_checks` dashboard
+widget and for sources (Core AI) to read without running a check.
+
+| Check | Finds | Fix |
+|---|---|---|
+| `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
+| `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
+| `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
+
+```php
+$checks = app(ContentChecks::class);
+$checks->latest('own-url-links');                 // the last run's findings
+$checks->fix('own-url-links', $findingId, $author); // a draft or a proposal
+```
+
+A finding's `id` is stable across runs. A fix finds the finding afresh
+first, and fixes everything fixable in the same entry or tree at once. A site
+adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
+`checks.checks`, or leaves one out.
+
+### Core reads checks and proposes (protocol v1.2)
+
+With `features.content` on as well, core-web registers the protocol's v1.2
+endpoints itself, under `content.prefix` (`api/core/v1`), each sealed with
+Core's key:
+
+| Route | Purpose | With |
+|---|---|---|
+| `GET checks` | `website.read` | `checks` |
+| `GET checks/{check}/findings?site=&subject=` | `website.read` | `checks` |
+| `POST checks/{check}/fix` | `website.draft` | `checks` |
+| `GET proposal-target?key=` | `website.read` | `drafts` |
+| `POST proposals` (`dry_run` to validate only) | `website.draft` | `drafts` |
+| `GET proposals/{id}` | `website.draft` | `drafts` |
+
+A fix or a proposal is made for a person in Core: the body names them in
+`actor` (`core_user_id`, `name`, `email`), with an optional `summary`,
+`core_request_id` and `core_approval_id`. It is written as their CP account
+(the one [CMS sign-in](#cms-sign-in) stamped with their Core user id; a site that keeps
+accounts another way binds its own `Inly\CoreWeb\Content\CoreUsers`), marked
+`via: core-ai`, and refused with `no_cms_user` when they have none. Nothing
+goes live: a fix is a draft, a proposal waits for an editor.
+
 ## Control panel link
 
 `features.cp_link` adds a link to Core right under Dashboard in the control
@@ -986,6 +1264,29 @@ It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
 app client is the audience of every envelope and the token it calls Core back
 with. No secret is shared with Core.
 
+**Moving a site onto it.** A site that already signs its CP in from Core
+with its own code removes that code in the same change that switches the
+feature on, since both claim the same addresses:
+
+- its hand-off route (usually `/admin-sso`) and controller, and its
+  offboarding route (`/api/core/cms-users/revoke`);
+- its CP login redirect middleware, its SSO user provider and the
+  `auth.providers.*.driver` it set for it (put Statamic's `statamic` back; the
+  feature swaps it);
+- its reconcile command and that command's schedule entry;
+- its own rate limiter and tests for these;
+- any shared hand-off secret (`*_HANDOFF_SECRET`): only Core's own seal is
+  accepted.
+
+Switch the driver back to `statamic` before turning the feature on: with the
+CP guard on any other driver the boot fails, `php artisan` included, so a
+cached config holding the old driver has to be cleared by deleting
+`bootstrap/cache/config.php`.
+
+Map the roles its code granted in `cms_sign_in.roles`, and if its accounts
+are stamped with something other than `core_user_id`, copy that value into
+`core_user_id` first: an account without it can no longer sign in.
+
 | Step | Request | Checks |
 |---|---|---|
 | Sign-in | `/admin/auth/login`, or any CP page a guest opens, redirects to `{core}/sso/cms?site=<key>&next=<path>`; Core hands back `GET /admin-sso?payload=…&signature=…&key_id=…&next=…` | Core's signature, `aud` = `CORE_CLIENT_ID`, expiry, purpose `cms_sso`, a `site` claim naming this site, the nonce spent here |
@@ -1008,7 +1309,9 @@ What the feature holds the CP to:
   `SsoUserProvider` in itself.
 - Roles assigned by hand outside `cms_sign_in.roles` are left alone; the
   mapped ones and the super flag are rewritten at every sign-in.
-- Keep `users/` out of git: accounts live on the server that created them.
+- Keep `users/` out of git, and out of `statamic.git.paths` where Statamic's
+  git integration commits CP saves: accounts live on the server that created
+  them, and every sign-in saves the account.
 
 **Several sites, one Core.** `cms_sign_in.site` (`CORE_CMS_SITE`) is this
 site's key in Core: the login redirect names it, the hand-off must carry it,

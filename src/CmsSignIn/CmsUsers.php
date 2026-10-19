@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\CmsSignIn;
 
 use Illuminate\Support\Collection;
+use Inly\CoreWeb\Drafts\DraftPerson;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Role;
 use Statamic\Facades\User;
@@ -17,7 +18,7 @@ use Statamic\Facades\User;
  */
 class CmsUsers
 {
-    public const MARKER = 'core_user_id';
+    public const MARKER = DraftPerson::CORE_USER_MARKER;
 
     /**
      * Core CMS grants → Statamic role handles. Unmapped grants are dropped, and
