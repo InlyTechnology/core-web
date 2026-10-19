@@ -6,7 +6,41 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.11.0
+
+- **Control panel link**: `features.cp_link` (off by default) adds a link to
+  Core right under Dashboard for every CP user, in a new tab, to `CORE_URL`
+  (or locally to the remote Core when no `CORE_URL` is set).
+  `cp_link.label` names it and `cp_link.icon` swaps Core's mark for a
+  Statamic icon or an SVG. See README → Control panel link.
+- **Config**: `pull` is renamed `remote` (`CORE_REMOTE_URL`,
+  `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`), since it is the Core
+  a local machine uses, not only `core:pull`'s source. A site config naming
+  `pull` keeps working, as do the `CORE_PULL_*` variables unless the site
+  writes its own `remote` block (README → Pulling production data). `pull`
+  and `CORE_PULL_*` are deprecated.
+
+### Upgrade notes
+
+- **`pull` is deprecated**: the config key `pull` is now `remote`, and
+  `CORE_PULL_URL`, `CORE_PULL_CLIENT_ID` and `CORE_PULL_CLIENT_SECRET` are
+  now `CORE_REMOTE_URL`, `CORE_REMOTE_CLIENT_ID` and
+  `CORE_REMOTE_CLIENT_SECRET`. The old names are still read and will be
+  removed in a later release. Two cases stop working now: a site that
+  writes its own `remote` block reads only the variables that block names,
+  so a `.env` holding only `CORE_PULL_*` fails `core:pull`; and code or
+  tests that set `core-web.pull.*` at runtime are no longer read, since the
+  `pull` block is copied into `remote` once, at boot. Find it:
+  `grep -rn "'pull'\|core-web\.pull\|CORE_PULL_" config/ app/ tests/ .env*`.
+  Migrate: rename the `pull` block in `config/core-web.php` to `remote` and
+  its variables to `CORE_REMOTE_*` (nest the old name as the default,
+  `env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', ''))`,
+  until every developer's `.env` has moved), rename them in `.env.example`,
+  and replace `core-web.pull` with `core-web.remote` in code and tests.
+  Verify: `php artisan config:show core-web.remote` shows the base URL,
+  client id and a secret, and `php artisan core:pull` runs.
+
+## v0.10.0
 
 - **Snapshots**: a `core_snapshot` control panel widget lists a snapshot's
   documents, paginated, each linked to its record in Core. A snapshot opts in
