@@ -92,6 +92,7 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally (see [Media](#media)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -136,7 +137,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
 | `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
 | `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
-| `media.launched` | `true` | Whether the site is live. `false` (while it is built) lets every server but `local` write the bucket directly, so staging edits content without the layer; flip it at go-live |
+| `media.layer.enabled` | `CORE_MEDIA_LAYER`, `true` | Outside production, keep production's files behind the layer. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
 | `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
@@ -832,7 +833,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 | Where | With `CORE_MEDIA_KEY` | Without |
 |---|---|---|
 | production | the bucket | the local folder `public/<folder>` |
-| staging, before launch (`launched` false) | the bucket | the local folder |
+| staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
 | anywhere else | the bucket, behind a layer | the local folder |
 
 The layer is what makes the shared bucket safe outside production. Writes,
@@ -842,13 +843,14 @@ and a laptop see production's files and never change them. On staging the
 layer is `_staging/` in the bucket; in the `local` environment it is
 `public/media-layer/` (add it to `.gitignore`).
 
-The layer starts at launch. While a site is built there is no production
-content to protect, and staging (or the production server on a temporary
-domain) is where editors build it, so a site commits `'launched' => false`
-and every server but `local` writes the bucket directly. Going live is one
-commit flipping it to `true`: staging gets its layer from then on, and what
-it uploaded before is already in the bucket at the paths production serves,
-so nothing is copied.
+Before go-live there is no production content to protect, and staging is
+often where editors build it, so a staging server set up then gets
+`CORE_MEDIA_LAYER=false` and writes the bucket directly. It is a server's
+setup, not the site's code, so it is env: `main` and `develop` stay alike.
+At go-live, remove it from staging's env (the launch checklist's step): the
+layer is on from then on, and what staging uploaded before is already in the
+bucket at the paths production serves, so nothing is copied. A production
+server on a temporary domain writes the bucket anyway.
 
 Refusals are loud: deleting, renaming or moving one of production's files
 throws `ProductionFileLocked` whatever the disk's `throw`, so Statamic stops

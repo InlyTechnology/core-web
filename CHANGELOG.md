@@ -13,8 +13,8 @@
   - The disks in `media.disks` are the bucket in production and the local
     folder without a key, unless the app's config/filesystems.php defines
     them (remove the site's own `assets` disk). Elsewhere they sit behind a
-    layer once the site is live (`media.launched`, true by default; a site
-    being built commits false so staging writes the bucket directly):
+    layer (`CORE_MEDIA_LAYER=false` turns it off on a staging server set up
+    before go-live, so editors build content on the real bucket):
     writes land in it, and deleting or moving production's files throws
     `ProductionFileLocked`.
   - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the

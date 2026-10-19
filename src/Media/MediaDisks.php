@@ -67,10 +67,10 @@ final class MediaDisks
         });
     }
 
-    /** Whether the site is live, so production's files need protecting from every other environment. */
-    public static function launched(): bool
+    /** Whether this server keeps production's files behind a layer: on, unless a server set up before go-live turns it off. */
+    public static function layered(): bool
     {
-        return filter_var(config('core-web.media.launched', true), FILTER_VALIDATE_BOOLEAN);
+        return filter_var(config('core-web.media.layer.enabled', true), FILTER_VALIDATE_BOOLEAN);
     }
 
     /** Whether this environment has the bucket's key. */
@@ -148,8 +148,7 @@ final class MediaDisks
             return self::local($folder);
         }
 
-        // Before launch staging is where content is built, on the bucket production will serve.
-        if ($app->environment('production') || (! self::launched() && ! $app->environment('local'))) {
+        if ($app->environment('production') || ! self::layered()) {
             return self::bucket($folder);
         }
 
