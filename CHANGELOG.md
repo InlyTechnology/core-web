@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.10.0
 
 - **Snapshots**: a `core_snapshot` control panel widget lists a snapshot's
   documents, paginated, each linked to its record in Core. A snapshot opts in
