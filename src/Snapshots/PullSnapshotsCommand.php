@@ -3,6 +3,10 @@
 namespace Inly\CoreWeb\Snapshots;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
+use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Client\RemoteCoreLogin;
+use Inly\CoreWeb\Client\TokenRefused;
 use Throwable;
 
 /**
@@ -15,7 +19,9 @@ class PullSnapshotsCommand extends Command
 {
     protected $signature = 'core:pull
         {type? : One snapshot type; every registered type when omitted}
-        {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
+        {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}
+        {--login : Log in to the remote Core in the browser first, even with a stored login}
+        {--logout : Revoke and forget this machine\'s login to the remote Core}';
 
     protected $description = 'Pull the Core snapshots from the remote Core (core-web.remote) and pin them locally';
 
@@ -43,10 +49,28 @@ class PullSnapshotsCommand extends Command
         }
 
         $source = (array) config('core-web.remote');
+        $baseUrl = (string) ($source['base_url'] ?? '');
+        $clientId = (string) ($source['client_id'] ?? '');
 
-        if (blank($source['base_url'] ?? null) || blank($source['client_id'] ?? null) || blank($source['client_secret'] ?? null)) {
-            $this->error('Set CORE_REMOTE_CLIENT_SECRET, and remote.base_url and remote.client_id in config/core-web.php: the Core to pull from and a client that may only read (README, Pulling production data).');
+        if ($this->option('logout')) {
+            RemoteCoreLogin::stored($baseUrl, $clientId)?->logout();
+            RemoteCoreLogin::forget();
+            Cache::forget((string) ($source['token_cache_key'] ?? 'core_web_remote_access_token'));
+            $this->info('Logged out of the remote Core on this machine.');
 
+            return self::SUCCESS;
+        }
+
+        if ($baseUrl === '' || $clientId === '') {
+            $this->error('Set remote.base_url and remote.client_id in config/core-web.php: the Core to pull from and the site\'s own client there (README, Pulling production data).');
+
+            return self::FAILURE;
+        }
+
+        $secret = (string) ($source['client_secret'] ?? '');
+        $login = $secret === '' || $this->option('login') ? $this->login($baseUrl, $clientId) : null;
+
+        if ($secret === '' && $login === null) {
             return self::FAILURE;
         }
 
@@ -55,14 +79,19 @@ class PullSnapshotsCommand extends Command
 
         // The pulls build their client from core-web.client when they run (CoreClient::fromConfig()), so the source stands in for it.
         config(['core-web.client' => array_replace((array) $client, [
-            'base_url' => $source['base_url'],
-            'client_id' => $source['client_id'],
-            'client_secret' => $source['client_secret'],
+            'base_url' => $baseUrl,
+            'client_id' => $clientId,
+            'client_secret' => $login === null ? $secret : '',
+            'login_token' => $login?->token() ?? '',
             'ca_bundle' => '',
             'token_cache_key' => $source['token_cache_key'] ?? 'core_web_remote_access_token',
         ])]);
 
         try {
+            if ($login !== null && ! $this->authenticated()) {
+                return self::FAILURE;
+            }
+
             $exit = self::SUCCESS;
 
             foreach ($types as $name) {
@@ -73,6 +102,79 @@ class PullSnapshotsCommand extends Command
         } finally {
             config(['core-web.client' => $client]);
         }
+    }
+
+    /** The stored login, or a new one from the browser: on --login, or when there is none and someone is at the keyboard. */
+    private function login(string $baseUrl, string $clientId): ?RemoteCoreLogin
+    {
+        $stored = $this->option('login') ? null : RemoteCoreLogin::stored($baseUrl, $clientId);
+
+        if ($stored !== null) {
+            return $stored;
+        }
+
+        if (! $this->option('login') && ! $this->input->isInteractive()) {
+            $this->error('No login to the remote Core on this machine. Run `php please core:pull --login` and approve it in Core.');
+
+            return null;
+        }
+
+        $host = (string) (parse_url($baseUrl, PHP_URL_HOST) ?: $baseUrl);
+
+        try {
+            $login = RemoteCoreLogin::login($baseUrl, $clientId, (string) (gethostname() ?: 'local'), function (string $url, string $code) use ($host): void {
+                $this->line("Approve this machine in Core ({$host}) to read as the site:");
+                $this->line("  {$url}");
+                $this->line("  Code: <options=bold>{$code}</>");
+                $this->openBrowser($url);
+                $this->line('Waiting for approval…');
+            });
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
+
+            return null;
+        }
+
+        $this->info('Logged in'.($login->approvedBy() ? ', approved by '.$login->approvedBy() : '').'.');
+
+        return $login;
+    }
+
+    /** A login Core no longer honours (expired, revoked, the approver no longer a developer) is forgotten here too. */
+    private function authenticated(): bool
+    {
+        try {
+            CoreClient::fromConfig()->authenticate();
+
+            return true;
+        } catch (TokenRefused $e) {
+            if ($e->status >= 400 && $e->status < 500) {
+                RemoteCoreLogin::forget();
+                $this->error('Core no longer accepts this machine\'s login (expired or revoked). Run `php please core:pull --login`.');
+
+                return false;
+            }
+
+            $this->error($e->getMessage());
+
+            return false;
+        }
+    }
+
+    private function openBrowser(string $url): void
+    {
+        if (! $this->input->isInteractive() || app()->runningUnitTests()) {
+            return;
+        }
+
+        $opener = match (PHP_OS_FAMILY) {
+            'Darwin' => 'open',
+            'Windows' => 'start ""',
+            default => 'xdg-open',
+        };
+
+        // Best effort: the link is printed either way.
+        @exec($opener.' '.escapeshellarg($url).' > /dev/null 2>&1 &');
     }
 
     private function pull(SnapshotRegistry $registry, SnapshotStore $store, string $type, string $host): int

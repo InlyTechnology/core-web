@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\ControlPanel;
 
+use Inly\CoreWeb\Client\RemoteCoreLogin;
 use Statamic\Facades\CP\Nav;
 
 /**
@@ -32,7 +33,7 @@ final class CoreNavLink
 
     /**
      * CORE_URL, or on a local machine without one the remote Core, once its
-     * client is set up: the Core a developer's data came from.
+     * secret is set or the machine is logged in: the Core a developer's data came from.
      */
     public static function url(): string
     {
@@ -44,7 +45,7 @@ final class CoreNavLink
 
         if (! app()->environment('local')
             || blank(config('core-web.remote.client_id'))
-            || blank(config('core-web.remote.client_secret'))) {
+            || (blank(config('core-web.remote.client_secret')) && RemoteCoreLogin::stored((string) config('core-web.remote.base_url'), (string) config('core-web.remote.client_id')) === null)) {
             return '';
         }
 

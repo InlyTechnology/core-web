@@ -90,7 +90,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only, and only for a Core without local development logins: the secret of a read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
@@ -307,9 +307,9 @@ php artisan core:pull --release  # unpin and forget: the site reads CORE_URL aga
 ```
 
 The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
-there replaces the package's whole, so it names all three:
+them as defaults in its own `config/core-web.php`, overridable from env. The
+client is the site's own app client, the one its Statamic connector in Core
+is paired with. A `remote` key there replaces the package's whole:
 
 ```php
 'remote' => [
@@ -319,14 +319,34 @@ there replaces the package's whole, so it names all three:
 ],
 ```
 
+### Logging in
+
+A developer needs no secret. The first pull logs the machine in:
+
+```bash
+php please core:pull --login     # log in again, even with a stored login
+php please core:pull --logout    # revoke this machine's login in Core and forget it
+```
+
+The command prints a code and opens Core's approval page. A person with the
+`developer` role in Core checks the code and approves, and the pull goes on.
+From then on the machine reads **as the site's client**: the same data the
+live site reads, never what the approver can see, and only reads. The login
+lives in `storage/core-web/remote-core.json` (mode 0600, never committed),
+lasts 30 days from its last use, and is listed on the app's page in Core
+(Settings → Apps), where it can be revoked; it also ends when the approver
+loses the `developer` role. A non-interactive run with no stored login fails
+and says to log in. Needs a Core that ships local development logins.
+
+A Core without them takes a secret instead: an app client for local pulls
+holding the same read permissions as the site's own client and nothing else,
+its secret in `CORE_REMOTE_CLIENT_SECRET`. A set secret wins over a stored
+login unless `--login` is passed.
+
 The key was called `pull` before. A site config still naming it keeps
 working, and so do the `CORE_PULL_*` variables while the site leaves the key
 to the package; a site that writes its own `remote` block reads only the
-variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
-default to keep developers' `.env` files working.
-
-The client is an app client in that Core (Settings → Apps, client
-credentials grant): Core shows its id and secret when it is created.
+variables it names.
 
 It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
 place of `client.*`, so the documents are exactly what the site's
@@ -340,11 +360,8 @@ next read or warm pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read.** In the source Core, create an app client
-  for local pulls (Settings → Apps, client credentials) holding the same read
-  permissions as the site's own client and nothing else, and share its secret
-  the way the team shares other secrets. It reads what the public site reads,
-  never more; revoking it in Core stops every pull.
+- **Reads only, as the site.** A login reads what the public site reads,
+  never more, and revoking it in Core stops that machine's pulls.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.

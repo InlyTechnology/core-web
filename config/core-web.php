@@ -22,7 +22,7 @@ return [
     |     return ['features' => ['snapshots' => true]];
     |
     | snapshots: Core snapshots with their store, `core:warm` and its schedule,
-    | `core:pull`, the degraded guard, Core's pings (`ping`), the snapshot
+    | `core:pull` (and its --login), the degraded guard, Core's pings (`ping`), the snapshot
     | sitemaps (`sitemaps`) and the `core_snapshot` control panel widget. The
     | Core client below needs no switch.
     |
@@ -95,13 +95,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | Local only: the Core a local machine uses in place of its own
-    | (production, as a rule), with a client Core should let read and nothing
-    | more. `core:pull` copies its snapshots, and without a CORE_URL the
-    | control panel link points at it. The URL and client id are the same for
-    | every developer, so the site commits them as the defaults in its own
-    | config/core-web.php (env can still override them); only the secret has
-    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
-    | `pull`, and the CORE_PULL_* variables, keep working.
+    | (production, as a rule). `core:pull` copies its snapshots, and without a
+    | CORE_URL the control panel link points at it. The URL and the site's own
+    | client id there are the same for every developer, so the site commits
+    | them as the defaults in its own config/core-web.php (env can still
+    | override them). A developer then runs `core:pull --login` once and
+    | approves the machine in Core, which reads as that client; no secret.
+    | client_secret (CORE_REMOTE_CLIENT_SECRET) is the older way: a separate
+    | read-only client's secret, used instead of a login when it is set. A
+    | site config still naming this `pull`, and the CORE_PULL_* variables,
+    | keep working.
     |
     */
 

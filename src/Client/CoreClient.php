@@ -32,6 +32,7 @@ class CoreClient
         protected string $clientId,
         protected string $clientSecret,
         protected string $tokenCacheKey = 'core_web_access_token',
+        protected string $loginToken = '',
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
     }
@@ -44,13 +45,20 @@ class CoreClient
             (string) config('core-web.client.client_id'),
             (string) config('core-web.client.client_secret'),
             (string) (config('core-web.client.token_cache_key') ?: 'core_web_access_token'),
+            (string) config('core-web.client.login_token', ''),
         );
     }
 
     /** Whether this site has been told how to reach Core at all. */
     public function configured(): bool
     {
-        return $this->baseUrl !== '' && $this->clientId !== '' && $this->clientSecret !== '';
+        return $this->baseUrl !== '' && $this->clientId !== '' && ($this->clientSecret !== '' || $this->loginToken !== '');
+    }
+
+    /** Fetches an access token now (or reads the cached one), so a refused login shows before any read. */
+    public function authenticate(): void
+    {
+        $this->token();
     }
 
     public function baseUrl(): string
@@ -303,7 +311,9 @@ class CoreClient
 
     /**
      * A cached client_credentials access token, fetched on a miss. Issued
-     * without explicit scopes: Core falls back to the client's own.
+     * without explicit scopes: Core falls back to the client's own. With a
+     * developer's login token in place of the secret (`core:pull --login`),
+     * Core's local-dev grant issues the token instead, reading as the client.
      */
     protected function token(): string
     {
@@ -315,18 +325,17 @@ class CoreClient
             throw new RuntimeException('core-web sends its client secret to Core over https only; the Core URL is not.');
         }
 
+        $grant = $this->clientSecret === '' && $this->loginToken !== ''
+            ? ['grant_type' => RemoteCoreLogin::GRANT, 'client_id' => $this->clientId, 'login_token' => $this->loginToken]
+            : ['grant_type' => 'client_credentials', 'client_id' => $this->clientId, 'client_secret' => $this->clientSecret, 'scope' => ''];
+
         $response = $this->http()
             ->asForm()
             ->connectTimeout(5)
             ->timeout(15)
             // A 307 or 308 would post the secret on to wherever it points.
             ->withoutRedirecting()
-            ->post($this->baseUrl.'/oauth/token', [
-                'grant_type' => 'client_credentials',
-                'client_id' => $this->clientId,
-                'client_secret' => $this->clientSecret,
-                'scope' => '',
-            ]);
+            ->post($this->baseUrl.'/oauth/token', $grant);
 
         $token = (string) $response->json('access_token');
 
