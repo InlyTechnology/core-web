@@ -9,8 +9,8 @@ use Inly\CoreWeb\Proposals\ProposalTargets;
 use InvalidArgumentException;
 
 /**
- * Proposals as Core reads and makes them (protocol v1.2): a target's value
- * and base to build on, a proposal for an editor to apply, and what became
+ * Proposals as Core reads and makes them (Statamic connector API v1.2): a
+ * target's value and base to build on, a proposal for an editor to apply, and what became
  * of it.
  */
 class CoreProposalsController

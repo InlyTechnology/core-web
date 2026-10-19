@@ -15,17 +15,18 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use stdClass;
 
 /**
- * The test vectors of the website content protocol v1, the `test-vectors.json`
- * block of inly-core's docs/learn/website-content/protocol-v1.md as of
- * inly-core v31.1.0, copied verbatim into tests/fixtures. Update the fixture
- * from that block whenever the protocol changes.
+ * The test vectors of the Statamic connector API v1, the `test-vectors.json`
+ * block of inly-core's API page (docs/learn/website-content/protocol-v1.md as
+ * of inly-core v31.1.0, since renamed statamic-connector-api.md), copied
+ * verbatim into tests/fixtures. Update the fixture
+ * from that block whenever the API changes.
  */
 class ProtocolTestVectorsTest extends TestCase
 {
     /** @return array<string, mixed> */
     private static function vectors(): array
     {
-        return json_decode((string) file_get_contents(__DIR__.'/../fixtures/website-content-protocol-v1-test-vectors.json'), true, flags: JSON_THROW_ON_ERROR);
+        return json_decode((string) file_get_contents(__DIR__.'/../fixtures/statamic-connector-api-v1-test-vectors.json'), true, flags: JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -146,7 +147,7 @@ class ProtocolTestVectorsTest extends TestCase
         $sealed = 0;
 
         // Decoded as objects, so an empty query stays `{}` and the claims keep their order.
-        $vectors = json_decode((string) file_get_contents(__DIR__.'/../fixtures/website-content-protocol-v1-test-vectors.json'), false, flags: JSON_THROW_ON_ERROR);
+        $vectors = json_decode((string) file_get_contents(__DIR__.'/../fixtures/statamic-connector-api-v1-test-vectors.json'), false, flags: JSON_THROW_ON_ERROR);
 
         foreach ($vectors->seal as $vector) {
             if (! isset($vector->core_seed)) {

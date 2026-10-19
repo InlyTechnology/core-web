@@ -924,10 +924,10 @@ logged.
 
 ## Website content
 
-The site half of Core's website content protocol v1.1 (inly-core
-`docs/learn/website-content/protocol-v1.md`): Core reads a site's pages and
-writes drafts to it, every call sealed with Core's own Ed25519 key, and the
-site pings Core when a page changes. core-web opens the envelopes and sends
+The site half of Core's Statamic connector API v1.1 (inly-core
+`docs/learn/website-content/statamic-connector-api.md`): Core reads a site's
+pages and writes drafts to it, every call sealed with Core's own Ed25519 key,
+and the site pings Core when a page changes. core-web opens the envelopes and sends
 the pings; the endpoints, their routes and their JSON are the site's own.
 
 ### Routes
@@ -967,12 +967,12 @@ read what Core sent:
 })
 ```
 
-The protocol has the site answer over https outside a local environment.
+The API has the site answer over https outside a local environment.
 core-web does not check the scheme of a request it opens: the site's
 endpoints rely on the web server (or the proxy in front of it) to serve them
 over https only.
 
-The middleware checks, in the protocol's order:
+The middleware checks, in the API's order:
 
 1. the headers;
 2. Core's signature, under a key id from Core's key document;
@@ -1048,8 +1048,8 @@ $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', $body, ['envir
     ->assertForbidden()->assertJson(['error' => 'wrong_environment']);
 ```
 
-core-web's own suite runs the protocol's test vectors
-(`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
+core-web's own suite runs the API's test vectors
+(`tests/fixtures/statamic-connector-api-v1-test-vectors.json`): those that
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
 
@@ -1147,9 +1147,9 @@ first, and fixes everything fixable in the same entry or tree at once. A site
 adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
 `checks.checks`, or leaves one out.
 
-### Core reads checks and proposes (protocol v1.2)
+### Core reads checks and proposes (API v1.2)
 
-With `features.content` on as well, core-web registers the protocol's v1.2
+With `features.content` on as well, core-web registers the API's v1.2
 endpoints itself, under `content.prefix` (`api/core/v1`), each sealed with
 Core's key:
 
