@@ -1,5 +1,8 @@
 <?php
 
+use Inly\CoreWeb\Checks\Checks\DeadTargets;
+use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
+use Inly\CoreWeb\Checks\Checks\SeoGaps;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 return [
@@ -34,6 +37,15 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | drafts: drafts of the site's entries written as an editor's CP save
+    | writes them (Inly\CoreWeb\Drafts\DraftWriter), for the sources that
+    | write them (Core AI, a push), with their signed preview link (`drafts`)
+    | and the provenance an editor's save keeps.
+    |
+    | checks: the site's content checks (`checks`) with `content:check`, its
+    | nightly schedule and the `content_checks` dashboard widget. Fixing a
+    | finding writes a draft or a proposal, so it needs `drafts` too.
+    |
     | forms: the Core forms the site renders with its own Livewire markup
     | (Inly\CoreWeb\Forms\CoreForm), kept as a snapshot refreshed by Core's
     | `forms` ping. Needs `snapshots` on too.
@@ -48,6 +60,8 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'drafts' => false,
+        'checks' => false,
         'forms' => false,
         'cp_link' => false,
     ],
@@ -331,6 +345,52 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Drafts
+    |--------------------------------------------------------------------------
+    |
+    | collections: the collections a source may draft, by handle, each with
+    | the blueprints a new entry may take (its default first; none named
+    | allows the collection's own), whether a new entry goes under a parent
+    | in the collection's tree (`structured`), and the fields an entry is
+    | never published without (`published_with`). A collection not named
+    | here is edited in the CP only.
+    |
+    |     'collections' => [
+    |         'articles' => ['blueprints' => ['article'], 'published_with' => ['image']],
+    |         'pages' => ['blueprints' => ['page'], 'structured' => true],
+    |     ],
+    |
+    | preview: the signed link a draft's source hands the person, opening the
+    | draft in Live Preview for `days` days at `path`, by `name`.
+    |
+    | proposals: where staged changes to content without revisions (navs,
+    | page trees, globals, terms, asset meta) are kept until an editor applies
+    | or discards them in the CP: a filesystem `disk` (null for the default)
+    | and a `path` on it. A host whose disk does not outlive a deploy names a
+    | bucket.
+    |
+    | The sentences a refused draft answers with are translations
+    | (core-web::drafts); a site words them for its editors in
+    | lang/vendor/core-web/{locale}/drafts.php.
+    |
+    */
+
+    'drafts' => [
+        'collections' => [],
+        'preview' => [
+            'path' => 'core-preview/{id}',
+            'name' => 'core.preview',
+            'days' => 7,
+            'middleware' => ['throttle:60,1', 'signed:relative'],
+        ],
+        'proposals' => [
+            'disk' => null,
+            'path' => 'core-web/proposals',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Forms
     |--------------------------------------------------------------------------
     |
@@ -362,6 +422,46 @@ return [
             'definition' => 5,
             'submit' => 20,
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content checks
+    |--------------------------------------------------------------------------
+    |
+    | checks: the checks that run, each an Inly\CoreWeb\Checks\Check. A site
+    | adds its own beside these, or leaves one out.
+    |
+    | collections: the collections whose entries are checked; null checks all.
+    |
+    | seo: the fields the seo-gaps check reads (Peak SEO's by default), the
+    | collections it reads (null: every one with URLs) and the lengths a
+    | search result shows.
+    |
+    | schedule: the cron expression `content:check` runs on; null schedules
+    | nothing.
+    |
+    | disk / path: where each check's latest findings are kept.
+    |
+    */
+
+    'checks' => [
+        'checks' => [
+            OwnUrlLinks::class,
+            DeadTargets::class,
+            SeoGaps::class,
+        ],
+        'collections' => null,
+        'seo' => [
+            'collections' => null,
+            'title' => 'seo_title',
+            'description' => 'seo_description',
+            'title_max' => 60,
+            'description_max' => 160,
+        ],
+        'schedule' => '30 3 * * *',
+        'disk' => null,
+        'path' => 'core-web/checks',
     ],
 
     /*

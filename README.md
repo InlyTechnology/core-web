@@ -55,6 +55,8 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`), and the `core_snapshot` dashboard widget (see [Control panel widget](#control-panel-widget)) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
+| Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
@@ -1050,6 +1052,123 @@ core-web's own suite runs the protocol's test vectors
 (`tests/fixtures/website-content-protocol-v1-test-vectors.json`): those that
 use Core's key as given, and the shared-secret ones re-sealed with the test
 key, so their method, path, query and body refusals run against Core's key too.
+
+## Drafts
+
+`Inly\CoreWeb\Drafts\DraftWriter` writes drafts of the site's entries the
+way an editor's CP save writes them, for whatever source makes them: Core AI,
+a content push. It needs revisions on, and refuses a draft when they are off
+rather than change a live entry.
+
+- A new entry is saved unpublished; a published one gets a working copy and
+  its live entry is left alone. A structured collection's new entry goes
+  under its parent (`parent_id`) in the tree.
+- Each draft is saved as its author's CP user, who must be allowed to make
+  the change, with the author's provenance on the revision (`via` plus the
+  source's own details) and its message. An editor's later CP save keeps the
+  provenance.
+- A draft never touches a working copy someone else holds, and the author's
+  own must restate what it already changed. An update names the hash of the
+  entry it was written against (`base_hash`), so it never undoes a later edit.
+- Values are validated against the blueprint, values their field conditions
+  hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
+  checks without saving.
+- `publish()` makes the draft live; `read()` returns it with who holds it.
+
+```php
+$author = new DraftAuthor($cpUser, $name, DraftProvenance::make('content-push', ['by' => $email]), 'Pushed from local');
+
+app(DraftWriter::class)->write($author, [
+    'collection' => 'articles',
+    'entry_id' => $id,            // omit for a new entry
+    'fields' => ['title' => '…'],
+    'base_hash' => $hash,         // the DraftBase hash read before the change
+]);
+```
+
+The site names the collections sources may draft in `drafts.collections`
+(see the config file). Two bindings shape a source's input:
+`DraftValueNormaliser` turns the fields sent into stored values
+(`StoredValues` keeps them as they are), and `DraftBase` is the hash an
+update names (`FieldsHash` hashes the draft's fields). Refusals throw
+`DraftRefused`, which renders as JSON (`error`, `message`, details); the
+messages are translations a site rewords in
+`lang/vendor/core-web/{locale}/drafts.php`.
+
+### Proposals
+
+Content Statamic keeps no revisions of (a navigation tree, a collection's
+page tree, a global's values, a term, an asset's meta) is changed by
+proposal: a source stages the target's whole new value, and an editor
+applies or discards it under **Content → Proposals** in the CP, which shows
+what changes. The entry appears only while an editor has proposals to decide.
+
+```php
+$target = ProposalTargets::resolve('nav:main:default'); // tree:{collection}:{site}, global:{handle}:{site}, term:{taxonomy}:{slug}:{site}, asset:{container}::{path}
+
+app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($target));
+```
+
+- The proposer and the editor must both be allowed to edit the target.
+- A proposal names the fingerprint of the value it was made from; it is
+  refused when the target changed since, and never applied over a later
+  change.
+- One open proposal per target: its author's next one replaces it, anyone
+  else's is refused until it is decided.
+- Values are validated as the CP validates a save; a page tree proposal
+  moves pages and never drops one.
+
+Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
+whose disk does not outlive a deploy names a bucket.
+
+## Content checks
+
+Checks find what is wrong in the site's content that a machine can find,
+and where the fix is mechanical, fix it as a draft or a proposal an editor
+publishes. They run nightly (`checks.schedule`) or with
+`php artisan content:check [check…] [--json]`; each check's latest findings
+are kept (`checks.disk`, `checks.path`) for the `content_checks` dashboard
+widget and for sources (Core AI) to read without running a check.
+
+| Check | Finds | Fix |
+|---|---|---|
+| `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
+| `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
+| `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
+
+```php
+$checks = app(ContentChecks::class);
+$checks->latest('own-url-links');                 // the last run's findings
+$checks->fix('own-url-links', $findingId, $author); // a draft or a proposal
+```
+
+A finding's `id` is stable across runs. A fix finds the finding afresh
+first, and fixes everything fixable in the same entry or tree at once. A site
+adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
+`checks.checks`, or leaves one out.
+
+### Core reads checks and proposes (protocol v1.2)
+
+With `features.content` on as well, core-web registers the protocol's v1.2
+endpoints itself, under `content.prefix` (`api/core/v1`), each sealed with
+Core's key:
+
+| Route | Purpose | With |
+|---|---|---|
+| `GET checks` | `website.read` | `checks` |
+| `GET checks/{check}/findings?site=&subject=` | `website.read` | `checks` |
+| `POST checks/{check}/fix` | `website.draft` | `checks` |
+| `GET proposal-target?key=` | `website.read` | `drafts` |
+| `POST proposals` (`dry_run` to validate only) | `website.draft` | `drafts` |
+| `GET proposals/{id}` | `website.draft` | `drafts` |
+
+A fix or a proposal is made for a person in Core: the body names them in
+`actor` (`core_user_id`, `name`, `email`), with an optional `summary`,
+`core_request_id` and `core_approval_id`. It is written as their CP account
+(the one single sign-on stamped with their Core user id; a site that keeps
+accounts another way binds its own `Inly\CoreWeb\Content\CoreUsers`), marked
+`via: core-ai`, and refused with `no_cms_user` when they have none. Nothing
+goes live: a fix is a draft, a proposal waits for an editor.
 
 ## Control panel link
 

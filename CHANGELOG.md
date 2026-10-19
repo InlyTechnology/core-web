@@ -6,6 +6,28 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## v0.13.0
+
+- **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which
+  writes drafts of a site's entries as an editor's CP save does, for any
+  source (Core AI, a content push): unpublished entries and working copies
+  saved as the author's CP user with their provenance and message, the
+  holder guard, the restate rule, a base hash check, field conditions, dry
+  runs, publishing and a signed Live Preview link. The site names its
+  draftable collections in `drafts.collections`. See README → Drafts.
+- **Proposals**: with `features.drafts`, changes to content without
+  revisions (navigation trees, page trees, globals, terms, asset meta) are
+  staged as proposals an editor applies or discards under Content →
+  Proposals in the CP. See README → Proposals.
+- **Content checks**: `features.checks` (off by default) adds
+  `content:check`, run nightly, and a `content_checks` dashboard widget,
+  with three checks: `own-url-links` (fixed as drafts and proposals),
+  `dead-targets` and `seo-gaps`. See README → Content checks.
+- **Protocol v1.2**: with `features.content` and `checks` or `drafts`, Core
+  reads a site's checks and findings, asks for fixes, reads proposal targets
+  and makes proposals for a person in Core, sealed with Core's key. See
+  README → Core reads checks and proposes.
+
 ## v0.12.0
 
 - **Forms**: `features.forms` (off by default) for a form with the site's
