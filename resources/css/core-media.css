@@ -1,0 +1,34 @@
+/* <x-core-img>'s placeholder: a tiny rendition painted as the image's own
+   background and blurred with it until core-media.js marks it loaded. Only
+   with scripting on; should the script never run, the blur lifts after 8s
+   rather than leave a loaded photo blurred. */
+@media (scripting: enabled) {
+    img[data-placeholder] {
+        transition: filter 400ms ease-out;
+    }
+
+    img[data-placeholder][data-loaded='instant'] {
+        transition: none;
+    }
+
+    img[data-placeholder]:not([data-loaded]) {
+        background-image: var(--placeholder);
+        background-position: var(--placeholder-position, 50% 50%);
+        background-repeat: no-repeat;
+        background-size: var(--placeholder-size, cover);
+        filter: blur(12px);
+        animation: core-media-placeholder-lift 0s 8s forwards;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    img[data-placeholder] {
+        transition: none;
+    }
+}
+
+@keyframes core-media-placeholder-lift {
+    to {
+        filter: none;
+    }
+}

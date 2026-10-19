@@ -7,6 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -35,6 +36,10 @@ use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\SyncMediaCommand;
+use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
@@ -76,6 +81,8 @@ use Statamic\StaticCaching\Cacher;
  * The `cp_link` feature links the control panel to Core under Dashboard.
  * The `content_sync` feature lets a local checkout pull the live site's
  * content as the developer's CMS user.
+ * The `media` feature renders images and videos through the CDN and defines
+ * the asset disks on the bucket.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -89,6 +96,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
+            }
+
+            if (self::enabled('media')) {
+                MediaDisks::define($this->app);
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
@@ -176,6 +187,16 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('content_sync')) {
             $this->bootContentSync();
+        }
+
+        if (self::enabled('media')) {
+            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
+            MediaDisks::registerDriver();
+            Blade::anonymousComponentPath(__DIR__.'/../resources/views/media');
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

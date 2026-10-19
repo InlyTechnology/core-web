@@ -17,6 +17,27 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   writes what changed on the site and keeps local edits, tracked in a
   committed `content.lock`. Set `content_sync.remote_url` in the site's
   config. See README → Content pull.
+- **Media**: `features.media` (off by default) renders a site's pictures and
+  videos through the transforming CDN, and defines its asset disks on the
+  bucket. See README → Media.
+  - `<x-core-img>`, `<x-core-video>` and `<x-core-media>` take a Statamic
+    Asset, an assets field, a URL or a file from Core alike. Images get
+    `format=auto`, a srcset, the focal point and a blurred placeholder;
+    videos get CDN versions for wide and small screens and a frame poster.
+    URLs the CDN does not serve render as is.
+  - The disks in `media.disks` are the bucket in production and the local
+    folder without a key, unless the app's config/filesystems.php defines
+    them (remove the site's own `assets` disk). Elsewhere they sit behind a
+    layer (`CORE_MEDIA_LAYER=false` turns it off on a staging server set up
+    before go-live, so editors build content on the real bucket):
+    writes land in it, and deleting or moving production's files throws
+    `ProductionFileLocked`.
+  - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
+    bucket is committed config. `acl: false` for R2.
+  - `MediaSource::urlOf()` gives a file's URL as the components render it.
+  - `media:sync push|pull` copies a disk between its folder and the bucket
+    (push adds, `--overwrite` replaces);
+    `media:check` checks the bucket's headers and a CDN rendition.
 
 ## v0.13.0
 
