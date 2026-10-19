@@ -9,6 +9,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Validator;
 use Statamic\Contracts\Assets\AssetContainer as Container;
 use Statamic\Contracts\Auth\User;
+use Statamic\Facades\User as Users;
 use Statamic\Rules\AllowedFile;
 
 /**
@@ -29,7 +30,7 @@ final class HeldAssetsController
             'files.*.size' => ['required', 'integer', 'min:0'],
         ])['files'];
 
-        $user = $this->user($request);
+        $user = $this->user();
 
         return response()->json(['files' => array_map(function (array $item) use ($user): array {
             try {
@@ -53,7 +54,7 @@ final class HeldAssetsController
             'file' => ['required', 'file', "max:{$max}"],
         ]);
 
-        $user = $this->user($request);
+        $user = $this->user();
 
         try {
             $container = $this->container($user, $input['container']);
@@ -78,9 +79,10 @@ final class HeldAssetsController
         }
     }
 
-    private function user(Request $request): User
+    /** The person `core-web.sync` signed in, as Statamic's user whether users live in files or Eloquent. */
+    private function user(): User
     {
-        $user = $request->user();
+        $user = Users::current();
 
         abort_unless($user instanceof User, 401);
 
