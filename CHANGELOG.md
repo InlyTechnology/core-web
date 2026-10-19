@@ -6,6 +6,20 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## v0.12.0
+
+- **Forms**: `features.forms` (off by default) for a form with the site's
+  own Livewire markup that posts to a Core form (`CoreForm`). Core's
+  definition, kept in the `core-web-forms` snapshot, gives it defaults,
+  validation, the hidden page fields, and any required field the markup
+  leaves out, rendered after it (with a warning in `local`). Entries go on
+  the site's client token, behind a honeypot and capped per address by
+  `forms.submit_rate_limit`. Mark each such form **Custom form embed** in
+  Core, so its admins are warned before changing its fields. Needs
+  Livewire. See README → Forms.
+- **Core client**: `withToken()` sends a request it builds itself (a
+  multipart body) on the client token.
+
 ## v0.11.0
 
 - **Control panel link**: `features.cp_link` (off by default) adds a link to

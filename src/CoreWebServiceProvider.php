@@ -17,6 +17,7 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
+use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -28,6 +29,7 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
+use LogicException;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -42,6 +44,7 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
+ * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
  */
 class CoreWebServiceProvider extends ServiceProvider
@@ -111,6 +114,10 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
         }
 
+        if (self::enabled('forms')) {
+            $this->bootForms();
+        }
+
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
         }
@@ -134,7 +141,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
         SnapshotSitemapsTag::register();
         CoreSnapshotWidget::register();
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadViews();
         $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         if (config('core-web.snapshots.uncacheable_while_degraded', true)) {
@@ -156,7 +163,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $agents = self::chatAgents();
 
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        $this->loadViews();
         $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
 
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
@@ -169,6 +176,25 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));
+    }
+
+    private function bootForms(): void
+    {
+        if (! self::enabled('snapshots')) {
+            throw new LogicException('core-web.features.forms needs core-web.features.snapshots: the forms are a snapshot, refreshed by Core\'s pings.');
+        }
+
+        CoreForms::classes();
+
+        $this->loadViews();
+        $this->app->extend(SnapshotRegistry::class, fn (SnapshotRegistry $registry) => $registry->register(CoreForms::snapshot(), [CoreForms::PING]));
+    }
+
+    private function loadViews(): void
+    {
+        if (! array_key_exists('core-web', $this->app['view']->getFinder()->getHints())) {
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+        }
     }
 
     /**

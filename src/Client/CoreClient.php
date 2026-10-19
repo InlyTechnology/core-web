@@ -213,6 +213,25 @@ class CoreClient
         return $response;
     }
 
+    /**
+     * A request built by `$send` on a PendingRequest that carries the client
+     * token, sent again with a new token on a 401: for what sendResponse()
+     * cannot send, such as a multipart body.
+     *
+     * @param  Closure(PendingRequest): Response  $send
+     */
+    public function withToken(Closure $send): Response
+    {
+        $response = $send($this->http()->withToken($this->token()));
+
+        if ($response->status() === 401) {
+            $this->forgetToken();
+            $response = $send($this->http()->withToken($this->token()));
+        }
+
+        return $response;
+    }
+
     /** A request to Core, trusting the configured CA bundle when there is one (a local self-signed certificate). */
     public static function request(): PendingRequest
     {

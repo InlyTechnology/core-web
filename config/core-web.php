@@ -34,6 +34,10 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | forms: the Core forms the site renders with its own Livewire markup
+    | (Inly\CoreWeb\Forms\CoreForm), kept as a snapshot refreshed by Core's
+    | `forms` ping. Needs `snapshots` on too.
+    |
     | cp_link: a link to Core right under Dashboard in the control panel
     | (`cp_link`), for every CP user, opened in a new tab.
     |
@@ -44,6 +48,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'forms' => false,
         'cp_link' => false,
     ],
 
@@ -322,6 +327,41 @@ return [
         'store' => null,
         'name' => 'core-web.live',
         'middleware' => ['throttle:60,1'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Forms
+    |--------------------------------------------------------------------------
+    |
+    | Forms the site renders with its own markup and posts to a Core form,
+    | server to server on the site's client token. Every other Core form is
+    | better served by Core's own embed.
+    |
+    | classes: the site's form classes (Inly\CoreWeb\Forms\CoreForm). The
+    | definitions of the Core forms they post to are kept in the
+    | `core-web-forms` snapshot. Mark each of those forms a custom embed in
+    | Core, so its admins are warned before changing its fields.
+    |
+    |     'classes' => [App\Livewire\DamageInspection::class],
+    |
+    | submit_rate_limit: entries per minute from one address, per form. Core
+    | does not limit what the site sends on its client token, so the site
+    | limits its visitors itself.
+    |
+    | timeouts: seconds to connect to Core, to read a definition (from a pull,
+    | never a render) and to send an entry, files included.
+    |
+    */
+
+    'forms' => [
+        'classes' => [],
+        'submit_rate_limit' => 5,
+        'timeouts' => [
+            'connect' => 3,
+            'definition' => 5,
+            'submit' => 20,
+        ],
     ],
 
     /*
