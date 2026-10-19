@@ -59,6 +59,24 @@ class CoreClient
     }
 
     /**
+     * Where a person opens a Core record in their browser: Core's
+     * /open/{object}/{id}, which redirects them to its page once signed in.
+     * Null without a Core address. Needs no credentials: the link is
+     * followed with the person's own Core session.
+     */
+    public function openUrl(string $type, int|string $id): ?string
+    {
+        // Core's route takes the last segment as the id, so an id with a slash has no link.
+        if ($this->baseUrl === '' || $type === '' || (string) $id === '' || str_contains((string) $id, '/')) {
+            return null;
+        }
+
+        $segments = array_map(rawurlencode(...), explode('/', trim($type, '/')));
+
+        return $this->baseUrl.'/open/'.implode('/', $segments).'/'.rawurlencode((string) $id);
+    }
+
+    /**
      * One object from Core's Objects API as a JSON:API document (`data` +
      * optional `included`), or null when Core answers 404: the object is
      * gone, or this client may no longer read it.
@@ -190,6 +208,25 @@ class CoreClient
         if ($response->status() === 401) {
             $this->forgetToken();
             $response = $attempt($this->token());
+        }
+
+        return $response;
+    }
+
+    /**
+     * A request built by `$send` on a PendingRequest that carries the client
+     * token, sent again with a new token on a 401: for what sendResponse()
+     * cannot send, such as a multipart body.
+     *
+     * @param  Closure(PendingRequest): Response  $send
+     */
+    public function withToken(Closure $send): Response
+    {
+        $response = $send($this->http()->withToken($this->token()));
+
+        if ($response->status() === 401) {
+            $this->forgetToken();
+            $response = $send($this->http()->withToken($this->token()));
         }
 
         return $response;

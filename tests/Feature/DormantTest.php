@@ -16,6 +16,8 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
+use Statamic\Facades\CP\Nav as CpNav;
+use Statamic\Facades\User;
 use Statamic\Tags\Loader as TagLoader;
 use Statamic\Tags\TagNotFoundException;
 
@@ -25,7 +27,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'media' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'media' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -58,6 +60,12 @@ class DormantTest extends TestCase
         Blade::render('<x-core-img src="https://cdn.inlycore.com/a/b.jpg" />');
     }
 
+    public function test_no_draft_preview_route_is_registered(): void
+    {
+        $this->assertFalse(app(Router::class)->has('core.preview'));
+        $this->get('/core-preview/abc')->assertNotFound();
+    }
+
     public function test_the_envelope_alias_is_registered_but_joins_no_group(): void
     {
         $this->assertSame(VerifyCoreEnvelope::class, app(Router::class)->getMiddleware()[VerifyCoreEnvelope::ALIAS] ?? null);
@@ -83,6 +91,7 @@ class DormantTest extends TestCase
     {
         $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core:pull', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:check', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
     }
@@ -98,6 +107,23 @@ class DormantTest extends TestCase
         }
 
         $this->assertFalse($registered);
+    }
+
+    public function test_no_control_panel_link_is_added(): void
+    {
+        $this->withRealNav();
+        config(['core-web.client.base_url' => 'https://core.test']);
+        $this->actingAs(User::make()->id('dormant-super')->email('dormant-super@example.com')->makeSuper());
+
+        $items = CpNav::build()->flatMap(fn (array $section) => $section['items'])->map->display()->all();
+
+        $this->assertContains('Dashboard', $items);
+        $this->assertNotContains('Core', $items);
+    }
+
+    public function test_no_widget_is_registered(): void
+    {
+        $this->assertFalse(app('statamic.widgets')->has('core_snapshot'));
     }
 
     public function test_no_cache_store_is_added(): void

@@ -9,7 +9,7 @@ use Throwable;
  * Pulls the snapshots from another Core (production, as a rule) into this
  * machine's store and pins them, so a local site renders real data without a
  * local Core. Runs every snapshot's own pull, or its warmer, on the
- * core-web.pull client in place of core-web.client.
+ * core-web.remote client in place of core-web.client.
  */
 class PullSnapshotsCommand extends Command
 {
@@ -17,7 +17,7 @@ class PullSnapshotsCommand extends Command
         {type? : One snapshot type; every registered type when omitted}
         {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
 
-    protected $description = 'Pull the Core snapshots from another Core (core-web.pull) and pin them locally';
+    protected $description = 'Pull the Core snapshots from the remote Core (core-web.remote) and pin them locally';
 
     public function handle(SnapshotRegistry $registry, SnapshotStore $store): int
     {
@@ -42,10 +42,10 @@ class PullSnapshotsCommand extends Command
             return self::FAILURE;
         }
 
-        $source = (array) config('core-web.pull');
+        $source = (array) config('core-web.remote');
 
         if (blank($source['base_url'] ?? null) || blank($source['client_id'] ?? null) || blank($source['client_secret'] ?? null)) {
-            $this->error('Set CORE_PULL_CLIENT_SECRET, and pull.base_url and pull.client_id in config/core-web.php: the Core to pull from and a client that may only read (README, Pulling production data).');
+            $this->error('Set CORE_REMOTE_CLIENT_SECRET, and remote.base_url and remote.client_id in config/core-web.php: the Core to pull from and a client that may only read (README, Pulling production data).');
 
             return self::FAILURE;
         }
@@ -59,7 +59,7 @@ class PullSnapshotsCommand extends Command
             'client_id' => $source['client_id'],
             'client_secret' => $source['client_secret'],
             'ca_bundle' => '',
-            'token_cache_key' => $source['token_cache_key'] ?? 'core_web_pull_access_token',
+            'token_cache_key' => $source['token_cache_key'] ?? 'core_web_remote_access_token',
         ])]);
 
         try {

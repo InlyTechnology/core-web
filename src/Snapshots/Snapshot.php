@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Snapshots;
 
 use Closure;
+use Inly\CoreWeb\Client\CoreClient;
 use InvalidArgumentException;
 
 /**
@@ -56,6 +57,14 @@ final class Snapshot
 
     /** @var (Closure(string, array<string, array<string, mixed>>): ?array{loc: string, lastmod?: mixed})|null */
     private ?Closure $sitemapIndex = null;
+
+    /** @var (Closure(array<string, mixed>, string): mixed)|null */
+    private ?Closure $listingTitle = null;
+
+    private ?string $listingCoreType = null;
+
+    /** @var (Closure(array<string, mixed>, string): (int|string|null))|null */
+    private ?Closure $listingCoreId = null;
 
     private function __construct(public readonly string $type)
     {
@@ -324,6 +333,51 @@ final class Snapshot
             'lastmod' => $entry['lastmod'] ?? null,
             'images' => array_values(array_filter((array) ($entry['images'] ?? []), fn ($url) => is_string($url) && $url !== '')),
         ]];
+    }
+
+    /**
+     * Lists the documents in the control panel's `core_snapshot` widget, each
+     * by its title and, when `$coreType` names the object's lookup key in
+     * Core, linked to the record there. The link uses the document's id
+     * unless `$coreId` gives Core's primary key (a document keyed by a public
+     * id, say); null leaves that row unlinked. A snapshot without a listing
+     * cannot be shown in the widget.
+     *
+     * @param  Closure(array<string, mixed>, string): mixed  $title  given the document and its id
+     * @param  (Closure(array<string, mixed>, string): (int|string|null))|null  $coreId
+     */
+    public function listing(Closure $title, ?string $coreType = null, ?Closure $coreId = null): self
+    {
+        $this->listingTitle = $title;
+        $this->listingCoreType = $coreType === '' ? null : $coreType;
+        $this->listingCoreId = $coreId;
+
+        return $this;
+    }
+
+    public function listed(): bool
+    {
+        return $this->listingTitle !== null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $document
+     * @return array{id: string, title: string, core_url: ?string}
+     */
+    public function listingRow(array $document, string $id, CoreClient $core): array
+    {
+        if ($this->listingTitle === null) {
+            throw new InvalidArgumentException("Snapshot [{$this->type}] declares no listing.");
+        }
+
+        $title = ($this->listingTitle)($document, $id);
+        $coreId = $this->listingCoreId === null ? $id : ($this->listingCoreId)($document, $id);
+
+        return [
+            'id' => $id,
+            'title' => is_scalar($title) && (string) $title !== '' ? (string) $title : $id,
+            'core_url' => $this->listingCoreType === null || $coreId === null ? null : $core->openUrl($this->listingCoreType, $coreId),
+        ];
     }
 
     public function key(string $name, ?string $partition = null): string
