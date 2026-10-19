@@ -163,12 +163,12 @@ class CoreClient
     }
 
     /**
-     * A JSON GET, POST or PUT with the client token, retried once on a 401,
-     * and handed back whatever Core answered. `$data` is the query of a GET
-     * and the body of a POST or PUT; a closure is called for each attempt, so a body
+     * A JSON GET or POST with the client token, retried once on a 401, and
+     * handed back whatever Core answered. `$data` is the query of a GET and
+     * the body of a POST; a closure is called for each attempt, so a body
      * that must be fresh every time (a nonce) is.
      *
-     * @param  'get'|'post'|'put'  $method
+     * @param  'get'|'post'  $method
      * @param  array<string, mixed>|Closure(): array<string, mixed>  $data
      * @param  array<string, string>  $headers
      */
@@ -182,11 +182,7 @@ class CoreClient
                 ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
                 ->when($connectTimeout !== null, fn (PendingRequest $request) => $request->connectTimeout($connectTimeout));
 
-            return match ($method) {
-                'get' => $request->get($url, $data),
-                'put' => $request->put($url, $data),
-                default => $request->post($url, $data),
-            };
+            return $method === 'get' ? $request->get($url, $data) : $request->post($url, $data);
         };
 
         $response = $attempt($this->token());

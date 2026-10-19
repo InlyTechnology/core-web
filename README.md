@@ -22,7 +22,7 @@ What the package gives a site:
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
-| Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, the entry sent on the site's token, and a report to Core of the fields each one renders |
+| Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
@@ -55,7 +55,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
-| Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping, `core:forms-report` and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
+| Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -766,13 +766,13 @@ other form renders Core's embed.
 
 Needs Livewire (`livewire/livewire` ^3.6 or ^4.0, or the Statamic Livewire
 addon) and `features.snapshots`. Switch on `features.forms` and name each
-form class in `forms.renderers`:
+form class in `forms.classes`:
 
 ```php
 // config/core-web.php
 return [
     'features' => ['snapshots' => true, 'forms' => true],
-    'forms' => ['renderers' => ['damage-inspection' => App\Livewire\DamageInspection::class]],
+    'forms' => ['classes' => [App\Livewire\DamageInspection::class]],
 ];
 ```
 
@@ -787,11 +787,10 @@ class DamageInspection extends CoreForm
         return 'damage-inspection';
     }
 
-    // The Core fields the view renders; a field => the option values the
-    // markup writes out itself, when it does not loop over the definition's.
+    // The Core fields the view renders.
     public static function renders(): array
     {
-        return ['plate', 'name', 'email', 'photos', 'damage' => ['scratch', 'dent']];
+        return ['plate', 'name', 'email', 'photos', 'damage'];
     }
 
     protected function fieldsView(): string
@@ -847,19 +846,13 @@ Override `submitView()` for another button (null when the view has its own),
 and put your own `resources/views/vendor/core-web/forms/*.blade.php` in
 place of the default markup.
 
-### The lock in Core
+### Marking the form in Core
 
-`core:forms-report` tells Core which fields each renderer renders
-(`PUT /api/forms/renderings`, the site's client token): run it on every
-deploy. The forms snapshot runs it too whenever a form changes. Core then
-lists the renderers on the form's Fields tab, and a save that removes,
-renames or retypes a rendered field, or drops an option `renders()` lists,
-asks the admin to confirm first. Core refuses a rendering of a form not
-linked to the site's app client; the command says so and fails. A form Core
-switched off is still reported, from the last definition the site read,
-so its fields stay guarded while it is off. A rendered form must take
-server entries in Core (`accepts_server`); the pull logs a warning when it
-does not.
+Core cannot tell that a site renders a form with its own markup, so tick
+**Custom form embed** on the form's General tab in Core. Its Fields tab then
+warns admins not to change the fields without asking a developer. A form
+the site renders must also take server entries (`accepts_server`); the pull
+logs a warning when it does not.
 
 ### Keeping up with Core
 

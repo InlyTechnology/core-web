@@ -17,8 +17,6 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\Forms\CoreForms;
-use Inly\CoreWeb\Forms\FormRenderings;
-use Inly\CoreWeb\Forms\ReportFormRenderingsCommand;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -44,8 +42,7 @@ use Statamic\StaticCaching\Cacher;
  * `content` feature opens the envelopes Core seals with its own key for the
  * site's content endpoints, and pings Core when a page changes. The `live`
  * feature opens the site's named live reads of Core to its pages' scripts.
- * The `forms` feature keeps the Core forms the site renders itself, and
- * reports those renderings to Core.
+ * The `forms` feature keeps the Core forms the site renders itself.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -159,10 +156,9 @@ class CoreWebServiceProvider extends ServiceProvider
             throw new LogicException('core-web.features.forms needs core-web.features.snapshots: the forms are a snapshot, refreshed by Core\'s pings.');
         }
 
-        FormRenderings::renderers();
+        CoreForms::classes();
 
         $this->loadViews();
-        $this->commands([ReportFormRenderingsCommand::class]);
         $this->app->extend(SnapshotRegistry::class, fn (SnapshotRegistry $registry) => $registry->register(CoreForms::snapshot(), [CoreForms::PING]));
     }
 

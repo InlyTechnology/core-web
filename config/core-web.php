@@ -35,7 +35,7 @@ return [
     |
     | forms: the Core forms the site renders with its own Livewire markup
     | (Inly\CoreWeb\Forms\CoreForm), kept as a snapshot refreshed by Core's
-    | `forms` ping, and `core:forms-report`. Needs `snapshots` on too.
+    | `forms` ping. Needs `snapshots` on too.
     |
     */
 
@@ -332,14 +332,12 @@ return [
     | server to server on the site's client token. Every other Core form is
     | better served by Core's own embed.
     |
-    | renderers: each form class by name (a lowercase slug), an
-    | Inly\CoreWeb\Forms\CoreForm or any Inly\CoreWeb\Forms\RendersCoreForm.
-    | Their Core forms' definitions are kept in the `core-web-forms`
-    | snapshot, and what they render is reported to Core (core:forms-report,
-    | and on every change of a form), which then asks before a save that
-    | would break one.
+    | classes: the site's form classes (Inly\CoreWeb\Forms\CoreForm). The
+    | definitions of the Core forms they post to are kept in the
+    | `core-web-forms` snapshot. Mark each of those forms a custom embed in
+    | Core, so its admins are warned before changing its fields.
     |
-    |     'renderers' => ['damage-inspection' => App\Livewire\DamageInspection::class],
+    |     'classes' => [App\Livewire\DamageInspection::class],
     |
     | submit_rate_limit: entries per minute from one address, per form. Core
     | does not limit what the site sends on its client token, so the site
@@ -351,7 +349,7 @@ return [
     */
 
     'forms' => [
-        'renderers' => [],
+        'classes' => [],
         'submit_rate_limit' => 5,
         'timeouts' => [
             'connect' => 3,

@@ -7,14 +7,14 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
+use InvalidArgumentException;
 use RuntimeException;
-use Throwable;
 
 /**
- * The Core forms the site's own form classes post to (core-web.forms.renderers),
+ * The Core forms the site's own form classes post to (core-web.forms.classes),
  * kept as a snapshot: Core's form list (`core/form`, the client's
  * `view_forms` scope) keyed by each form's key, with the public definition
- * of every form a renderer names. Core pings `forms` on every save of a
+ * of every form a class posts to. Core pings `forms` on every save of a
  * form, so a changed field reaches the site's markup with no deploy.
  */
 final class CoreForms
@@ -41,19 +41,32 @@ final class CoreForms
             ->version(1)
             // A form changes when an admin edits it, and Core pings each save: the schedule is only the net under a lost ping.
             ->ttl(fresh: 129600, stale: 2592000, retry: 60)
-            ->pull(fn (): array => self::pull(CoreClient::fromConfig()))
-            ->onChange(function (?string $partition, array $documents): void {
-                try {
-                    app(FormRenderings::class)->report($documents);
-                } catch (Throwable $e) {
-                    Log::warning('core-web forms: the renderings report failed', ['error' => $e->getMessage()]);
-                }
-            });
+            ->pull(fn (): array => self::pull(CoreClient::fromConfig()));
     }
 
     /**
-     * Every form row by key, with the definition of each one a renderer
-     * names. A Core that lists no forms (404: its forms are off) has none.
+     * The site's form classes, checked once at boot so a typo fails loudly.
+     *
+     * @return list<class-string<CoreForm>>
+     */
+    public static function classes(): array
+    {
+        $classes = [];
+
+        foreach ((array) config('core-web.forms.classes', []) as $class) {
+            if (! is_string($class) || ! is_subclass_of($class, CoreForm::class)) {
+                throw new InvalidArgumentException('core-web.forms.classes: ['.(is_string($class) ? $class : get_debug_type($class)).'] must name a class extending '.CoreForm::class.'.');
+            }
+
+            $classes[] = $class;
+        }
+
+        return $classes;
+    }
+
+    /**
+     * Every form row by key, with the definition of each one a form class
+     * posts to. A Core that lists no forms (404: its forms are off) has none.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -63,7 +76,7 @@ final class CoreForms
             return [];
         }
 
-        $rendered = array_flip(array_map(fn (string $class) => $class::coreForm(), FormRenderings::renderers()));
+        $rendered = array_flip(array_map(fn (string $class) => $class::coreForm(), self::classes()));
         $forms = [];
         $rows = 0;
 
@@ -91,10 +104,8 @@ final class CoreForms
 
             $definition = $form['enabled'] ? self::fetchDefinition($core, $form) : null;
             $forms[$key]['definition'] = $definition;
-            $forms[$key]['last_definition'] = $definition ?? self::lastDefinition($key);
 
             if ($definition !== null) {
-                self::keepDefinition($key, $definition);
                 self::logUnknownTypes($key, new FormDefinition($definition));
             }
 
@@ -112,7 +123,7 @@ final class CoreForms
      * One row of Core's form list, or null without a key or a uuid.
      *
      * @param  array<string, mixed>  $attributes
-     * @return array{uuid: string, key: string, name: string, site_key: string, accepts_server: bool, enabled: bool, definition: ?array<string, mixed>, last_definition: ?array<string, mixed>}|null
+     * @return array{uuid: string, key: string, name: string, site_key: string, accepts_server: bool, enabled: bool, definition: ?array<string, mixed>}|null
      */
     public static function document(array $attributes): ?array
     {
@@ -131,7 +142,6 @@ final class CoreForms
             'accepts_server' => (bool) ($attributes['accepts_server'] ?? false),
             'enabled' => (bool) ($attributes['enabled'] ?? false),
             'definition' => null,
-            'last_definition' => null,
         ];
     }
 
@@ -163,26 +173,6 @@ final class CoreForms
         }
 
         return (array) $response->json();
-    }
-
-    /**
-     * The last definition read of a form, kept apart from the snapshot: a
-     * form Core switched off serves none, and its renderings must still be
-     * reported, or Core stops guarding its fields while it is off.
-     *
-     * @return array<string, mixed>|null
-     */
-    private static function lastDefinition(string $key): ?array
-    {
-        $definition = SnapshotStore::repository()->get(self::TYPE.':last-definition:'.$key);
-
-        return is_array($definition) ? $definition : null;
-    }
-
-    /** @param  array<string, mixed>  $definition */
-    private static function keepDefinition(string $key, array $definition): void
-    {
-        SnapshotStore::repository()->forever(self::TYPE.':last-definition:'.$key, $definition);
     }
 
     private static function logUnknownTypes(string $key, FormDefinition $definition): void

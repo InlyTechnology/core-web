@@ -72,7 +72,6 @@ class DormantTest extends TestCase
     {
         $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core:pull', app(Kernel::class)->all());
-        $this->assertArrayNotHasKey('core:forms-report', app(Kernel::class)->all());
     }
 
     public function test_no_tag_is_registered(): void

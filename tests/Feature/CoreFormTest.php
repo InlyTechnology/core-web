@@ -4,14 +4,12 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Forms\CoreForm;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Forms\FormDefinition;
-use Inly\CoreWeb\Forms\FormRenderings;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Testing\FakesCore;
@@ -37,7 +35,7 @@ class CoreFormTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('core-web.forms.renderers', ['inspection' => InspectionForm::class]);
+        $app['config']->set('core-web.forms.classes', [InspectionForm::class]);
         $app['view']->addLocation(__DIR__.'/../fixtures/views');
     }
 
@@ -68,7 +66,6 @@ class CoreFormTest extends TestCase
                 'attributes' => ['slug' => 'inspection', 'uuid' => self::UUID, 'name' => 'Inspection', 'site_key' => 'pk_test', 'accepts_server' => true, 'enabled' => $enabled],
             ]]),
             'core.test/api/forms/'.self::UUID.'/definition*' => Http::response(self::definition()),
-            'core.test/api/forms/renderings' => Http::response(['accepted' => [['form' => self::UUID, 'renderer' => 'inspection']], 'refused' => []]),
             ...$stubs,
         ]);
     }
@@ -218,56 +215,6 @@ class CoreFormTest extends TestCase
         Livewire::test(InspectionForm::class)->call('submit')->assertSet('status', 'unavailable');
     }
 
-    public function test_the_report_tells_core_what_each_renderer_renders(): void
-    {
-        $this->fakeForms();
-        $this->warm();
-
-        $this->assertSame(0, Artisan::call('core:forms-report'));
-
-        Http::assertSent(fn (HttpRequest $request) => $request->method() === 'PUT'
-            && $request->url() === 'https://core.test/api/forms/renderings'
-            && $request->hasHeader('Authorization', 'Bearer token')
-            && $request['renderings'] === [[
-                'form' => self::UUID,
-                'renderer' => 'inspection',
-                'fields' => [
-                    ['name' => 'plate', 'type' => 'string'],
-                    ['name' => 'name', 'type' => 'string'],
-                    ['name' => 'fuel', 'type' => 'enum', 'options' => ['petrol', 'diesel']],
-                ],
-            ]]);
-    }
-
-    public function test_a_change_to_a_form_reports_again(): void
-    {
-        $this->fakeForms();
-        $this->warm();
-
-        Http::assertSent(fn (HttpRequest $request) => $request->method() === 'PUT' && str_ends_with($request->url(), '/api/forms/renderings'));
-    }
-
-    public function test_the_report_fails_when_core_refuses_a_rendering(): void
-    {
-        $this->fakeForms(['core.test/api/forms/renderings' => Http::response(['accepted' => [], 'refused' => [['form' => self::UUID, 'renderer' => 'inspection', 'reason' => 'app_client_not_allowed']]])]);
-        $this->warm();
-
-        $this->assertSame(1, Artisan::call('core:forms-report'));
-        $this->assertStringContainsString('app_client_not_allowed', Artisan::output());
-    }
-
-    public function test_a_form_switched_off_in_core_stays_guarded(): void
-    {
-        $this->fakeForms();
-        $this->warm();
-        $this->fakeForms(enabled: false);
-        app(SnapshotStore::class)->forget(app(SnapshotRegistry::class)->get(CoreForms::TYPE));
-        $this->warm();
-
-        $this->assertNull(CoreForms::fromContainer()->definition('inspection'));
-        Http::assertSent(fn (HttpRequest $request) => $request->method() === 'PUT' && count($request['renderings'][0]['fields'] ?? []) === 3);
-    }
-
     public function test_a_bot_filling_the_honeypot_is_told_its_entry_went(): void
     {
         $this->fakeForms();
@@ -326,16 +273,16 @@ class CoreFormTest extends TestCase
     {
         $definition = new FormDefinition(self::definition());
 
-        $this->assertSame(['photos', 'contact_method', 'email'], CoreForm::missingFrom($definition, InspectionForm::rendered()));
+        $this->assertSame(['photos', 'contact_method', 'email'], CoreForm::missingFrom($definition, InspectionForm::renders()));
     }
 
-    public function test_a_renderer_must_be_a_form_class(): void
+    public function test_a_listed_class_must_be_a_form_class(): void
     {
-        config(['core-web.forms.renderers' => ['inspection' => \stdClass::class]]);
+        config(['core-web.forms.classes' => [\stdClass::class]]);
 
         $this->expectException(\InvalidArgumentException::class);
 
-        FormRenderings::renderers();
+        CoreForms::classes();
     }
 }
 
@@ -348,7 +295,7 @@ class InspectionForm extends CoreForm
 
     public static function renders(): array
     {
-        return ['plate', 'name', 'fuel' => ['petrol', 'diesel']];
+        return ['plate', 'name', 'fuel'];
     }
 
     protected function fieldsView(): string

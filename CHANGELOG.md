@@ -8,12 +8,11 @@
   validation, the hidden page fields, and any required field the markup
   leaves out, rendered after it (with a warning in `local`). Entries go on
   the site's client token, behind a honeypot and capped per address by
-  `forms.submit_rate_limit`.
-  `core:forms-report` tells Core which fields each form renders, so Core
-  asks before an admin saves a change that breaks one. Needs Livewire and
-  an Inly Core with form renderings. See README → Forms.
-- **Core client**: `sendResponse()` sends PUT too, and `withToken()` sends a
-  request it builds itself (a multipart body) on the client token.
+  `forms.submit_rate_limit`. Mark each such form **Custom form embed** in
+  Core, so its admins are warned before changing its fields. Needs
+  Livewire. See README → Forms.
+- **Core client**: `withToken()` sends a request it builds itself (a
+  multipart body) on the client token.
 
 ## v0.9.0
 

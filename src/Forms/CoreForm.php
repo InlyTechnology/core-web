@@ -21,11 +21,12 @@ use Livewire\WithFileUploads;
  *
  * The view binds `values.{field}` and reads `$coreForm` (FormView);
  * `$status` is '' until a submission, then a SubmissionResult value.
- * Register the class in core-web.forms.renderers so Core guards the fields
- * it renders. On a statically cached page, render it inside `@nocache`:
+ * List the class in core-web.forms.classes so its Core form is kept. Mark
+ * that form a custom embed in Core, so admins are warned before changing
+ * its fields. On a statically cached page, render it inside `@nocache`:
  * the page it captures (referrer, query) is the visitor's own.
  */
-abstract class CoreForm extends Component implements RendersCoreForm
+abstract class CoreForm extends Component
 {
     use WithFileUploads;
 
@@ -43,6 +44,16 @@ abstract class CoreForm extends Component implements RendersCoreForm
 
     /** Honeypot: a field no visitor sees, which a bot filling every input fills. */
     public string $website_url = '';
+
+    /** The key of the Core form it posts to, as Core's form list names it. */
+    abstract public static function coreForm(): string;
+
+    /**
+     * The Core fields its view renders; a required field it leaves out is rendered after it.
+     *
+     * @return list<string>
+     */
+    abstract public static function renders(): array;
 
     /** The Blade view of the form's own fields, without the <form> element. */
     abstract protected function fieldsView(): string;
@@ -114,16 +125,6 @@ abstract class CoreForm extends Component implements RendersCoreForm
     public static function missingFrom(FormDefinition $definition, array $rendered, array $values = []): array
     {
         return array_values(array_diff($definition->required($values), $rendered));
-    }
-
-    /** @return list<string> the names of the fields the view renders */
-    public static function rendered(): array
-    {
-        return array_map(
-            fn (int|string $key, mixed $value) => is_int($key) ? (string) $value : $key,
-            array_keys(static::renders()),
-            static::renders(),
-        );
     }
 
     public function submit(FormSubmitter $submitter): void
@@ -204,7 +205,7 @@ abstract class CoreForm extends Component implements RendersCoreForm
     public function render(): View
     {
         return view('core-web::forms.form', [
-            'coreForm' => new FormView($this->getId(), $this->definition(), $this->values, static::rendered()),
+            'coreForm' => new FormView($this->getId(), $this->definition(), $this->values, static::renders()),
             'body' => $this->fieldsView(),
             'submitView' => $this->submitView(),
         ]);
