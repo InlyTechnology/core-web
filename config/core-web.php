@@ -402,6 +402,20 @@ return [
             'small_width' => 720,
             'poster_time' => 0,
         ],
+
+        /*
+         | Pushed files: what a content push from a laptop or staging brings
+         | along. accept: this site (production) takes them, each into the
+         | holding folder of its container, moved to the folder it was pushed
+         | for when an entry pointing at it is published. A pushed file never
+         | replaces or deletes one already there.
+         */
+        'push' => [
+            'accept' => false,
+            'holding_folder' => '_pushed',
+            'max_megabytes' => 100,
+            'middleware' => ['core-web.sync', 'throttle:120,1'],
+        ],
     ],
 
 ];

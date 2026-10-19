@@ -8,6 +8,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Chat\ChatController;
@@ -20,6 +21,7 @@ use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\Push\ReleaseHeldAssets;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
@@ -31,6 +33,7 @@ use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use InvalidArgumentException;
+use Statamic\Events\EntrySaved;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -109,6 +112,11 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if ($this->app->runningInConsole()) {
                 $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
+
+            if (filter_var(config('core-web.media.push.accept'), FILTER_VALIDATE_BOOLEAN)) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/media-push.php');
+                Event::listen(EntrySaved::class, ReleaseHeldAssets::class);
             }
         }
 

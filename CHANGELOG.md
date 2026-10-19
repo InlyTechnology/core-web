@@ -23,6 +23,12 @@
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
+- **Media, pushed files**: with `media.push.accept`, production takes the
+  files a content push from a laptop or staging brings, behind the sync
+  token (`core-web.sync`). They wait in a holding folder (`_pushed/`) and are
+  copied to their folder when an entry pointing at them is published; nothing
+  already there is replaced or deleted. `AssetPusher` is the sending half
+  `content:push` calls. See README → Pushed files.
 
 ## v0.9.0
 

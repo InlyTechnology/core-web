@@ -139,6 +139,8 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
 | `media.layer.enabled` | `CORE_MEDIA_LAYER`, `true` | Outside production, keep production's files behind the layer. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
+| `media.push.accept` | `false` | Production takes files a content push brings (see [Pushed files](#pushed-files)) |
+| `media.push.holding_folder` / `.max_megabytes` / `.middleware` | `_pushed` / 100 / `['core-web.sync', 'throttle:120,1']` | Where pushed files wait in each container, the largest file taken, and what guards the endpoints (the sync token's person) |
 | `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
@@ -900,6 +902,34 @@ Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
   a key, checks a file (the first image when no path is given): its URL is
   under a CDN origin, the raw file answers with `Cache-Control` and CORS, and a
   CDN rendition answers with an image.
+
+### Pushed files
+
+A content push from a laptop or from staging brings the files its drafts point
+at, without anyone holding the bucket's key. Production switches it on with
+`media.push.accept`; the pushing person signs in with their sync token
+(`content:login`) and needs upload rights on the container, as in the CP.
+
+1. The pushing side (`Inly\CoreWeb\Media\Push\AssetPusher`, called by
+   `content:push`) finds the files an entry's values point at: `assets` fields
+   at any depth, and Bard images and links. A file a layered disk does not
+   hold in its layer is production's own and is skipped unread.
+2. `POST /!/core-web/sync/assets/check` says, per file (sha256 and size),
+   whether production has the same bytes at that path, holds it from an
+   earlier push, or needs it.
+3. A needed file is uploaded (`POST /!/core-web/sync/assets`) into the
+   container's holding folder, at `_pushed/<first 12 of its sha256>/<its
+   path>`, and the draft's values point there. The same file pushed twice
+   lands once; two files pushed for one path never meet.
+4. When an editor publishes an entry pointing at a held file, the file is
+   copied to the folder it was pushed for (`a-2.jpg` when the name is taken)
+   and the entry points at the copy. The held file stays, since other drafts
+   may still point at it and Statamic's reference updater never reaches
+   working copies.
+
+Nothing here replaces, moves or deletes a file production already has. Staging
+pushes the same way as a laptop: its new files are in its `_staging/` layer.
+Held files nothing points at any more are left for the unused-assets check.
 
 ### Another CDN
 
