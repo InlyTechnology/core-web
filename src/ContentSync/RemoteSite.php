@@ -102,7 +102,6 @@ final class RemoteSite
         return Http::baseUrl(rtrim($url, '/'))
             ->withoutRedirecting()
             ->acceptJson()
-            ->asJson()
             ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
             ->timeout(max(1, (int) config('core-web.content_sync.timeouts.request', 30)));
     }
