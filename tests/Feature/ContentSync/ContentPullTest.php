@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\PendingCommand;
 use Inly\CoreWeb\ContentSync\LocalContent;
@@ -35,6 +36,7 @@ class ContentPullTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+        config(['core-web.content_sync.tokens.disk' => 'local']);
         Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE']]);
         config(['core-web.content_sync.remote_url' => 'https://remote.test']);
 
@@ -284,5 +286,90 @@ class ContentPullTest extends TestCase
     {
         $this->assertSame('0600', substr(sprintf('%o', fileperms(RemoteSite::loginFile())), -4));
         $this->assertSame('boss@example.com', RemoteSite::fromStorage()->user()['email']);
+    }
+
+    public function test_a_pull_deletes_nothing_the_puller_may_not_read(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries']]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('ann@example.com', roles: ['editor'])), ['name' => 'Ann', 'email' => 'ann@example.com'], null);
+        Entry::find('about')->delete();
+
+        $this->pull()->expectsOutputToContain('Kept, not in the export')->expectsOutputToContain('collections/articles/first.md')->assertSuccessful();
+
+        $this->assertFileDoesNotExist($this->file('collections/pages/about.md'), 'Pages are readable in full, so a deletion there is one.');
+        $this->assertFileExists($this->file('collections/articles/first.md'));
+        $this->assertFileExists($this->file('globals/default/settings.yaml'));
+        $this->assertArrayHasKey('collections/articles/first.md', $this->locked()['items']);
+        $this->assertArrayHasKey('globals/default/settings.yaml', $this->locked()['items']);
+    }
+
+    public function test_an_export_without_coverage_deletes_nothing(): void
+    {
+        $this->pull()->assertSuccessful();
+        Http::swap(new Factory);
+        Http::fake(['*' => Http::response(['data' => [], 'next_cursor' => null])]);
+
+        $this->pull()->assertSuccessful();
+
+        $this->assertFileExists($this->file('collections/pages/home.md'));
+    }
+
+    public function test_a_first_pull_takes_over_files_as_committed(): void
+    {
+        $dir = dirname($this->root);
+        File::ensureDirectoryExists($this->file('collections/pages'));
+        file_put_contents($this->file('collections/pages/home.md'), "---\ntitle: Committed\n---\n");
+        file_put_contents($this->file('collections/pages/about.md'), "---\ntitle: Committed\n---\n");
+        $git = fn (string ...$args) => Process::path($dir)->run(['git', '-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', ...$args])->throw();
+        $git('init', '-q');
+        $git('add', '.');
+        $git('commit', '-qm', 'Content');
+        file_put_contents($this->file('collections/pages/about.md'), "---\ntitle: Mine\n---\n");
+
+        $this->pull()->expectsOutputToContain('Skipped')->assertSuccessful();
+
+        $this->assertSame(Entry::find('home')->fileContents(), file_get_contents($this->file('collections/pages/home.md')), 'Unchanged since the commit, so the site\'s version wins.');
+        $this->assertStringContainsString('title: Mine', file_get_contents($this->file('collections/pages/about.md')));
+    }
+
+    public function test_a_symlinked_file_is_neither_written_nor_deleted(): void
+    {
+        $outside = dirname($this->root).'/outside.md';
+        file_put_contents($outside, 'mine');
+        File::ensureDirectoryExists($this->file('collections/pages'));
+        symlink($outside, $this->file('collections/pages/home.md'));
+
+        $this->pull(['--force' => true])->expectsOutputToContain('is a symlink')->assertFailed();
+
+        $this->assertSame('mine', file_get_contents($outside));
+        $this->assertFileDoesNotExist($this->lock);
+    }
+
+    public function test_a_rate_limit_is_reported(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['*' => Http::response(['message' => 'Too Many Attempts.'], 429, ['Retry-After' => '42'])]);
+
+        $this->pull()->expectsOutputToContain('rate limiting this machine (HTTP 429); try again in 42 seconds')->assertFailed();
+        $this->assertNotNull(RemoteSite::fromStorage());
+    }
+
+    public function test_a_redirect_names_the_url_to_set(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['*' => Http::response('', 301, ['Location' => 'https://www.remote.test/!/core-web/sync/export?type=entries'])]);
+
+        $this->pull()->expectsOutputToContain('redirects to [https://www.remote.test]; set that URL')->assertFailed();
+        $this->assertNotNull(RemoteSite::fromStorage());
+    }
+
+    public function test_a_401_from_in_front_of_the_site_keeps_the_login(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['*' => Http::response('<h1>Authorization Required</h1>', 401, ['WWW-Authenticate' => 'Basic realm="staging"'])]);
+
+        $this->pull()->expectsOutputToContain('basic auth')->assertFailed();
+        $this->assertNotNull(RemoteSite::fromStorage());
     }
 }

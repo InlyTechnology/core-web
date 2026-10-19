@@ -26,6 +26,7 @@ use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
 use Inly\CoreWeb\ContentSync\ContentPullCommand;
 use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
 use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\SyncLimits;
 use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
@@ -51,6 +52,7 @@ use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -257,13 +259,20 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
         $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
         $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+        SyncLimits::register();
+
+        Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {
+            Permission::register(AuthenticateSyncToken::PERMISSION)
+                ->label(__('core-web::sync.permission'))
+                ->description(__('core-web::sync.permission_description'));
+        }));
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
 
         Nav::extend(function ($nav): void {
             $user = User::current();
 
-            if ($user !== null && AuthenticateSyncToken::hasCpAccess($user)) {
+            if ($user !== null && AuthenticateSyncToken::mayPull($user)) {
                 $nav->tools(__('core-web::sync.tokens_title'))->route('core-web.sync.tokens')->icon('key');
             }
         });

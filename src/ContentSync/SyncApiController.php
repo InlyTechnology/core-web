@@ -17,7 +17,7 @@ class SyncApiController
             return new JsonResponse(['error' => 'invalid_request', 'message' => __('core-web::sync.machine_required')], 422);
         }
 
-        $started = $devices->start(mb_substr($machine, 0, 100));
+        $started = $devices->start(mb_substr($machine, 0, 100), (string) $request->ip());
         $uri = cp_route('core-web.sync.authorize');
 
         return new JsonResponse([

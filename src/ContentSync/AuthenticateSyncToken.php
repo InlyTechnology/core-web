@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Route middleware `core-web.sync`: the request carries a machine's sync
  * token as its bearer, and runs as the CMS user who approved it, so every
  * policy check below it is that person's. A token that is unknown, expired
- * or revoked, or whose user lost CP access, is a 401.
+ * or revoked, or whose user may no longer pull content, is a 401.
  */
 class AuthenticateSyncToken
 {
@@ -24,6 +24,12 @@ class AuthenticateSyncToken
     /** Tells the machine its token's expiry moved, so it keeps its stored login current. */
     public const EXPIRES_HEADER = 'X-Core-Web-Token-Expires-At';
 
+    /** The `error` of this middleware's own 401, so a machine forgets its login on that and not on a proxy's basic-auth 401. */
+    public const REFUSED = 'sync_token_refused';
+
+    /** Needed, besides CP access, to approve a machine and to use its token; a super user always may. */
+    public const PERMISSION = 'pull content';
+
     public function __construct(private SyncTokens $tokens) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -31,9 +37,9 @@ class AuthenticateSyncToken
         $record = $this->tokens->use((string) $request->bearerToken());
         $user = $record === null ? null : Users::find($record->userId);
 
-        if ($record === null || $user === null || ! self::hasCpAccess($user)) {
+        if ($record === null || $user === null || ! self::mayPull($user)) {
             return new JsonResponse([
-                'error' => 'unauthenticated',
+                'error' => self::REFUSED,
                 'message' => __('core-web::sync.login_needed'),
             ], 401);
         }
@@ -57,9 +63,9 @@ class AuthenticateSyncToken
         return $token instanceof SyncToken ? $token : null;
     }
 
-    public static function hasCpAccess(User $user): bool
+    public static function mayPull(User $user): bool
     {
-        return $user->isSuper() || $user->hasPermission('access cp');
+        return $user->isSuper() || ($user->hasPermission('access cp') && $user->hasPermission(self::PERMISSION));
     }
 
     /** The guard holds what the user provider returns: the Eloquent model behind an Eloquent user. */

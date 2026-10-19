@@ -5,7 +5,9 @@ namespace Inly\CoreWeb\ContentSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * This checkout's content/ directory as a pull writes it, and content.lock
@@ -15,6 +17,9 @@ use InvalidArgumentException;
  */
 class LocalContent
 {
+    /** @var array<string, string>|null path => git blob id, as the checkout's HEAD has content/ */
+    private ?array $committed = null;
+
     public function __construct(private string $root, private string $lockFile) {}
 
     public static function fromApp(): self
@@ -40,8 +45,38 @@ class LocalContent
         return is_file($file) ? hash_file('sha256', $file) : null;
     }
 
+    /**
+     * Whether a file is exactly as the checkout's last commit has it: with no
+     * lock entry yet (a first pull), that is a file nobody changed here.
+     * False outside a git checkout.
+     */
+    public function matchesCommitted(string $path): bool
+    {
+        $blob = $this->committed()[$path] ?? null;
+        $file = $this->absolute($path);
+
+        if ($blob === null || ! is_file($file) || is_link($file)) {
+            return false;
+        }
+
+        $contents = (string) file_get_contents($file);
+
+        return hash(strlen($blob) === 64 ? 'sha256' : 'sha1', 'blob '.strlen($contents)."\0".$contents) === $blob;
+    }
+
+    /** Throws for a path a write or delete must not go through: one out of content/, or a symlink, which would carry it elsewhere. */
+    public function assertWritable(string $path): void
+    {
+        $file = $this->absolute($path);
+
+        if (is_link($file)) {
+            throw new InvalidArgumentException("[{$path}] is a symlink, so a pull neither writes nor deletes it.");
+        }
+    }
+
     public function write(string $path, string $contents): void
     {
+        $this->assertWritable($path);
         $file = $this->absolute($path);
         File::ensureDirectoryExists(dirname($file));
         $this->assertInside(dirname($file));
@@ -50,6 +85,7 @@ class LocalContent
 
     public function delete(string $path): void
     {
+        $this->assertWritable($path);
         File::delete($this->absolute($path));
     }
 
@@ -83,6 +119,38 @@ class LocalContent
     public function refreshStache(): void
     {
         Artisan::call('statamic:stache:refresh');
+    }
+
+    /**
+     * One `git ls-tree` for the folder, compared by blob id, not a `git show` per file.
+     *
+     * @return array<string, string>
+     */
+    private function committed(): array
+    {
+        if ($this->committed !== null) {
+            return $this->committed;
+        }
+
+        $this->committed = [];
+
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', 'ls-tree', '-r', '-z', 'HEAD', '--', '.']) : null;
+        } catch (Throwable) {
+            return $this->committed;
+        }
+
+        if ($result === null || ! $result->successful()) {
+            return $this->committed;
+        }
+
+        foreach (explode("\0", $result->output()) as $line) {
+            if (preg_match('/^100(?:644|755) blob ([0-9a-f]{40}|[0-9a-f]{64})\t(.+)$/s', $line, $match) === 1) {
+                $this->committed[$match[2]] = $match[1];
+            }
+        }
+
+        return $this->committed;
     }
 
     private function absolute(string $path): string

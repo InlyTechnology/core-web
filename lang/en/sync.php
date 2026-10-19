@@ -7,7 +7,8 @@ return [
     'machine_required' => 'Name the machine asking to sign in.',
     'unknown_type' => 'Name a type to export: :types.',
     'authorize_title' => 'Sign in a machine',
-    'allow' => 'Allow :machine to pull this site\'s content as you?',
+    'allow' => 'Allow the machine that calls itself “:machine” to pull this site\'s content as you?',
+    'requested' => 'Requested from :ip, :ago. The name above is what the machine says it is; the address is where the request came from.',
     'allow_detail' => 'It gets a personal token for :site that reads (and later pushes) content with your permissions, for as long as it keeps being used, until you revoke it under Tools → Content sync. Code: :code. Only approve a request you started yourself.',
     'approve' => 'Approve',
     'deny' => 'Deny',
@@ -26,4 +27,7 @@ return [
     'deleted_user' => 'A deleted user',
     'revoke' => 'Revoke',
     'revoked' => 'Token revoked: that machine is signed out.',
+    'permission' => 'Pull content',
+    'permission_description' => 'Sign a local checkout in with content:login and pull this site\'s content as yourself',
+    'permission_needed' => 'Signing a machine in needs the “Pull content” permission.',
 ];

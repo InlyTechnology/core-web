@@ -15,8 +15,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   the machine in the live site's CP and stores a personal token (30 days
   from its last use, revocable under Tools → Content sync), `content:pull`
   writes what changed on the site and keeps local edits, tracked in a
-  committed `content.lock`. Set `content_sync.remote_url` in the site's
-  config. See README → Content pull.
+  committed `content.lock`, deleting only where the developer may read
+  everything on the site. Approving a machine and using its token need the
+  addon's `pull content` permission. Set `content_sync.remote_url` in the
+  site's `config/core-web.php` (committed; there is no env var for it).
+  See README → Content pull.
 
 ## v0.13.0
 

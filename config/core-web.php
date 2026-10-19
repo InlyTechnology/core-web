@@ -500,7 +500,7 @@ return [
     | the live site's CP (`php please content:login`). No shared secret.
     |
     | remote_url: the live site, the same for every developer, so a site
-    | commits it here (CORE_WEB_REMOTE_SITE_URL can still override it).
+    | commits it here, never in .env.
     |
     | allow_local_remote: a site running as APP_ENV=local refuses every sync
     | call, so no one pulls from a developer's checkout by mistake; true lets
@@ -510,14 +510,17 @@ return [
     | its expiry this far out again.
     |
     | tokens: where the live site keeps its tokens (only their hashes): a
-    | filesystem `disk` (null for the default) and a `path` on it. A host
-    | whose disk does not outlive a deploy names a bucket.
+    | filesystem `disk` and a `path` on it. Null is a private local folder,
+    | storage/app/private/{path}; a host whose disk does not outlive a deploy
+    | names a private bucket, never a public one.
     |
     | store: the cache store pending logins wait in for their approval, shared
     | by every server behind the site; null is the default store.
     |
     | middleware: in front of the sync endpoints, beside the HTTPS and
-    | local-site guards. A pull reads `page_size` items a request.
+    | local-site guards; `core-web-sync` limits each token and address, and
+    | starting a login has a limiter of its own. A pull reads `page_size`
+    | items a request.
     |
     | timeouts: seconds the checkout waits to connect to the live site and
     | for each answer.
@@ -525,7 +528,7 @@ return [
     */
 
     'content_sync' => [
-        'remote_url' => env('CORE_WEB_REMOTE_SITE_URL', ''),
+        'remote_url' => '',
         'allow_local_remote' => false,
         'token_days' => 30,
         'tokens' => [
@@ -533,7 +536,7 @@ return [
             'path' => 'core-web/sync-tokens',
         ],
         'store' => null,
-        'middleware' => ['throttle:120,1'],
+        'middleware' => ['throttle:core-web-sync'],
         'page_size' => 200,
         'timeouts' => [
             'connect' => 5,

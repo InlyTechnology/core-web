@@ -9,6 +9,7 @@
         <ui-card>
             <div class="space-y-4">
                 <p class="text-lg" v-pre>{{ __('core-web::sync.allow', ['machine' => $machine]) }}</p>
+                <ui-description v-pre>{{ __('core-web::sync.requested', ['ip' => $ip ?? '?', 'ago' => $started ?? '?']) }}</ui-description>
                 <ui-description v-pre>{{ __('core-web::sync.allow_detail', ['site' => $site, 'code' => $code]) }}</ui-description>
                 <div class="flex gap-2">
                     <form method="POST" action="{{ cp_route('core-web.sync.deny') }}" class="inline">

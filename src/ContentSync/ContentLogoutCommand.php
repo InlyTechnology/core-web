@@ -13,17 +13,24 @@ class ContentLogoutCommand extends Command
 
     public function handle(): int
     {
-        $site = RemoteSite::fromStorage();
+        // The stored login, even one for a URL the config has since moved off, or one that expired here.
+        $site = RemoteSite::stored();
 
         if ($site === null) {
+            $unreadable = is_file(RemoteSite::loginFile());
             RemoteSite::forget();
-            $this->info('This machine is not signed in.');
+            $this->info($unreadable
+                ? 'The stored login could not be read, so it was removed here only: revoke the machine under Tools → Content sync in the site\'s CP.'
+                : 'This machine is not signed in.');
 
             return self::SUCCESS;
         }
 
-        $site->logout();
-        $this->info("Signed out of {$site->url()}.");
+        if ($site->logout()) {
+            $this->info("Signed out of {$site->url()}.");
+        } else {
+            $this->warn("Signed out here, but {$site->url()} could not be told: revoke the machine under Tools → Content sync in its CP.");
+        }
 
         return self::SUCCESS;
     }

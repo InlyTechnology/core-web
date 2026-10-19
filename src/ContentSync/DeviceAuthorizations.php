@@ -32,7 +32,7 @@ class DeviceAuthorizations
     }
 
     /** @return array{device_code: string, user_code: string, expires_in: int, interval: int} */
-    public function start(string $machine): array
+    public function start(string $machine, string $ip): array
     {
         $deviceCode = Str::random(64);
         $userCode = self::userCode();
@@ -40,6 +40,8 @@ class DeviceAuthorizations
 
         $this->cache->put($this->key($hash), [
             'machine' => $machine,
+            'ip' => $ip,
+            'started_at' => now()->getTimestamp(),
             'user_code' => $userCode,
             'status' => 'pending',
             'user_id' => null,
@@ -140,7 +142,7 @@ class DeviceAuthorizations
         $this->forget($hash, $request);
         $user = Users::find($request['user_id']);
 
-        if ($user === null || ! AuthenticateSyncToken::hasCpAccess($user)) {
+        if ($user === null || ! AuthenticateSyncToken::mayPull($user)) {
             return ['error' => 'access_denied'];
         }
 
