@@ -21,6 +21,14 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\ContentLoginCommand;
+use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
+use Inly\CoreWeb\ContentSync\ContentPullCommand;
+use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
+use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\SyncLimits;
+use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
@@ -51,6 +59,7 @@ use LogicException;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -76,6 +85,8 @@ use Statamic\StaticCaching\Cacher;
  * The `cp_link` feature links the control panel to Core under Dashboard.
  * The `media` feature renders images and videos through the CDN and defines
  * the asset disks on the bucket.
+ * The `content_sync` feature lets a local checkout pull the live site's
+ * content as the developer's CMS user.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -115,6 +126,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
+        $this->app->bind(SyncTokens::class, fn () => SyncTokens::fromConfig());
+        $this->app->bind(DeviceAuthorizations::class, fn () => DeviceAuthorizations::fromConfig());
+        $this->app->bindIf(LocalContent::class, fn () => LocalContent::fromApp());
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -203,10 +217,15 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
             }
 
-            if (filter_var(config('core-web.media.push.accept'), FILTER_VALIDATE_BOOLEAN)) {
+            // The pusher signs in with content:login, so the push endpoints come with content_sync's token middleware.
+            if (filter_var(config('core-web.media.push.accept'), FILTER_VALIDATE_BOOLEAN) && self::enabled('content_sync')) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/media-push.php');
                 Event::listen(EntrySaved::class, ReleaseHeldAssets::class);
             }
+        }
+
+        if (self::enabled('content_sync')) {
+            $this->bootContentSync();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -279,6 +298,32 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    private function bootContentSync(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViews();
+        $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
+        $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+        SyncLimits::register();
+
+        Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {
+            Permission::register(AuthenticateSyncToken::PERMISSION)
+                ->label(__('core-web::sync.permission'))
+                ->description(__('core-web::sync.permission_description'));
+        }));
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
+
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+
+            if ($user !== null && AuthenticateSyncToken::mayPull($user)) {
+                $nav->tools(__('core-web::sync.tokens_title'))->route('core-web.sync.tokens')->icon('key');
+            }
+        });
     }
 
     private function bootChat(): void

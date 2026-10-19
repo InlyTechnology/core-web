@@ -2,13 +2,30 @@
 
 namespace Inly\CoreWeb\Media\Push;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Response;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
+use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\ContentSync\RemoteSiteError;
 
-/** The remote site's `/!/core-web/sync/assets` endpoints (the remote shares this site's action prefix), called with the pushing person's sync token. */
+/** The remote site's `sync/assets` endpoints, called with this machine's content:login token, as RemoteSite calls the others. */
 final class HttpPushTransport implements PushTransport
 {
-    public function __construct(private readonly string $baseUrl, private readonly string $token) {}
+    public function __construct(private readonly RemoteSite $site) {}
+
+    /** @throws RemoteLoginNeeded when this machine has no login to the configured site */
+    public static function fromStoredLogin(): self
+    {
+        $site = RemoteSite::fromStorage();
+
+        if ($site === null) {
+            throw new RemoteLoginNeeded(RemoteSite::configuredUrl());
+        }
+
+        return new self($site);
+    }
 
     public function check(array $files): array
     {
@@ -16,8 +33,8 @@ final class HttpPushTransport implements PushTransport
 
         // In chunks, to stay inside the endpoint's limit per call.
         foreach (array_chunk($files, 200) as $chunk) {
-            $response = $this->http()->timeout(60)->post(self::path().'/check', ['files' => $chunk])->throw();
-            array_push($answers, ...array_values((array) $response->json('files', [])));
+            $response = $this->send('assets/check', fn (PendingRequest $request, string $endpoint) => $request->timeout(60)->post($endpoint, ['files' => $chunk]));
+            array_push($answers, ...array_values((array) $response->throw()->json('files', [])));
         }
 
         return $answers;
@@ -25,10 +42,10 @@ final class HttpPushTransport implements PushTransport
 
     public function upload(string $container, string $path, string $sha256, $stream): array
     {
-        $response = $this->http()
+        $response = $this->send('assets', fn (PendingRequest $request, string $endpoint) => $request
             ->timeout(300)
             ->attach('file', $stream, basename($path))
-            ->post(self::path(), ['container' => $container, 'path' => $path, 'sha256' => $sha256]);
+            ->post($endpoint, ['container' => $container, 'path' => $path, 'sha256' => $sha256]));
 
         if ($response->status() === 422 && $response->json('status') === 'refused') {
             return ['status' => 'refused', 'path' => $path, 'reason' => (string) $response->json('reason')];
@@ -37,13 +54,30 @@ final class HttpPushTransport implements PushTransport
         return (array) $response->throw()->json();
     }
 
-    private static function path(): string
+    /**
+     * @param  callable(PendingRequest, string): Response  $call
+     *
+     * @throws RemoteLoginNeeded|RemoteSiteError
+     */
+    private function send(string $name, callable $call): Response
     {
-        return '/'.trim((string) config('statamic.routes.action', '!'), '/').'/core-web/sync/assets';
-    }
+        $endpoint = RemoteSite::endpoint($name);
 
-    private function http(): PendingRequest
-    {
-        return Http::baseUrl(rtrim($this->baseUrl, '/'))->withToken($this->token)->acceptJson()->connectTimeout(5);
+        try {
+            $response = $call(RemoteSite::anonymous($this->site->url())->withToken($this->site->token()), $endpoint);
+        } catch (ConnectionException $e) {
+            throw new RemoteSiteError("Could not reach {$this->site->url()}: {$e->getMessage()}", previous: $e);
+        }
+
+        RemoteSite::assertUsable($this->site->url(), $response, $endpoint);
+
+        // Only the sync middleware's own refusal ends the login, as for a pull.
+        if ($response->status() === 401 && $response->json('error') === AuthenticateSyncToken::REFUSED) {
+            RemoteSite::forget();
+
+            throw new RemoteLoginNeeded($this->site->url());
+        }
+
+        return $response;
     }
 }

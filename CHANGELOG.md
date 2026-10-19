@@ -31,11 +31,23 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
 - **Media, pushed files**: with `media.push.accept`, production takes the
-  files a content push from a laptop or staging brings, behind the sync
-  token (`core-web.sync`). They wait in a holding folder (`_pushed/`) and are
+  files a content push from a laptop or staging brings, signed in with
+  `content:login` (needs `content_sync` on the site). They wait in a holding folder (`_pushed/`) and are
   copied to their folder when an entry pointing at them is published; nothing
   already there is replaced or deleted. `AssetPusher` is the sending half
   `content:push` calls. See README → Pushed files.
+- **Content pull**: `features.content_sync` (off by default) lets a local
+  checkout pull the live site's content (entries, terms, global variables,
+  collection and nav trees) into `content/` as the files the Stache
+  writes, signed in as the developer's CMS user: `content:login` approves
+  the machine in the live site's CP and stores a personal token (30 days
+  from its last use, revocable under Tools → Content sync), `content:pull`
+  writes what changed on the site and keeps local edits, tracked in a
+  committed `content.lock`, deleting only where the developer may read
+  everything on the site. Approving a machine and using its token need the
+  addon's `pull content` permission. Set `content_sync.remote_url` in the
+  site's `config/core-web.php` (committed; there is no env var for it).
+  See README → Content pull.
 
 ## v0.13.0
 

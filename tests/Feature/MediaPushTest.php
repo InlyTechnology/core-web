@@ -3,18 +3,21 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Closure;
-use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
+use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
+use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\Media\LayeredAdapter;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\Push\AssetPusher;
 use Inly\CoreWeb\Media\Push\AssetReferences;
 use Inly\CoreWeb\Media\Push\HeldAssets;
+use Inly\CoreWeb\Media\Push\HttpPushTransport;
 use Inly\CoreWeb\Media\Push\PushTransport;
+use Inly\CoreWeb\Tests\Feature\ContentSync\SyncsContent;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Asset;
@@ -22,15 +25,15 @@ use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
-use Statamic\Facades\User;
 use Statamic\Fields\Fields;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class MediaPushTest extends TestCase
 {
     use PreventsSavingStacheItemsToDisk;
+    use SyncsContent;
 
-    protected array $features = ['media'];
+    protected array $features = ['media', 'content_sync'];
 
     private string $root;
 
@@ -41,7 +44,6 @@ class MediaPushTest extends TestCase
         parent::defineEnvironment($app);
 
         $app['config']->set('core-web.media.push.accept', true);
-        $app['config']->set('core-web.media.push.middleware', ['core-web.sync']);
     }
 
     protected function setUp(): void
@@ -55,10 +57,6 @@ class MediaPushTest extends TestCase
         config(['filesystems.disks.assets' => ['driver' => 'local', 'root' => $this->root.'/remote', 'url' => '/assets']]);
         Storage::forgetDisk('assets');
         AssetContainer::make('assets')->disk('assets')->save();
-
-        // Stands in for the login thread's token middleware: the test picks the person.
-        $this->app->make(Router::class)->aliasMiddleware('core-web.sync', SignsInPusher::class);
-        SignsInPusher::$user = fn () => $this->pusher;
 
         Collection::make('pages')->sites(['default'])->routes('/{slug}')->save();
         Blueprint::make('page')->setNamespace('collections.pages')->setContents(['fields' => [
@@ -79,7 +77,7 @@ class MediaPushTest extends TestCase
     protected function tearDown(): void
     {
         File::deleteDirectory($this->root);
-        SignsInPusher::$user = null;
+        RemoteSite::forget();
 
         parent::tearDown();
     }
@@ -91,10 +89,13 @@ class MediaPushTest extends TestCase
 
     private function super(): UserContract
     {
-        $user = User::make()->email('ann@example.com')->makeSuper();
-        $user->save();
+        return $this->pusher = $this->cmsUser('ann@example.com', super: true);
+    }
 
-        return $this->pusher = $user;
+    /** @return array<string, string> the pusher's content:login token, as a push sends it */
+    public function headers(): array
+    {
+        return ['Accept' => 'application/json', ...($this->pusher ? ['Authorization' => 'Bearer '.$this->tokenFor($this->pusher)] : [])];
     }
 
     private function remoteFile(string $path, string $contents): void
@@ -110,7 +111,7 @@ class MediaPushTest extends TestCase
             'path' => $path,
             'sha256' => $sha ?? hash('sha256', $contents),
             'file' => UploadedFile::fake()->createWithContent(basename($path), $contents),
-        ], ['Accept' => 'application/json']);
+        ], $this->headers());
     }
 
     public function test_references_are_found_and_rewritten_at_any_depth(): void
@@ -182,7 +183,7 @@ class MediaPushTest extends TestCase
             $files('cars/held.jpg', 'held'),
             ['container' => 'nope', 'path' => 'a.jpg', 'sha256' => str_repeat('a', 64), 'size' => 1],
             $files('../escape.jpg', 'x'),
-        ]])->assertOk()->assertJson(['files' => [
+        ]], $this->headers())->assertOk()->assertJson(['files' => [
             ['status' => 'exists', 'path' => 'cars/same.jpg'],
             ['status' => 'needed', 'path' => '_pushed/'.substr(hash('sha256', 'laptop'), 0, 12).'/cars/other.jpg'],
             ['status' => 'held', 'path' => '_pushed/'.substr(hash('sha256', 'held'), 0, 12).'/cars/held.jpg'],
@@ -240,15 +241,14 @@ class MediaPushTest extends TestCase
 
     public function test_the_pusher_needs_upload_rights_on_the_container(): void
     {
-        $user = User::make()->email('bo@example.com');
-        $user->save();
-        $this->pusher = $user;
+        $this->roles(['puller' => ['access cp', 'pull content']]);
+        $this->pusher = $this->cmsUser('bo@example.com', roles: ['puller']);
 
         $this->upload('cars/a.jpg', 'laptop')->assertStatus(422)->assertJson(['reason' => 'forbidden']);
 
         $this->pusher = null;
         $this->app['auth']->forgetGuards();
-        $this->upload('cars/a.jpg', 'laptop')->assertUnauthorized();
+        $this->upload('cars/a.jpg', 'laptop')->assertUnauthorized()->assertJson(['error' => 'sync_token_refused']);
     }
 
     public function test_publishing_copies_held_files_to_their_folder_and_points_the_entry_there(): void
@@ -317,7 +317,7 @@ class MediaPushTest extends TestCase
             {
                 $this->checked = array_column($files, 'path');
 
-                return $this->test->postJson('/!/core-web/sync/assets/check', ['files' => $files])->json('files');
+                return $this->test->postJson('/!/core-web/sync/assets/check', ['files' => $files], $this->test->headers())->json('files');
             }
 
             public function upload(string $container, string $path, string $sha256, $stream): array
@@ -328,7 +328,7 @@ class MediaPushTest extends TestCase
                 return $this->test->post('/!/core-web/sync/assets', [
                     'container' => $container, 'path' => $path, 'sha256' => $sha256,
                     'file' => UploadedFile::fake()->createWithContent(basename($path), $contents),
-                ], ['Accept' => 'application/json'])->json();
+                ], $this->test->headers())->json();
             }
         };
 
@@ -402,20 +402,40 @@ class MediaPushTest extends TestCase
         $this->assertSame(['_pushed/x/cars/ok.jpg', 'cars/fails.jpg'], $result['values']['blocks'][0]['file']);
         $this->assertSame('transport', $result['files'][1]['reason']);
     }
-}
 
-final class SignsInPusher
-{
-    public static ?Closure $user = null;
-
-    public function handle(Request $request, Closure $next): mixed
+    public function test_the_http_transport_sends_this_machine_s_login_and_a_refused_one_ends_it(): void
     {
-        $user = self::$user ? (self::$user)() : null;
+        config(['core-web.content_sync.remote_url' => 'https://site.example']);
+        RemoteSite::store('https://site.example', 'machine-token', ['name' => 'Ann', 'email' => 'ann@example.com'], null);
 
-        if ($user) {
-            auth()->setUser($user);
+        Http::fake([
+            'site.example/!/core-web/sync/assets/check' => Http::response(['files' => [['status' => 'needed', 'path' => '_pushed/x/a.jpg']]]),
+            'site.example/!/core-web/sync/assets' => Http::sequence()
+                ->push(['status' => 'uploaded', 'path' => '_pushed/x/a.jpg'])
+                ->push(['error' => 'sync_token_refused'], 401),
+        ]);
+
+        $transport = HttpPushTransport::fromStoredLogin();
+        $stream = fopen('php://memory', 'r+');
+
+        try {
+            $this->assertSame('needed', $transport->check([['container' => 'assets', 'path' => 'a.jpg', 'sha256' => str_repeat('a', 64), 'size' => 1]])[0]['status']);
+            $this->assertSame('uploaded', $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream)['status']);
+            Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer machine-token'));
+
+            $this->expectException(RemoteLoginNeeded::class);
+            $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream);
+        } finally {
+            fclose($stream);
+            $this->assertNull(RemoteSite::stored());
         }
+    }
 
-        return $next($request);
+    public function test_the_http_transport_needs_a_login(): void
+    {
+        RemoteSite::forget();
+
+        $this->expectException(RemoteLoginNeeded::class);
+        HttpPushTransport::fromStoredLogin();
     }
 }
