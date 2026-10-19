@@ -1,5 +1,8 @@
 <?php
 
+use Inly\CoreWeb\Checks\Checks\DeadTargets;
+use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
+use Inly\CoreWeb\Checks\Checks\SeoGaps;
 use Inly\CoreWeb\Media\CoreCdnScheme;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
@@ -20,8 +23,9 @@ return [
     |     return ['features' => ['snapshots' => true]];
     |
     | snapshots: Core snapshots with their store, `core:warm` and its schedule,
-    | `core:pull`, the degraded guard, Core's pings (`ping`) and the snapshot
-    | sitemaps (`sitemaps`). The Core client below needs no switch.
+    | `core:pull`, the degraded guard, Core's pings (`ping`), the snapshot
+    | sitemaps (`sitemaps`) and the `core_snapshot` control panel widget. The
+    | Core client below needs no switch.
     |
     | chat: the relay between the site's visitors and Core's chat agents
     | (`chat`), with its routes and the <x-core-web::chat> component.
@@ -34,6 +38,22 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | drafts: drafts of the site's entries written as an editor's CP save
+    | writes them (Inly\CoreWeb\Drafts\DraftWriter), for the sources that
+    | write them (Core AI, a push), with their signed preview link (`drafts`)
+    | and the provenance an editor's save keeps.
+    |
+    | checks: the site's content checks (`checks`) with `content:check`, its
+    | nightly schedule and the `content_checks` dashboard widget. Fixing a
+    | finding writes a draft or a proposal, so it needs `drafts` too.
+    |
+    | forms: the Core forms the site renders with its own Livewire markup
+    | (Inly\CoreWeb\Forms\CoreForm), kept as a snapshot refreshed by Core's
+    | `forms` ping. Needs `snapshots` on too.
+    |
+    | cp_link: a link to Core right under Dashboard in the control panel
+    | (`cp_link`), for every CP user, opened in a new tab.
+    |
     | media: the <x-core-img>, <x-core-video> and <x-core-media> components,
     | the asset disks in `media.disks` (a bucket, with a local fallback and a
     | layer outside production), `media:sync` and `media:check`.
@@ -45,6 +65,10 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'drafts' => false,
+        'checks' => false,
+        'forms' => false,
+        'cp_link' => false,
         'media' => false,
     ],
 
@@ -73,24 +97,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pulling another Core's data
+    | The remote Core
     |--------------------------------------------------------------------------
     |
-    | Local only: the Core `core:pull` reads the snapshots from (production, as
-    | a rule) and its own client, which Core should let read and nothing more.
-    | The URL and client id are the same for every developer, so the site
-    | commits them as the defaults in its own config/core-web.php (env can
-    | still override them); only the secret has to be set
-    | (CORE_PULL_CLIENT_SECRET). The copies it stores are pinned until the
-    | next pull or `core:pull --release`.
+    | Local only: the Core a local machine uses in place of its own
+    | (production, as a rule), with a client Core should let read and nothing
+    | more. `core:pull` copies its snapshots, and without a CORE_URL the
+    | control panel link points at it. The URL and client id are the same for
+    | every developer, so the site commits them as the defaults in its own
+    | config/core-web.php (env can still override them); only the secret has
+    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
+    | `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
 
-    'pull' => [
-        'base_url' => env('CORE_PULL_URL', ''),
-        'client_id' => env('CORE_PULL_CLIENT_ID', ''),
-        'client_secret' => env('CORE_PULL_CLIENT_SECRET', ''),
-        'token_cache_key' => 'core_web_pull_access_token',
+    'remote' => [
+        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
+        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
+        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
+        'token_cache_key' => 'core_web_remote_access_token',
     ],
 
     /*
@@ -326,6 +351,146 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Drafts
+    |--------------------------------------------------------------------------
+    |
+    | collections: the collections a source may draft, by handle, each with
+    | the blueprints a new entry may take (its default first; none named
+    | allows the collection's own), whether a new entry goes under a parent
+    | in the collection's tree (`structured`), and the fields an entry is
+    | never published without (`published_with`). A collection not named
+    | here is edited in the CP only.
+    |
+    |     'collections' => [
+    |         'articles' => ['blueprints' => ['article'], 'published_with' => ['image']],
+    |         'pages' => ['blueprints' => ['page'], 'structured' => true],
+    |     ],
+    |
+    | preview: the signed link a draft's source hands the person, opening the
+    | draft in Live Preview for `days` days at `path`, by `name`.
+    |
+    | proposals: where staged changes to content without revisions (navs,
+    | page trees, globals, terms, asset meta) are kept until an editor applies
+    | or discards them in the CP: a filesystem `disk` (null for the default)
+    | and a `path` on it. A host whose disk does not outlive a deploy names a
+    | bucket.
+    |
+    | The sentences a refused draft answers with are translations
+    | (core-web::drafts); a site words them for its editors in
+    | lang/vendor/core-web/{locale}/drafts.php.
+    |
+    */
+
+    'drafts' => [
+        'collections' => [],
+        'preview' => [
+            'path' => 'core-preview/{id}',
+            'name' => 'core.preview',
+            'days' => 7,
+            'middleware' => ['throttle:60,1', 'signed:relative'],
+        ],
+        'proposals' => [
+            'disk' => null,
+            'path' => 'core-web/proposals',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Forms
+    |--------------------------------------------------------------------------
+    |
+    | Forms the site renders with its own markup and posts to a Core form,
+    | server to server on the site's client token. Every other Core form is
+    | better served by Core's own embed.
+    |
+    | classes: the site's form classes (Inly\CoreWeb\Forms\CoreForm). The
+    | definitions of the Core forms they post to are kept in the
+    | `core-web-forms` snapshot. Mark each of those forms a custom embed in
+    | Core, so its admins are warned before changing its fields.
+    |
+    |     'classes' => [App\Livewire\DamageInspection::class],
+    |
+    | submit_rate_limit: entries per minute from one address, per form. Core
+    | does not limit what the site sends on its client token, so the site
+    | limits its visitors itself.
+    |
+    | timeouts: seconds to connect to Core, to read a definition (from a pull,
+    | never a render) and to send an entry, files included.
+    |
+    */
+
+    'forms' => [
+        'classes' => [],
+        'submit_rate_limit' => 5,
+        'timeouts' => [
+            'connect' => 3,
+            'definition' => 5,
+            'submit' => 20,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content checks
+    |--------------------------------------------------------------------------
+    |
+    | checks: the checks that run, each an Inly\CoreWeb\Checks\Check. A site
+    | adds its own beside these, or leaves one out.
+    |
+    | collections: the collections whose entries are checked; null checks all.
+    |
+    | seo: the fields the seo-gaps check reads (Peak SEO's by default), the
+    | collections it reads (null: every one with URLs) and the lengths a
+    | search result shows.
+    |
+    | schedule: the cron expression `content:check` runs on; null schedules
+    | nothing.
+    |
+    | disk / path: where each check's latest findings are kept.
+    |
+    */
+
+    'checks' => [
+        'checks' => [
+            OwnUrlLinks::class,
+            DeadTargets::class,
+            SeoGaps::class,
+        ],
+        'collections' => null,
+        'seo' => [
+            'collections' => null,
+            'title' => 'seo_title',
+            'description' => 'seo_description',
+            'title_max' => 60,
+            'description_max' => 160,
+        ],
+        'schedule' => '30 3 * * *',
+        'disk' => null,
+        'path' => 'core-web/checks',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Control panel link
+    |--------------------------------------------------------------------------
+    |
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
+    | or on a local machine without one at the remote Core, once its client
+    | is set up; with neither there is no link.
+    |
+    | label: what the link says, such as the backoffice's own name.
+    | icon: a Statamic icon name or an SVG; null is Core's mark.
+    |
+    */
+
+    'cp_link' => [
+        'label' => 'Core',
+        'icon' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Media
     |--------------------------------------------------------------------------
     |
@@ -403,5 +568,4 @@ return [
             'poster_time' => 0,
         ],
     ],
-
 ];
