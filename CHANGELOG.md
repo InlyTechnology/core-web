@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.14.0
 
 - **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
   only way into the control panel: the CP login redirects to Core, Core's
