@@ -1087,8 +1087,9 @@ container's own validation, SVG sanitising).
 
 1. The pushing side (`Inly\CoreWeb\Media\Push\AssetPusher` with
    `HttpPushTransport::fromStoredLogin()`, called by `content:push`) finds
-   the files an entry's values point at: `assets` fields at any depth, and Bard images and links. A file a layered disk does not
-   hold in its layer is production's own and is skipped unread.
+   the files an entry's values point at: `assets` fields at any depth, and
+   Bard images and links. A file a layered disk does not hold in its layer
+   is production's own and is skipped unread.
 2. `POST /!/core-web/sync/assets/check` says, per file (sha256 and size),
    whether production has the same bytes at that path, holds it from an
    earlier push, or needs it.
