@@ -5,15 +5,17 @@ namespace Inly\CoreWeb\Media\Push;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Http;
 use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
 use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
+use Throwable;
 
 /** The remote site's `sync/assets` endpoints, called with this machine's content:login token, as RemoteSite calls the others. */
 final class HttpPushTransport implements PushTransport
 {
-    public function __construct(private readonly RemoteSite $site) {}
+    public function __construct(private RemoteSite $site) {}
 
     /** @throws RemoteLoginNeeded when this machine has no login to the configured site */
     public static function fromStoredLogin(): self
@@ -55,6 +57,22 @@ final class HttpPushTransport implements PushTransport
     }
 
     /**
+     * RemoteSite::anonymous() without its asJson(): that fixes the Content-Type, so an upload would go out as JSON
+     * with a multipart body. Bodies default to JSON, and Guzzle writes the multipart header with its boundary.
+     */
+    private function request(): PendingRequest
+    {
+        RemoteSite::assertSecure($url = $this->site->url());
+
+        return Http::baseUrl($url)
+            ->withoutRedirecting()
+            ->acceptJson()
+            ->withToken($this->site->token())
+            ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
+            ->timeout(max(1, (int) config('core-web.content_sync.timeouts.request', 30)));
+    }
+
+    /**
      * @param  callable(PendingRequest, string): Response  $call
      *
      * @throws RemoteLoginNeeded|RemoteSiteError
@@ -64,7 +82,7 @@ final class HttpPushTransport implements PushTransport
         $endpoint = RemoteSite::endpoint($name);
 
         try {
-            $response = $call(RemoteSite::anonymous($this->site->url())->withToken($this->site->token()), $endpoint);
+            $response = $call($this->request(), $endpoint);
         } catch (ConnectionException $e) {
             throw new RemoteSiteError("Could not reach {$this->site->url()}: {$e->getMessage()}", previous: $e);
         }
@@ -78,6 +96,28 @@ final class HttpPushTransport implements PushTransport
             throw new RemoteLoginNeeded($this->site->url());
         }
 
+        if ($response->status() === 401) {
+            throw new RemoteSiteError("{$this->site->url()} answered HTTP 401 from in front of its sync endpoints (basic auth on a staging host?); this machine's login is kept.");
+        }
+
+        $this->keepExpiry($response);
+
         return $response;
+    }
+
+    /** The site slides the token's expiry on every use, so a machine that only pushes keeps its stored login too. */
+    private function keepExpiry(Response $response): void
+    {
+        $header = $response->header(AuthenticateSyncToken::EXPIRES_HEADER);
+
+        if ($header === '' || $header === $this->site->expiresAt()?->toIso8601String()) {
+            return;
+        }
+
+        try {
+            $this->site = RemoteSite::store($this->site->url(), $this->site->token(), $this->site->user(), $header);
+        } catch (Throwable) {
+            // An unreadable header leaves the stored expiry as it was.
+        }
     }
 }

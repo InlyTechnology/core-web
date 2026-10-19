@@ -146,7 +146,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.layer.enabled` | `CORE_MEDIA_LAYER`, `true` | Outside production, keep production's files behind the layer. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
 | `media.push.accept` | `false` | Production takes files a content push brings (see [Pushed files](#pushed-files)) |
-| `media.push.holding_folder` / `.max_megabytes` / `.middleware` | `_pushed` / 100 / `['core-web.sync', 'throttle:core-web-sync']` | Where pushed files wait in each container, the largest file taken, and what guards the endpoints (the sync token's person) |
+| `media.push.holding_folder` / `.max_megabytes` / `.middleware` | `_pushed` / 100 / `['throttle:core-web-sync', 'core-web.sync']` | Where pushed files wait in each container, the largest file taken, and what guards the endpoints (the sync token's person) |
 | `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
@@ -1082,13 +1082,12 @@ at, without anyone holding the bucket's key. Production switches it on with
 signs in with `content:login` (see [Content pull](#content-pull)), so they need
 the `pull content` permission, plus upload rights on the container, as in the
 CP. The endpoints sit behind the same HTTPS guard and `core-web-sync` limiter
-as the pull. The
-CP's upload rules apply (Statamic's allowed types, the container's own
-validation, SVG sanitising).
+as the pull. The CP's upload rules apply (Statamic's allowed types, the
+container's own validation, SVG sanitising).
 
 1. The pushing side (`Inly\CoreWeb\Media\Push\AssetPusher` with
-   `HttpPushTransport::fromStoredLogin()`, called by `content:push`) finds the files an entry's values point at: `assets` fields
-   at any depth, and Bard images and links. A file a layered disk does not
+   `HttpPushTransport::fromStoredLogin()`, called by `content:push`) finds
+   the files an entry's values point at: `assets` fields at any depth, and Bard images and links. A file a layered disk does not
    hold in its layer is production's own and is skipped unread.
 2. `POST /!/core-web/sync/assets/check` says, per file (sha256 and size),
    whether production has the same bytes at that path, holds it from an

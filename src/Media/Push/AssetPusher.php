@@ -5,7 +5,7 @@ namespace Inly\CoreWeb\Media\Push;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
-use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
+use Inly\CoreWeb\ContentSync\RemoteSiteError;
 use Inly\CoreWeb\Media\LayeredAdapter;
 use Statamic\Facades\AssetContainer;
 use Statamic\Fields\Fields;
@@ -70,7 +70,7 @@ final class AssetPusher
 
     /**
      * One file that fails to go is answered `refused`, so the files already uploaded still count for this push;
-     * a login the site refuses stops the push.
+     * the site itself failing (a refused login, a redirect, a rate limit) stops the push.
      *
      * @param  array{container: string, path: string, sha256: string, size: int, disk: Filesystem}  $file
      * @return array{status: string, path: string, reason?: string}
@@ -85,7 +85,7 @@ final class AssetPusher
 
         try {
             $answer = $this->transport->upload($file['container'], $file['path'], $file['sha256'], $stream);
-        } catch (RemoteLoginNeeded $e) {
+        } catch (RemoteSiteError $e) {
             throw $e;
         } catch (Throwable $e) {
             report($e);

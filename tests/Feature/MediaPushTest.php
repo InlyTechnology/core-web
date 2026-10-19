@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\ContentSync\RemoteSiteError;
 use Inly\CoreWeb\Media\LayeredAdapter;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\Push\AssetPusher;
@@ -412,6 +413,8 @@ class MediaPushTest extends TestCase
             'site.example/!/core-web/sync/assets/check' => Http::response(['files' => [['status' => 'needed', 'path' => '_pushed/x/a.jpg']]]),
             'site.example/!/core-web/sync/assets' => Http::sequence()
                 ->push(['status' => 'uploaded', 'path' => '_pushed/x/a.jpg'])
+                ->push(['status' => 'uploaded', 'path' => '_pushed/x/a.jpg'], 200, ['X-Core-Web-Token-Expires-At' => '2030-01-01T00:00:00+00:00'])
+                ->push('Authorization Required', 401)
                 ->push(['error' => 'sync_token_refused'], 401),
         ]);
 
@@ -422,6 +425,19 @@ class MediaPushTest extends TestCase
             $this->assertSame('needed', $transport->check([['container' => 'assets', 'path' => 'a.jpg', 'sha256' => str_repeat('a', 64), 'size' => 1]])[0]['status']);
             $this->assertSame('uploaded', $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream)['status']);
             Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer machine-token'));
+            Http::assertSent(fn ($request) => $request->isMultipart() && str_starts_with($request->header('Content-Type')[0] ?? '', 'multipart/form-data; boundary='));
+
+            $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream);
+            $this->assertSame('2030-01-01', RemoteSite::stored()->expiresAt()->toDateString(), 'a push slides the stored login as a pull does');
+
+            try {
+                $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream);
+                $this->fail('A 401 from in front of the site is an error, not a refused file.');
+            } catch (RemoteLoginNeeded) {
+                $this->fail('Only the sync middleware\'s own 401 ends the login.');
+            } catch (RemoteSiteError) {
+                $this->assertNotNull(RemoteSite::stored());
+            }
 
             $this->expectException(RemoteLoginNeeded::class);
             $transport->upload('assets', 'a.jpg', str_repeat('a', 64), $stream);
@@ -437,5 +453,14 @@ class MediaPushTest extends TestCase
 
         $this->expectException(RemoteLoginNeeded::class);
         HttpPushTransport::fromStoredLogin();
+    }
+
+    public function test_the_push_endpoints_take_https_only(): void
+    {
+        $this->super();
+        $this->app['env'] = 'production';
+
+        $this->postJson('http://localhost/!/core-web/sync/assets/check', ['files' => []], $this->headers())
+            ->assertForbidden()->assertJson(['error' => 'https_required']);
     }
 }

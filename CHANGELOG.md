@@ -32,9 +32,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     `media:check` checks the bucket's headers and a CDN rendition.
 - **Media, pushed files**: with `media.push.accept`, production takes the
   files a content push from a laptop or staging brings, signed in with
-  `content:login` (needs `content_sync` on the site). They wait in a holding folder (`_pushed/`) and are
-  copied to their folder when an entry pointing at them is published; nothing
-  already there is replaced or deleted. `AssetPusher` is the sending half
+  `content:login` (needs `content_sync` on the site). They wait in a
+  holding folder (`_pushed/`) and are copied to their folder when an entry
+  pointing at them is published; nothing already there is replaced or
+  deleted. `AssetPusher` is the sending half
   `content:push` calls. See README → Pushed files.
 - **Content pull**: `features.content_sync` (off by default) lets a local
   checkout pull the live site's content (entries, terms, global variables,

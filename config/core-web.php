@@ -587,7 +587,7 @@ return [
             'accept' => false,
             'holding_folder' => '_pushed',
             'max_megabytes' => 100,
-            'middleware' => ['core-web.sync', 'throttle:core-web-sync'],
+            'middleware' => ['throttle:core-web-sync', 'core-web.sync'],
         ],
     ],
 
