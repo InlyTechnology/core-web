@@ -907,8 +907,11 @@ Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
 
 A content push from a laptop or from staging brings the files its drafts point
 at, without anyone holding the bucket's key. Production switches it on with
-`media.push.accept`; the pushing person signs in with their sync token
-(`content:login`) and needs upload rights on the container, as in the CP.
+`media.push.accept` once the `core-web.sync` middleware (from `content:login`)
+is on the site, since the endpoints need it; the pushing person signs in with
+their sync token and needs upload rights on the container, as in the CP. The
+CP's upload rules apply (Statamic's allowed types, the container's own
+validation, SVG sanitising).
 
 1. The pushing side (`Inly\CoreWeb\Media\Push\AssetPusher`, called by
    `content:push`) finds the files an entry's values point at: `assets` fields
@@ -929,7 +932,8 @@ at, without anyone holding the bucket's key. Production switches it on with
 
 Nothing here replaces, moves or deletes a file production already has. Staging
 pushes the same way as a laptop: its new files are in its `_staging/` layer.
-Held files nothing points at any more are left for the unused-assets check.
+Held files nothing points at any more stay in the holding folder until someone
+clears them.
 
 ### Another CDN
 

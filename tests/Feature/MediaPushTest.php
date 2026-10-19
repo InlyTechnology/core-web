@@ -155,12 +155,24 @@ class MediaPushTest extends TestCase
         $this->assertSame('Hello', $rewritten['title']);
     }
 
+    public function test_references_in_bard_stored_as_html_are_found(): void
+    {
+        $fields = Blueprint::make()->setContents(['fields' => [['handle' => 'body', 'field' => ['type' => 'bard', 'save_html' => true]]]])->fields();
+        $html = '<p><img src="statamic://asset::assets::a/b.jpg" alt="x"> and <a href="statamic://asset::assets::c.pdf">pdf</a></p>';
+
+        $this->assertSame(['assets::a/b.jpg', 'assets::c.pdf'], AssetReferences::collect($fields, ['body' => $html]));
+        $this->assertSame(
+            '<p><img src="statamic://asset::assets::_pushed/1/a/b.jpg" alt="x"> and <a href="statamic://asset::assets::c.pdf">pdf</a></p>',
+            AssetReferences::rewrite($fields, ['body' => $html], ['assets::a/b.jpg' => '_pushed/1/a/b.jpg'])['body'],
+        );
+    }
+
     public function test_check_says_what_the_site_already_has(): void
     {
         $this->super();
         $this->remoteFile('cars/same.jpg', 'same');
         $this->remoteFile('cars/other.jpg', 'production');
-        $this->remoteFile('_pushed/'.substr(hash('sha256', 'held'), 0, 12).'/cars/held.jpg', 'held');
+        $this->upload('cars/held.jpg', 'held')->assertOk();
 
         $files = fn (string $path, string $contents) => ['container' => 'assets', 'path' => $path, 'sha256' => hash('sha256', $contents), 'size' => strlen($contents)];
 
@@ -181,7 +193,7 @@ class MediaPushTest extends TestCase
 
     public function test_an_upload_lands_in_the_holding_folder_and_never_replaces_a_file(): void
     {
-        $this->super();
+        $ann = $this->super();
         $this->remoteFile('cars/a.jpg', 'production');
 
         $response = $this->upload('cars/a.jpg', 'laptop')->assertOk()->assertJson(['status' => 'uploaded']);
@@ -191,7 +203,7 @@ class MediaPushTest extends TestCase
         $this->assertSame('production', File::get($this->root.'/remote/cars/a.jpg'));
         $this->assertSame('laptop', File::get($this->root.'/remote/'.$held));
         $this->assertSame('cars/a.jpg', Asset::find("assets::{$held}")->get(HeldAssets::META)['for']);
-        $this->assertSame('ann@example.com', Asset::find("assets::{$held}")->get(HeldAssets::META)['by']);
+        $this->assertSame($ann->id(), Asset::find("assets::{$held}")->get(HeldAssets::META)['by'], 'an id, not an email: the meta sits in the public bucket');
 
         $this->upload('cars/a.jpg', 'laptop')->assertOk()->assertJson(['status' => 'held', 'path' => $held]);
     }
@@ -205,6 +217,25 @@ class MediaPushTest extends TestCase
         $this->upload('_pushed/x/a.jpg', 'laptop')->assertStatus(422)->assertJson(['reason' => 'bad_path']);
 
         $this->assertSame([], File::allFiles($this->root.'/remote'));
+    }
+
+    public function test_an_svg_is_stored_sanitised_and_still_found_by_what_was_pushed(): void
+    {
+        $this->super();
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="1" height="1"/></svg>';
+
+        $held = $this->upload('icons/a.svg', $svg)->assertOk()->json('path');
+
+        $this->assertStringNotContainsString('<script', File::get($this->root.'/remote/'.$held));
+        $this->upload('icons/a.svg', $svg)->assertOk()->assertJson(['status' => 'held', 'path' => $held]);
+    }
+
+    public function test_the_container_s_own_upload_rules_apply(): void
+    {
+        $this->super();
+        AssetContainer::find('assets')->validationRules(['max:1'])->save();
+
+        $this->upload('cars/a.jpg', str_repeat('x', 4096))->assertStatus(422)->assertJson(['reason' => 'file_type']);
     }
 
     public function test_the_pusher_needs_upload_rights_on_the_container(): void
@@ -247,6 +278,13 @@ class MediaPushTest extends TestCase
 
         $this->assertSame('cars/a-2.jpg', Entry::find($second->id())->get('hero'), 'a file released before is reused');
         $this->assertFalse(File::exists($this->root.'/remote/cars/a-3.jpg'));
+
+        File::put($this->root.'/remote/cars/a-2.jpg', 'replaced in the CP');
+        $third = Entry::make()->collection('pages')->locale('default')->slug('tredje')->published(true)->data(['title' => 'Tredje', 'hero' => $held]);
+        $third->save();
+
+        $this->assertSame('cars/a-3.jpg', Entry::find($third->id())->get('hero'), 'a released copy replaced since is not reused');
+        $this->assertSame('laptop', File::get($this->root.'/remote/cars/a-3.jpg'));
     }
 
     public function test_the_pusher_sends_only_files_the_remote_lacks_and_points_the_values_at_them(): void
@@ -334,6 +372,35 @@ class MediaPushTest extends TestCase
         $this->assertSame(['cars/prod.jpg'], $result['values']['blocks'][0]['file']);
         $this->assertSame([['id' => 'assets::cars/new.jpg', 'status' => 'uploaded', 'path' => $held]], $result['files']);
         $this->assertSame('new', File::get($this->root.'/remote/'.$held));
+    }
+
+    public function test_a_failed_upload_is_answered_refused_and_the_others_still_count(): void
+    {
+        File::ensureDirectoryExists($this->root.'/remote/cars');
+        File::put($this->root.'/remote/cars/ok.jpg', 'ok');
+        File::put($this->root.'/remote/cars/fails.jpg', 'fails');
+
+        $pusher = new AssetPusher(new class implements PushTransport
+        {
+            public function check(array $files): array
+            {
+                return array_map(fn (array $file) => ['status' => 'needed', 'path' => '_pushed/x/'.$file['path']], $files);
+            }
+
+            public function upload(string $container, string $path, string $sha256, $stream): array
+            {
+                if ($path === 'cars/fails.jpg') {
+                    throw new \RuntimeException('connection reset');
+                }
+
+                return ['status' => 'uploaded', 'path' => '_pushed/x/'.$path];
+            }
+        });
+
+        $result = $pusher->push($this->fields(), ['blocks' => [['type' => 'media', 'file' => ['cars/ok.jpg', 'cars/fails.jpg']]]]);
+
+        $this->assertSame(['_pushed/x/cars/ok.jpg', 'cars/fails.jpg'], $result['values']['blocks'][0]['file']);
+        $this->assertSame('transport', $result['files'][1]['reason']);
     }
 }
 

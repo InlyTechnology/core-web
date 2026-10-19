@@ -406,9 +406,10 @@ return [
         /*
          | Pushed files: what a content push from a laptop or staging brings
          | along. accept: this site (production) takes them, each into the
-         | holding folder of its container, moved to the folder it was pushed
+         | holding folder of its container, copied to the folder it was pushed
          | for when an entry pointing at it is published. A pushed file never
-         | replaces or deletes one already there.
+         | replaces or deletes one already there. Needs the `core-web.sync`
+         | middleware (content:login) on this site.
          */
         'push' => [
             'accept' => false,

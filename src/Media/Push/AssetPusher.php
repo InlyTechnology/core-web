@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Media\LayeredAdapter;
 use Statamic\Facades\AssetContainer;
 use Statamic\Fields\Fields;
+use Throwable;
 
 /**
  * The sending end of a content push: the files an entry's values point at that the remote site does not
@@ -53,10 +54,7 @@ final class AssetPusher
             $answer = $answers[$index] ?? ['status' => 'refused', 'path' => $file['path'], 'reason' => 'no_answer'];
 
             if ($answer['status'] === 'needed' && ! $dryRun) {
-                $stream = $file['disk']->readStream($file['path']);
-                $answer = is_resource($stream)
-                    ? $this->transport->upload($file['container'], $file['path'], $file['sha256'], $stream)
-                    : ['status' => 'refused', 'path' => $file['path'], 'reason' => 'unreadable'];
+                $answer = $this->upload($file);
             }
 
             if (in_array($answer['status'], ['held', 'uploaded', 'needed'], true) && $answer['path'] !== $file['path']) {
@@ -67,6 +65,34 @@ final class AssetPusher
         }
 
         return ['values' => AssetReferences::rewrite($fields, $values, $map), 'files' => $files];
+    }
+
+    /**
+     * One file that fails to go is answered `refused`, so the files already uploaded still count for this push.
+     *
+     * @param  array{container: string, path: string, sha256: string, size: int, disk: Filesystem}  $file
+     * @return array{status: string, path: string, reason?: string}
+     */
+    private function upload(array $file): array
+    {
+        $stream = $file['disk']->readStream($file['path']);
+
+        if (! is_resource($stream)) {
+            return ['status' => 'refused', 'path' => $file['path'], 'reason' => 'unreadable'];
+        }
+
+        try {
+            $answer = $this->transport->upload($file['container'], $file['path'], $file['sha256'], $stream);
+        } catch (Throwable $e) {
+            report($e);
+            $answer = null;
+        } finally {
+            is_resource($stream) && fclose($stream);
+        }
+
+        return is_array($answer) && is_string($answer['status'] ?? null) && is_string($answer['path'] ?? null)
+            ? $answer
+            : ['status' => 'refused', 'path' => $file['path'], 'reason' => 'transport'];
     }
 
     /** @return array{container: string, path: string, sha256: string, size: int, disk: Filesystem}|null */

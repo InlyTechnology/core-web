@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Media\Push;
 
 use Closure;
+use Statamic\Facades\AssetContainer;
 use Statamic\Fields\Fields;
 use Statamic\Fieldtypes\Bard;
 use Statamic\Fieldtypes\Grid;
@@ -15,7 +16,8 @@ use Statamic\Fieldtypes\Replicator;
  */
 final class AssetReferences
 {
-    private const ID = '~^(statamic://)?asset::([^:/]+)::(.+)$~';
+    // Anywhere in a string, so Bard stored as HTML (`save_html`) is read too; a path stops at a quote or space.
+    private const ID = '~(statamic://)?asset::([^:/\s"\'<>]+)::([^\s"\'<>]+)~';
 
     /**
      * @param  array<string, mixed>  $values
@@ -66,7 +68,7 @@ final class AssetReferences
             $fieldtype = $field->fieldtype();
 
             if ($field->type() === 'assets') {
-                $container = (string) ($field->get('container') ?? '');
+                $container = (string) ($field->get('container') ?? '') ?: self::onlyContainer();
                 $values[$handle] = $container === '' ? $value : self::paths($value, $container, $visit);
 
                 continue;
@@ -84,9 +86,9 @@ final class AssetReferences
                 foreach ($value as $index => $set) {
                     $type = is_array($set) ? ($set['type'] ?? null) : null;
 
-                    if (is_string($type) && $fieldtype->flattenedSetsConfig()->has($type)) {
-                        $value[$index] = self::walk($fieldtype->fields($type), $set, $visit);
-                    }
+                    $value[$index] = is_string($type) && $fieldtype->flattenedSetsConfig()->has($type)
+                        ? self::walk($fieldtype->fields($type), $set, $visit)
+                        : self::strings($set, $visit);
                 }
 
                 $values[$handle] = $value;
@@ -146,12 +148,22 @@ final class AssetReferences
             return array_map(fn ($item) => self::strings($item, $visit), $value);
         }
 
-        if (! is_string($value) || preg_match(self::ID, $value, $match) !== 1) {
+        if (! is_string($value) || ! str_contains($value, 'asset::')) {
             return $value;
         }
 
-        $path = $visit($match[2], $match[3]);
+        return preg_replace_callback(self::ID, function (array $match) use ($visit): string {
+            $path = $visit($match[2], $match[3]);
 
-        return $path === null ? $value : "{$match[1]}asset::{$match[2]}::{$path}";
+            return $path === null ? $match[0] : "{$match[1]}asset::{$match[2]}::{$path}";
+        }, $value);
+    }
+
+    /** Statamic's own fallback for an assets field naming no container: the site's one container, if it has one. */
+    private static function onlyContainer(): string
+    {
+        $containers = AssetContainer::all();
+
+        return $containers->count() === 1 ? (string) $containers->first()->handle() : '';
     }
 }

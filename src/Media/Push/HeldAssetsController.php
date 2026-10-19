@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Media\Push;
 
+use Facades\Statamic\Fields\Validator as FieldValidator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -61,14 +62,14 @@ final class HeldAssetsController
             /** @var UploadedFile $file */
             $file = $request->file('file');
 
-            if (! self::allowed($file, $path)) {
+            if (! self::allowed($container, $file, $path)) {
                 throw new PushRefused('file_type', 'This kind of file cannot be uploaded.');
             }
 
             $stream = fopen($file->getRealPath(), 'rb');
 
             try {
-                return response()->json($this->assets->hold($container, $path, $input['sha256'], $stream, (string) ($user->email() ?? $user->id())));
+                return response()->json($this->assets->hold($container, $path, $input['sha256'], $stream, (string) $user->id()));
             } finally {
                 is_resource($stream) && fclose($stream);
             }
@@ -119,12 +120,14 @@ final class HeldAssetsController
         return $path;
     }
 
-    /** Statamic's own upload rule, on the name the file will have here rather than the name it was sent under. */
-    private static function allowed(UploadedFile $file, string $path): bool
+    /** The CP's upload rules (Statamic's allowed types and the container's own), on the name the file will have here. */
+    private static function allowed(Container $container, UploadedFile $file, string $path): bool
     {
+        $rules = collect($container->validationRules())->map(fn ($rule) => FieldValidator::parse($rule))->all();
+
         return Validator::make(
             ['file' => new UploadedFile($file->getRealPath(), basename($path), test: true)],
-            ['file' => [new AllowedFile]],
+            ['file' => array_merge(['file', new AllowedFile], $rules)],
         )->passes();
     }
 }
