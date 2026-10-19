@@ -6,8 +6,8 @@ use Inly\CoreWeb\Content\CoreProposalsController;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
-// Protocol v1.2's checks and proposals, beside the site's own content endpoints. Outside the `web` group: no session,
-// no CSRF, never behind the static cache. Reads are sealed for reading; a fix or a proposal makes only a draft or a
+// The Statamic connector API v1.2's checks and proposals, beside the site's own content endpoints. Outside the `web`
+// group: no session, no CSRF, never behind the static cache. Reads are sealed for reading; a fix or a proposal makes only a draft or a
 // proposal an editor publishes, so it is sealed for drafting.
 Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1']))
     ->prefix(trim((string) config('core-web.content.prefix', 'api/core/v1'), '/'))

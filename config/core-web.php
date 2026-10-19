@@ -30,7 +30,7 @@ return [
     | chat: the relay between the site's visitors and Core's chat agents
     | (`chat`), with its routes and the <x-core-web::chat> component.
     |
-    | content: the site's half of the website content protocol (`content`):
+    | content: the site's half of the Statamic connector API (`content`):
     | the `core-web.envelope` route middleware its content endpoints open
     | Core's sealed calls with, and the page pings it sends Core.
     |
@@ -283,10 +283,10 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Website content protocol
+    | Statamic connector API
     |--------------------------------------------------------------------------
     |
-    | The site's half of the website content protocol v1.1: Core seals each
+    | The site's half of the Statamic connector API v1.1: Core seals each
     | call to the site's content endpoints with its own key, published at
     | {core}/.well-known/core-signing-keys, for the site's client id above,
     | and the site pings Core's connector webhook route with its client token.

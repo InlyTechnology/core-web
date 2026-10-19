@@ -8,8 +8,8 @@ use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
- * The site's content checks as Core reads them (protocol v1.2): each check
- * with its latest run, a check's findings, and a fix Core AI asks for, which
+ * The site's content checks as Core reads them (Statamic connector API v1.2):
+ * each check with its latest run, a check's findings, and a fix Core AI asks for, which
  * lands as a draft or a proposal an editor publishes.
  */
 class CoreChecksController
