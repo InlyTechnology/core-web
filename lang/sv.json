@@ -1,0 +1,12 @@
+{
+    ":count item|:count items": ":count post|:count poster",
+    "Loading": "Laddar",
+    "Loading. Reload the page in a moment.": "Laddar. Ladda om sidan om en stund.",
+    "Local copy": "Lokal kopia",
+    "May be out of date": "Kan vara inaktuell",
+    "No results": "Inga resultat",
+    "Page :page of :pages": "Sida :page av :pages",
+    "Previous page": "Föregående sida",
+    "View": "Visa",
+    "Next page": "Nästa sida"
+}
