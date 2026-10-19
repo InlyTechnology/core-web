@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.12.0
 
 - **Forms**: `features.forms` (off by default) for a form with the site's
   own Livewire markup that posts to a Core form (`CoreForm`). Core's
