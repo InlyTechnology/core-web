@@ -53,7 +53,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     writes land in it, and deleting or moving production's files throws
     `ProductionFileLocked`.
   - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
-    bucket is committed config. `acl: false` for R2.
+    bucket is committed config, and a site's `media` block keeps the
+    defaults it leaves out. `acl: false` for R2.
   - `MediaSource::urlOf()` gives a file's URL as the components render it.
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);

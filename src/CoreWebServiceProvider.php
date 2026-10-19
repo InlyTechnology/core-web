@@ -101,6 +101,7 @@ class CoreWebServiceProvider extends ServiceProvider
             }
 
             if (self::enabled('media')) {
+                $this->mergeMediaDefaults();
                 MediaDisks::define($this->app);
             }
         };
@@ -134,6 +135,24 @@ class CoreWebServiceProvider extends ServiceProvider
     }
 
     /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
+    /**
+     * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
+     * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
+     */
+    private function mergeMediaDefaults(): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')['media'];
+        $media = (array) config('core-web.media');
+
+        foreach ($defaults as $group => $default) {
+            if ($group !== 'disks' && is_array($default) && is_array($media[$group] ?? null)) {
+                $media[$group] = array_replace($default, $media[$group]);
+            }
+        }
+
+        config(['core-web.media' => array_replace($defaults, $media)]);
+    }
+
     private function mergeLegacyRemote(): void
     {
         $legacy = config('core-web.pull');

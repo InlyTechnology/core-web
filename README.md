@@ -1058,7 +1058,9 @@ local upload and a live file both resolve. The components skip the redirect
 and render the file's own URL, so the CDN still transforms live files.
 
 Everything but the key and secret is committed in the site's
-`config/core-web.php`:
+`config/core-web.php`. Unlike the other top-level keys, a site's `media`
+block keeps the package's defaults for what it leaves out, one group deep
+(the key and secret from env, the CDN, the layer); `disks` is taken whole:
 
 ```php
 'media' => [
