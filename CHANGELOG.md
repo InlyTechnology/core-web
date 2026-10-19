@@ -12,10 +12,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   in to the remote Core: a developer approves the printed code in Core, and
   the machine reads as the site's own client (`remote.client_id`), read
   only, for 30 days from its last use. The login stays on the machine
-  (`storage/core-web/remote-core.json`); `--logout` revokes it. Drops
-  `CORE_REMOTE_CLIENT_SECRET` and the separate local pull client once the
-  site's `remote.client_id` names its own client. Needs inly/core with local
-  development logins. See README → Pulling production data.
+  (`storage/core-web/remote-core.json`, ignored by git); `--logout`
+  revokes it. With the site's own client in `remote.client_id`, developers
+  need no `CORE_REMOTE_CLIENT_SECRET` and no separate local pull client; a
+  set secret still works and wins unless `--login` is passed. Needs
+  inly/core with local development logins. See README → Pulling production data.
+
 ## v0.13.0
 
 - **Drafts**: `features.drafts` (off by default) adds `DraftWriter`, which

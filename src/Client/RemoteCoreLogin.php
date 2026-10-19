@@ -24,7 +24,7 @@ final class RemoteCoreLogin
      */
     private function __construct(private array $login) {}
 
-    /** The stored login for this Core and client, or null: none, another Core's, or past its expiry. */
+    /** The stored login for this Core and client, or null: none, or another Core's. Core decides when it has expired. */
     public static function stored(string $baseUrl, string $clientId): ?self
     {
         $path = self::path();
@@ -43,11 +43,6 @@ final class RemoteCoreLogin
         }
 
         $expires = $login['expires_at'] ?? null;
-
-        // Core slides the expiry on every use; this copy only says when it was last known.
-        if (is_string($expires) && strtotime($expires) !== false && strtotime($expires) < now()->getTimestamp()) {
-            return null;
-        }
 
         return new self([
             'base_url' => rtrim($baseUrl, '/'),
@@ -68,8 +63,8 @@ final class RemoteCoreLogin
     {
         $baseUrl = rtrim($baseUrl, '/');
 
-        if (! CoreClient::secureUrl($baseUrl)) {
-            throw new RuntimeException('core-web logs in to the remote Core over https only; remote.base_url is not.');
+        if (! self::secure($baseUrl)) {
+            throw new RuntimeException('core-web logs in to the remote Core over https only (or a .test or localhost Core); remote.base_url is not.');
         }
 
         $start = self::post($baseUrl.'/api/local-dev/logins', ['client_id' => $clientId, 'machine' => $machine]);
@@ -140,6 +135,28 @@ final class RemoteCoreLogin
         return $this->login['approved_by'];
     }
 
+    /** Whatever login this machine holds, for any Core, so a logout revokes it even after the config moved on. */
+    public static function any(): ?self
+    {
+        $login = is_file(self::path()) ? json_decode((string) file_get_contents(self::path()), true) : null;
+
+        if (! is_array($login) || blank($login['base_url'] ?? null) || blank($login['client_id'] ?? null)) {
+            return null;
+        }
+
+        return self::stored((string) $login['base_url'], (string) $login['client_id']);
+    }
+
+    /** Https, or plain http only to a Core on this machine or a .test host: a login token reads as the site. */
+    public static function secure(string $url): bool
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $scheme === 'https'
+            || ($scheme === 'http' && (in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.test')));
+    }
+
     /** Revokes the login in Core (best effort: a Core that is down still loses it from this machine) and forgets it. */
     public function logout(): void
     {
@@ -175,9 +192,15 @@ final class RemoteCoreLogin
             mkdir($dir, 0700, true);
         }
 
-        file_put_contents(self::path(), json_encode($this->login, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        // A login token reads as the site's client, so only this machine's user may read it.
+        // Laravel ignores only its own storage folders, so this one ignores itself.
+        if (! is_file($dir.'/.gitignore')) {
+            file_put_contents($dir.'/.gitignore', "*\n");
+        }
+
+        // A login token reads as the site's client, so the file is private before the token goes in.
+        touch(self::path());
         chmod(self::path(), 0600);
+        file_put_contents(self::path(), json_encode($this->login, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
 
     /** @param  array<string, string>  $data */

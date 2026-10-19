@@ -176,13 +176,59 @@ class PullSnapshotsLoginTest extends TestCase
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/api/local-dev/'));
     }
 
-    public function test_login_needs_https(): void
+    public function test_login_needs_https_except_to_a_core_on_this_machine(): void
     {
         config(['core-web.remote.base_url' => 'http://prod.example.com']);
-        $this->app['env'] = 'production';
         $this->fakeCore([]);
 
-        $this->assertFalse(CoreClient::secureUrl('http://prod.example.com'));
+        $this->artisan('core:pull --login')->expectsOutputToContain('must be https')->assertFailed();
+
+        Http::assertNothingSent();
+        $this->assertTrue(RemoteCoreLogin::secure('http://core.test'));
+        $this->assertTrue(RemoteCoreLogin::secure('http://localhost:8000'));
+    }
+
+    public function test_the_login_file_is_private_and_ignored_by_git(): void
+    {
+        $this->fakeCore([['login_token' => 'login-1']]);
+        $this->artisan('core:pull --login')->assertSuccessful();
+
+        $this->assertSame("*\n", file_get_contents(dirname(RemoteCoreLogin::path()).'/.gitignore'));
+        $this->assertSame('0600', substr(sprintf('%o', fileperms(RemoteCoreLogin::path())), -4));
+    }
+
+    public function test_core_decides_when_a_login_expires(): void
+    {
+        $this->fakeCore([['login_token' => 'login-1', 'expires_at' => now()->addDays(30)->toIso8601String()]]);
+        $this->artisan('core:pull --login')->assertSuccessful();
+
+        $this->travel(31)->days();
+
+        $this->assertNotNull(RemoteCoreLogin::stored('https://prod.test', 'site-client'));
+    }
+
+    public function test_logout_revokes_a_login_made_for_another_core(): void
+    {
+        $this->fakeCore([['login_token' => 'login-1']]);
+        $this->artisan('core:pull --login')->assertSuccessful();
+        config(['core-web.remote.base_url' => 'https://elsewhere.test']);
+
+        $this->artisan('core:pull --logout')->assertSuccessful();
+
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://prod.test/api/local-dev/logins/revoke');
+    }
+
+    public function test_a_core_without_local_logins_says_so(): void
+    {
+        $this->fakeCore([['login_token' => 'login-1']]);
+        $this->artisan('core:pull --login')->assertSuccessful();
+        Cache::flush();
+        Http::swap(new Factory);
+        Http::fake(['prod.test/oauth/token' => Http::response(['error' => 'unsupported_grant_type'], 400)]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('no local development logins')->assertFailed();
+
+        $this->assertNotNull(RemoteCoreLogin::stored('https://prod.test', 'site-client'));
     }
 
     public function test_the_cp_link_points_at_the_remote_core_once_logged_in(): void

@@ -52,10 +52,12 @@ class PullSnapshotsCommand extends Command
         $baseUrl = (string) ($source['base_url'] ?? '');
         $clientId = (string) ($source['client_id'] ?? '');
 
+        $tokenKey = (string) ($source['token_cache_key'] ?? 'core_web_remote_access_token');
+
         if ($this->option('logout')) {
-            RemoteCoreLogin::stored($baseUrl, $clientId)?->logout();
+            RemoteCoreLogin::any()?->logout();
             RemoteCoreLogin::forget();
-            Cache::forget((string) ($source['token_cache_key'] ?? 'core_web_remote_access_token'));
+            Cache::forget($tokenKey);
             $this->info('Logged out of the remote Core on this machine.');
 
             return self::SUCCESS;
@@ -68,6 +70,18 @@ class PullSnapshotsCommand extends Command
         }
 
         $secret = (string) ($source['client_secret'] ?? '');
+
+        if ($secret === '' || $this->option('login')) {
+            if (! RemoteCoreLogin::secure($baseUrl)) {
+                $this->error('remote.base_url must be https (or a .test or localhost Core): the login reads as the site.');
+
+                return self::FAILURE;
+            }
+
+            // A token cached for an earlier login or for the secret's client is not this login's.
+            Cache::forget($tokenKey);
+        }
+
         $login = $secret === '' || $this->option('login') ? $this->login($baseUrl, $clientId) : null;
 
         if ($secret === '' && $login === null) {
@@ -84,7 +98,7 @@ class PullSnapshotsCommand extends Command
             'client_secret' => $login === null ? $secret : '',
             'login_token' => $login?->token() ?? '',
             'ca_bundle' => '',
-            'token_cache_key' => $source['token_cache_key'] ?? 'core_web_remote_access_token',
+            'token_cache_key' => $tokenKey,
         ])]);
 
         try {
@@ -148,6 +162,12 @@ class PullSnapshotsCommand extends Command
 
             return true;
         } catch (TokenRefused $e) {
+            if (str_contains($e->getMessage(), 'unsupported_grant_type')) {
+                $this->error('This Core has no local development logins yet. Update it, or set CORE_REMOTE_CLIENT_SECRET.');
+
+                return false;
+            }
+
             if ($e->status >= 400 && $e->status < 500) {
                 RemoteCoreLogin::forget();
                 $this->error('Core no longer accepts this machine\'s login (expired or revoked). Run `php please core:pull --login`.');
@@ -156,6 +176,10 @@ class PullSnapshotsCommand extends Command
             }
 
             $this->error($e->getMessage());
+
+            return false;
+        } catch (Throwable $e) {
+            $this->error('Could not reach the remote Core: '.$e->getMessage());
 
             return false;
         }
@@ -167,14 +191,14 @@ class PullSnapshotsCommand extends Command
             return;
         }
 
-        $opener = match (PHP_OS_FAMILY) {
-            'Darwin' => 'open',
-            'Windows' => 'start ""',
-            default => 'xdg-open',
-        };
-
         // Best effort: the link is printed either way.
-        @exec($opener.' '.escapeshellarg($url).' > /dev/null 2>&1 &');
+        if (PHP_OS_FAMILY === 'Windows') {
+            @pclose(@popen('start "" '.escapeshellarg($url), 'r'));
+
+            return;
+        }
+
+        @exec((PHP_OS_FAMILY === 'Darwin' ? 'open' : 'xdg-open').' '.escapeshellarg($url).' > /dev/null 2>&1 &');
     }
 
     private function pull(SnapshotRegistry $registry, SnapshotStore $store, string $type, string $host): int
