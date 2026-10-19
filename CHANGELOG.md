@@ -23,6 +23,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   gone), `canonical()` (a 301 to the document's own path, query string kept)
   and `render()` (Statamic's View with an optional cascade entry). Snapshots
   without `->pages()` are unchanged. See README → Pages.
+## v0.13.1
+
+- **Naming**: the website content protocol is now called the Statamic
+  connector API, matching Core's Statamic connector, in the README, config
+  comments and package description. The test-vector fixture moved to
+  `tests/fixtures/statamic-connector-api-v1-test-vectors.json`. Nothing on the
+  wire, in config keys or in the version numbers changes.
 
 ## v0.13.0
 
