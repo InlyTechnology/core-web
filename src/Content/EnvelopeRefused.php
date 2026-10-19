@@ -4,7 +4,7 @@ namespace Inly\CoreWeb\Content;
 
 use RuntimeException;
 
-/** An envelope that did not open, and the reason the protocol names for it. */
+/** An envelope that did not open, and the reason the Statamic connector API names for it. */
 class EnvelopeRefused extends RuntimeException
 {
     public const MISSING = 'missing';
