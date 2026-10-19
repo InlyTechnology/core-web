@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use Inly\CoreWeb\Media\LayeredAdapter;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\Push\AssetPusher;
@@ -102,7 +103,7 @@ class MediaPushTest extends TestCase
         File::put($this->root.'/remote/'.$path, $contents);
     }
 
-    private function upload(string $path, string $contents, ?string $sha = null): \Illuminate\Testing\TestResponse
+    private function upload(string $path, string $contents, ?string $sha = null): TestResponse
     {
         return $this->post('/!/core-web/sync/assets', [
             'container' => 'assets',
