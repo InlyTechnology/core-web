@@ -85,11 +85,11 @@ class MediaDisksTest extends TestCase
         $this->assertSame('s3', $disk['lower']['driver']);
     }
 
-    public function test_writes_everywhere_turns_the_layer_off(): void
+    public function test_before_launch_staging_writes_the_bucket_and_a_laptop_keeps_its_layer(): void
     {
-        $disk = $this->define('staging', [...$this->withKey(), 'core-web.media.writes.everywhere' => 'true']);
-
-        $this->assertSame('s3', $disk['driver']);
+        $this->assertSame('s3', $this->define('staging', [...$this->withKey(), 'core-web.media.launched' => false])['driver']);
+        $this->assertSame('s3', $this->define('production', [...$this->withKey(), 'core-web.media.launched' => false])['driver']);
+        $this->assertSame(MediaDisks::LAYERED_DRIVER, $this->define('local', [...$this->withKey(), 'core-web.media.launched' => false])['driver']);
     }
 
     public function test_a_disk_the_app_defines_is_left_alone(): void

@@ -136,7 +136,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
 | `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
 | `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
-| `media.writes.everywhere` | `false` | Outside production, write the bucket directly instead of a layer |
+| `media.launched` | `true` | Whether the site is live. `false` (while it is built) lets every server but `local` write the bucket directly, so staging edits content without the layer; flip it at go-live |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
 | `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
@@ -832,6 +832,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 | Where | With `CORE_MEDIA_KEY` | Without |
 |---|---|---|
 | production | the bucket | the local folder `public/<folder>` |
+| staging, before launch (`launched` false) | the bucket | the local folder |
 | anywhere else | the bucket, behind a layer | the local folder |
 
 The layer is what makes the shared bucket safe outside production. Writes,
@@ -839,8 +840,15 @@ edits (an asset's `.meta` included) and deletes land in it, reads try it
 first, and a file only the bucket holds cannot be deleted or moved: staging
 and a laptop see production's files and never change them. On staging the
 layer is `_staging/` in the bucket; in the `local` environment it is
-`public/media-layer/` (add it to `.gitignore`). `media.writes.everywhere`
-turns it off.
+`public/media-layer/` (add it to `.gitignore`).
+
+The layer starts at launch. While a site is built there is no production
+content to protect, and staging (or the production server on a temporary
+domain) is where editors build it, so a site commits `'launched' => false`
+and every server but `local` writes the bucket directly. Going live is one
+commit flipping it to `true`: staging gets its layer from then on, and what
+it uploaded before is already in the bucket at the paths production serves,
+so nothing is copied.
 
 Refusals are loud: deleting, renaming or moving one of production's files
 throws `ProductionFileLocked` whatever the disk's `throw`, so Statamic stops

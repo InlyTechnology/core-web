@@ -350,12 +350,14 @@ return [
     | folder it lives in, in the bucket and locally (public/<folder>). Leave
     | out disks Statamic addons hardcode as local (favicons, social_images).
     |
-    | writes: outside production a disk never writes the bucket's own files.
-    | Writes, edits and deletes land in a layer in front of it, and reads try
-    | the layer first: `layer.prefix` in the bucket (staging), or the local
-    | folder `layer.local` (the `local` environment). Files that are only in
-    | the bucket cannot be deleted or moved there. `writes.everywhere` true
-    | turns the layer off and writes the bucket directly.
+    | launched: once the site is live, a disk outside production never writes
+    | the bucket's own files. Writes, edits and deletes land in a layer in
+    | front of it, and reads try the layer first: `layer.prefix` in the bucket
+    | (staging), or the local folder `layer.local` (the `local` environment).
+    | Files that are only in the bucket cannot be deleted or moved there.
+    | Before launch (`launched` false) there is no production content to
+    | protect, so every server writes the bucket directly, staging included;
+    | the `local` environment keeps its layer. Flip it at go-live.
     |
     | images: the defaults <x-core-img> renders with. `glide_presets` is the
     | srcset of a site without a CDN: its `w<px>` Glide presets, which
@@ -386,9 +388,7 @@ return [
         'disks' => [
             'assets' => 'assets',
         ],
-        'writes' => [
-            'everywhere' => false,
-        ],
+        'launched' => true,
         'layer' => [
             'prefix' => '_staging',
             'local' => 'media-layer',
