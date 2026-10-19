@@ -11,7 +11,7 @@ use stdClass;
 
 /**
  * Opens an envelope Core sealed for this site with its own Ed25519 key, as
- * the website content protocol v1.1 specifies (Opening, steps 1 to 11, and
+ * the Statamic connector API v1.1 specifies (Opening, steps 1 to 11, and
  * What a site checks). The site's app client id is the audience; every call
  * names the purpose its endpoint takes, and a draft or publish must also come
  * from a Core in the site's own environment.

@@ -179,7 +179,7 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootChecks();
         }
 
-        // Protocol v1.2: Core reads the checks and proposes, where the site speaks the protocol.
+        // Statamic connector API v1.2: Core reads the checks and proposes, where the site speaks the API.
         if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
         }

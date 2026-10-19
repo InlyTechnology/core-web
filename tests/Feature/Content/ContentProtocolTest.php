@@ -17,7 +17,7 @@ use Statamic\Facades\Nav;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
-/** Protocol v1.2: Core reads a site's checks and proposal targets, and asks for fixes and proposals for a person. */
+/** Statamic connector API v1.2: Core reads a site's checks and proposal targets, and asks for fixes and proposals for a person. */
 class ContentProtocolTest extends TestCase
 {
     use FakesCore;
