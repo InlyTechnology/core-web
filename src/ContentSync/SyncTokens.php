@@ -12,8 +12,8 @@ use Statamic\Contracts\Auth\User;
  * The tokens machines pull (and push) this site's content with, each acting
  * as the CMS user who approved it. A token is opaque and random, and stored
  * only as its sha256, one JSON file each on a filesystem disk
- * (core-web.content_sync.tokens), since many Statamic sites have no database;
- * a host whose disk does not outlive a deploy names a bucket. Its lifetime
+ * (core-web.content_sync.tokens), since many Statamic sites have no database:
+ * a private local folder unless the site names a disk. Its lifetime
  * slides: every use pushes the expiry `token_days` out again.
  */
 class SyncTokens
@@ -28,10 +28,20 @@ class SyncTokens
     public static function fromConfig(): self
     {
         return new self(
-            Storage::disk(config('core-web.content_sync.tokens.disk') ?: null),
+            self::disk(config('core-web.content_sync.tokens.disk')),
             trim((string) config('core-web.content_sync.tokens.path', 'core-web/sync-tokens'), '/'),
             max(1, (int) config('core-web.content_sync.token_days', 30)),
         );
+    }
+
+    /** Not the default disk: on many hosts that is a public bucket, and a token's file names its hash and user. */
+    private static function disk(mixed $name): Filesystem
+    {
+        if (is_string($name) && $name !== '') {
+            return Storage::disk($name);
+        }
+
+        return Storage::build(['driver' => 'local', 'root' => storage_path('app/private'), 'visibility' => 'private', 'throw' => false]);
     }
 
     /** @return array{0: string, 1: SyncToken} the token, shown once, and what is kept of it */

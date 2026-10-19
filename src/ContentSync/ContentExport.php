@@ -7,8 +7,11 @@ use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Structures\CollectionTreeRepository;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\GlobalVariables;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
+use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
 
 /**
@@ -18,13 +21,19 @@ use Statamic\Facades\Term;
  * Statamic's repositories, so it reads the same from flat files as from the
  * Eloquent driver, and each item's `contents` is what the Stache writes for
  * it (`fileContents()`), at the path the default stores lay it out under
- * content/. Only what the user may view is in it. Blueprints, fieldsets,
+ * content/. Only what the user may view is in it, and each page says which
+ * scopes that is all of. Blueprints, fieldsets,
  * config, users, submissions and assets are not content to sync.
  */
 class ContentExport
 {
     /**
-     * @return array{data: list<array{type: string, id: string, path: string, contents: string, hash: string}>, next_cursor: ?string}
+     * A page of items, with what it covers: the handles and sites whose every
+     * item the user may view, so a pull deletes a missing file only there.
+     * `covers_all` stands for every scope there is, even one the site no
+     * longer has; it holds for a super user while no item was held back.
+     *
+     * @return array{data: list<array{type: string, id: string, path: string, contents: string, hash: string}>, next_cursor: ?string, covers_all: bool, covers: list<array{handle: string, site: ?string}>}
      */
     public function page(User $user, string $type, ?string $handle, ?string $site, int $offset, int $size): array
     {
@@ -32,15 +41,83 @@ class ContentExport
 
         $candidates = $this->candidates($type, $handle, $site, $offset, $size + 1);
         $more = count($candidates) > $size;
+        $covers = $this->scopes($user, $type, $handle, $site);
+        $all = $user->isSuper();
+        $data = [];
 
-        $data = collect(array_slice($candidates, 0, $size))
-            ->filter(fn (array $item) => $user->can('view', $item['permission']))
-            ->map(fn (array $item) => $this->item($type, $item))
-            ->filter()
-            ->values()
-            ->all();
+        foreach (array_slice($candidates, 0, $size) as $candidate) {
+            $path = ContentPaths::relative($type, (string) $candidate['item']->path());
+            $scope = $path === null ? null : ContentPaths::parse($type, $path);
 
-        return ['data' => $data, 'next_cursor' => $more ? (string) ($offset + $size) : null];
+            if ($scope !== null && $this->allowed($user, $type, $scope['handle'], $scope['site']) && $user->can('view', $candidate['permission'])) {
+                $data[] = $this->item($type, $candidate, $path);
+
+                continue;
+            }
+
+            // A policy held back an item its scope's permissions allow: that scope is no longer whole.
+            if ($scope !== null) {
+                $all = false;
+                $covers = array_values(array_filter($covers, fn (array $cover) => $cover !== $scope));
+            }
+        }
+
+        return ['data' => $data, 'next_cursor' => $more ? (string) ($offset + $size) : null, 'covers_all' => $all, 'covers' => $covers];
+    }
+
+    /**
+     * The scopes of a type the user may read in full, by the permissions alone.
+     *
+     * @return list<array{handle: string, site: ?string}>
+     */
+    private function scopes(User $user, string $type, ?string $handle, ?string $site): array
+    {
+        $handles = match ($type) {
+            'entries', 'collection-trees' => Collection::handles(),
+            'terms' => Taxonomy::handles(),
+            'globals' => GlobalSet::all()->map->handle(),
+            'nav-trees' => Nav::all()->map->handle(),
+        };
+
+        $sites = $type === 'terms' ? [null] : Site::all()->keys()->all();
+        $scopes = [];
+
+        foreach (collect($handles)->map(fn ($each) => (string) $each)->filter(fn (string $each) => $handle === null || $each === $handle) as $each) {
+            foreach ($sites as $siteHandle) {
+                if (($site === null || $siteHandle === null || $siteHandle === $site) && $this->allowed($user, $type, $each, $siteHandle)) {
+                    $scopes[] = ['handle' => $each, 'site' => $siteHandle];
+                }
+            }
+        }
+
+        return $scopes;
+    }
+
+    /**
+     * Whether the user may view every item in a scope, read from the
+     * permissions Statamic's own policies check. A permission a policy would
+     * also accept but this does not list only makes a pull keep files.
+     */
+    private function allowed(User $user, string $type, string $handle, ?string $site): bool
+    {
+        if ($user->isSuper()) {
+            return true;
+        }
+
+        if ($site !== null) {
+            $siteObject = Site::get($site);
+
+            if ($siteObject === null || ! $user->can('view', $siteObject)) {
+                return false;
+            }
+        }
+
+        return $user->hasPermission(match ($type) {
+            'entries', 'collection-trees' => "view {$handle} entries",
+            'terms' => "view {$handle} terms",
+            'globals' => "edit {$handle} globals",
+            'nav-trees' => "view {$handle} nav",
+        });
     }
 
     /**
@@ -135,16 +212,10 @@ class ContentExport
 
     /**
      * @param  array{id: string, item: object, permission: object}  $candidate
-     * @return array{type: string, id: string, path: string, contents: string, hash: string}|null
+     * @return array{type: string, id: string, path: string, contents: string, hash: string}
      */
-    private function item(string $type, array $candidate): ?array
+    private function item(string $type, array $candidate, string $path): array
     {
-        $path = ContentPaths::relative($type, (string) $candidate['item']->path());
-
-        if ($path === null) {
-            return null;
-        }
-
         $contents = (string) $candidate['item']->fileContents();
 
         return ['type' => $type, 'id' => $candidate['id'], 'path' => $path, 'contents' => $contents, 'hash' => hash('sha256', $contents)];

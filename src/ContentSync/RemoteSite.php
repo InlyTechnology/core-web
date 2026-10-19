@@ -16,7 +16,8 @@ use Throwable;
  * personal token acting as the developer's CMS user, got by approving the
  * machine in the site's CP (`content:login`). The login is kept in
  * storage/core-web/remote-site.json, readable by this user only. Every call
- * sends it as the bearer; a 401 forgets it and throws RemoteLoginNeeded.
+ * sends it as the bearer and follows no redirect; the sync endpoints' own 401
+ * forgets it and throws RemoteLoginNeeded.
  */
 final class RemoteSite
 {
@@ -39,26 +40,32 @@ final class RemoteSite
     /** This machine's stored login to the configured site; null when there is none, it expired, or it was made for another URL. */
     public static function fromStorage(): ?self
     {
+        $site = self::stored();
+
+        if ($site === null || $site->url !== self::configuredUrl() || $site->expiresAt?->isPast()) {
+            return null;
+        }
+
+        return $site;
+    }
+
+    /** Whatever login is stored, for whichever URL and however old: what signing out revokes. */
+    public static function stored(): ?self
+    {
         $file = self::loginFile();
+        $data = is_file($file) && is_readable($file) ? json_decode((string) file_get_contents($file), true) : null;
 
-        if (! is_file($file)) {
+        if (! is_array($data) || ! is_string($data['token'] ?? null) || ! is_string($data['url'] ?? null) || rtrim($data['url'], '/') === '') {
             return null;
         }
 
-        $data = json_decode((string) file_get_contents($file), true);
-
-        if (! is_array($data) || ! is_string($data['token'] ?? null) || ! is_string($data['url'] ?? null)) {
-            return null;
+        try {
+            $expiresAt = blank($data['expires_at'] ?? null) ? null : CarbonImmutable::parse($data['expires_at']);
+        } catch (Throwable) {
+            $expiresAt = null;
         }
 
-        $url = rtrim($data['url'], '/');
-        $expiresAt = blank($data['expires_at'] ?? null) ? null : CarbonImmutable::parse($data['expires_at']);
-
-        if ($url === '' || $url !== self::configuredUrl() || $expiresAt?->isPast()) {
-            return null;
-        }
-
-        return new self($url, $data['token'], [
+        return new self(rtrim($data['url'], '/'), $data['token'], [
             'name' => (string) ($data['user']['name'] ?? ''),
             'email' => (string) ($data['user']['email'] ?? ''),
         ], $expiresAt);
@@ -85,13 +92,15 @@ final class RemoteSite
 
     /**
      * A request to a site with no login yet, for the device flow: JSON,
-     * timeouts, and HTTPS unless the site is a local one.
+     * timeouts, HTTPS unless the site is a local one, and no redirects, which
+     * would carry the bearer token or the device code to another host.
      */
     public static function anonymous(string $url): PendingRequest
     {
         self::assertSecure($url);
 
         return Http::baseUrl(rtrim($url, '/'))
+            ->withoutRedirecting()
             ->acceptJson()
             ->asJson()
             ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
@@ -121,9 +130,36 @@ final class RemoteSite
         throw new RemoteSiteError("The remote site [{$url}] must be an https:// URL (core-web.content_sync.remote_url).");
     }
 
+    /**
+     * Turns an answer a sync cannot use into a RemoteSiteError that says why:
+     * a redirect (remote_url names the wrong address) or a rate limit.
+     *
+     * @throws RemoteSiteError
+     */
+    public static function assertUsable(string $url, Response $response, string $requested = ''): void
+    {
+        if ($response->redirect()) {
+            $location = $response->header('Location');
+
+            throw new RemoteSiteError("core-web.content_sync.remote_url [{$url}] redirects to ".($location === '' ? 'another address' : '['.self::landing($location, $requested).']').'; set that URL instead.');
+        }
+
+        if ($response->status() === 429) {
+            $retry = $response->header('Retry-After');
+
+            throw new RemoteSiteError("{$url} is rate limiting this machine (HTTP 429)".(ctype_digit($retry) ? "; try again in {$retry} seconds" : '; try again in a minute').'.');
+        }
+    }
+
     public function url(): string
     {
         return $this->url;
+    }
+
+    /** The bearer token, for a client of the sync endpoints beside this one (a push transport). */
+    public function token(): string
+    {
+        return $this->token;
     }
 
     /** @return array{name: string, email: string} the CMS user this machine acts as */
@@ -147,7 +183,7 @@ final class RemoteSite
      */
     public function get(string $path, array $query = []): Response
     {
-        return $this->send(fn (PendingRequest $request) => $request->get($this->path($path), $query));
+        return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => $request->get($endpoint, $query));
     }
 
     /**
@@ -157,34 +193,51 @@ final class RemoteSite
      */
     public function post(string $path, array $data = []): Response
     {
-        return $this->send(fn (PendingRequest $request) => $request->post($this->path($path), $data));
+        return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => $request->post($endpoint, $data));
     }
 
     /** Revokes this machine's token on the site and forgets it here; the site being unreachable still forgets it here. */
-    public function logout(): void
+    public function logout(): bool
     {
         try {
-            $this->post('logout');
-        } catch (RemoteSiteError) {
-            // Signed out here either way; the token expires on the site unused, or is revoked in the CP.
+            return $this->revoke();
         } finally {
             self::forget();
         }
     }
 
-    /** @param  callable(PendingRequest): Response  $call */
-    private function send(callable $call): Response
+    /** Revokes the token on the site, keeping whatever is stored here; false when the site could not be told (a token it already refuses counts as revoked). */
+    public function revoke(): bool
     {
         try {
-            $response = $call(self::anonymous($this->url)->withToken($this->token));
+            return $this->post('logout')->successful();
+        } catch (RemoteLoginNeeded) {
+            return true;
+        } catch (RemoteSiteError) {
+            // The token then expires on the site unused, or is revoked in the CP.
+            return false;
+        }
+    }
+
+    /** @param  callable(PendingRequest, string): Response  $call */
+    private function send(string $endpoint, callable $call): Response
+    {
+        try {
+            $response = $call(self::anonymous($this->url)->withToken($this->token), $endpoint);
         } catch (ConnectionException $e) {
             throw new RemoteSiteError("Could not reach {$this->url}: {$e->getMessage()}", previous: $e);
         }
 
-        if ($response->status() === 401) {
+        self::assertUsable($this->url, $response, $endpoint);
+
+        if ($response->status() === 401 && $response->json('error') === AuthenticateSyncToken::REFUSED) {
             self::forget();
 
             throw new RemoteLoginNeeded($this->url);
+        }
+
+        if ($response->status() === 401) {
+            throw new RemoteSiteError("{$this->url} answered HTTP 401 from in front of its sync endpoints (basic auth on a staging host?); this machine's login is kept.");
         }
 
         $this->keepExpiry($response);
@@ -213,6 +266,20 @@ final class RemoteSite
 
         $this->expiresAt = $expiresAt;
         $this->save();
+    }
+
+    /** The remote_url a redirect points at: the location without the endpoint path it was sent to, or its origin. */
+    private static function landing(string $location, string $requested): string
+    {
+        $parts = parse_url($location) ?: [];
+        $path = (string) ($parts['path'] ?? '');
+        $origin = isset($parts['scheme'], $parts['host']) ? $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '') : '';
+
+        if ($requested !== '' && str_ends_with($path, $requested)) {
+            return rtrim($origin.substr($path, 0, -strlen($requested)), '/');
+        }
+
+        return $origin !== '' ? $origin : $location;
     }
 
     private function path(string $path): string

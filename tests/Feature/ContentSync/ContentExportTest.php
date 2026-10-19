@@ -2,9 +2,11 @@
 
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\ContentSync\ContentPaths;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -26,9 +28,10 @@ class ContentExportTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+        config(['core-web.content_sync.tokens.disk' => 'local']);
         $this->roles([
-            'editor' => ['access cp', 'view pages entries', 'access default site', 'access other site'],
-            'globals' => ['access cp', 'edit settings globals', 'view main nav', 'access default site', 'access other site'],
+            'editor' => ['access cp', 'pull content', 'view pages entries', 'access default site', 'access other site'],
+            'globals' => ['access cp', 'pull content', 'edit settings globals', 'view main nav', 'access default site', 'access other site'],
         ]);
     }
 
@@ -201,5 +204,37 @@ class ContentExportTest extends TestCase
         $this->assertNull(ContentPaths::parse('entries', 'globals/default/settings.yaml'));
         $this->assertNull(ContentPaths::parse('globals', 'globals/settings.yaml'), 'A global set\'s own file is config, never synced.');
         $this->assertSame(['handle' => 'settings', 'site' => 'other'], ContentPaths::parse('globals', 'globals/other/settings.yaml'));
+    }
+
+    public function test_each_page_says_what_it_covers(): void
+    {
+        config(['statamic.system.multisite' => true]);
+        $this->content(['default', 'other']);
+        $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries', 'access default site']]);
+        $editor = $this->tokenFor($this->cmsUser('ann@example.com', roles: ['editor']));
+        $boss = $this->tokenFor($this->cmsUser('boss@example.com', super: true));
+
+        $page = $this->export($editor, 'type=entries');
+        $this->assertFalse($page['covers_all']);
+        $this->assertSame([['handle' => 'pages', 'site' => 'default']], $page['covers'], 'Not the other site, nor a collection the user may not view.');
+        $this->assertSame(['collections/pages/default/draft.md', 'collections/pages/default/home.md'], collect($page['data'])->pluck('path')->sort()->values()->all());
+
+        $this->assertSame([], $this->export($editor, 'type=globals')['covers']);
+        $this->assertTrue($this->export($boss, 'type=entries')['covers_all']);
+        $this->assertSame([['handle' => 'tags', 'site' => null]], $this->export($boss, 'type=terms&handle=tags')['covers']);
+    }
+
+    public function test_an_item_a_policy_holds_back_takes_its_scope_out_of_what_a_page_covers(): void
+    {
+        $this->content(['default']);
+        $boss = $this->tokenFor($this->cmsUser('boss@example.com', super: true));
+        Gate::before(fn ($user, string $ability, array $arguments) => $ability === 'view' && ($arguments[0] ?? null) instanceof EntryContract && $arguments[0]->slug() === 'plan' ? false : null);
+
+        $page = $this->export($boss, 'type=entries');
+
+        $this->assertFalse($page['covers_all']);
+        $this->assertContains(['handle' => 'pages', 'site' => 'default'], $page['covers']);
+        $this->assertNotContains(['handle' => 'secrets', 'site' => 'default'], $page['covers']);
+        $this->assertNotContains('collections/secrets/plan.md', collect($page['data'])->pluck('path')->all());
     }
 }

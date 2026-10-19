@@ -8,6 +8,7 @@ use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Auth\PermissionCache;
 use Statamic\Facades\CP\Nav as CpNav;
+use Statamic\Facades\Permission;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class SyncAuthTest extends TestCase
@@ -22,7 +23,8 @@ class SyncAuthTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
-        $this->roles(['editor' => ['access cp', 'view pages entries']]);
+        config(['core-web.content_sync.tokens.disk' => 'local']);
+        $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries']]);
     }
 
     private function startLogin(string $machine = 'ann@laptop'): array
@@ -48,7 +50,9 @@ class SyncAuthTest extends TestCase
         $this->poll($device['device_code'])->assertStatus(400)->assertExactJson(['error' => 'authorization_pending']);
 
         $ann = $this->cmsUser('ann@example.com', roles: ['editor']);
-        $this->actingAs($ann)->get($device['verification_uri_complete'])->assertOk()->assertSee('Allow ann@laptop to pull')->assertSee($device['user_code']);
+        $this->actingAs($ann)->get($device['verification_uri_complete'])->assertOk()
+            ->assertSee('calls itself “ann@laptop” to pull', false)->assertSee($device['user_code'])->assertSee('Requested from 127.0.0.1')
+            ->assertHeader('X-Frame-Options', 'DENY')->assertHeader('Content-Security-Policy', "frame-ancestors 'none'");
         $this->actingAs($ann)->post(cp_route('core-web.sync.approve'), ['code' => strtolower(str_replace('-', '', $device['user_code']))])->assertOk()->assertSee('Approved');
 
         $this->travel(6)->seconds();
@@ -111,7 +115,7 @@ class SyncAuthTest extends TestCase
         $this->withToken($token)->getJson('/!/core-web/sync/export?type=entries')->assertOk();
 
         $this->travel(31)->days();
-        $this->withToken($token)->getJson('/!/core-web/sync/export?type=entries')->assertUnauthorized()->assertJsonPath('error', 'unauthenticated');
+        $this->withToken($token)->getJson('/!/core-web/sync/export?type=entries')->assertUnauthorized()->assertJsonPath('error', AuthenticateSyncToken::REFUSED);
         $this->assertSame([], app(SyncTokens::class)->all());
     }
 
@@ -184,7 +188,7 @@ class SyncAuthTest extends TestCase
         $this->postJson('http://example.com/!/core-web/sync/device', ['machine' => 'x'])->assertForbidden();
 
         $this->withToken($token)->getJson('https://example.com/!/core-web/sync/export?type=entries')->assertOk();
-        $this->withToken($token)->getJson('http://example.test/!/core-web/sync/export?type=entries')->assertOk();
+        $this->withToken($token)->getJson('http://example.test/!/core-web/sync/export?type=entries')->assertForbidden();
     }
 
     public function test_a_local_site_is_nobody_s_remote_unless_it_says_so(): void
@@ -227,5 +231,45 @@ class SyncAuthTest extends TestCase
         $items = CpNav::build()->flatMap(fn (array $section) => $section['items'])->map->display()->all();
 
         $this->assertContains('Content sync', $items);
+    }
+
+    public function test_approving_and_using_a_token_needs_the_pull_content_permission(): void
+    {
+        $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries'], 'viewer' => ['access cp', 'view pages entries']]);
+        $viewer = $this->cmsUser('vic@example.com', roles: ['viewer']);
+        $device = $this->startLogin();
+
+        $this->actingAs($viewer)->get($device['verification_uri_complete'])->assertForbidden();
+        $this->actingAs($viewer)->post(cp_route('core-web.sync.approve'), ['code' => $device['user_code']])->assertForbidden();
+        $this->poll($device['device_code'])->assertJsonPath('error', 'authorization_pending');
+
+        $this->withToken($this->tokenFor($viewer))->getJson('/!/core-web/sync/export?type=entries')->assertUnauthorized();
+        $this->withToken($this->tokenFor($this->cmsUser('boss@example.com', super: true)))->getJson('/!/core-web/sync/export?type=entries')->assertOk();
+        $this->assertContains(AuthenticateSyncToken::PERMISSION, Permission::all()->map->value()->all());
+    }
+
+    public function test_starting_a_login_has_a_limit_of_its_own(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('ann@example.com', roles: ['editor']));
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->startLogin();
+        }
+
+        $this->postJson('/!/core-web/sync/device', ['machine' => 'ann@laptop'])->assertStatus(429);
+        $this->withToken($token)->getJson('/!/core-web/sync/export?type=entries')->assertOk();
+    }
+
+    public function test_tokens_default_to_a_private_local_folder(): void
+    {
+        config(['core-web.content_sync.tokens.disk' => null]);
+        $tokens = SyncTokens::fromConfig();
+        [, $record] = $tokens->issue($this->cmsUser('ann@example.com', roles: ['editor']), 'ann@laptop');
+
+        try {
+            $this->assertFileExists(storage_path('app/private/core-web/sync-tokens/'.$record->hash.'.json'));
+        } finally {
+            $tokens->revoke($record);
+        }
     }
 }

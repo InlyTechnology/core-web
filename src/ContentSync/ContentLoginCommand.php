@@ -33,6 +33,7 @@ class ContentLoginCommand extends Command
 
         try {
             $device = RemoteSite::anonymous($url)->post(RemoteSite::endpoint('device'), ['machine' => self::machine()]);
+            RemoteSite::assertUsable($url, $device, RemoteSite::endpoint('device'));
         } catch (RemoteSiteError $e) {
             $this->error($e->getMessage());
 
@@ -71,7 +72,25 @@ class ContentLoginCommand extends Command
                 continue;
             }
 
+            if ($answer->status() === 429) {
+                $retry = $answer->header('Retry-After');
+                $interval = max($interval + 5, ctype_digit($retry) ? (int) $retry : 0);
+                $this->warn("{$url} is rate limiting this machine (HTTP 429); checking every {$interval} seconds now.");
+
+                continue;
+            }
+
+            try {
+                RemoteSite::assertUsable($url, $answer, RemoteSite::endpoint('token'));
+            } catch (RemoteSiteError $e) {
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
+
             if ($answer->successful() && is_string($answer->json('token'))) {
+                // A machine has one login: the one it replaces stops working on its site too, not only here.
+                RemoteSite::stored()?->revoke();
                 $site = RemoteSite::store($url, $answer->json('token'), (array) $answer->json('user'), $answer->json('expires_at'));
                 $this->info('Signed in to '.$url.' as '.($site->user()['name'] ?: $site->user()['email']).'.');
 

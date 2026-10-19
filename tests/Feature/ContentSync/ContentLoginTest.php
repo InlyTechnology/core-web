@@ -148,4 +148,54 @@ class ContentLoginTest extends TestCase
 
         $this->assertSame('2031-05-01', RemoteSite::fromStorage()->expiresAt()->toDateString());
     }
+
+    public function test_logging_out_revokes_a_login_made_for_another_url(): void
+    {
+        RemoteSite::store('https://old.test', 'cws_'.str_repeat('a', 48), ['name' => 'Ann', 'email' => 'ann@example.com'], now()->subDay()->toIso8601String());
+        Http::fake(['old.test/!/core-web/sync/logout' => Http::response(['status' => 'revoked'])]);
+
+        $this->artisan('content:logout')->expectsOutputToContain('Signed out of https://old.test')->assertSuccessful();
+
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://old.test/!/core-web/sync/logout');
+        $this->assertFileDoesNotExist(RemoteSite::loginFile());
+    }
+
+    public function test_logging_out_says_when_the_site_was_not_told(): void
+    {
+        RemoteSite::store('https://remote.test', 'cws_'.str_repeat('a', 48), ['name' => 'Ann', 'email' => 'ann@example.com'], null);
+        Http::fake(['*' => Http::response('down', 503)]);
+
+        $this->artisan('content:logout')->expectsOutputToContain('could not be told')->assertSuccessful();
+        $this->assertFileDoesNotExist(RemoteSite::loginFile());
+
+        file_put_contents(RemoteSite::loginFile(), '{not json');
+        $this->artisan('content:logout')->expectsOutputToContain('could not be read')->assertSuccessful();
+        $this->assertFileDoesNotExist(RemoteSite::loginFile());
+    }
+
+    public function test_a_new_login_revokes_the_one_it_replaces(): void
+    {
+        RemoteSite::store('https://remote.test', 'cws_'.str_repeat('o', 48), ['name' => 'Ann', 'email' => 'ann@example.com'], null);
+        Http::fake([
+            'remote.test/!/core-web/sync/device' => Http::response($this->device()),
+            'remote.test/!/core-web/sync/token' => Http::response(['token' => 'cws_'.str_repeat('n', 48), 'expires_at' => null, 'user' => ['name' => 'Ann', 'email' => 'ann@example.com']]),
+            'remote.test/!/core-web/sync/logout' => Http::response(['status' => 'revoked']),
+        ]);
+
+        $this->artisan('content:login', ['--no-interaction' => true])->assertSuccessful();
+
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/logout') && $request->hasHeader('Authorization', 'Bearer cws_'.str_repeat('o', 48)));
+        $this->assertSame('cws_'.str_repeat('n', 48), RemoteSite::fromStorage()->token());
+    }
+
+    public function test_a_redirecting_or_rate_limiting_site_is_named(): void
+    {
+        Http::fake(['remote.test/*' => Http::sequence()
+            ->push('', 302, ['Location' => 'https://www.remote.test/!/core-web/sync/device'])
+            ->push(['message' => 'Too Many Attempts.'], 429, ['Retry-After' => '30']),
+        ]);
+
+        $this->artisan('content:login', ['--no-interaction' => true])->expectsOutputToContain('redirects to [https://www.remote.test]; set that URL')->assertFailed();
+        $this->artisan('content:login', ['--no-interaction' => true])->expectsOutputToContain('rate limiting this machine (HTTP 429); try again in 30 seconds')->assertFailed();
+    }
 }

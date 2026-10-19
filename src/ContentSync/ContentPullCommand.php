@@ -12,15 +12,16 @@ use Statamic\Facades\Site;
  * the Stache writes, signed in as the developer's CMS user. content.lock
  * holds the hash of every file as last pulled, so a file the developer
  * changed since is left alone (and listed) unless --force, and a file the
- * site deleted goes only when it was not changed here either. The site's
- * asset index (AssetPull) is pulled beside it, replaced whole each time.
+ * site deleted goes only when it was not changed here either, and only in a
+ * scope the site says the developer may read in full. The site's asset
+ * index (AssetPull) is pulled beside it, replaced whole each time.
  */
 class ContentPullCommand extends Command
 {
     protected $signature = 'content:pull
         {--only= : Types to pull, comma separated, each optionally narrowed to a handle (entries:pages,globals,assets:assets); every type when omitted}
         {--site= : Only this site\'s content}
-        {--force : Overwrite or delete files changed here since the last pull}
+        {--force : Overwrite or delete files changed here since the last pull (or, on a first pull, since the last commit)}
         {--dry-run : Show what would change and write nothing}';
 
     protected $description = 'Pull the remote site\'s content (core-web.content_sync.remote_url) into content/';
@@ -62,12 +63,12 @@ class ContentPullCommand extends Command
         }
 
         $fetch = fn (RemoteSite $remote): array => [
-            $this->fetch($remote, $contentScopes, $site),
+            ...$this->fetch($local, $remote, $contentScopes, $site),
             array_map(fn ($container) => $assets->fetch($remote, $container), $containers),
         ];
 
         try {
-            [$items, $indexes] = $fetch($remote);
+            [$items, $coverage, $indexes] = $fetch($remote);
         } catch (RemoteLoginNeeded) {
             if (! $this->input->isInteractive() || $this->call('content:login') !== self::SUCCESS || ($remote = RemoteSite::fromStorage()) === null) {
                 $this->error('The remote site refused this machine\'s login: run php please content:login.');
@@ -76,7 +77,7 @@ class ContentPullCommand extends Command
             }
 
             try {
-                [$items, $indexes] = $fetch($remote);
+                [$items, $coverage, $indexes] = $fetch($remote);
             } catch (RemoteSiteError $e) {
                 $this->error($e->getMessage());
 
@@ -89,7 +90,7 @@ class ContentPullCommand extends Command
         }
 
         try {
-            $wrote = $contentScopes !== [] && $this->apply($local, $remote, $contentScopes, $site, $items);
+            $wrote = $contentScopes !== [] && $this->apply($local, $remote, $contentScopes, $site, $items, $coverage);
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
@@ -213,14 +214,17 @@ class ContentPullCommand extends Command
     /**
      * Every item the site exports in the scopes, by path, each path checked
      * before anything is written: one the type does not lay out there, or one
-     * with a way out of content/, stops the pull.
+     * with a way out of content/, stops the pull. Contents are kept only for
+     * a file that differs here, so an up-to-date pull holds hashes alone.
+     * With them, per scope, what every page agreed it covers.
      *
      * @param  list<array{type: string, handle: ?string}>  $scopes
-     * @return array<string, array{type: string, hash: string, contents: string}>
+     * @return array{0: array<string, array{type: string, hash: string, contents: ?string}>, 1: array<string, array{all: bool, scopes: list<array{handle: string, site: ?string}>}>}
      */
-    private function fetch(RemoteSite $remote, array $scopes, ?string $site): array
+    private function fetch(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site): array
     {
         $items = [];
+        $coverage = [];
 
         foreach ($scopes as $scope) {
             $cursor = '0';
@@ -241,6 +245,8 @@ class ContentPullCommand extends Command
                     throw new RemoteSiteError("{$remote->url()} answered HTTP {$response->status()} for {$scope['type']}: ".($response->json('message') ?? $response->json('error') ?? 'no reason given').'.');
                 }
 
+                $coverage[self::key($scope)] = self::narrow($coverage[self::key($scope)] ?? null, $response->json('covers_all'), $response->json('covers'));
+
                 foreach ($response->json('data') as $item) {
                     $path = is_array($item) ? ($item['path'] ?? null) : null;
                     $contents = is_array($item) ? ($item['contents'] ?? null) : null;
@@ -249,7 +255,8 @@ class ContentPullCommand extends Command
                         throw new RemoteSiteError("The site sent a {$scope['type']} item at [".(is_string($path) ? $path : '?').'], which is no path of its own inside content/; nothing was written.');
                     }
 
-                    $items[$path] = ['type' => $scope['type'], 'hash' => hash('sha256', $contents), 'contents' => $contents];
+                    $hash = hash('sha256', $contents);
+                    $items[$path] = ['type' => $scope['type'], 'hash' => $hash, 'contents' => self::localHash($local, $path) === $hash ? null : $contents];
                 }
 
                 $next = $response->json('next_cursor');
@@ -257,17 +264,62 @@ class ContentPullCommand extends Command
             }
         }
 
-        return $items;
+        return [$items, $coverage];
+    }
+
+    /** A path that leads out of content/ is refused when the plan is made, with the rest. */
+    private static function localHash(LocalContent $local, string $path): ?string
+    {
+        try {
+            return $local->hash($path);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
+     * What a scope's pages agree they cover: a page that holds an item back
+     * narrows it for the whole pull, and an answer without coverage covers nothing.
+     *
+     * @param  array{all: bool, scopes: list<array{handle: string, site: ?string}>}|null  $soFar
+     * @return array{all: bool, scopes: list<array{handle: string, site: ?string}>}
+     */
+    private static function narrow(?array $soFar, mixed $all, mixed $covers): array
+    {
+        $page = ['all' => $all === true, 'scopes' => []];
+
+        foreach (is_array($covers) ? $covers : [] as $cover) {
+            $site = is_array($cover) ? ($cover['site'] ?? null) : null;
+
+            if (is_array($cover) && is_string($cover['handle'] ?? null) && ($site === null || is_string($site))) {
+                $page['scopes'][] = ['handle' => $cover['handle'], 'site' => $site];
+            }
+        }
+
+        if ($soFar === null) {
+            return $page;
+        }
+
+        if ($page['all']) {
+            return $soFar;
+        }
+
+        if ($soFar['all']) {
+            return $page;
+        }
+
+        return ['all' => false, 'scopes' => array_values(array_filter($soFar['scopes'], fn (array $scope) => in_array($scope, $page['scopes'], true)))];
     }
 
     /**
      * @param  list<array{type: string, handle: ?string}>  $scopes
-     * @param  array<string, array{type: string, hash: string, contents: string}>  $items
+     * @param  array<string, array{type: string, hash: string, contents: ?string}>  $items
+     * @param  array<string, array{all: bool, scopes: list<array{handle: string, site: ?string}>}>  $coverage
      */
-    private function apply(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site, array $items): bool
+    private function apply(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site, array $items, array $coverage): bool
     {
         $lock = $local->lock()['items'];
-        $plan = ['new' => [], 'changed' => [], 'deleted' => [], 'skipped' => [], 'kept' => []];
+        $plan = ['new' => [], 'changed' => [], 'deleted' => [], 'skipped' => [], 'kept' => [], 'unread' => []];
         $writes = [];
         $deletes = [];
         $force = (bool) $this->option('force');
@@ -282,19 +334,26 @@ class ContentPullCommand extends Command
                 continue;
             }
 
-            if ($current !== null && $current !== $locked && ! $force) {
+            // No lock entry yet (a first pull): a file as the last commit has it was not changed here.
+            $changedHere = $current !== null && $current !== $locked && ! ($locked === null && $local->matchesCommitted($path));
+
+            // Contents are not kept for a file that matched while fetching; it changed here since.
+            if (($changedHere && ! $force) || $item['contents'] === null) {
                 $plan['skipped'][] = $path;
 
                 continue;
             }
 
+            $local->assertWritable($path);
             $plan[$current === null ? 'new' : 'changed'][] = $path;
             $writes[$path] = $item['contents'];
             $lock[$path] = $item['hash'];
         }
 
         foreach (array_keys($lock) as $path) {
-            if (isset($items[$path]) || ! $this->covers($scopes, $site, $path)) {
+            $scope = isset($items[$path]) ? null : $this->scopeOf($scopes, $site, $path);
+
+            if ($scope === null) {
                 continue;
             }
 
@@ -302,7 +361,11 @@ class ContentPullCommand extends Command
 
             if ($current === null) {
                 unset($lock[$path]);
+            } elseif (! self::readable($coverage[self::key($scope)] ?? null, $scope['type'], $path)) {
+                // Missing from the export may only mean hidden from this user: never a reason to delete.
+                $plan['unread'][] = $path;
             } elseif ($current === $lock[$path] || $force) {
+                $local->assertWritable($path);
                 $plan['deleted'][] = $path;
                 $deletes[] = $path;
                 unset($lock[$path]);
@@ -332,16 +395,39 @@ class ContentPullCommand extends Command
         return $writes !== [] || $deletes !== [];
     }
 
-    /** @param  list<array{type: string, handle: ?string}>  $scopes */
-    private function covers(array $scopes, ?string $site, string $path): bool
+    /**
+     * The pulled scope a locked path falls in; null when the pull does not cover it.
+     *
+     * @param  list<array{type: string, handle: ?string}>  $scopes
+     * @return array{type: string, handle: ?string}|null
+     */
+    private function scopeOf(array $scopes, ?string $site, string $path): ?array
     {
         foreach ($scopes as $scope) {
             if (ContentPaths::inScope($scope['type'], $path, $scope['handle'], $site)) {
-                return true;
+                return $scope;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    /** @param  array{all: bool, scopes: list<array{handle: string, site: ?string}>}|null  $coverage */
+    private static function readable(?array $coverage, string $type, string $path): bool
+    {
+        $parsed = ContentPaths::parse($type, $path);
+
+        if ($coverage === null || $parsed === null) {
+            return false;
+        }
+
+        return $coverage['all'] || in_array($parsed, $coverage['scopes'], true);
+    }
+
+    /** @param  array{type: string, handle: ?string}  $scope */
+    private static function key(array $scope): string
+    {
+        return $scope['type'].':'.$scope['handle'];
     }
 
     /** @param  array<string, list<string>>  $plan */
@@ -351,8 +437,9 @@ class ContentPullCommand extends Command
             'new' => 'New',
             'changed' => 'Changed',
             'deleted' => 'Deleted',
-            'skipped' => 'Skipped, changed here since the last pull (--force overwrites)',
+            'skipped' => 'Skipped, changed here since the last pull, or on a first pull since the last commit (--force overwrites)',
             'kept' => 'Kept, deleted on the site but changed here (--force deletes)',
+            'unread' => 'Kept, not in the export but in a part of the site you may not read in full',
         ];
 
         foreach ($labels as $key => $label) {

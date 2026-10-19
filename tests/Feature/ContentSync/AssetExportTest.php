@@ -36,7 +36,7 @@ class AssetExportTest extends TestCase
         AssetContainer::make('photos')->disk('photos')->save();
         AssetContainer::make('secret')->disk('secret')->save();
 
-        $this->roles(['photographer' => ['access cp', 'view photos assets']]);
+        $this->roles(['photographer' => ['access cp', 'pull content', 'view photos assets']]);
     }
 
     protected function tearDown(): void
