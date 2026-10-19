@@ -4,11 +4,15 @@ namespace Inly\CoreWeb\Media;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Filesystem\LocalFilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use InvalidArgumentException;
 use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter as LocalAdapter;
+use League\Flysystem\UnixVisibility\PortableVisibilityConverter;
+use League\Flysystem\Visibility;
 use Statamic\Contracts\Assets\Asset;
 use Throwable;
 
@@ -57,8 +61,8 @@ final class MediaDisks
     public static function registerDriver(): void
     {
         Storage::extend(self::LAYERED_DRIVER, function (Application $app, array $config): FilesystemAdapter {
-            $upper = Storage::build($config['upper']);
-            $lower = Storage::build($config['lower']);
+            $upper = self::build($config['upper']);
+            $lower = self::build($config['lower']);
 
             $adapter = new LayeredAdapter(
                 $upper->getAdapter(),
@@ -83,6 +87,28 @@ final class MediaDisks
 
             return new FilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
         });
+    }
+
+    /**
+     * A layer's disk; a lazy local root is built here, since Laravel 12's local driver creates its root eagerly.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function build(array $config): FilesystemAdapter
+    {
+        if (($config['driver'] ?? null) !== 'local' || ! ($config['lazy_root_creation'] ?? false)) {
+            return Storage::build($config);
+        }
+
+        $adapter = new LocalAdapter(
+            $config['root'],
+            PortableVisibilityConverter::fromArray($config['permissions'] ?? [], $config['directory_visibility'] ?? $config['visibility'] ?? Visibility::PRIVATE),
+            LOCK_EX,
+            LocalAdapter::DISALLOW_LINKS,
+            lazyRootCreation: true,
+        );
+
+        return new LocalFilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
     }
 
     /**
