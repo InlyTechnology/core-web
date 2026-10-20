@@ -98,8 +98,9 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
-| `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live |
-| `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally (see [Media](#media)) |
+| `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
+| `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
+| `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 CMS single sign-on is the site's own: Core seals its hand-offs with its own
@@ -143,7 +144,7 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
 | `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
 | `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
-| `media.layer.enabled` | `CORE_MEDIA_LAYER`, `true` | Outside production, keep production's files behind the layer. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
+| `media.layer.enabled` | `CORE_MEDIA_LAYER`, unset | Outside production, keep production's files behind the layer. Unset means on, except on a Laravel Cloud bucket. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
 | `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
@@ -964,8 +965,11 @@ field (its Value, Collection or query builder), a URL, or a file from Core
 - **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
   wide and 720px on phones (`width`, `small-width`), silent when it plays
   muted (`audio=false` makes them smaller), with a frame of the video as its
-  poster (`poster-time`, or `poster` for an image of your own). Anything else
-  plays the file itself. It autoplays muted in a loop by default: `:autoplay`,
+  poster (`poster-time`, or `poster` for an image of your own) and a 24px
+  version of that poster blurred behind it until the poster or the first
+  frame arrives (`placeholder="none"` turns it off; `media.images.placeholder`
+  sets the default for videos too). Anything else plays the
+  file itself. It autoplays muted in a loop by default: `:autoplay`,
   `:muted`, `:loop`, `controls`, `preload`.
 - **`<x-core-media>`**: one or the other, by the source, with each getting only
   its own options: for a field an editor fills with either.
@@ -1003,6 +1007,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 |---|---|---|
 | production | the bucket | the local folder `public/<folder>` |
 | staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
+| Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | n/a |
 | `local`, pulling content (`features.content_sync` and a `remote_url`) | the bucket, behind a layer | the live site's pulled index, behind a layer |
 | anywhere else | the bucket, behind a layer | the local folder |
 
@@ -1077,6 +1082,31 @@ block keeps the package's defaults for what it leaves out, one group deep
 Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
 `social_images`). For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
+
+### On Laravel Cloud
+
+With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
+the environment: the first entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` that
+is not a scoped disk gives the key, secret, bucket, endpoint and region. A
+key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
+them whatever config says. The files' URL is the committed `media.bucket.url`
+(the CDN's, so the components transform them), or the bucket's own URL when
+the site commits none, which serves files untransformed. A committed CDN
+URL must have this Cloud bucket as its origin, or new uploads land in one
+bucket while their URLs point at another.
+
+Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
+Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
+its bucket directly, as editors building the content need. A Cloud staging
+environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
+
+- Name the Cloud bucket's disk anything but a disk in `media.disks`
+  (`assets`, `files`): Cloud registers its disk before core-web, so a clash
+  leaves Cloud's plain disk in place of core-web's, and `media:check` reports
+  it as the app's own.
+- The first deploy copies the git-tracked images into the bucket with
+  `php artisan media:sync push --force`, on the Cloud credentials like any
+  other key.
 
 ### Commands
 

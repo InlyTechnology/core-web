@@ -136,16 +136,73 @@ final class MediaDisks
         return '/'.trim((string) config('statamic.routes.action', '!'), '/').'/core-web/media/'.$disk;
     }
 
-    /** Whether this server keeps production's files behind a layer: on, unless a server set up before go-live turns it off. */
+    /**
+     * Whether this server keeps production's files behind a layer. Unset, it is on except on a Laravel Cloud bucket,
+     * which Cloud attaches per environment; a server set up before go-live turns it off.
+     */
     public static function layered(): bool
     {
-        return filter_var(config('core-web.media.layer.enabled', true), FILTER_VALIDATE_BOOLEAN);
+        $enabled = config('core-web.media.layer.enabled');
+
+        if ($enabled === null || $enabled === '') {
+            return ! self::fromCloud();
+        }
+
+        return filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
     }
 
     /** Whether this environment has the bucket's key. */
     public static function bucketConfigured(): bool
     {
-        return filled(config('core-web.media.bucket.key')) && filled(config('core-web.media.bucket.secret'));
+        $bucket = self::settings();
+
+        return filled($bucket['key'] ?? null) && filled($bucket['secret'] ?? null);
+    }
+
+    /** Whether the bucket's key comes from Laravel Cloud's attached bucket rather than config. */
+    public static function fromCloud(): bool
+    {
+        return blank(config('core-web.media.bucket.key')) && self::cloudDisk() !== null;
+    }
+
+    /**
+     * The bucket's settings: config, or with no key there, Laravel Cloud's attached bucket. A Cloud bucket is R2,
+     * which refuses object ACLs, and serves its files from its own URL unless the site commits a CDN one.
+     *
+     * @return array<string, mixed>
+     */
+    public static function settings(): array
+    {
+        $bucket = (array) config('core-web.media.bucket', []);
+        $cloud = blank($bucket['key'] ?? null) ? self::cloudDisk() : null;
+
+        if ($cloud === null) {
+            return $bucket;
+        }
+
+        return array_merge($bucket, [
+            'key' => (string) ($cloud['access_key_id'] ?? ''),
+            'secret' => (string) ($cloud['access_key_secret'] ?? ''),
+            'bucket' => (string) ($cloud['bucket'] ?? ''),
+            'endpoint' => (string) ($cloud['endpoint'] ?? ''),
+            'region' => ($cloud['region'] ?? '') ?: 'auto',
+            'url' => filled($bucket['url'] ?? null) ? $bucket['url'] : (string) ($cloud['url'] ?? ''),
+            'acl' => false,
+        ]);
+    }
+
+    /** @return array<string, mixed>|null The first of Cloud's attached buckets that is not a scoped disk (whose `scoped_disk` names its parent). */
+    private static function cloudDisk(): ?array
+    {
+        $disks = json_decode((string) config('core-web.media.bucket.cloud', ''), true);
+
+        foreach (is_array($disks) ? $disks : [] as $disk) {
+            if (is_array($disk) && empty($disk['scoped_disk']) && filled($disk['access_key_id'] ?? null)) {
+                return $disk;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -155,7 +212,7 @@ final class MediaDisks
      */
     public static function bucket(string $folder, string $prefix = ''): array
     {
-        $bucket = (array) config('core-web.media.bucket', []);
+        $bucket = self::settings();
 
         return array_filter([
             'driver' => 's3',
