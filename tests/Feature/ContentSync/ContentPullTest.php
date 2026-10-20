@@ -384,6 +384,48 @@ class ContentPullTest extends TestCase
         $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Already up to date')->assertSuccessful();
     }
 
+    public function test_a_file_changed_here_stays_skipped_when_the_site_changed_only_its_stamps(): void
+    {
+        $pulled = "---\nid: home\ntitle: Home\nupdated_at: 1700000000\n---\n";
+        $mine = "---\nid: home\ntitle: Mine\nupdated_at: 1700000000\n---\n";
+        $this->local('collections/pages/home.md', $mine);
+        file_put_contents($this->lock, json_encode(['remote' => 'https://remote.test', 'items' => ['collections/pages/home.md' => hash('sha256', $pulled)]]));
+        $this->fakeEloquentExport(['collections/pages/home.md' => "---\nid: home\nupdated_at: 1760000000\ntitle: Home\n---\n"]);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Skipped')->expectsOutputToContain('collections/pages/home.md')->assertSuccessful();
+
+        $this->assertSame($mine, file_get_contents($this->file('collections/pages/home.md')));
+        $this->assertSame(hash('sha256', $pulled), $this->locked()['items']['collections/pages/home.md'], 'The lock keeps the last pulled hash, so the file stays a local edit.');
+    }
+
+    public function test_a_change_to_the_body_alone_is_written(): void
+    {
+        $mine = "---\nid: home\ntitle: Home\n---\nHello.\n";
+        $this->local('collections/pages/home.md', $mine);
+        file_put_contents($this->lock, json_encode(['remote' => 'https://remote.test', 'items' => ['collections/pages/home.md' => hash('sha256', $mine)]]));
+        $this->fakeEloquentExport(['collections/pages/home.md' => "---\nid: home\ntitle: Home\n---\nGoodbye.\n"]);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('0 new, 1 changed')->assertSuccessful();
+
+        $this->assertSame("---\nid: home\ntitle: Home\n---\nGoodbye.\n", file_get_contents($this->file('collections/pages/home.md')));
+    }
+
+    public function test_a_dry_run_of_a_stamp_only_difference_reports_nothing(): void
+    {
+        $mine = "---\nid: home\ntitle: Home\nupdated_at: 1700000000\n---\n";
+        $this->local('collections/pages/home.md', $mine);
+        $this->fakeEloquentExport(['collections/pages/home.md' => "---\nid: home\nupdated_at: 1760000000\ntitle: Home\nparent: about\n---\n"]);
+
+        $this->pull(['--only' => 'entries:pages', '--dry-run' => true])
+            ->expectsOutputToContain('Already up to date')
+            ->doesntExpectOutputToContain('Changed')
+            ->doesntExpectOutputToContain('Skipped')
+            ->assertSuccessful();
+
+        $this->assertSame($mine, file_get_contents($this->file('collections/pages/home.md')));
+        $this->assertFileDoesNotExist($this->lock);
+    }
+
     public function test_a_new_entry_of_a_structured_collection_is_written_without_its_parent(): void
     {
         $this->fakeEloquentExport([

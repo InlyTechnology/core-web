@@ -4,9 +4,49 @@ namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Inly\CoreWeb\ContentSync\ContentFile;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Facades\Collection;
+use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class ContentFileTest extends TestCase
 {
+    use PreventsSavingStacheItemsToDisk;
+
+    public function test_a_different_type_is_a_change(): void
+    {
+        $this->assertFalse(ContentFile::same('globals/default/settings.yaml', "count: '1'\n", "count: 1\n"));
+    }
+
+    public function test_replicator_sets_keep_their_local_key_order_in_the_site_s_set_order(): void
+    {
+        $local = "---\nid: home\nsets:\n  -\n    id: a\n    type: text\n    text: One\n  -\n    id: b\n    type: text\n    text: Two\n---\n";
+        $remote = "---\nid: home\nsets:\n  -\n    text: Two\n    type: text\n    id: b\n  -\n    text: Uno\n    type: text\n    id: a\n---\n";
+
+        $this->assertFalse(ContentFile::same('collections/pages/home.md', $remote, $local), 'Moving a set is a change.');
+        $this->assertSame(
+            "---\nid: home\nsets:\n  -\n    id: b\n    type: text\n    text: Two\n  -\n    id: a\n    type: text\n    text: Uno\n---\n",
+            ContentFile::merge('entries', 'collections/pages/home.md', $remote, $local),
+        );
+    }
+
+    public function test_parent_goes_from_a_structured_collection_s_entry_in_a_site_folder(): void
+    {
+        config(['statamic.system.multisite' => true]);
+        Collection::make('pages')->sites(['default', 'other'])->structureContents(['root' => true])->save();
+
+        $this->assertSame("---\nid: hem\ntitle: Hem\n---\n", ContentFile::canonical('entries', 'collections/pages/other/hem.md', "---\nid: hem\ntitle: Hem\nparent: hem-root\n---\n"));
+    }
+
+    public function test_a_quoted_date_round_trips_unchanged(): void
+    {
+        $local = "---\nid: event\ntitle: Launch\nstarts: '2024-01-01'\n---\n";
+
+        $this->assertTrue(ContentFile::same('collections/events/event.md', $local, $local));
+        $this->assertSame(
+            "---\nid: event\ntitle: Party\nstarts: '2024-01-01'\n---\n",
+            ContentFile::merge('entries', 'collections/events/event.md', "---\nid: event\nstarts: '2024-01-01'\ntitle: Party\n---\n", $local),
+        );
+    }
+
     public function test_a_term_s_stamps_are_no_change_in_any_site(): void
     {
         $local = "title: News\nupdated_at: 1\nlocalizations:\n  other:\n    title: Nyheter\n    updated_at: 1\n";

@@ -24,7 +24,11 @@ final class ContentFile
     /** What a term's fileData() puts after its data, in that order. */
     private const TERM_TAIL = ['blueprint', 'localizations'];
 
-    /** The file without `parent` on an entry of a structured collection: its tree holds that, and the flat-file Stache never writes it. */
+    /**
+     * The file without `parent` on an entry of a structured collection.
+     *
+     * Its tree holds that, and the flat-file Stache never writes it.
+     */
     public static function canonical(string $type, string $path, string $contents): string
     {
         if ($type !== 'entries' || ! str_contains($contents, 'parent:')) {
@@ -154,7 +158,11 @@ final class ContentFile
         return true;
     }
 
-    /** The remote values in the local key order, a list item matched by its `id` where it has one: list order is content and stays the remote's. */
+    /**
+     * The remote values in the local key order, a list item matched by its `id` where it has one.
+     *
+     * List order is content, so it stays the remote's.
+     */
     private static function ordered(mixed $remote, mixed $local): mixed
     {
         if (! is_array($remote) || ! is_array($local)) {
@@ -164,7 +172,11 @@ final class ContentFile
         if (array_is_list($remote)) {
             $byId = collect($local)->filter(fn (mixed $each) => is_array($each) && is_scalar($each['id'] ?? null))->keyBy(fn (array $each) => (string) $each['id']);
 
-            return array_map(fn (mixed $item, int $index) => self::ordered($item, is_array($item) && is_scalar($item['id'] ?? null) ? $byId->get((string) $item['id']) : ($local[$index] ?? null)), $remote, array_keys($remote));
+            $counterpart = fn (mixed $item, int $index): mixed => is_array($item) && is_scalar($item['id'] ?? null)
+                ? $byId->get((string) $item['id'])
+                : ($local[$index] ?? null);
+
+            return array_map(fn (mixed $item, int $index) => self::ordered($item, $counterpart($item, $index)), $remote, array_keys($remote));
         }
 
         if (array_is_list($local) && $local !== []) {

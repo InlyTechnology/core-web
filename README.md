@@ -1278,7 +1278,8 @@ config, users, form submissions and assets are not pulled. `content.lock`
 - a file that differs only in key order or in `updated_at`/`updated_by` (as
   a site on the Eloquent driver exports it) is left as it is, and an entry
   of a structured collection is never given a `parent`, which its tree holds;
-- a file changed here is left alone and listed, unless `--force`;
+- a file changed here is left alone and listed, unless `--force`, which
+  still leaves a file whose only difference is key order or save stamps;
 - a file the site no longer has is deleted only when it is unchanged here
   since the last pull, and only in a collection, taxonomy, global set or
   nav (and site) the developer may read in full on the site, as each export
@@ -1291,6 +1292,12 @@ version. A file exactly as the checkout's last commit has it (in a git
 checkout) counts as unchanged and is updated; any other file that differs
 is skipped and listed. When the checkout holds no edits worth keeping, run
 the first pull with `--force` to take the site's version of every file.
+
+Key order is ignored at every depth, since a site storing content in a
+database JSON column (Postgres `jsonb`, MySQL `JSON`) reorders the keys of
+nested maps on its own. The known limit: reordering the keys of a keyed map
+on the live site (an array fieldtype in keyed mode, say) is not seen as a
+change, so it is not pulled. Reordering a list (replicator sets, a tree) is.
 
 Then the Stache is refreshed. A path the site sends that is not one of its
 type's files under `content/` stops the pull before anything is written,

@@ -17,8 +17,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   writes what changed on the site and keeps local edits, tracked in a
   committed `content.lock`, deleting only where the developer may read
   everything on the site; a file that differs only in key order or in
-  `updated_at`/`updated_by` (a site on the Eloquent driver) is left as it is. Approving a machine and using its token need the
-  addon's `pull content` permission. Set `content_sync.remote_url` in the
+  `updated_at`/`updated_by` (a site on the Eloquent driver) is left as it
+  is. Approving a machine and using its token need the addon's `pull
+  content` permission. Set `content_sync.remote_url` in the
   site's `config/core-web.php` (committed; there is no env var for it).
   The live site keeps token hashes in private files by default; one behind
   more than one server or on a host whose disk does not outlive a deploy
