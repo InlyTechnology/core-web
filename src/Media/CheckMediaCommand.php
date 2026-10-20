@@ -87,7 +87,7 @@ class CheckMediaCommand extends Command
         $status = RemoteIndex::forDisk($disk)->status();
 
         if ($status === []) {
-            $this->warn('  No asset index pulled yet: run php please content:pull --only=assets.');
+            $this->warn('  No asset index pulled yet: run php artisan content:pull --only=assets.');
 
             return self::SUCCESS;
         }

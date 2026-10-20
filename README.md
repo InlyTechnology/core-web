@@ -1394,13 +1394,13 @@ since one would carry its token to another address, and names the URL to
 set instead.
 
 ```bash
-php please content:login     # once per machine
-php please content:pull      # every type
-php please content:pull --only=entries:pages,globals --site=default
-php please content:pull --only=assets   # only the asset index (assets:<container> for one)
-php please content:pull --dry-run   # what would change; writes nothing
-php please content:pull --force     # overwrite (and delete) files changed here too
-php please content:logout    # revoke this machine's token
+php artisan content:login     # once per machine
+php artisan content:pull      # every type
+php artisan content:pull --only=entries:pages,globals --site=default
+php artisan content:pull --only=assets   # only the asset index (assets:<container> for one)
+php artisan content:pull --dry-run   # what would change; writes nothing
+php artisan content:pull --force     # overwrite (and delete) files changed here too
+php artisan content:logout    # revoke this machine's token
 ```
 
 **Signing in.** `content:login` (or the first `content:pull` in a terminal)

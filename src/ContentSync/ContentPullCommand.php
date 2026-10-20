@@ -71,7 +71,7 @@ class ContentPullCommand extends Command
             [$items, $coverage, $indexes] = $fetch($remote);
         } catch (RemoteLoginNeeded) {
             if (! $this->input->isInteractive() || $this->call('content:login') !== self::SUCCESS || ($remote = RemoteSite::fromStorage()) === null) {
-                $this->error('The remote site refused this machine\'s login: run php please content:login.');
+                $this->error('The remote site refused this machine\'s login: run php artisan content:login.');
 
                 return self::FAILURE;
             }
@@ -219,7 +219,7 @@ class ContentPullCommand extends Command
         }
 
         if (! $this->input->isInteractive()) {
-            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php please content:login first.');
+            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login first.');
 
             return null;
         }

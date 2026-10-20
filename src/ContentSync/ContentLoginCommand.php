@@ -108,7 +108,7 @@ class ContentLoginCommand extends Command
 
                     return self::FAILURE;
                 case 'expired_token':
-                    $this->error('The code expired before it was approved. Run php please content:login again.');
+                    $this->error('The code expired before it was approved. Run php artisan content:login again.');
 
                     return self::FAILURE;
                 default:
@@ -118,7 +118,7 @@ class ContentLoginCommand extends Command
             }
         }
 
-        $this->error('The code expired before it was approved. Run php please content:login again.');
+        $this->error('The code expired before it was approved. Run php artisan content:login again.');
 
         return self::FAILURE;
     }

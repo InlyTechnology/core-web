@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'login_needed' => 'This machine is not signed in to the site, or its login expired or was revoked. Run php please content:login.',
+    'login_needed' => 'This machine is not signed in to the site, or its login expired or was revoked. Run php artisan content:login.',
     'local_remote' => 'This site runs as APP_ENV=local, so it is no site to sync content with.',
     'https_required' => 'Content sync runs over HTTPS only.',
     'machine_required' => 'Name the machine asking to sign in.',
@@ -18,9 +18,9 @@ return [
     'denied' => 'Denied. The machine is not signed in.',
     'enter_code' => 'The code your terminal shows',
     'continue' => 'Continue',
-    'code_unknown' => 'That code is unknown or expired. Run php please content:login again for a new one.',
+    'code_unknown' => 'That code is unknown or expired. Run php artisan content:login again for a new one.',
     'tokens_title' => 'Content sync',
-    'no_tokens' => 'No machine is signed in. Run php please content:login in a local checkout to sign one in.',
+    'no_tokens' => 'No machine is signed in. Run php artisan content:login in a local checkout to sign one in.',
     'machine' => 'Machine',
     'user' => 'User',
     'last_used' => 'Last used',

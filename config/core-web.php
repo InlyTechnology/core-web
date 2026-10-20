@@ -503,7 +503,7 @@ return [
     |
     | A local checkout pulls the live site's content into content/, signed in
     | as the developer's own CMS user with a personal token they approve in
-    | the live site's CP (`php please content:login`). No shared secret.
+    | the live site's CP (`php artisan content:login`). No shared secret.
     |
     | remote_url: the live site, the same for every developer, so a site
     | commits it here, never in .env.

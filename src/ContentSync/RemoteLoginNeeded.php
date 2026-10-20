@@ -7,6 +7,6 @@ class RemoteLoginNeeded extends RemoteSiteError
 {
     public function __construct(public readonly string $url = '')
     {
-        parent::__construct('This machine is not signed in to '.($url !== '' ? $url : 'the remote site').': run php please content:login.');
+        parent::__construct('This machine is not signed in to '.($url !== '' ? $url : 'the remote site').': run php artisan content:login.');
     }
 }
