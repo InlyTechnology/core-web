@@ -25,6 +25,14 @@ use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\ContentLoginCommand;
+use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
+use Inly\CoreWeb\ContentSync\ContentPullCommand;
+use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
+use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\SyncLimits;
+use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
@@ -49,6 +57,7 @@ use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -73,6 +82,8 @@ use Statamic\StaticCaching\Cacher;
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
  * The `cms_sign_in` feature signs the control panel in from Core alone.
+ * The `content_sync` feature lets a local checkout pull the live site's
+ * content as the developer's CMS user.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -112,6 +123,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
+        $this->app->bind(SyncTokens::class, fn () => SyncTokens::fromConfig());
+        $this->app->bind(DeviceAuthorizations::class, fn () => DeviceAuthorizations::fromConfig());
+        $this->app->bindIf(LocalContent::class, fn () => LocalContent::fromApp());
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -175,6 +189,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cms_sign_in')) {
             $this->bootCmsSignIn();
+        }
+
+        if (self::enabled('content_sync')) {
+            $this->bootContentSync();
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
@@ -308,6 +326,32 @@ class CoreWebServiceProvider extends ServiceProvider
         if ($driver !== SsoUserProvider::DRIVER) {
             throw new InvalidArgumentException("CMS sign-in needs the CP guard's user provider [{$provider}] on Statamic's driver, not [{$driver}].");
         }
+    }
+
+    private function bootContentSync(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViews();
+        $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
+        $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+        SyncLimits::register();
+
+        Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {
+            Permission::register(AuthenticateSyncToken::PERMISSION)
+                ->label(__('core-web::sync.permission'))
+                ->description(__('core-web::sync.permission_description'));
+        }));
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
+
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+
+            if ($user !== null && AuthenticateSyncToken::mayPull($user)) {
+                $nav->tools(__('core-web::sync.tokens_title'))->route('core-web.sync.tokens')->icon('key');
+            }
+        });
     }
 
     private function bootChat(): void

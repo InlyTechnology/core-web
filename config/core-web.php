@@ -58,6 +58,12 @@ return [
     | that admits only the accounts Core provisioned, the redirect of the CP
     | login to Core, and `core:reconcile-cms-users` with its schedule.
     |
+    | content_sync: a developer's checkout pulling the live site's content
+    | (`content_sync`), signed in as their own CMS user. On the live site, the
+    | sync endpoints under /!/core-web/sync, the CP page that approves a
+    | machine and the one that lists and revokes them; on the checkout,
+    | `content:login`, `content:logout` and `content:pull`.
+    |
     */
 
     'features' => [
@@ -70,6 +76,7 @@ return [
         'forms' => false,
         'cp_link' => false,
         'cms_sign_in' => false,
+        'content_sync' => false,
     ],
 
     /*
@@ -551,6 +558,60 @@ return [
             'verify' => '/api/app/cms-sso/client/verify',
             'verify_remote' => '/api/app/cms-sso/local/verify',
             'reconcile' => '/api/app/cms-users/client/reconcile',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content sync
+    |--------------------------------------------------------------------------
+    |
+    | A local checkout pulls the live site's content into content/, signed in
+    | as the developer's own CMS user with a personal token they approve in
+    | the live site's CP (`php please content:login`). No shared secret.
+    |
+    | remote_url: the live site, the same for every developer, so a site
+    | commits it here, never in .env.
+    |
+    | allow_local_remote: a site running as APP_ENV=local refuses every sync
+    | call, so no one pulls from a developer's checkout by mistake; true lets
+    | one serve as a remote (trying the flow out between two checkouts).
+    |
+    | token_days: how long a machine's token lives unused; every use pushes
+    | its expiry this far out again.
+    |
+    | tokens: where the live site keeps its tokens (only their hashes): a
+    | filesystem `disk` and a `path` on it. Null is a private local folder,
+    | storage/app/private/{path}; a host whose disk does not outlive a deploy
+    | names a private bucket, never a public one.
+    |
+    | store: the cache store pending logins wait in for their approval, shared
+    | by every server behind the site; null is the default store.
+    |
+    | middleware: in front of the sync endpoints, beside the HTTPS and
+    | local-site guards; `core-web-sync` limits each token and address, and
+    | starting a login has a limiter of its own. A pull reads `page_size`
+    | items a request.
+    |
+    | timeouts: seconds the checkout waits to connect to the live site and
+    | for each answer.
+    |
+    */
+
+    'content_sync' => [
+        'remote_url' => '',
+        'allow_local_remote' => false,
+        'token_days' => 30,
+        'tokens' => [
+            'disk' => null,
+            'path' => 'core-web/sync-tokens',
+        ],
+        'store' => null,
+        'middleware' => ['throttle:core-web-sync'],
+        'page_size' => 200,
+        'timeouts' => [
+            'connect' => 5,
+            'request' => 30,
         ],
     ],
 ];

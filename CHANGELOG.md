@@ -35,6 +35,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   gone), `canonical()` (a 301 to the document's own path, query string kept)
   and `render()` (Statamic's View with an optional cascade entry). Snapshots
   without `->pages()` are unchanged. See README → Pages.
+
+- **Content pull**: `features.content_sync` (off by default) lets a local
+  checkout pull the live site's content (entries, terms, global variables,
+  collection and nav trees) into `content/` as the files the Stache
+  writes, signed in as the developer's CMS user: `content:login` approves
+  the machine in the live site's CP and stores a personal token (30 days
+  from its last use, revocable under Tools → Content sync), `content:pull`
+  writes what changed on the site and keeps local edits, tracked in a
+  committed `content.lock`, deleting only where the developer may read
+  everything on the site. Approving a machine and using its token need the
+  addon's `pull content` permission. Set `content_sync.remote_url` in the
+  site's `config/core-web.php` (committed; there is no env var for it).
+  See README → Content pull.
+
 ## v0.13.1
 
 - **Naming**: the website content protocol is now called the Statamic

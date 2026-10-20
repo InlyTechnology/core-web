@@ -93,7 +93,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only, and only for a Core without local development logins: the secret of a read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
 | `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
@@ -317,9 +317,9 @@ php artisan core:pull --release  # unpin and forget: the site reads CORE_URL aga
 ```
 
 The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env. The
-client is the site's own app client, the one its Statamic connector in Core
-is paired with. A `remote` key there replaces the package's whole:
+them as defaults in its own `config/core-web.php`, overridable from env, and a
+developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
+there replaces the package's whole, so it names all three:
 
 ```php
 'remote' => [
@@ -329,34 +329,14 @@ is paired with. A `remote` key there replaces the package's whole:
 ],
 ```
 
-### Logging in
-
-A developer needs no secret. The first pull logs the machine in:
-
-```bash
-php please core:pull --login     # log in again, even with a stored login
-php please core:pull --logout    # revoke this machine's login in Core and forget it
-```
-
-The command prints a code and opens Core's approval page. A person with the
-`developer` role in Core checks the code and approves, and the pull goes on.
-From then on the machine reads **as the site's client**: the same data the
-live site reads, never what the approver can see, and only reads. The login
-lives in `storage/core-web/remote-core.json` (mode 0600, never committed),
-lasts 30 days from its last use, and is listed on the app's page in Core
-(Settings → Apps), where it can be revoked; it also ends when the approver
-loses the `developer` role. A non-interactive run with no stored login fails
-and says to log in. Needs a Core that ships local development logins.
-
-A Core without them takes a secret instead: an app client for local pulls
-holding the same read permissions as the site's own client and nothing else,
-its secret in `CORE_REMOTE_CLIENT_SECRET`. A set secret wins over a stored
-login unless `--login` is passed.
-
 The key was called `pull` before. A site config still naming it keeps
 working, and so do the `CORE_PULL_*` variables while the site leaves the key
 to the package; a site that writes its own `remote` block reads only the
-variables it names.
+variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
+default to keep developers' `.env` files working.
+
+The client is an app client in that Core (Settings → Apps, client
+credentials grant): Core shows its id and secret when it is created.
 
 It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
 place of `client.*`, so the documents are exactly what the site's
@@ -370,8 +350,11 @@ next read or warm pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **Reads only, as the site.** A login reads what the public site reads,
-  never more, and revoking it in Core stops that machine's pulls.
+- **A client that may only read.** In the source Core, create an app client
+  for local pulls (Settings → Apps, client credentials) holding the same read
+  permissions as the site's own client and nothing else, and share its secret
+  the way the team shares other secrets. It reads what the public site reads,
+  never more; revoking it in Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
@@ -1430,3 +1413,115 @@ release's notes to `CHANGELOG.md` under its version before tagging.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+## Content pull
+
+`features.content_sync` lets a developer's checkout pull the live site's
+content into its own `content/` directory, signed in as their own CMS user:
+no shared secret, no env var, and no Core needed. Switch it on in the site's
+`config/core-web.php` (the live site serves the content, the checkout pulls
+it, and both run the same config) and commit the live site's URL there: it
+is the same for every developer, so it is config, not an env var. A
+`content_sync` block that names only `remote_url` keeps every other
+setting's default:
+
+```php
+return [
+    'features' => ['content_sync' => true],
+    'content_sync' => [
+        'remote_url' => 'https://www.example.com',
+    ],
+];
+```
+
+Set the URL the site answers on, not one that redirects there (`example.com`
+to `www.example.com`, `http` to `https`): the checkout follows no redirect,
+since one would carry its token to another address, and names the URL to
+set instead.
+
+```bash
+php please content:login     # once per machine
+php please content:pull      # every type
+php please content:pull --only=entries:pages,globals --site=default
+php please content:pull --dry-run   # what would change; writes nothing
+php please content:pull --force     # overwrite (and delete) files changed here too
+php please content:logout    # revoke this machine's token
+```
+
+**Signing in.** `content:login` (or the first `content:pull` in a terminal)
+prints a link to the live site's CP and a code, and opens the browser where
+it can. The developer signs in to the CP the way the site allows (Core
+single sign-on or a native login), checks the code, the machine name (as
+the machine reports it), the address the request came from and how long ago
+it started, and approves; the terminal then gets a personal token that acts
+as them, so the pull reads exactly what they may view. Approving a machine,
+and using its token, needs the **Pull content** permission (under Core Web
+in the role editor) besides CP access; a super user always may. Signing in
+again revokes the machine's previous token. The token is kept in
+`storage/core-web/remote-site.json` (readable by the developer only, in a
+folder that ignores itself in git) and lives 30 days from its last use
+(`content_sync.token_days`). On the live site only its sha256 is kept, one
+file per token, by default in `storage/app/private/core-web/sync-tokens`
+(`content_sync.tokens`). Keep that store private: a host whose disk does not
+outlive a deploy names a private bucket, never the site's public one.
+
+**Pulling.** The live site exports entries (published or not, every site),
+terms, global variables, collection trees and nav trees, each as the exact
+file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
+config, users, form submissions and assets are not pulled. `content.lock`
+(committed, beside `content/`) holds the hash of every file as last pulled:
+
+- a file unchanged here since the last pull, or missing here, is written;
+- a file changed here is left alone and listed, unless `--force`;
+- a file the site no longer has is deleted only when it is unchanged here
+  since the last pull, and only in a collection, taxonomy, global set or
+  nav (and site) the developer may read in full on the site, as each export
+  page reports; otherwise it is listed and kept (a changed one goes with
+  `--force`, one outside what they may read never does).
+
+**A first pull** on a site whose content is already committed has no
+`content.lock` yet, so it cannot tell a local edit from the site's newer
+version. A file exactly as the checkout's last commit has it (in a git
+checkout) counts as unchanged and is updated; any other file that differs
+is skipped and listed. When the checkout holds no edits worth keeping, run
+the first pull with `--force` to take the site's version of every file.
+
+Then the Stache is refreshed. A path the site sends that is not one of its
+type's files under `content/` stops the pull before anything is written,
+nothing is written outside `content/`, and a symlinked file or folder is
+never written or deleted through. The command runs only where `APP_ENV` is
+`local`.
+
+**Revoking.** **Tools → Content sync** in the live site's CP lists the
+machines signed in as the user (a super user sees everyone's), with when
+each was last used and when it expires, and revokes any of them. A token
+also stops working when its user loses CP access or the Pull content
+permission, or is deleted, and `content:logout` revokes its own (the stored
+one, even after `remote_url` changed).
+
+**Guards.** The sync endpoints answer over HTTPS only (an app running as
+`local` or `testing` excepted). Behind a proxy or load balancer that ends
+TLS, trust it in the site's `TrustProxies` middleware so Laravel sees the
+request as secure; otherwise every sync call is refused. They are
+throttled per token and per address (`content_sync.middleware`, the
+`core-web-sync` limiter), and starting a login has a limiter of its own;
+the CLI reports a 429 with when to retry. A site running as
+`APP_ENV=local` refuses them, so no one pulls from a developer's checkout
+by mistake (`content_sync.allow_local_remote` lets one serve, to try the
+flow between two checkouts). The approval page cannot be framed by another
+site. Pending logins wait in the cache (`content_sync.store`), which every
+server behind the site must share.
+
+### Building on the login
+
+`Inly\CoreWeb\ContentSync\RemoteSite` is the checkout's client:
+`RemoteSite::fromStorage()` is this machine's login to the configured site
+(null without one), `url()` and `token()` what it signs in with, and
+`get($endpoint, $query)` / `post($endpoint, $data)` call a sync endpoint by
+name (`export`), or any path from the site's root when it starts with `/`,
+with the token as bearer and no redirects followed. The sync endpoints' own
+401 forgets the login and throws `RemoteLoginNeeded`; a site that cannot be
+reached, redirects, rate limits or answers another 401 (basic auth in front
+of a staging host) throws `RemoteSiteError` and keeps the login. On the
+live site, a route behind the `core-web.sync` middleware runs as the
+token's CMS user (`User::current()`).
+

@@ -21,7 +21,7 @@ final class RemoteCore
         if (filled(config('core-web.client.base_url'))
             || ! app()->environment('local')
             || blank(config('core-web.remote.client_id'))
-            || blank(config('core-web.remote.client_secret'))) {
+            || (blank(config('core-web.remote.client_secret')) && RemoteCoreLogin::stored((string) config('core-web.remote.base_url'), (string) config('core-web.remote.client_id')) === null)) {
             return '';
         }
 
