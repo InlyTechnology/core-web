@@ -9,27 +9,13 @@ use Illuminate\Support\Facades\Process;
 use Statamic\Facades\Collection;
 
 /**
- * Loads content/ into an EMPTY database, for an environment whose content runs on Statamic's
- * eloquent driver (Laravel Cloud, with features.cloud): its first deploy, a local database to
- * test against, or a rebuild after a disaster.
- *
- * Never over a database editors use. It writes rows directly, so every row is overwritten,
- * no events fire (a statically cached page keeps serving the old text) and no revision is
- * recorded. It refuses while entries exist, unless --fresh empties the content tables first.
- *
- * The order is the point. The driver's own import-collections saves the trees before the
- * entries exist, and saving a tree drops every id the entries table doesn't hold yet: the
- * trees come out empty and every page gets the wrong URI. So entries first, then collection
- * trees, then the rest, and the URIs and order recomputed last.
- *
- * Each import runs in its own process. In one process the entry import leaves the (still
- * empty) database trees cached, and the tree import then saves those instead of the files:
- * every structured page lost its parent and home its root.
+ * Loads content/ into an empty database for an environment on the eloquent content driver; why the order and the separate processes matter is in the README's Laravel Cloud section.
  */
 class ImportContentCommand extends Command
 {
     protected $signature = 'content:import
-        {--fresh : Empty the content tables first}
+        {--fresh : Empty the content tables first (form submissions, revisions and tokens are kept)}
+        {--force : Skip the --fresh confirmation}
         {--skip-asset-meta : Leave asset meta alone; images resolve to nothing until statamic:eloquent:import-assets --only-assets has run}';
 
     protected $description = 'Load content/ into an empty database (eloquent content driver)';
@@ -38,6 +24,11 @@ class ImportContentCommand extends Command
     private const TABLES = [
         'entries', 'trees', 'global_set_variables', 'taxonomy_terms',
         'assets_meta', 'form_submissions', 'revisions', 'tokens',
+    ];
+
+    /** What --fresh empties: content/ holds all of it again. Submissions, revisions and tokens exist only in the database. */
+    private const FRESH_TABLES = [
+        'entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta',
     ];
 
     public function handle(): int
@@ -51,8 +42,22 @@ class ImportContentCommand extends Command
         $db = $this->connection();
         $prefix = (string) config('statamic.eloquent-driver.table_prefix');
 
+        $missing = array_values(array_filter(self::TABLES, fn (string $table): bool => ! $db->getSchemaBuilder()->hasTable($prefix.$table)));
+
+        if ($missing !== []) {
+            $this->error('Missing tables: '.implode(', ', $missing).'. Publish the eloquent driver\'s migrations and run migrate first.');
+
+            return self::FAILURE;
+        }
+
         if ($this->option('fresh')) {
-            foreach (self::TABLES as $table) {
+            if (! $this->option('force') && ! $this->confirm('Replace every entry, tree, global, term and asset meta row with content/? Editors\' work since the last import is lost.')) {
+                $this->error('Nothing changed. Pass --force to run --fresh without the question.');
+
+                return self::FAILURE;
+            }
+
+            foreach (self::FRESH_TABLES as $table) {
                 $db->table($prefix.$table)->delete();
             }
         } elseif ($db->table($prefix.'entries')->exists()) {
@@ -81,9 +86,8 @@ class ImportContentCommand extends Command
             }
         }
 
-        // The driver hands entry ordering to a queued job; here it has to be done before the
-        // command returns, whatever QUEUE_CONNECTION the environment runs.
-        config(['queue.default' => 'sync']);
+        // The driver hands entry ordering to a queued job; here it runs in-process, whatever queue the environment (or a cached config) names.
+        config(['queue.default' => 'sync', 'statamic.eloquent-driver.collections.update_entry_order_connection' => 'sync']);
 
         $this->components->task('entry URIs and order', function () {
             foreach (Collection::all() as $collection) {

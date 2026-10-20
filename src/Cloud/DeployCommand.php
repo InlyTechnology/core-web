@@ -23,6 +23,10 @@ class DeployCommand extends Command
             return self::FAILURE;
         }
 
+        if (CloudDefaults::onCloud()) {
+            $this->warnAboutLocalSearch();
+        }
+
         foreach ($this->steps() as [$command, $arguments, $required]) {
             $this->components->info($command);
 
@@ -40,6 +44,18 @@ class DeployCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** A local index is written to this container's disk, which no web replica reads and the next deploy resets. */
+    private function warnAboutLocalSearch(): void
+    {
+        $local = collect((array) config('statamic.search.indexes', []))
+            ->filter(fn ($index): bool => ($index['driver'] ?? null) === 'local')
+            ->keys();
+
+        if ($local->isNotEmpty()) {
+            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there.');
+        }
     }
 
     /** @return list<array{string, array<string, mixed>, bool}> command, arguments, whether a failure fails the deploy */

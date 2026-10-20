@@ -43,7 +43,7 @@ final class CloudDefaults
             return filter_var($forced, FILTER_VALIDATE_BOOLEAN);
         }
 
-        return ($_ENV['LARAVEL_CLOUD'] ?? $_SERVER['LARAVEL_CLOUD'] ?? null) === '1';
+        return in_array(Env::get('LARAVEL_CLOUD'), ['1', true], true);
     }
 
     public static function apply(Application $app): void
@@ -90,8 +90,7 @@ final class CloudDefaults
 
     private static function set(Repository $config, string $key, string $env, mixed $value): void
     {
-        if (Env::get($env) === null) {
-            $config->set($key, $value);
-        }
+        // The env value itself, not a skip: the published configs hardcode these keys rather than read the env var.
+        $config->set($key, Env::get($env, $value));
     }
 }

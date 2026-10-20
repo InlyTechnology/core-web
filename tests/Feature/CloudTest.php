@@ -86,6 +86,23 @@ class CloudTest extends TestCase
         $this->assertSame('redis', config('cache.default'));
     }
 
+    public function test_the_env_vars_value_is_used_where_the_published_config_hardcodes_the_key(): void
+    {
+        $this->setEnv('STATAMIC_USERS_REPOSITORY', 'eloquent');
+        config(['statamic.users.repository' => 'file']);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('eloquent', config('statamic.users.repository'));
+    }
+
+    public function test_import_refuses_without_the_drivers_tables(): void
+    {
+        $this->artisan('content:import')
+            ->expectsOutputToContain('Missing tables: entries')
+            ->assertFailed();
+    }
+
     public function test_off_cloud_nothing_changes(): void
     {
         config(['core-web.cloud.detected' => false, 'session.driver' => 'file']);
