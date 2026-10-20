@@ -324,8 +324,8 @@ is paired with. A `remote` key there replaces the package's whole:
 A developer needs no secret. The first pull logs the machine in:
 
 ```bash
-php please core:pull --login     # log in again, even with a stored login
-php please core:pull --logout    # revoke this machine's login in Core and forget it
+php artisan core:pull --login     # log in again, even with a stored login
+php artisan core:pull --logout    # revoke this machine's login in Core and forget it
 ```
 
 The command prints a code and opens Core's approval page. A person with the

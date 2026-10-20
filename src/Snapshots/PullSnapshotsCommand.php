@@ -128,7 +128,7 @@ class PullSnapshotsCommand extends Command
         }
 
         if (! $this->option('login') && ! $this->input->isInteractive()) {
-            $this->error('No login to the remote Core on this machine. Run `php please core:pull --login` and approve it in Core.');
+            $this->error('No login to the remote Core on this machine. Run `php artisan core:pull --login` and approve it in Core.');
 
             return null;
         }
@@ -170,7 +170,7 @@ class PullSnapshotsCommand extends Command
 
             if ($e->status >= 400 && $e->status < 500) {
                 RemoteCoreLogin::forget();
-                $this->error('Core no longer accepts this machine\'s login (expired or revoked). Run `php please core:pull --login`.');
+                $this->error('Core no longer accepts this machine\'s login (expired or revoked). Run `php artisan core:pull --login`.');
 
                 return false;
             }
