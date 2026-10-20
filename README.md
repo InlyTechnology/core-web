@@ -1921,14 +1921,14 @@ CI runs the suite and `pint --test` on every push and pull request.
 ## Releasing
 
 Releases are git tags (`v0.3.0`); Packagist picks each one up. A pull
-request adds its notes to `CHANGELOG.md` under `## Unreleased` (one
-section, at the top). To release, run the **Release** workflow from the
-Actions tab (it works in the GitHub mobile app) with `patch`, `minor`,
-`major` or an exact version. It runs the tests, renames `## Unreleased` to
-the version, commits that to `main`, tags that commit and publishes the
-GitHub release with the section as its notes. It refuses an empty or missing
-`## Unreleased`, an existing or lower version, and, before 1.0, a patch
-release that carries upgrade notes.
+request adds its notes to `CHANGELOG.md` under `## Unreleased` (one section,
+at the top). To release, run the **Release** workflow from the Actions tab
+(it works in the GitHub mobile app) with `patch`, `minor`, `major` or an
+exact version. It requires the Tests workflow to have passed on `main`,
+renames `## Unreleased` to the version, commits that to `main`, tags that
+commit and publishes the GitHub release with the section as its notes. It
+refuses an empty or missing `## Unreleased`, an existing or lower version,
+and, before 1.0, a patch release that carries upgrade notes.
 
 ## License
 
