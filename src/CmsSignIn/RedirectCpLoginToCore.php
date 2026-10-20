@@ -10,9 +10,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The CP is signed into from Core only: its login page redirects to Core's
- * sign-in (CORE_URL's, or locally the remote Core's), naming this site (and
- * there this address as `origin`) so Core hands the person back here and not
- * to another site it serves. A guest opening a CP page goes to Core straight
+ * sign-in (CORE_URL's), naming this site so Core hands the person back here
+ * and not to another site it serves. A guest opening a CP page goes to Core straight
  * away, carrying that page as `next`. Statamic's other ways in (password
  * login, password reset, account activation, registration and passkey login,
  * in the CP and on the front end) are refused before they route.
@@ -62,10 +61,8 @@ class RedirectCpLoginToCore
         // Without Core there is no way into the CP at all.
         abort_if($handoff->coreBaseUrl() === '', 503);
 
-        // A developer machine names its own address, which the remote Core hands the sign-in back to.
         return redirect()->away($handoff->signInUrl().'?'.http_build_query([
             'site' => $handoff->siteKey(),
-            ...$handoff->signsInThroughRemote() ? ['origin' => request()->getSchemeAndHttpHost()] : [],
             'next' => $next,
         ]));
     }

@@ -47,7 +47,6 @@ class CmsSignInConfigTest extends TestCase
 
         $this->assertSame('/cms/sign-in', config('core-web.cms_sign_in.core.sign_in'));
         $this->assertSame('/api/app/cms-sso/client/verify', config('core-web.cms_sign_in.core.verify'));
-        $this->assertSame('/api/app/cms-sso/local/verify', config('core-web.cms_sign_in.core.verify_remote'));
         $this->assertSame('/api/app/cms-users/client/reconcile', config('core-web.cms_sign_in.core.reconcile'));
     }
 

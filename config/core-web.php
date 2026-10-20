@@ -104,30 +104,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | The remote Core
-    |--------------------------------------------------------------------------
-    |
-    | Local only: the Core a local machine without a CORE_URL signs in to the
-    | control panel through (cms_sign_in, as its `local` site) and the
-    | control panel link points at; production, as a rule. `core:pull` does
-    | not use it: it reads the snapshots through the live site (content_sync).
-    | The URL and client id are the same for every developer, so the site
-    | commits them as the defaults in its own config/core-web.php (env can
-    | still override them); only the secret has to be set
-    | (CORE_REMOTE_CLIENT_SECRET). A site config still naming this `pull`, and
-    | the CORE_PULL_* variables, keep working.
-    |
-    */
-
-    'remote' => [
-        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
-        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
-        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
-        'token_cache_key' => 'core_web_remote_access_token',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Core's on-change pings
     |--------------------------------------------------------------------------
     |
@@ -483,9 +459,8 @@ return [
     | Control panel link
     |--------------------------------------------------------------------------
     |
-    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
-    | or on a local machine without one at the remote Core, once its client
-    | is set up; with neither there is no link.
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL);
+    | without it there is no link.
     |
     | label: what the link says, such as the backoffice's own name.
     | icon: a Statamic icon name or an SVG; null is Core's mark.
@@ -519,9 +494,6 @@ return [
     | local_password_sign_in: with APP_ENV `local` as well, restores
     | Statamic's own login, for development without any Core.
     |
-    | remote_site: the site key a local machine without CORE_URL signs in as,
-    | through the remote Core (remote, above).
-    |
     | path / name / middleware: the hand-off route, the address Core sends
     | the browser to. `web` gives it the session it signs into; the limiter
     | caps the unauthenticated calls to Core it costs (rate_limit a minute).
@@ -531,8 +503,8 @@ return [
     | reconcile_schedule: the cron `core:reconcile-cms-users` runs on, the
     | sweep under a lost notice; null schedules nothing.
     |
-    | core: Core's own paths for signing in, confirming a hand-off (on the
-    | site's client, or on the remote client) and reconciling.
+    | core: Core's own paths for signing in, confirming a hand-off and
+    | reconciling.
     |
     */
 
@@ -540,7 +512,6 @@ return [
         'site' => env('CORE_CMS_SITE') ?: 'production',
         'roles' => [],
         'local_password_sign_in' => false,
-        'remote_site' => 'local',
         'path' => 'admin-sso',
         'name' => 'core-web.cms-sign-in',
         'middleware' => ['web', 'throttle:core-web.cms-sign-in'],
@@ -554,7 +525,6 @@ return [
         'core' => [
             'sign_in' => '/sso/cms',
             'verify' => '/api/app/cms-sso/client/verify',
-            'verify_remote' => '/api/app/cms-sso/local/verify',
             'reconcile' => '/api/app/cms-users/client/reconcile',
         ],
     ],

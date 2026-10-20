@@ -94,8 +94,6 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
-            $this->mergeLegacyRemote();
-
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -132,21 +130,6 @@ class CoreWebServiceProvider extends ServiceProvider
             $app[Cacher::class],
             $app['config']['statamic.static_caching.invalidation.rules'],
         ));
-    }
-
-    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
-    private function mergeLegacyRemote(): void
-    {
-        $legacy = config('core-web.pull');
-
-        if (! is_array($legacy)) {
-            return;
-        }
-
-        config(['core-web.remote' => array_replace(
-            $legacy,
-            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
-        )]);
     }
 
     public function boot(): void
