@@ -44,6 +44,7 @@ use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
@@ -87,11 +88,11 @@ use Statamic\StaticCaching\Cacher;
  * site's content (`content:check`, nightly, a dashboard widget).
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
- * The `media` feature renders images and videos through the CDN and defines
- * the asset disks on the bucket.
  * The `cms_sign_in` feature signs the control panel in from Core alone.
  * The `content_sync` feature lets a local checkout pull the live site's
  * content as the developer's CMS user.
+ * The `media` feature renders images and videos through the CDN and defines
+ * the asset disks on the bucket.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -105,14 +106,14 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeSnapshotStore();
             }
 
-            if (self::enabled('media')) {
-                $this->mergeMediaDefaults();
-                MediaDisks::define($this->app);
-            }
-
             if (self::enabled('cms_sign_in')) {
                 $this->mergeCmsSignInDefaults();
                 $this->mergeSsoUserProvider();
+            }
+
+            if (self::enabled('media')) {
+                $this->mergeMediaDefaults();
+                MediaDisks::define($this->app);
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
@@ -203,23 +204,29 @@ class CoreWebServiceProvider extends ServiceProvider
             CoreNavLink::register();
         }
 
-        if (self::enabled('media')) {
-            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
-            MediaDisks::registerDriver();
-            // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
-            Blade::anonymousComponentPath(__DIR__.'/../resources/components');
-
-            if ($this->app->runningInConsole()) {
-                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
-            }
-        }
-
         if (self::enabled('cms_sign_in')) {
             $this->bootCmsSignIn();
         }
 
         if (self::enabled('content_sync')) {
             $this->bootContentSync();
+        }
+
+        if (self::enabled('media')) {
+            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
+            MediaDisks::registerDriver();
+            // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
+            Blade::anonymousComponentPath(__DIR__.'/../resources/components');
+
+            // Asset::url() on a disk reading the live site's pulled index; never on a server.
+            if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
+                (new CpThumbnails)->register();
+            }
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

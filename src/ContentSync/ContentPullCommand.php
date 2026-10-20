@@ -3,7 +3,10 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Console\Command;
+use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Media\MediaDisks;
 use InvalidArgumentException;
+use Statamic\Contracts\Assets\AssetContainer;
 use Statamic\Facades\Site;
 
 /**
@@ -12,14 +15,15 @@ use Statamic\Facades\Site;
  * holds the hash of every file as last pulled, so a file the developer
  * changed since is left alone (and listed) unless --force, and a file the
  * site deleted goes only when it was not changed here either, and only in a
- * scope the site says the developer may read in full.
+ * scope the site says the developer may read in full. The site's asset
+ * index (AssetPull) is pulled beside it, replaced whole each time.
  */
 class ContentPullCommand extends Command
 {
     use SignsInToRemoteSite;
 
     protected $signature = 'content:pull
-        {--only= : Types to pull, comma separated, each optionally narrowed to a handle (entries:pages,globals); every type when omitted}
+        {--only= : Types to pull, comma separated, each optionally narrowed to a handle (entries:pages,globals,assets:assets); every type when omitted}
         {--site= : Only this site\'s content}
         {--force : Overwrite or delete files changed here since the last pull (or, on a first pull, since the last commit)}
         {--dry-run : Show what would change and write nothing}';
@@ -28,7 +32,7 @@ class ContentPullCommand extends Command
 
     private const MAX_PAGES = 10000;
 
-    public function handle(LocalContent $local): int
+    public function handle(LocalContent $local, AssetPull $assets): int
     {
         if (! app()->environment(['local', 'testing'])) {
             $this->error('content:pull overwrites content/ with another site\'s content, so it runs only where APP_ENV is local.');
@@ -38,12 +42,14 @@ class ContentPullCommand extends Command
 
         try {
             $scopes = $this->scopes();
-        } catch (InvalidArgumentException $e) {
+            $containers = $this->assetContainers($assets, $scopes);
+        } catch (InvalidArgumentException|RemoteSiteError $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
+        $contentScopes = array_values(array_filter($scopes, fn (array $scope) => $scope['type'] !== AssetExport::TYPE));
         $site = $this->option('site');
 
         if (is_string($site) && $site !== '' && Site::get($site) === null) {
@@ -61,9 +67,14 @@ class ContentPullCommand extends Command
             return self::FAILURE;
         }
 
+        $fetch = fn (RemoteSite $remote): array => [
+            ...$this->fetch($local, $remote, $contentScopes, $site),
+            $this->fetchAssets($assets, $remote, $containers),
+        ];
+
         try {
             try {
-                [$items, $coverage] = $this->fetch($local, $remote, $scopes, $site);
+                [$items, $coverage, $indexes] = $fetch($remote);
             } catch (RemoteLoginNeeded $e) {
                 if ($fresh) {
                     throw $e;
@@ -73,7 +84,7 @@ class ContentPullCommand extends Command
                     return self::FAILURE;
                 }
 
-                [$items, $coverage] = $this->fetch($local, $remote, $scopes, $site);
+                [$items, $coverage, $indexes] = $fetch($remote);
             }
         } catch (RemoteLoginNeeded) {
             $this->refusedFreshLogin();
@@ -86,11 +97,102 @@ class ContentPullCommand extends Command
         }
 
         try {
-            return $this->apply($local, $remote, $scopes, $site, $items, $coverage);
+            $wrote = $contentScopes !== [] && $this->apply($local, $remote, $contentScopes, $site, $items, $coverage);
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
+        }
+
+        if ($indexes !== null) {
+            $this->applyAssets($assets, $remote, $containers, $indexes);
+        }
+
+        // AssetPull clears what Statamic cached of the containers itself, so only content needs the Stache rebuilt.
+        if ($wrote) {
+            $local->refreshStache();
+        }
+
+        if ($this->option('dry-run')) {
+            $this->line('Dry run: nothing was written.');
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * The local asset containers the pull fills, when it pulls assets; naming assets where no disk reads the site's index says so.
+     *
+     * @param  list<array{type: string, handle: ?string}>  $scopes
+     * @return list<AssetContainer>
+     */
+    private function assetContainers(AssetPull $assets, array $scopes): array
+    {
+        $containers = [];
+        $named = trim((string) $this->option('only')) !== '';
+
+        foreach ($scopes as $scope) {
+            if ($scope['type'] !== AssetExport::TYPE) {
+                continue;
+            }
+
+            $found = $assets->containers($scope['handle']);
+
+            foreach ($found['pull'] as $container) {
+                $containers[$container->handle()] = $container;
+            }
+
+            // A site without core-web's media pulls no assets by design; one with it hears why none came.
+            if (! $named && $found['pull'] === [] && CoreWebServiceProvider::enabled('media') && filter_var(config('core-web.content_sync.pull_assets', true), FILTER_VALIDATE_BOOLEAN)) {
+                $this->line('Assets: not pulled, '.(MediaDisks::bucketConfigured()
+                    ? 'this checkout has the media bucket\'s key (core-web.media.bucket.key), so its disks read the bucket itself.'
+                    : 'no asset disk here reads the live site\'s index (only a disk in core-web.media.disks, with features.media on, does).'));
+            }
+
+            if ($named && ($found['skipped'] !== [] || $found['pull'] === [])) {
+                $this->warn('Assets: '.($found['skipped'] === [] ? 'no container pulled' : implode(', ', $found['skipped']).' not pulled').': only a disk in core-web.media.disks, with features.media on a local checkout without the bucket\'s key, reads the live site\'s index.');
+            }
+        }
+
+        return array_values($containers);
+    }
+
+    /**
+     * Each container's index; null when the site exports no assets, so every index is kept as it was.
+     *
+     * @param  list<AssetContainer>  $containers
+     * @return list<array{url: ?string, files: array<string, mixed>, dropped: int}|null>|null
+     */
+    private function fetchAssets(AssetPull $assets, RemoteSite $remote, array $containers): ?array
+    {
+        try {
+            return array_map(fn (AssetContainer $container) => $assets->fetch($remote, $container), $containers);
+        } catch (AssetsNotExported $e) {
+            $this->warn("Assets: {$e->getMessage()} The asset index here is left as it was; content is pulled as usual.");
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<AssetContainer>  $containers
+     * @param  list<array{url: ?string, files: array<string, mixed>, dropped: int}|null>  $indexes
+     */
+    private function applyAssets(AssetPull $assets, RemoteSite $remote, array $containers, array $indexes): void
+    {
+        foreach ($containers as $i => $container) {
+            $index = $indexes[$i];
+            $this->line($index === null
+                ? "Assets {$container->handle()}: the site has no such container or you may not view it, so its index is cleared."
+                : sprintf('Assets %s: %d files indexed; their bytes stay on the site.', $container->handle(), count($index['files'])));
+
+            if (($index['dropped'] ?? 0) > 0) {
+                $this->warn(sprintf('Assets %s: %d files left out, their URLs on a host other than the site\'s or the container\'s.', $container->handle(), $index['dropped']));
+            }
+
+            if (! $this->option('dry-run')) {
+                $assets->apply($remote, $container, $index);
+            }
         }
     }
 
@@ -104,12 +206,15 @@ class ContentPullCommand extends Command
         $only = trim((string) $this->option('only'));
 
         if ($only === '') {
-            return array_map(fn (string $type) => ['type' => $type, 'handle' => null], array_keys(ContentPaths::TYPES));
+            return array_map(fn (string $type) => ['type' => $type, 'handle' => null], [...array_keys(ContentPaths::TYPES), AssetExport::TYPE]);
         }
 
         return array_values(array_map(function (string $part): array {
             [$type, $handle] = array_pad(explode(':', trim($part), 2), 2, null);
-            ContentPaths::assertType($type);
+
+            if ($type !== AssetExport::TYPE) {
+                ContentPaths::assertType($type);
+            }
 
             return ['type' => $type, 'handle' => blank($handle) ? null : $handle];
         }, array_filter(explode(',', $only), fn (string $part) => trim($part) !== '')));
@@ -241,7 +346,7 @@ class ContentPullCommand extends Command
      * @param  array<string, array{type: string, hash: string, contents: ?string}>  $items
      * @param  array<string, array{all: bool, scopes: list<array{handle: string, site: ?string}>}>  $coverage
      */
-    private function apply(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site, array $items, array $coverage): int
+    private function apply(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site, array $items, array $coverage): bool
     {
         $lock = $local->lock()['items'];
         $plan = ['new' => [], 'changed' => [], 'deleted' => [], 'skipped' => [], 'kept' => [], 'unread' => []];
@@ -317,9 +422,7 @@ class ContentPullCommand extends Command
         $this->report($plan);
 
         if ($this->option('dry-run')) {
-            $this->line('Dry run: nothing was written.');
-
-            return self::SUCCESS;
+            return false;
         }
 
         foreach ($writes as $path => $contents) {
@@ -332,13 +435,9 @@ class ContentPullCommand extends Command
 
         $local->writeLock($remote->url(), $lock);
 
-        if ($writes !== [] || $deletes !== []) {
-            $local->refreshStache();
-        }
-
         $this->info(sprintf('Pulled from %s: %d new, %d changed, %d deleted.', $remote->url(), count($plan['new']), count($plan['changed']), count($plan['deleted'])));
 
-        return self::SUCCESS;
+        return $writes !== [] || $deletes !== [];
     }
 
     /**

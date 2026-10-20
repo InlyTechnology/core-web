@@ -25,8 +25,8 @@ What the package gives a site:
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
-| Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
+| Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
@@ -58,12 +58,12 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`), and the `core_snapshot` dashboard widget (see [Control panel widget](#control-panel-widget)) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
-| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check` (see [Media](#media)) |
 | Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
+| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 | Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
 
@@ -99,10 +99,10 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
 | `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
-| `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 `config/core-web.php`:
@@ -1053,6 +1053,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 | production | the bucket | the local folder `public/<folder>` |
 | staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
 | Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | n/a |
+| `local`, pulling content (`features.content_sync` and a `remote_url`) | the bucket, behind a layer | the live site's pulled index, behind a layer |
 | anywhere else | the bucket, behind a layer | the local folder |
 
 The layer is what makes the shared bucket safe outside production. Writes,
@@ -1084,9 +1085,35 @@ og:image, a feed). The control panel's links to it 404; its thumbnails, which
 Glide reads through the disk, show.
 
 Without a key a disk is its committed local folder: a fresh clone, CI and a
-server missing the key all render from it.
+server missing the key all render from it. The exception is a laptop that
+pulls content (`APP_ENV=local`, `features.content_sync` and `features.media`
+on, `content_sync.remote_url` set): there the disk reads three layers, first
+match wins. On top is `public/media-layer/`, as with a key: uploads, and
+edits to a pulled file's alt or focus, land there and survive the next
+pull. Below it the committed folder `public/<folder>`, read only. At the
+bottom the live site's asset index as `content:pull` last brought it
+([Content pull](#content-pull) → Assets), so no key is needed to see and
+use production's files: it lists them, serves their `.meta` from the index
+and reads their bytes from their public URLs (Glide's CP thumbnails fetch
+them over HTTP, a file at a time, never following a redirect). Deleting or
+moving a committed or pulled file throws `ProductionFileLocked`. Before the
+first pull the disk shows the layer and the committed folder.
 
-Everything but the key and secret (and `CORE_MEDIA_LAYER`) is committed in the site's
+In this mode `Asset::url()` is a local route, `/!/core-web/media/<disk>/<path>`
+(registered only when `APP_ENV` is `local` or `testing`), that redirects to
+whichever layer holds the file: the layer's or the committed folder's URL,
+else the live file's public URL from the index, else a 404. Statamic builds
+every asset's URL on its container's one URL, so the route is what lets a
+local upload and a live file both resolve. The components skip the redirect
+and render the file's own URL, so the CDN still transforms live files. So
+does the CP: a file only the index holds gets its thumbnail from the CDN at
+the CP's thumbnail size (the plain public URL when the CDN does not serve
+it; a video a CDN frame, or no thumbnail) and its preview from its public
+URL. Glide could read it through the index, but would download every live
+file to make one thumbnail the CDN already renders. Uploads and committed
+files keep Glide's thumbnails.
+
+Everything but the key and secret is committed in the site's
 `config/core-web.php`. Unlike the other top-level keys, a site's `media`
 block keeps the package's defaults for what it leaves out, one group deep
 (the key and secret from env, the CDN, the layer); `disks` is taken whole:
@@ -1542,6 +1569,7 @@ set instead.
 ```bash
 php artisan content:pull      # every type; signs this machine in first when needed
 php artisan content:pull --only=entries:pages,globals --site=default
+php artisan content:pull --only=assets   # only the asset index (assets:<container> for one)
 php artisan content:pull --dry-run   # what would change; writes nothing
 php artisan content:pull --force     # overwrite (and delete) files changed here too
 php artisan core:pull         # the Core snapshots, on the same login
@@ -1605,7 +1633,8 @@ error goes to the log.
 **Pulling.** The live site exports entries (published or not, every site),
 terms, global variables, collection trees and nav trees, each as the exact
 file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
-config, users, form submissions and assets are not pulled. `content.lock`
+config, users and form submissions are not pulled, and assets come as an
+index only (below). `content.lock`
 (committed, beside `content/`) holds the hash of every file as last pulled:
 
 - a file unchanged here since the last pull, or missing here, is written,
@@ -1639,6 +1668,33 @@ type's files under `content/` stops the pull before anything is written,
 nothing is written outside `content/`, and a symlinked file or folder is
 never written or deleted through. The command runs only where `APP_ENV` is
 `local`.
+
+**Assets.** With `features.media` on a checkout without the bucket's key,
+the pull also brings the live site's asset index: for every asset container
+the developer may view there, each file's path, its public URL and its
+stored meta (alt, focus, size, dimensions: the `.meta` file, or the
+database row on Statamic's Eloquent driver), never the file itself. It is written to `storage/core-web/remote-assets/<disk>/` (ignored
+by git), never to the repo or a bucket, and replaced whole on every pull:
+it is disposable, so there is no lock and nothing to keep. The asset disks
+then list the live site's files over the local layer (see
+[Media → The disks](#the-disks)), so the CP shows and renders them and
+`<x-core-img>` points at their public URLs, while uploads stay on the
+laptop. A container the site does not have, or the developer may not view,
+has its index cleared; any other refusal (a proxy's 403, a 500 on a later
+page) fails the pull and keeps the index as it was. A live site on a
+core-web from before the asset export refuses the `assets` type: the pull
+says so, keeps the index and pulls content as usual. A path in the index
+with a way out of the container, or into a `.meta` folder, stops the pull
+before anything is written; a file whose URL is not http(s) on the live
+site's host or its container's is left out (and counted), so the index can
+never have this machine fetch an address the site chose. Oversized `.meta`
+is cut to the keys Statamic writes, the index of a container no longer on
+the disk is removed, and `media:check` reports an index that does not read.
+An assets-only pull does not rebuild the Stache: it clears Statamic's
+listing and path caches for each container itself.
+`content_sync.pull_assets: false` turns this off; the live site only ever
+reads (a file without stored meta there is sent without it, not
+measured).
 
 **Revoking.** **Tools → Content sync** in the live site's CP lists the
 machines signed in as the user (a super user sees everyone's), with when

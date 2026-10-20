@@ -6,6 +6,30 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Asset index pull**: on a checkout with `APP_ENV=local`,
+  `features.content_sync` and `features.media` on, `content_sync.remote_url`
+  set and no bucket key, `content:pull` (and `--only=assets[:container]`)
+  brings the live site's asset index (each file's path, public URL and
+  `.meta`, never its bytes) into `storage/core-web/remote-assets/`,
+  replaced on every pull. The asset disks then read three layers: uploads
+  in `public/media-layer/`, the committed `public/<folder>` (read only,
+  and still shown before the first pull), and the live files from the
+  index, so the CP browses and renders production's assets and uploads stay
+  local; deleting or moving a committed or pulled file throws
+  `ProductionFileLocked`. `Asset::url()` there is a local-only route
+  (`/!/core-web/media/<disk>/<path>`) that redirects to whichever layer
+  holds the file. In the CP a file only the index holds takes its
+  thumbnail from the CDN (its public URL without one; a video's a CDN
+  frame, or none) rather than Glide downloading every live file for one.
+  The export gains an `assets` type, limited to containers the user may
+  view; a site on Statamic's Eloquent driver sends files in
+  subfolders and their meta too. A live site without the type is skipped
+  with a warning and content still pulls. `content_sync.pull_assets: false` keeps the plain
+  local folder. See README → Content pull → Assets and README → Media → The
+  disks.
+
 ## v0.16.0
 
 - **Content pull**: `features.content_sync` (off by default) lets a local
