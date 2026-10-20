@@ -29,7 +29,8 @@
         "laravel/pint": "^1.27",
         "livewire/livewire": "^3.6|^4.0",
         "orchestra/testbench": "^10.0|^11.0",
-        "phpunit/phpunit": "^11.5|^12.0"
+        "phpunit/phpunit": "^11.5|^12.0",
+        "statamic/eloquent-driver": "^5.0"
     },
     "suggest": {
         "livewire/livewire": "For the forms feature's CoreForm, a site's own form markup posting to a Core form (^3.6 or ^4.0).",

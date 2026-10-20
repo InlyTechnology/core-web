@@ -8,6 +8,19 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Laravel Cloud**: `features.cloud` (off by default). On Laravel Cloud
+  (`LARAVEL_CLOUD=1`) it moves what must outlive a deploy into the database:
+  content and CP users on `statamic/eloquent-driver`, cache, sessions, the
+  maintenance flag and the snapshots store; it also sets static caching to
+  `half`, turns on revisions and Pro, and turns off the stache watcher and
+  Statamic's git integration. An
+  env var the environment sets keeps its own value, and off Cloud nothing
+  changes. It also adds `content:import` (loads `content/` into an empty
+  database, trees after entries) and `core-web:deploy` (the deploy steps in
+  one command). See the README's Laravel Cloud section.
+
+## v0.17.0
+
 - **Asset index pull**: on a checkout with `APP_ENV=local`,
   `features.content_sync` and `features.media` on, `content_sync.remote_url`
   set and no bucket key, `content:pull` (and `--only=assets[:container]`)

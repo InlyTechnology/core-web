@@ -37,7 +37,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -129,6 +129,8 @@ class DormantTest extends TestCase
         $this->assertArrayNotHasKey('content:login', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:import', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('core-web:deploy', app(Kernel::class)->all());
     }
 
     public function test_no_tag_is_registered(): void
