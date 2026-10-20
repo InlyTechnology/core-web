@@ -68,15 +68,17 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`core:pull` needs the live site**: it no longer pulls from the remote
   Core with `CORE_REMOTE_CLIENT_SECRET` (or `CORE_PULL_CLIENT_SECRET`), so
   a machine that pulled that way now fails with "Nothing to pull from" or
-  "not signed in". Find it: `grep -n "content_sync\|remote_url"
-  config/core-web.php` comes back empty on a site that pulled directly.
-  Migrate: switch on `features.content_sync` and set
-  `content_sync.remote_url` to the live site in the site's
-  `config/core-web.php` (README → Content pull), deploy this core-web
-  version to the live site so it serves `/!/core-web/sync/snapshots/{type}`,
-  and give developers the Pull content permission there. Verify: `php
-  artisan core:pull` signs in (or uses the existing `content:login`) and
-  reports each snapshot pinned from the live site's host.
+  "not signed in". Find it: `php artisan config:show
+  core-web.content_sync.remote_url` is empty, or `.env` holds
+  `CORE_REMOTE_CLIENT_SECRET` or `CORE_PULL_CLIENT_SECRET`. Migrate:
+  switch on `features.content_sync` and set `content_sync.remote_url` to
+  the live site in the site's `config/core-web.php` (README → Content
+  pull); deploy this core-web version to the live site, so it serves
+  `/!/core-web/sync/snapshots/{type}`, with `features.snapshots` on and
+  the same snapshots registered as the checkout pulls; and give developers
+  the Pull content permission there. Verify: `php artisan core:pull` signs
+  in (or uses the existing `content:login`) and reports each snapshot
+  pinned from the live site's host.
 - **The remote Core is removed**: the `remote` and `pull` keys in a site's
   `config/core-web.php`, the `CORE_REMOTE_*` / `CORE_PULL_*` variables,
   `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are

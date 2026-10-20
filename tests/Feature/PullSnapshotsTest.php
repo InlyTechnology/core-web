@@ -133,15 +133,8 @@ class PullSnapshotsTest extends TestCase
 
     public function test_a_pull_that_started_before_the_pin_does_not_overwrite_it(): void
     {
-        $racing = true;
-        $snapshot = Snapshot::make('racing')->ttl(fresh: 900, stale: 3600, retry: 60)->pull(function () use (&$racing, &$snapshot): array {
-            if (! $racing) {
-                return ['prod' => ['id' => 'prod']];
-            }
-
-            $racing = false;
-            $other = new SnapshotStore(Cache::store(), app('log'));
-            $other->pinning('prod.test', fn () => $other->refresh($snapshot));
+        $snapshot = Snapshot::make('racing')->ttl(fresh: 900, stale: 3600, retry: 60)->pull(function () use (&$snapshot): array {
+            (new SnapshotStore(Cache::store(), app('log')))->pin($snapshot, 'prod.test', ['prod' => ['id' => 'prod']]);
 
             return ['local' => ['id' => 'local']];
         });

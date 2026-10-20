@@ -16,17 +16,15 @@ trait SignsInToRemoteSite
     /**
      * This machine's login to the configured site, signing in first when
      * there is none; null, with the reason said, when none can be had.
-     *
-     * @param  string  $alternative  appended to the error, e.g. another way to run the command
      */
-    protected function signedInSite(string $alternative = ''): ?RemoteSite
+    protected function signedInSite(): ?RemoteSite
     {
         if ($site = RemoteSite::fromStorage()) {
             return $site;
         }
 
         if (! $this->input->isInteractive()) {
-            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login'.$alternative.'.');
+            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login.');
 
             return null;
         }
@@ -40,10 +38,10 @@ trait SignsInToRemoteSite
      * After the site refused the stored login (RemoteLoginNeeded, which
      * forgot it): signs in again; null, with the reason said, when it cannot.
      */
-    protected function signInAgain(string $alternative = ''): ?RemoteSite
+    protected function signInAgain(): ?RemoteSite
     {
         if (! $this->input->isInteractive()) {
-            $this->error(RemoteSite::configuredUrl().' refused this machine\'s login: run php artisan content:login'.$alternative.'.');
+            $this->error(RemoteSite::configuredUrl().' refused this machine\'s login: run php artisan content:login.');
 
             return null;
         }
@@ -59,7 +57,7 @@ trait SignsInToRemoteSite
      */
     protected function refusedFreshLogin(): void
     {
-        $this->error(RemoteSite::configuredUrl().' refused even the login just made; a site on more than one server keeps its tokens in the database (content_sync.tokens.driver, README, Content pull).');
+        $this->error(RemoteSite::configuredUrl().' refused even the login just made: either it runs on more than one server and keeps its tokens per server (set content_sync.tokens.driver to database there, README, Content pull), or a proxy or the web server strips the Authorization header before it reaches the site.');
     }
 
     private function signInToRemoteSite(): ?RemoteSite
