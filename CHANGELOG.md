@@ -6,6 +6,17 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Agent instructions**: `resources/agents/AGENTS.md` carries the rules an
+  agent working on a site needs, per feature. A site imports it from its
+  `CLAUDE.md` (`@vendor/inly/core-web/resources/agents/AGENTS.md`), so the
+  rules update with the package. See README → Agent instructions.
+- **`core-web:doctor`**: checks what the switched-on features need from the
+  environment (the Core client, a real queue, the schedule, the legacy ping
+  secret, CMS accounts kept out of git), exiting non-zero on a failure.
+  Registered once any feature is on. See README → Checking a site's setup.
+
 ## v0.18.0
 
 - **Laravel Cloud**: `features.cloud` (off by default). On Laravel Cloud

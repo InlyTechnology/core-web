@@ -61,6 +61,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
@@ -241,6 +242,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cloud')) {
             $this->commands([ImportContentCommand::class, DeployCommand::class]);
+        }
+
+        if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
+            $this->commands([DoctorCommand::class]);
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
