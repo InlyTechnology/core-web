@@ -65,32 +65,41 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ### Upgrade notes
 
-- **No connection to the production Core from a local machine**: `core:pull`
-  no longer pulls from the remote Core, local CMS sign-in no longer goes
-  through it, and the control panel link no longer points at it. The
-  `remote` and `pull` keys in a site's `config/core-web.php` and the
-  `CORE_REMOTE_*` / `CORE_PULL_*` variables are ignored, so a machine that
-  relied on them now fails `core:pull` with "Nothing to pull from" or "not
-  signed in", gets a 503 from the CP login without `CORE_URL`, and shows no
-  Core link in the CP. Find it: `grep -n "'remote'\|'pull'\|remote_site\|verify_remote" config/core-web.php`
-  and `grep -rn "CORE_REMOTE_\|CORE_PULL_" .env*`; a site that pulled
-  directly also has no `content_sync.remote_url`
-  (`grep -n "remote_url" config/core-web.php` is empty). Migrate: delete
-  the `remote` / `pull` blocks, `cms_sign_in.remote_site` and
-  `cms_sign_in.core.verify_remote` from the site's config and the
-  `CORE_REMOTE_*` / `CORE_PULL_*` lines from `.env` and `.env.example`;
-  for data, switch on `features.content_sync`, set
-  `content_sync.remote_url` to the live site (README → Content pull),
-  deploy this core-web version to the live site so it serves
-  `/!/core-web/sync/snapshots/{type}`, and give developers the Pull content
-  permission there, then use `content:login` with `content:pull` /
-  `core:pull`; to sign in to the CP locally, run a local Core as
-  `CORE_URL` or set `cms_sign_in.local_password_sign_in` to `true` (only
-  with `APP_ENV=local`). Verify: `php artisan config:show core-web` lists
-  no `remote` key, `php artisan core:pull` signs in (or uses the existing
-  `content:login`) and reports each snapshot pinned from the live site's
-  host, and `/cp/auth/login` goes to the local Core or shows Statamic's
-  login.
+- **`core:pull` needs the live site**: it no longer pulls from the remote
+  Core with `CORE_REMOTE_CLIENT_SECRET` (or `CORE_PULL_CLIENT_SECRET`), so
+  a machine that pulled that way now fails with "Nothing to pull from" or
+  "not signed in". Find it: `grep -n "content_sync\|remote_url"
+  config/core-web.php` comes back empty on a site that pulled directly.
+  Migrate: switch on `features.content_sync` and set
+  `content_sync.remote_url` to the live site in the site's
+  `config/core-web.php` (README → Content pull), deploy this core-web
+  version to the live site so it serves `/!/core-web/sync/snapshots/{type}`,
+  and give developers the Pull content permission there. Verify: `php
+  artisan core:pull` signs in (or uses the existing `content:login`) and
+  reports each snapshot pinned from the live site's host.
+- **The remote Core is removed**: the `remote` and `pull` keys in a site's
+  `config/core-web.php`, the `CORE_REMOTE_*` / `CORE_PULL_*` variables,
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are
+  ignored, and the class `Inly\CoreWeb\Client\RemoteCore` is gone, so
+  site code that uses it now fatals. A local machine no longer signs in to
+  the CP through the production Core: with `features.cms_sign_in` on, no
+  `CORE_URL` and `local_password_sign_in` not active, the CP login answers
+  503. The control panel link points at `CORE_URL` only, so a machine
+  without one shows no link. Find it: `grep -rn
+  "core-web\.\(remote\|pull\)\|RemoteCore" app/ config/ tests/ resources/`,
+  `grep -n "'remote'\|'pull'\|remote_site\|verify_remote"
+  config/core-web.php` and `grep -rn "CORE_REMOTE_\|CORE_PULL_" .env*`.
+  Migrate: remove or replace the code that uses `RemoteCore` or
+  `core-web.remote` / `core-web.pull` (`Inly\CoreWeb\Client\CoreClient::fromConfig()`
+  is the site's own Core); delete the `remote` / `pull` blocks,
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` from the
+  site's config and the `CORE_REMOTE_*` / `CORE_PULL_*` lines from `.env`
+  and `.env.example`; to sign in to the CP locally, run a local Core as
+  `CORE_URL` that knows the site under `cms_sign_in.site` (README → CMS
+  sign-in), or set `cms_sign_in.local_password_sign_in` to `true` (only
+  with `APP_ENV=local`). Verify: the greps come back empty, `php artisan
+  config:show core-web` lists no `remote` key, and `/cp/auth/login` goes
+  to the local Core or shows Statamic's login.
 
 ## v0.14.0
 

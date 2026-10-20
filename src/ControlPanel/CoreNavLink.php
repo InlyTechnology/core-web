@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\ControlPanel;
 
+use Inly\CoreWeb\Client\CoreClient;
 use Statamic\Facades\CP\Nav;
 
 /**
@@ -33,7 +34,7 @@ final class CoreNavLink
     /** CORE_URL: the Core this site talks to. */
     public static function url(): string
     {
-        return rtrim((string) config('core-web.client.base_url'), '/');
+        return CoreClient::fromConfig()->baseUrl();
     }
 
     /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */

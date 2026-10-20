@@ -153,7 +153,7 @@ class CmsHandoff
     /** The Core the CP signs in through: CORE_URL. */
     public function coreBaseUrl(): string
     {
-        return rtrim((string) config('core-web.client.base_url'), '/');
+        return CoreClient::fromConfig()->baseUrl();
     }
 
     /** This site's key among the CMS sites Core signs into. */
