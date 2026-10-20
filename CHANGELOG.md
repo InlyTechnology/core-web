@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.19.0
 
 - **Agent instructions**: `resources/agents/AGENTS.md` carries the rules an
   agent working on a site needs, per feature. A site imports it from its
