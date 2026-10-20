@@ -50,8 +50,8 @@ class SyncMediaCommand extends Command
 
         if ($direction === 'push' && ! $dry && ! $this->option('force')
             && ! $this->confirm($this->option('overwrite')
-                ? 'Push writes production\'s bucket and replaces its files that differ in size, edited meta included. Continue?'
-                : 'Push adds the files production\'s bucket does not have yet; it changes and deletes none. Continue?')) {
+                ? 'Push writes the bucket and replaces its files that differ in size, edited meta included. Continue?'
+                : 'Push adds the files the bucket does not have yet; it changes and deletes none. Continue?')) {
             return self::FAILURE;
         }
 

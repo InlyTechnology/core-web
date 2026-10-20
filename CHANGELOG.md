@@ -24,7 +24,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     before go-live, so editors build content on the real bucket):
     writes land in it, and deleting or moving production's files throws
     `ProductionFileLocked`.
-  - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
+  - Only the key and secret (`CORE_MEDIA_KEY`/`CORE_MEDIA_SECRET`, or
+    Cloud's) and `CORE_MEDIA_LAYER` are env; the rest of the
     bucket is committed config, and a site's `media` block keeps the
     defaults it leaves out. `acl: false` for R2.
   - On Laravel Cloud, with no key set, the disks use the environment's

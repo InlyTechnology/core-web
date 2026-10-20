@@ -1006,7 +1006,7 @@ needs `composer require league/flysystem-aws-s3-v3`.
 |---|---|---|
 | production | the bucket | the local folder `public/<folder>` |
 | staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
-| Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | |
+| Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | n/a |
 | anywhere else | the bucket, behind a layer | the local folder |
 
 The layer is what makes the shared bucket safe outside production. Writes,
@@ -1069,16 +1069,19 @@ is not a scoped disk gives the key, secret, bucket, endpoint and region. A
 key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
 them whatever config says. The files' URL is the committed `media.bucket.url`
 (the CDN's, so the components transform them), or the bucket's own URL when
-the site commits none, which serves files untransformed.
+the site commits none, which serves files untransformed. A committed CDN
+URL must have this Cloud bucket as its origin, or new uploads land in one
+bucket while their URLs point at another.
 
 Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
 Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
 its bucket directly, as editors building the content need. A Cloud staging
 environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
 
-- Name the Cloud bucket's disk anything but `assets` or `files`: Cloud
-  registers that disk itself, and a clash with a Statamic container's disk
-  replaces it.
+- Name the Cloud bucket's disk anything but a disk in `media.disks`
+  (`assets`, `files`): Cloud registers its disk before core-web, so a clash
+  leaves Cloud's plain disk in place of core-web's, and `media:check` reports
+  it as the app's own.
 - The first deploy copies the git-tracked images into the bucket with
   `php artisan media:sync push --force`, on the Cloud credentials like any
   other key.

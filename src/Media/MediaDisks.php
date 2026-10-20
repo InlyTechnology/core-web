@@ -122,13 +122,13 @@ final class MediaDisks
         ]);
     }
 
-    /** @return array<string, mixed>|null The first of Cloud's attached buckets that is not a scoped disk. */
+    /** @return array<string, mixed>|null The first of Cloud's attached buckets that is not a scoped disk (whose `scoped_disk` names its parent). */
     private static function cloudDisk(): ?array
     {
         $disks = json_decode((string) config('core-web.media.bucket.cloud', ''), true);
 
         foreach (is_array($disks) ? $disks : [] as $disk) {
-            if (is_array($disk) && ($disk['scoped_disk'] ?? false) !== true && filled($disk['access_key_id'] ?? null)) {
+            if (is_array($disk) && empty($disk['scoped_disk']) && filled($disk['access_key_id'] ?? null)) {
                 return $disk;
             }
         }

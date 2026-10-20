@@ -94,7 +94,7 @@ class MediaDisksTest extends TestCase
     private function cloud(array $disk = []): array
     {
         return ['core-web.media.bucket.cloud' => json_encode([
-            ['disk' => 'scoped', 'scoped_disk' => true, 'access_key_id' => 'scoped-key', 'access_key_secret' => 'scoped-secret', 'bucket' => 'scoped'],
+            ['disk' => 'scoped', 'scoped_disk' => 'media', 'access_key_id' => 'scoped-key', 'access_key_secret' => 'scoped-secret', 'bucket' => 'scoped'],
             [
                 'disk' => 'media',
                 'access_key_id' => 'cloud-key',
@@ -137,7 +137,7 @@ class MediaDisksTest extends TestCase
 
     public function test_only_scoped_or_unreadable_cloud_disks_mean_no_bucket(): void
     {
-        $this->define('production', ['core-web.media.bucket.cloud' => json_encode([['scoped_disk' => true, 'access_key_id' => 'k', 'access_key_secret' => 's']])]);
+        $this->define('production', ['core-web.media.bucket.cloud' => json_encode([['scoped_disk' => 'media', 'access_key_id' => 'k', 'access_key_secret' => 's']])]);
         $this->assertFalse(MediaDisks::bucketConfigured());
 
         $this->assertSame('local', $this->define('production', ['core-web.media.bucket.cloud' => 'not json'])['driver']);
