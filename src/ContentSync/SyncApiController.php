@@ -4,9 +4,12 @@ namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Snapshots\SnapshotExport;
+use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Statamic\Facades\User;
 
-/** The machine side of content sync: the device login, logging out, and the export a pull reads. */
+/** The machine side of content sync: the device login, logging out, and the exports a pull reads. */
 class SyncApiController
 {
     public function device(Request $request, DeviceAuthorizations $devices): JsonResponse
@@ -87,6 +90,28 @@ class SyncApiController
         }
 
         return new JsonResponse($assets->page(User::current(), $handle, (int) $cursor, $size));
+    }
+
+    /** Only a snapshot this site registers, read as the site reads it: the request names nothing that reaches Core. */
+    public function snapshot(Request $request, string $type, SnapshotRegistry $registry): JsonResponse
+    {
+        $cursor = (string) $request->query('cursor', '0');
+
+        if (! ctype_digit($cursor)) {
+            return new JsonResponse(['error' => 'invalid_request', 'message' => __('core-web::sync.invalid_cursor')], 422);
+        }
+
+        if (! CoreWebServiceProvider::enabled('snapshots') || ! $registry->has($type)) {
+            return new JsonResponse(['error' => 'unknown_snapshot', 'message' => __('core-web::sync.unknown_snapshot', ['type' => $type])], 404);
+        }
+
+        $page = app(SnapshotExport::class)->page($registry->get($type), (int) $cursor, max(1, (int) config('core-web.content_sync.page_size', 200)));
+
+        if ($page === null) {
+            return new JsonResponse(['error' => 'snapshot_unavailable', 'message' => __('core-web::sync.snapshot_unavailable', ['type' => $type])], 503, ['Retry-After' => '60']);
+        }
+
+        return new JsonResponse($page);
     }
 
     private static function filter(mixed $value): ?string

@@ -331,6 +331,27 @@ php artisan core:pull staff      # one
 php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
 
+**Through the live site** is the default, and needs no secret: on a site with
+[Content pull](#content-pull) switched on, a machine signed in with
+`content:login` reads the snapshots from the live site's sync API
+(`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
+Pull content permission), so one login covers both content and snapshots.
+The live site serves the copy it renders from; only when it has nothing
+cached yet does it pull once from its own Core with its own client, cached
+as a render's pull would be. It serves only the snapshots it registers
+itself, paged (`content_sync.page_size`); a copy that changes between
+pages pins nothing and the pull is run again. A copy the live site holds
+stale (its Core unreachable lately) is pinned and said so. The live site
+needs `features.snapshots` and the same snapshots registered; a site that
+lacks one answers 404 for it. A snapshot's warmer does not run on this
+path: its documents are pinned as the live site stored them.
+
+**From Core directly** is the other option, for a site without content pull
+or a developer who holds a read-only client: with `CORE_REMOTE_CLIENT_SECRET`
+set, `core:pull` reads the remote Core instead, and never the live site.
+With neither a login nor a secret it stops and says to run
+`php artisan content:login`.
+
 The Core and the client are the same on every machine, so the site commits
 them as defaults in its own `config/core-web.php`, overridable from env, and a
 developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
@@ -365,7 +386,7 @@ next read or warm pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read.** In the source Core, create an app client
+- **A client that may only read** (the direct path). In the source Core, create an app client
   for local pulls (Settings → Apps, client credentials) holding the same read
   permissions as the site's own client and nothing else, and share its secret
   the way the team shares other secrets. It reads what the public site reads,
@@ -373,7 +394,7 @@ next read or warm pulls from `CORE_URL` as from a cold cache.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
-- **A certificate the machine trusts.** The pull ignores `CORE_CA_BUNDLE`,
+- **A certificate the machine trusts.** The direct pull ignores `CORE_CA_BUNDLE`,
   which is for a local Core, so the source needs a public certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
@@ -1548,7 +1569,10 @@ the offboarding notices. Its paths are `cms_sign_in.core.*`.
 
 `features.content_sync` lets a developer's checkout pull the live site's
 content into its own `content/` directory, signed in as their own CMS user:
-no shared secret, no env var, and no Core needed. Switch it on in the site's
+no shared secret, no env var, and no Core needed. The same login lets
+`core:pull` read the live site's Core snapshots (see
+[Pulling production data](#pulling-production-data)), so one
+`content:login` covers both. Switch it on in the site's
 `config/core-web.php` (the live site serves the content, the checkout pulls
 it, and both run the same config) and commit the live site's URL there: it
 is the same for every developer, so it is config, not an env var. A
@@ -1577,6 +1601,7 @@ php artisan content:pull --only=assets   # only the asset index (assets:<contain
 php artisan content:pull --dry-run   # what would change; writes nothing
 php artisan content:pull --force     # overwrite (and delete) files changed here too
 php artisan content:logout    # revoke this machine's token
+php artisan core:pull         # the Core snapshots, on the same login
 ```
 
 **Signing in.** `content:login` (or the first `content:pull` in a terminal)

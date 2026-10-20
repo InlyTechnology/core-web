@@ -78,6 +78,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
+- **`core:pull` through the live site**: without `CORE_REMOTE_CLIENT_SECRET`,
+  `core:pull` reads the Core snapshots from the live site's sync API on the
+  `content:login` login, so one login covers content and snapshots and no
+  developer needs a Core client secret. The live site serves the copy it
+  renders from (one cached pull from its own Core when it has none), only
+  for the snapshots it registers, paged, behind the same guards, token and
+  rate limit as the content export. The secret keeps the direct path to
+  the remote Core working unchanged; with neither, the command says to run
+  `content:login`. Pins behave as before. See README → Pulling production
+  data.
 
 ## v0.14.0
 

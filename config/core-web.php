@@ -115,11 +115,12 @@ return [
     |
     | Local only: the Core a local machine uses in place of its own
     | (production, as a rule), with a client Core should let read and nothing
-    | more. `core:pull` copies its snapshots, and without a CORE_URL the
-    | control panel link points at it. The URL and client id are the same for
-    | every developer, so the site commits them as the defaults in its own
-    | config/core-web.php (env can still override them); only the secret has
-    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
+    | more. With the secret set, `core:pull` copies its snapshots from here
+    | rather than through the live site (content_sync), and without a
+    | CORE_URL the control panel link points at it. The URL and client id are
+    | the same for every developer, so the site commits them as the defaults
+    | in its own config/core-web.php (env can still override them); only the
+    | secret has to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
     | `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
@@ -599,7 +600,7 @@ return [
     | middleware: in front of the sync endpoints, beside the HTTPS and
     | local-site guards; `core-web-sync` limits each token and address, and
     | starting a login has a limiter of its own. A pull reads `page_size`
-    | items a request.
+    | items (or snapshot documents) a request.
     |
     | timeouts: seconds the checkout waits to connect to the live site and
     | for each answer, and for each file it reads from the site's assets.

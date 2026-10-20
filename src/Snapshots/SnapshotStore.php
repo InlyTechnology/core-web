@@ -233,6 +233,28 @@ final class SnapshotStore
             return null;
         }
 
+        return $this->keep($snapshot, $documents);
+    }
+
+    /**
+     * Stores documents read elsewhere (another site's copy) pinned, as a
+     * pull under pinning() would: null when they are too empty to trust,
+     * which pins nothing and leaves an earlier pin alone.
+     *
+     * @param  array<string, array<string, mixed>>  $documents
+     */
+    public function pin(Snapshot $snapshot, string $source, array $documents): ?int
+    {
+        return $this->pinning($source, function () use ($snapshot, $documents): ?int {
+            $this->forget($snapshot);
+
+            return $this->keep($snapshot, $documents);
+        });
+    }
+
+    /** @param  array<string, array<string, mixed>>  $documents */
+    private function keep(Snapshot $snapshot, array $documents): ?int
+    {
         // Checked again under the lock: a pull that started before core:pull pinned must not overwrite the pin.
         return $this->writing($snapshot, function () use ($snapshot, $documents): ?int {
             if ($this->pinnedElsewhere($snapshot)) {
