@@ -3,13 +3,11 @@
 namespace Inly\CoreWeb\Media;
 
 use Illuminate\Support\Arr;
-use Statamic\Statamic;
-use Throwable;
 
 /**
- * What <x-core-img> renders for one source: the src, a srcset (CDN widths, or
- * the site's `w<px>` Glide presets for a local Asset), and the inline style
- * carrying the blurred placeholder, the ratio box and the focal point.
+ * What <x-core-img> renders for one source: the src, a srcset of CDN widths,
+ * and the inline style carrying the blurred placeholder, the ratio box and
+ * the focal point.
  */
 final class ImageRendition
 {
@@ -54,8 +52,7 @@ final class ImageRendition
             }
         } else {
             $src = $source->url;
-            $srcset = self::glideSrcset($source);
-            $sizes ??= $srcset ? '100vw' : null;
+            $srcset = null;
         }
 
         $style = implode(' ', array_filter([
@@ -154,48 +151,5 @@ final class ImageRendition
         ], fn ($value) => $value !== null));
 
         return self::placeholderStyle($url, in_array($params['fit'] ?? null, ['contain', 'scale-down'], true) ? 'contain' : 'cover', $position);
-    }
-
-    /**
-     * The `w<px>` Glide presets narrower than the original, then the original at its own width: a site
-     * without a CDN still spares a phone the full file. Only for a raster Asset; a failing Glide render
-     * leaves the plain image.
-     */
-    private static function glideSrcset(MediaSource $source): ?string
-    {
-        // A local disk only: on a bucket each preset would have the server download the original.
-        if (! config('core-web.media.images.glide_presets', true)
-            || $source->asset === null
-            || preg_match('/\.(jpe?g|png|webp)$/i', $source->asset->path()) !== 1
-            || config('filesystems.disks.'.$source->asset->container()?->diskHandle().'.driver') !== 'local') {
-            return null;
-        }
-
-        $presets = collect(config('statamic.assets.image_manipulation.presets', []))
-            ->keys()
-            ->mapWithKeys(fn ($name) => preg_match('/^w(\d+)$/', (string) $name, $m) === 1 ? [$name => (int) $m[1]] : [])
-            ->sort();
-
-        if ($presets->isEmpty()) {
-            return null;
-        }
-
-        $original = $source->originalWidth();
-
-        try {
-            $candidates = $presets
-                ->filter(fn (int $width) => $original === null || $width < $original)
-                ->map(fn (int $width, string $preset) => Statamic::tag('glide')->params(['src' => $source->asset, 'preset' => $preset])->fetch().' '.$width.'w');
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
-
-        if ($original !== null) {
-            $candidates->push($source->url.' '.$original.'w');
-        }
-
-        return $candidates->implode(', ') ?: null;
     }
 }
