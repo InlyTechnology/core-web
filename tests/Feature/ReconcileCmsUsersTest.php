@@ -282,21 +282,4 @@ class ReconcileCmsUsersTest extends CmsSignInTestCase
         $this->assertNotNull(User::findByEmail('gone@example.com'));
         Http::assertNothingSent();
     }
-
-    public function test_a_local_checkout_signing_in_through_the_remote_core_reconciles_nothing(): void
-    {
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-        $this->account('gone@example.com');
-
-        $this->artisan('core:reconcile-cms-users')->assertSuccessful();
-
-        $this->assertNotNull(User::findByEmail('gone@example.com'));
-        Http::assertNothingSent();
-    }
 }

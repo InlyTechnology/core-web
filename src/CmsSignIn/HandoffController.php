@@ -33,9 +33,7 @@ class HandoffController
         $keyId = (string) $request->query('key_id');
 
         // Opening it spends its nonce.
-        $claims = $handoff->signsInThroughRemote()
-            ? $handoff->openRemote($payload, $signature, $keyId, $request->getSchemeAndHttpHost())
-            : $handoff->openSealed($payload, $signature, $keyId);
+        $claims = $handoff->openSealed($payload, $signature, $keyId);
 
         try {
             $person = $handoff->confirm($payload, $signature, $keyId);

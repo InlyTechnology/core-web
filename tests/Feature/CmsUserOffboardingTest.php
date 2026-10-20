@@ -192,23 +192,6 @@ class CmsUserOffboardingTest extends CmsSignInTestCase
         $this->assertNotNull(User::findByEmail('anna@example.com'));
     }
 
-    public function test_a_local_checkout_takes_no_notice_while_it_signs_in_through_the_remote_core(): void
-    {
-        Queue::fake();
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-
-        $this->revoke([], 'cms_revoke', ['aud' => 'remote'])->assertForbidden();
-        $this->revoke(['site' => 'local'], 'cms_revoke', ['aud' => 'remote'])->assertForbidden();
-
-        Queue::assertNothingPushed();
-    }
-
     public function test_the_job_deletes_only_the_account_bound_to_the_core_user(): void
     {
         $this->provisioned('anna@example.com', '7');

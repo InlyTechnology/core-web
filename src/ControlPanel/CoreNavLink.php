@@ -2,7 +2,6 @@
 
 namespace Inly\CoreWeb\ControlPanel;
 
-use Inly\CoreWeb\Client\RemoteCore;
 use Statamic\Facades\CP\Nav;
 
 /**
@@ -31,10 +30,10 @@ final class CoreNavLink
         });
     }
 
-    /** CORE_URL, or on a local machine without one the remote Core: the Core a developer's data came from. */
+    /** CORE_URL: the Core this site talks to. */
     public static function url(): string
     {
-        return RemoteCore::browserUrl();
+        return rtrim((string) config('core-web.client.base_url'), '/');
     }
 
     /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */

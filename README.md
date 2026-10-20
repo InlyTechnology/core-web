@@ -96,8 +96,6 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's client, for CMS sign-in and the control panel link without a local Core (see [The remote Core](#the-remote-core)) |
-| `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
@@ -113,7 +111,6 @@ shares with the backoffice under the backoffice's own names:
 |---|---|---|
 | `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
-| `remote.token_cache_key` | `core_web_remote_access_token` | Where the remote Core's access token is cached, apart from the site's own |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |
 | `ping.middleware` | `['throttle:120,1']` | Outside the `web` group, so no CSRF exemption is needed |
@@ -154,36 +151,10 @@ shares with the backoffice under the backoffice's own names:
 | `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
 | `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
 | `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
-| `cms_sign_in.remote_site` | `local` | The site key a local machine signs in as through the remote Core |
 | `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route, always in `web` (it signs into a session); `rate_limit` (10) a minute per address |
 | `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
 | `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
-| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
-
-### The remote Core
-
-`remote.*` is the Core a local machine without `CORE_URL` signs in to the
-control panel through (see [CMS sign-in](#cms-sign-in)) and the
-[Control panel link](#control-panel-link) points at: production, as a rule.
-`core:pull` does not use it (see [Pulling production data](#pulling-production-data)).
-The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
-there replaces the package's whole, so it names all three:
-
-```php
-'remote' => [
-    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
-    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
-    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
-],
-```
-
-The key was called `pull` before. A site config still naming it keeps
-working, and so do the `CORE_PULL_*` variables while the site leaves the key
-to the package; a site that writes its own `remote` block reads only the
-variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
-default to keep developers' `.env` files working.
+| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
 
 ## Where snapshots live
 
@@ -1462,10 +1433,7 @@ goes live: a fix is a draft, a proposal waits for an editor.
 
 `features.cp_link` adds a link to Core right under Dashboard in the control
 panel, for every CP user, opened in a new tab so unsaved CP work stays open.
-It points at `client.base_url` (`CORE_URL`). On a local machine without one it
-points at the remote Core (`remote.base_url`), once its client id and secret
-are set, since that is the Core the developer's data came from.
-With neither there is no link.
+It points at `client.base_url` (`CORE_URL`); without one there is no link.
 
 The site names the link and may pick its icon, in its own
 `config/core-web.php`; the icon is a Statamic icon name or an SVG, and null
@@ -1556,13 +1524,12 @@ and the confirm and reconcile calls pass it. Every site needs an app client
 of its own, since the client keeps a hand-off on the right host and the key
 keeps it on the site it was minted for.
 
-**Local development.** A local machine without `CORE_URL` signs in through
-the remote Core (`remote.*`, see [The remote Core](#the-remote-core))
-as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
-address as `origin`, the hand-off must name it back, and it is confirmed on
-the remote client's token at `/api/app/cms-sso/local/verify`. Without any
-Core, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
-own login, and only while `APP_ENV` is `local`.
+**Local development.** A local machine signs in through a local Core, set
+as `CORE_URL` with a client of its own, exactly as a live site does. Without
+one, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
+own login, and only while `APP_ENV` is `local`. Data from production comes
+through `content:login` and `content:pull` / `core:pull`, not through a
+connection to the production Core.
 
 Core serves the other half: `/sso/cms`, the confirm and reconcile routes and
 the offboarding notices. Its paths are `cms_sign_in.core.*`.

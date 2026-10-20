@@ -26,7 +26,6 @@ class ReconcileCmsUsersCommand extends Command
 
     public function handle(CmsHandoff $handoff, CmsUsers $users): int
     {
-        // Never through the remote Core: a machine signed in as its developer site keeps its accounts to itself.
         if (! $handoff->canReconcile()) {
             $this->warn('Core or its client is not configured; nothing reconciled.');
 

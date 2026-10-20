@@ -103,23 +103,43 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   more than one server with the `file` token store) stops the run after
   that one sign-in, naming the snapshots not pulled. Commands share this
   through the `SignsInToRemoteSite` trait. See README → Content pull.
+- **The remote Core is gone**: the `remote` config block
+  (`CORE_REMOTE_URL`, `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`),
+  its legacy name `pull` and the `CORE_PULL_*` variables are no longer
+  read, and no developer needs a Core secret. A local CMS sign-in goes to
+  `CORE_URL` (a local Core) or, with `cms_sign_in.local_password_sign_in`,
+  Statamic's own login; the control panel link points at `CORE_URL` only.
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are gone
+  with it. See README → CMS sign-in.
 
 ### Upgrade notes
 
-- **`core:pull` needs the live site**: it no longer pulls from the remote
-  Core with `CORE_REMOTE_CLIENT_SECRET` (or `CORE_PULL_CLIENT_SECRET`), so
-  a machine that pulled that way now fails with "Nothing to pull from" or
-  "not signed in". Those secrets no longer affect `core:pull`; they still
-  enable local CMS sign-in through the remote Core and the control panel
-  link. Find it: `grep -rn "content_sync\|remote_url" config/core-web.php`
-  comes back empty on a site that pulled directly. Migrate: switch on
-  `features.content_sync` and set `content_sync.remote_url` to the live
-  site in the site's `config/core-web.php` (README → Content pull), deploy
-  that core-web version to the live site so it serves
+- **No connection to the production Core from a local machine**: `core:pull`
+  no longer pulls from the remote Core, local CMS sign-in no longer goes
+  through it, and the control panel link no longer points at it. The
+  `remote` and `pull` keys in a site's `config/core-web.php` and the
+  `CORE_REMOTE_*` / `CORE_PULL_*` variables are ignored, so a machine that
+  relied on them now fails `core:pull` with "Nothing to pull from" or "not
+  signed in", gets a 503 from the CP login without `CORE_URL`, and shows no
+  Core link in the CP. Find it: `grep -n "'remote'\|'pull'\|remote_site\|verify_remote" config/core-web.php`
+  and `grep -rn "CORE_REMOTE_\|CORE_PULL_" .env*`; a site that pulled
+  directly also has no `content_sync.remote_url`
+  (`grep -n "remote_url" config/core-web.php` is empty). Migrate: delete
+  the `remote` / `pull` blocks, `cms_sign_in.remote_site` and
+  `cms_sign_in.core.verify_remote` from the site's config and the
+  `CORE_REMOTE_*` / `CORE_PULL_*` lines from `.env` and `.env.example`;
+  for data, switch on `features.content_sync`, set
+  `content_sync.remote_url` to the live site (README → Content pull),
+  deploy this core-web version to the live site so it serves
   `/!/core-web/sync/snapshots/{type}`, and give developers the Pull content
-  permission there. Verify: `php artisan core:pull` signs in (or uses the
-  existing `content:login`) and reports each snapshot pinned from the live
-  site's host.
+  permission there, then use `content:login` with `content:pull` /
+  `core:pull`; to sign in to the CP locally, run a local Core as
+  `CORE_URL` or set `cms_sign_in.local_password_sign_in` to `true` (only
+  with `APP_ENV=local`). Verify: `php artisan config:show core-web` lists
+  no `remote` key, `php artisan core:pull` signs in (or uses the existing
+  `content:login`) and reports each snapshot pinned from the live site's
+  host, and `/cp/auth/login` goes to the local Core or shows Statamic's
+  login.
 
 ## v0.14.0
 

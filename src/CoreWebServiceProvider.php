@@ -102,8 +102,6 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
-            $this->mergeLegacyRemote();
-
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -147,7 +145,6 @@ class CoreWebServiceProvider extends ServiceProvider
         ));
     }
 
-    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
     /**
      * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
      * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
@@ -164,20 +161,6 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         config(['core-web.media' => array_replace($defaults, $media)]);
-    }
-
-    private function mergeLegacyRemote(): void
-    {
-        $legacy = config('core-web.pull');
-
-        if (! is_array($legacy)) {
-            return;
-        }
-
-        config(['core-web.remote' => array_replace(
-            $legacy,
-            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
-        )]);
     }
 
     public function boot(): void
