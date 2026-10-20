@@ -1,17 +1,18 @@
-/* <x-core-img>'s placeholder: a tiny rendition painted as the image's own
-   background and blurred with it until core-media.js marks it loaded. Only
+/* The placeholder of <x-core-img> and <x-core-video>: a tiny rendition painted
+   as the element's own background and blurred with it until core-media.js
+   marks it loaded (a video once its poster or first frame is in). Only
    with scripting on; should the script never run, the blur lifts after 8s
    rather than leave a loaded photo blurred. */
 @media (scripting: enabled) {
-    img[data-placeholder] {
+    :is(img, video)[data-placeholder] {
         transition: filter 400ms ease-out;
     }
 
-    img[data-placeholder][data-loaded='instant'] {
+    :is(img, video)[data-placeholder][data-loaded='instant'] {
         transition: none;
     }
 
-    img[data-placeholder]:not([data-loaded]) {
+    :is(img, video)[data-placeholder]:not([data-loaded]) {
         background-image: var(--placeholder);
         background-position: var(--placeholder-position, 50% 50%);
         background-repeat: no-repeat;
@@ -22,7 +23,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    img[data-placeholder] {
+    :is(img, video)[data-placeholder] {
         transition: none;
     }
 }

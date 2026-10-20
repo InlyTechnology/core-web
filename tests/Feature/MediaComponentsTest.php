@@ -69,6 +69,29 @@ class MediaComponentsTest extends TestCase
         $this->assertStringContainsString('<source src="'.e(self::CDN.'/hero.mov?mode=video&width=720&audio=false').'" media="(max-width: 767px)" type="video/mp4">', $html);
         $this->assertStringContainsString('<source src="'.e(self::CDN.'/hero.mov?mode=video&width=1280&audio=false').'" type="video/mp4">', $html);
         $this->assertStringContainsString('aria-label="Hero"', $html);
+        $this->assertStringContainsString('data-placeholder="blur"', $html);
+        $this->assertStringContainsString(e("--placeholder: url('".self::CDN."/hero.mov?mode=frame&time=0&width=24');"), $html);
+    }
+
+    public function test_a_video_placeholder_follows_its_poster_and_can_be_turned_off(): void
+    {
+        $own = Blade::render('<x-core-video :src="$src" :poster="$poster" />', ['src' => self::CDN.'/talk.mp4', 'poster' => self::CDN.'/still.jpg']);
+        $this->assertStringContainsString(e(self::CDN.'/still.jpg?width=24&format=auto&quality=30'), $own);
+
+        $timed = Blade::render('<x-core-video :src="$src" poster-time="3" />', ['src' => self::CDN.'/talk.mp4']);
+        $this->assertStringContainsString(e(self::CDN.'/talk.mp4?mode=frame&time=3&width=24'), $timed);
+
+        $none = Blade::render('<x-core-media :src="$src" placeholder="none" />', ['src' => self::CDN.'/talk.mp4']);
+        $this->assertStringContainsString('poster=', $none);
+        $this->assertStringNotContainsString('data-placeholder', $none);
+
+        $foreign = Blade::render('<x-core-video :src="$src" poster="https://example.com/still.jpg" />', ['src' => self::CDN.'/talk.mp4']);
+        $this->assertStringNotContainsString('data-placeholder', $foreign, 'a poster the CDN does not serve would download twice');
+
+        config(['core-web.media.videos.poster_time' => null]);
+        $noFrame = Blade::render('<x-core-video :src="$src" />', ['src' => self::CDN.'/talk.mp4']);
+        $this->assertStringNotContainsString('poster=', $noFrame);
+        $this->assertStringNotContainsString('data-placeholder', $noFrame);
     }
 
     public function test_a_video_with_sound_and_its_own_poster(): void
@@ -89,6 +112,7 @@ class MediaComponentsTest extends TestCase
 
         $this->assertStringContainsString('<source src="/assets/loop.webm" type="video/webm">', $html);
         $this->assertStringNotContainsString('poster=', $html);
+        $this->assertStringNotContainsString('data-placeholder', $html);
     }
 
     public function test_core_media_picks_the_component_and_gives_each_only_its_options(): void

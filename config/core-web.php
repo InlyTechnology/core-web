@@ -514,7 +514,9 @@ return [
     | base URL (the CDN's, for transforms); `root` a folder all disks share.
     | `acl` false leaves out `visibility: public` for a bucket without
     | per-object ACLs, such as R2, which rejects it; the bucket itself is then
-    | public. Without a key the disks are the local folders below. A failing
+    | public. Without a key, the bucket Laravel Cloud attaches is used
+    | (`cloud`, which Cloud sets), without ACLs, and with `url` taken from
+    | here when set. Without either the disks are the local folders below. A failing
     | read is bounded: 3 seconds to connect and two attempts, since rendering
     | an asset can read the bucket.
     |
@@ -528,11 +530,10 @@ return [
     | `local` (the `local` environment). Files that are only in the bucket
     | cannot be deleted or moved there. A server set up before the site is
     | live (staging while editors build the content) sets CORE_MEDIA_LAYER=
-    | false to write the bucket directly, and drops it at go-live.
+    | false to write the bucket directly, and drops it at go-live. Unset, a
+    | Laravel Cloud bucket (attached per environment) gets no layer.
     |
-    | images: the defaults <x-core-img> renders with. `glide_presets` is the
-    | srcset of a site without a CDN: its `w<px>` Glide presets, which
-    | config/statamic/assets.php defines.
+    | images: the defaults <x-core-img> renders with.
     |
     | videos: the widths <x-core-video> asks the CDN for, `small_width` for
     | phones, and the second of the frame it shows as the poster when none is
@@ -555,19 +556,19 @@ return [
             'root' => '',
             'acl' => true,
             'cache_control' => 'public, max-age=2592000',
+            'cloud' => env('LARAVEL_CLOUD_DISK_CONFIG', ''),
         ],
         'disks' => [
             'assets' => 'assets',
         ],
         'layer' => [
-            'enabled' => env('CORE_MEDIA_LAYER', true),
+            'enabled' => env('CORE_MEDIA_LAYER'),
             'prefix' => '_staging',
             'local' => 'media-layer',
         ],
         'images' => [
             'format' => 'auto',
             'placeholder' => 'blur',
-            'glide_presets' => true,
         ],
         'videos' => [
             'width' => 1280,

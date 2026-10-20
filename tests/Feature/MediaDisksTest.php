@@ -91,6 +91,58 @@ class MediaDisksTest extends TestCase
         $this->assertSame(MediaDisks::LAYERED_DRIVER, $this->define('staging', [...$this->withKey(), 'core-web.media.layer.enabled' => true])['driver']);
     }
 
+    private function cloud(array $disk = []): array
+    {
+        return ['core-web.media.bucket.cloud' => json_encode([
+            ['disk' => 'scoped', 'scoped_disk' => 'media', 'access_key_id' => 'scoped-key', 'access_key_secret' => 'scoped-secret', 'bucket' => 'scoped'],
+            [
+                'disk' => 'media',
+                'access_key_id' => 'cloud-key',
+                'access_key_secret' => 'cloud-secret',
+                'bucket' => 'fls-site',
+                'endpoint' => 'https://abc.r2.cloudflarestorage.com',
+                'url' => 'https://fls-site.laravel.cloud',
+                ...$disk,
+            ],
+        ])];
+    }
+
+    public function test_without_a_key_the_laravel_cloud_bucket_is_used_without_acls(): void
+    {
+        $disk = $this->define('production', [...$this->cloud(), 'core-web.media.bucket.url' => '', 'core-web.media.bucket.bucket' => '']);
+
+        $this->assertTrue(MediaDisks::fromCloud());
+        $this->assertSame('s3', $disk['driver']);
+        $this->assertSame(['cloud-key', 'cloud-secret', 'fls-site'], [$disk['key'], $disk['secret'], $disk['bucket']]);
+        $this->assertSame('https://abc.r2.cloudflarestorage.com', $disk['endpoint']);
+        $this->assertSame('auto', $disk['region']);
+        $this->assertSame('https://fls-site.laravel.cloud', $disk['url']);
+        $this->assertArrayNotHasKey('visibility', $disk);
+    }
+
+    public function test_a_committed_cdn_url_and_a_configured_key_win_over_cloud(): void
+    {
+        $this->assertSame('https://cdn.inlycore.com/client/site', $this->define('production', $this->cloud())['url']);
+
+        $disk = $this->define('production', [...$this->cloud(), ...$this->withKey()]);
+        $this->assertFalse(MediaDisks::fromCloud());
+        $this->assertSame(['key', 'site', 'public'], [$disk['key'], $disk['bucket'], $disk['visibility']]);
+    }
+
+    public function test_a_cloud_bucket_has_no_layer_unless_one_is_asked_for(): void
+    {
+        $this->assertSame('s3', $this->define('staging', $this->cloud())['driver']);
+        $this->assertSame(MediaDisks::LAYERED_DRIVER, $this->define('staging', [...$this->cloud(), 'core-web.media.layer.enabled' => 'true'])['driver']);
+    }
+
+    public function test_only_scoped_or_unreadable_cloud_disks_mean_no_bucket(): void
+    {
+        $this->define('production', ['core-web.media.bucket.cloud' => json_encode([['scoped_disk' => 'media', 'access_key_id' => 'k', 'access_key_secret' => 's']])]);
+        $this->assertFalse(MediaDisks::bucketConfigured());
+
+        $this->assertSame('local', $this->define('production', ['core-web.media.bucket.cloud' => 'not json'])['driver']);
+    }
+
     public function test_a_disk_the_app_defines_is_left_alone(): void
     {
         config(['filesystems.disks.assets' => ['driver' => 'local', 'root' => '/elsewhere']]);

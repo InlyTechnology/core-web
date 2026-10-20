@@ -65,12 +65,6 @@ final class MediaSource
         return $this->kind === self::SVG;
     }
 
-    /** The file's own width in pixels: given, or read off the Asset's meta (never an exception). */
-    public function originalWidth(): ?int
-    {
-        return $this->width ?? ($this->asset ? self::int(self::guard(fn () => Arr::get($this->asset->meta(), 'width'))) : null);
-    }
-
     /** The focal point as CSS object-position, or null. */
     public function objectPosition(): ?string
     {
@@ -113,7 +107,7 @@ final class MediaSource
             default => self::kindOf($asset->path()),
         };
 
-        // Meta is read whole (meta($key) re-measures the file on every call while a value is missing). Dimensions are left to originalWidth(): reading them hydrates the file's meta, which only a Glide srcset needs.
+        // Meta is read whole: meta($key) re-measures the file on every call while a value is missing.
         return new self(
             url: MediaDisks::layerUrl($asset) ?? $url,
             kind: $kind,
