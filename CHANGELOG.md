@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.20.0
 
 - **Site rules**: `rules/CoreWebRulesTest.php`, run by Inly's site gate
   (site-ci) on every site that installs core-web. Its first rule fails a
