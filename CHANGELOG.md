@@ -86,8 +86,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   for the snapshots it registers, paged, behind the same guards, token and
   rate limit as the content export. The secret keeps the direct path to
   the remote Core working unchanged; with neither, the command says to run
-  `content:login`. Pins behave as before. See README → Pulling production
-  data.
+  `content:login`. Pins behave as before. The Pull content permission and
+  the machine approval screen now say the token also reads every snapshot
+  the site keeps, whole. A copy that changes between pages restarts the
+  pull (twice at most), and a 429 or 503 is waited out as `Retry-After`
+  says (a minute at most). See README → Pulling production data.
 
 ## v0.14.0
 

@@ -336,15 +336,26 @@ php artisan core:pull --release  # unpin and forget: the site reads CORE_URL aga
 `content:login` reads the snapshots from the live site's sync API
 (`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
 Pull content permission), so one login covers both content and snapshots.
-The live site serves the copy it renders from; only when it has nothing
-cached yet does it pull once from its own Core with its own client, cached
-as a render's pull would be. It serves only the snapshots it registers
-itself, paged (`content_sync.page_size`); a copy that changes between
-pages pins nothing and the pull is run again. A copy the live site holds
-stale (its Core unreachable lately) is pinned and said so. The live site
-needs `features.snapshots` and the same snapshots registered; a site that
-lacks one answers 404 for it. A snapshot's warmer does not run on this
-path: its documents are pinned as the live site stored them.
+That permission therefore also reads the whole of every snapshot the site
+keeps, not only what its pages show, and the approval screen says so.
+
+- The live site serves the copy it renders from; only when it has nothing
+  cached yet does it pull once from its own Core with its own client,
+  cached as a render's pull would be. That first pull can take longer than
+  the checkout waits: a timeout says the site may still be filling its copy,
+  and a pull a minute later reads it.
+- It serves only the snapshots it registers itself, paged
+  (`content_sync.page_size`). A copy that changes between pages starts the
+  pull of that snapshot over, twice at most, before it pins nothing.
+- A rate limit (429) or a site with no copy to serve yet (503) is waited
+  out once its `Retry-After` says, a minute at most, a few times over.
+- A copy the live site holds stale (its Core unreachable lately) is pinned
+  and said so.
+- The live site needs `features.snapshots` and the same snapshots
+  registered; a site that lacks one answers 404 for it, and one whose
+  core-web predates this endpoint is named as such.
+- A snapshot's warmer does not run on this path: its documents are pinned
+  as the live site stored them.
 
 **From Core directly** is the other option, for a site without content pull
 or a developer who holds a read-only client: with `CORE_REMOTE_CLIENT_SECRET`
@@ -352,10 +363,11 @@ set, `core:pull` reads the remote Core instead, and never the live site.
 With neither a login nor a secret it stops and says to run
 `php artisan content:login`.
 
-The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
-there replaces the package's whole, so it names all three:
+*Direct path only:* the Core and the client are the same on every machine,
+so the site commits them as defaults in its own `config/core-web.php`,
+overridable from env, and a developer sets only the secret
+(`CORE_REMOTE_CLIENT_SECRET`). A `remote` key there replaces the package's
+whole, so it names all three:
 
 ```php
 'remote' => [
@@ -371,31 +383,34 @@ to the package; a site that writes its own `remote` block reads only the
 variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
 default to keep developers' `.env` files working.
 
-The client is an app client in that Core (Settings → Apps, client
-credentials grant): Core shows its id and secret when it is created.
+*Direct path only:* the client is an app client in that Core (Settings →
+Apps, client credentials grant): Core shows its id and secret when it is
+created. `core:pull` runs each snapshot's own pull (or its warmer) on the
+`remote.*` client in place of `client.*`, so the documents are exactly what
+the site's projections make of that Core's data.
 
-It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
-place of `client.*`, so the documents are exactly what the site's
-projections make of that Core's data. What it stores is **pinned**: kept
-without expiry, and no `core:warm`, ping or render replaces it until the next
-`core:pull` or `--release`. A pull that fails, or comes back too empty to
-trust (`emptyWhen()`), pins nothing and leaves an earlier pin alone. A
-warmer that pins and then fails is reported as both. `--release` forgets the
-pulled copies, since another Core's data is no fallback for this one, so the
-next read or warm pulls from `CORE_URL` as from a cold cache.
+On either path, what it stores is **pinned**: kept without expiry, and no
+`core:warm`, ping or render replaces it until the next `core:pull` or
+`--release`. A pull that fails, or comes back too empty to trust
+(`emptyWhen()`), pins nothing and leaves an earlier pin alone. A warmer that
+pins and then fails is reported as both. `--release` forgets the pulled
+copies, since another Core's data is no fallback for this one, so the next
+read or warm pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read** (the direct path). In the source Core, create an app client
-  for local pulls (Settings → Apps, client credentials) holding the same read
-  permissions as the site's own client and nothing else, and share its secret
-  the way the team shares other secrets. It reads what the public site reads,
-  never more; revoking it in Core stops every pull.
+- **A client that may only read** (direct path only). In the source Core,
+  create an app client for local pulls (Settings → Apps, client
+  credentials) holding the same read permissions as the site's own client
+  and nothing else, and share its secret the way the team shares other
+  secrets. It reads what the public site reads, never more; revoking it in
+  Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
-- **A certificate the machine trusts.** The direct pull ignores `CORE_CA_BUNDLE`,
-  which is for a local Core, so the source needs a public certificate.
+- **A certificate the machine trusts** (direct path only). The pull ignores
+  `CORE_CA_BUNDLE`, which is for a local Core, so the source needs a public
+  certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
   `CORE_URL`; those keys are not pinned.
@@ -1610,7 +1625,8 @@ it can. The developer signs in to the CP the way the site allows (Core
 single sign-on or a native login), checks the code, the machine name (as
 the machine reports it), the address the request came from and how long ago
 it started, and approves; the terminal then gets a personal token that acts
-as them, so the pull reads exactly what they may view. Approving a machine,
+as them, so the pull reads exactly what they may view (and, for `core:pull`,
+every Core snapshot the site keeps, whole). Approving a machine,
 and using its token, needs the **Pull content** permission (under Core Web
 in the role editor) besides CP access; a super user always may. Signing in
 again revokes the machine's previous token. The token is kept in
@@ -1748,7 +1764,9 @@ name (`export`), or any path from the site's root when it starts with `/`,
 with the token as bearer and no redirects followed. The sync endpoints' own
 401 forgets the login and throws `RemoteLoginNeeded`; a site that cannot be
 reached, redirects, rate limits or answers another 401 (basic auth in front
-of a staging host) throws `RemoteSiteError` and keeps the login. On the
+of a staging host) throws `RemoteSiteError` and keeps the login; a rate limit
+is its `RemoteSiteBusy` subclass, with the seconds the site asked to wait
+(`retryAfter`, null when it named none). On the
 live site, a route behind the `core-web.sync` middleware runs as the
 token's CMS user (`User::current()`).
 

@@ -120,8 +120,8 @@ return [
     | CORE_URL the control panel link points at it. The URL and client id are
     | the same for every developer, so the site commits them as the defaults
     | in its own config/core-web.php (env can still override them); only the
-    | secret has to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
-    | `pull`, and the CORE_PULL_* variables, keep working.
+    | secret has to be set (CORE_REMOTE_CLIENT_SECRET). A site config still
+    | naming this `pull`, and the CORE_PULL_* variables, keep working.
     |
     */
 

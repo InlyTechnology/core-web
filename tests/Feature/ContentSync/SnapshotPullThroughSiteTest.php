@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\ContentSync\GuardSyncRequests;
 use Inly\CoreWeb\ContentSync\RemoteSite;
@@ -170,15 +171,92 @@ class SnapshotPullThroughSiteTest extends TestCase
         Http::assertSentCount(5);
     }
 
-    public function test_a_copy_that_changes_between_pages_pins_nothing(): void
+    private function page(string $version, ?int $next, string $id = 'x')
     {
-        $page = fn (string $version, ?int $next) => Http::response(['type' => 'things', 'version' => $version, 'stale' => false, 'total' => 2, 'documents' => [['id' => 'x', 'document' => ['id' => 'x']]], 'next_cursor' => $next]);
-        Http::swap(new Factory);
-        Http::fake(['remote.test/*' => Http::sequence()->pushResponse($page('one', 1))->pushResponse($page('two', null))]);
+        return Http::response(['type' => 'things', 'version' => $version, 'stale' => false, 'total' => 2, 'documents' => [['id' => $id, 'document' => ['id' => $id]]], 'next_cursor' => $next]);
+    }
 
-        $this->artisan('core:pull')->expectsOutputToContain('changed while pulling')->assertFailed();
+    public function test_a_copy_that_changes_between_pages_starts_the_pull_over(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::sequence()
+            ->pushResponse($this->page('one', 1, 'a'))
+            ->pushResponse($this->page('two', null, 'b'))
+            ->pushResponse($this->page('two', 1, 'c'))
+            ->pushResponse($this->page('two', null, 'd'))]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: 2 documents pinned')->assertSuccessful();
+
+        $this->assertSame(['c', 'd'], $this->documents());
+    }
+
+    public function test_a_copy_that_keeps_changing_pins_nothing(): void
+    {
+        $sequence = Http::sequence();
+
+        foreach (range(1, 3) as $attempt) {
+            $sequence->pushResponse($this->page("a{$attempt}", 1))->pushResponse($this->page("b{$attempt}", null));
+        }
+
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => $sequence]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('kept changing while pulling')->assertFailed();
 
         $this->assertNull($this->store()->pinned(app(SnapshotRegistry::class)->get('things')));
+        Http::assertSentCount(6);
+    }
+
+    public function test_a_rate_limit_or_a_copy_still_filling_is_waited_out_as_the_site_asks(): void
+    {
+        Sleep::fake();
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::sequence()
+            ->push(['message' => 'Too Many Attempts.'], 429, ['Retry-After' => '7'])
+            ->push(['error' => 'snapshot_unavailable'], 503, ['Retry-After' => '600'])
+            ->pushResponse($this->page('one', null))]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: 1 documents pinned')->assertSuccessful();
+
+        Sleep::assertSequence([Sleep::for(7)->seconds(), Sleep::for(60)->seconds()]);
+    }
+
+    public function test_waiting_gives_up_after_a_few_tries(): void
+    {
+        Sleep::fake();
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::response(['error' => 'snapshot_unavailable', 'message' => 'No copy yet.'], 503, ['Retry-After' => '5'])]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: nothing pinned from remote.test (No copy yet.)')->assertFailed();
+
+        Sleep::assertSleptTimes(3);
+    }
+
+    public function test_a_timeout_says_the_site_may_still_be_filling_its_copy(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::failedConnection('cURL error 28: Operation timed out after 30001 milliseconds')]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('may still be filling its copy from its Core: try again in a minute')->assertFailed();
+    }
+
+    public function test_a_site_without_the_endpoint_is_named_as_out_of_date(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::response('<h1>Not found</h1>', 404)]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('no snapshot endpoint (HTTP 404); is its core-web up to date?')->assertFailed();
+    }
+
+    public function test_an_empty_copy_with_nothing_here_writes_nothing(): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::response(['type' => 'things', 'version' => 'v', 'stale' => false, 'total' => 0, 'documents' => [], 'next_cursor' => null])]);
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: nothing pinned')->assertFailed();
+
+        $this->assertNull(Cache::get('core:things:v1:fresh'));
+        $this->assertNull(Cache::get('core:things:v1:last_good'));
     }
 
     public function test_an_empty_copy_pins_nothing_and_keeps_an_earlier_pin(): void
@@ -291,6 +369,29 @@ class SnapshotPullThroughSiteTest extends TestCase
         $response = $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->assertStatus(503)->assertJsonPath('error', 'snapshot_unavailable');
 
         $this->assertStringNotContainsString('site-secret', $response->getContent());
+    }
+
+    public function test_while_its_core_is_down_the_site_does_not_ask_it_again_on_every_request(): void
+    {
+        $this->core = null;
+        $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->assertStatus(503);
+        $sent = count(Http::recorded(fn (Request $request) => str_contains($request->url(), 'core.test/')));
+
+        $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->assertStatus(503)->assertHeader('Retry-After', '60');
+
+        $this->assertGreaterThan(0, $sent);
+        $this->assertCount($sent, Http::recorded(fn (Request $request) => str_contains($request->url(), 'core.test/')));
+    }
+
+    public function test_the_version_follows_the_stored_copy(): void
+    {
+        $first = $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->json('version');
+        $this->assertSame($first, $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->json('version'));
+
+        $this->core = ['prod-3'];
+        $this->store()->refresh(app(SnapshotRegistry::class)->get('things'));
+
+        $this->assertNotSame($first, $this->withToken($this->token)->getJson('/!/core-web/sync/snapshots/things')->json('version'));
     }
 
     public function test_the_export_carries_documents_and_nothing_of_the_site_s_client(): void

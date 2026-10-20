@@ -146,7 +146,7 @@ final class RemoteSite
         if ($response->status() === 429) {
             $retry = $response->header('Retry-After');
 
-            throw new RemoteSiteError("{$url} is rate limiting this machine (HTTP 429)".(ctype_digit($retry) ? "; try again in {$retry} seconds" : '; try again in a minute').'.');
+            throw new RemoteSiteBusy("{$url} is rate limiting this machine (HTTP 429)".(ctype_digit($retry) ? "; try again in {$retry} seconds" : '; try again in a minute').'.', ctype_digit($retry) ? (int) $retry : null);
         }
     }
 
