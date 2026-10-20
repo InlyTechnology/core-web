@@ -11,22 +11,25 @@ use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\ContentSync\RemoteSiteBusy;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
+use Inly\CoreWeb\ContentSync\SignsInToRemoteSite;
 use Throwable;
 
 /**
  * Pulls production's snapshots into this machine's store and pins them, so a
  * local site renders real data without a local Core: through the live site,
- * signed in with `content:login`, or, with a remote client secret set, from
+ * on this machine's login to it (signing in first in a terminal), or, with a remote client secret set, from
  * another Core directly, running every snapshot's own pull or its warmer on
  * the core-web.remote client in place of core-web.client.
  */
 class PullSnapshotsCommand extends Command
 {
+    use SignsInToRemoteSite;
+
     protected $signature = 'core:pull
         {type? : One snapshot type; every registered type when omitted}
         {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
 
-    protected $description = 'Pull the Core snapshots through the live site (content:login), or from the remote Core (core-web.remote), and pin them locally';
+    protected $description = 'Pull the Core snapshots through the live site (signing in when needed), or from the remote Core (core-web.remote), and pin them locally';
 
     private const MAX_PAGES = 10000;
 
@@ -37,6 +40,8 @@ class PullSnapshotsCommand extends Command
     private const WAITS = 3;
 
     private const MAX_WAIT_SECONDS = 60;
+
+    private const DIRECT = ' (or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly)';
 
     public function handle(SnapshotRegistry $registry, SnapshotStore $store): int
     {
@@ -140,13 +145,15 @@ class PullSnapshotsCommand extends Command
     /** @param  list<string>  $types */
     private function throughSite(SnapshotRegistry $registry, SnapshotStore $store, array $types): int
     {
-        $site = RemoteSite::configuredUrl() === '' ? null : RemoteSite::fromStorage();
+        if (RemoteSite::configuredUrl() === '') {
+            $this->error('Nothing to pull from: set core-web.content_sync.remote_url to pull through the live site, or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly (README, Pulling production data).');
+
+            return self::FAILURE;
+        }
+
+        $site = $this->signedInSite(self::DIRECT);
 
         if ($site === null) {
-            $this->error(RemoteSite::configuredUrl() === ''
-                ? 'Nothing to pull from: set core-web.content_sync.remote_url and sign this machine in to the live site with php artisan content:login, or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly (README, Pulling production data).'
-                : 'This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login (or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly).');
-
             return self::FAILURE;
         }
 
@@ -155,11 +162,15 @@ class PullSnapshotsCommand extends Command
 
         foreach ($types as $type) {
             try {
-                [$documents, $stale] = $this->fetch($site, $type);
-            } catch (RemoteLoginNeeded) {
-                $this->error('The live site refused this machine\'s login: run php artisan content:login.');
+                try {
+                    [$documents, $stale] = $this->fetch($site, $type);
+                } catch (RemoteLoginNeeded) {
+                    if (($site = $this->signInAgain(self::DIRECT)) === null) {
+                        return self::FAILURE;
+                    }
 
-                return self::FAILURE;
+                    [$documents, $stale] = $this->fetch($site, $type);
+                }
             } catch (RemoteSiteError $e) {
                 $this->warn("{$type}: nothing pinned from {$host} ({$e->getMessage()}".(self::timedOut($e) ? '; the live site may still be filling its copy from its Core: try again in a minute' : '').').');
                 $exit = self::FAILURE;

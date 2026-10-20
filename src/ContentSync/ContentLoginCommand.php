@@ -19,7 +19,7 @@ class ContentLoginCommand extends Command
     protected $signature = 'content:login
         {--no-browser : Print the link without trying to open a browser}';
 
-    protected $description = 'Sign this machine in to the remote site (core-web.content_sync.remote_url) to pull its content';
+    protected $description = 'Sign this machine in to the remote site (core-web.content_sync.remote_url) ahead of a pull, or as another user; a pull in a terminal signs in itself';
 
     public function handle(): int
     {
