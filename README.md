@@ -59,6 +59,7 @@ nothing.
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
+| Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -1189,6 +1190,75 @@ return [
     'cp_link' => ['label' => 'Acme Core', 'icon' => null],
 ];
 ```
+
+## Laravel Cloud
+
+Laravel Cloud resets the disk on every deploy, so what editors write cannot
+live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
+`LARAVEL_CLOUD=1`) gets this config without an env var for any of it:
+
+| Config | On Cloud | Env var that overrides it |
+|---|---|---|
+| Entries, collection and nav trees, global variables, terms, asset meta, form submissions, revisions, tokens | `eloquent` driver | `STATAMIC_CONTENT_DRIVER` |
+| CP users (`statamic.users.repository`) | `eloquent` | `STATAMIC_USERS_REPOSITORY` |
+| `cache.default`, `session.driver` | `database` | `CACHE_STORE`, `SESSION_DRIVER` |
+| Maintenance mode | the `cache` driver on the `database` store | `APP_MAINTENANCE_DRIVER`, `APP_MAINTENANCE_STORE` |
+| The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
+| Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
+| Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
+
+An env var the environment sets keeps its own value. Off Cloud nothing
+changes, so local machines, CI and Forge keep `content/` as the source.
+Blueprints, collections, navigations, taxonomies, global sets, forms and
+sites stay files from git on Cloud too.
+
+The site does its half once:
+
+- `composer require statamic/eloquent-driver`, publish its config
+  (`--tag=statamic-eloquent-config`) with every `driver` left on `file`
+  (the feature switches the content parts) and `UuidEntryModel` for
+  entries, and publish its migrations.
+- Give the `users` table uuid ids and the User model `HasUuids`, an empty
+  `$guarded` and casts for `super`, `preferences` and `last_login`, which
+  Statamic's eloquent users write.
+- Publish the snapshots store migration (`--tag=core-web-migrations`) when
+  the site has `features.snapshots`.
+
+The feature also adds an `outpost` file cache store when the site has none:
+Statamic's licensing ping keeps its marker there, and Cloud's build runs
+artisan before any migration made the cache table.
+
+### First deploy
+
+On a new, empty database, load `content/` once from Cloud's commands tab:
+
+```bash
+php artisan content:import
+```
+
+It refuses while the database holds entries; `--fresh` empties the content
+tables first, editors' work included, so it is for a first deploy or a
+rebuild only. Run it whole: an asset without its meta row renders no image.
+It runs each import in its own process and saves the trees after the
+entries, since the driver's own import commands run in one go leave the
+trees empty.
+
+### Deploy commands
+
+Cloud's deploy commands are one line:
+
+```bash
+php artisan core-web:deploy
+```
+
+It runs `migrate --force`, `statamic:stache:refresh`, `statamic:static:clear`
+and `statamic:search:update --all`, then `core:warm` with
+`features.snapshots` (a failed warm-up does not fail the deploy: the site
+serves the snapshots it has), then the site's own commands in
+`cloud.deploy`, and stops at the first required step that fails. On Cloud it
+refuses to run while content would still be on the disk. Build commands
+stay the host's: `composer install`, the front-end build and
+`php artisan optimize`.
 
 ## Testing a site
 

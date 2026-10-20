@@ -15,6 +15,9 @@ use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Cloud\CloudDefaults;
+use Inly\CoreWeb\Cloud\DeployCommand;
+use Inly\CoreWeb\Cloud\ImportContentCommand;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -67,12 +70,19 @@ use Statamic\StaticCaching\Cacher;
  * site's content (`content:check`, nightly, a dashboard widget).
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
+ * The `cloud` feature runs the site on Laravel Cloud, its content in the
+ * database, with `content:import` and `core-web:deploy`.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/core-web.php', 'core-web');
+
+        // Now, not on booting: the eloquent driver picks its repositories in its own register(), which runs after this one.
+        if (self::enabled('cloud')) {
+            CloudDefaults::apply($this->app);
+        }
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
@@ -160,6 +170,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
+        }
+
+        if (self::enabled('cloud')) {
+            $this->commands([ImportContentCommand::class, DeployCommand::class]);
         }
 
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.

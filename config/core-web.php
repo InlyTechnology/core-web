@@ -53,6 +53,9 @@ return [
     | cp_link: a link to Core right under Dashboard in the control panel
     | (`cp_link`), for every CP user, opened in a new tab.
     |
+    | cloud: on Laravel Cloud, the config a site needs there (`cloud`), with
+    | `content:import` and `core-web:deploy` everywhere.
+    |
     */
 
     'features' => [
@@ -64,6 +67,7 @@ return [
         'checks' => false,
         'forms' => false,
         'cp_link' => false,
+        'cloud' => false,
     ],
 
     /*
@@ -481,5 +485,32 @@ return [
     'cp_link' => [
         'label' => 'Core',
         'icon' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Laravel Cloud
+    |--------------------------------------------------------------------------
+    |
+    | On Laravel Cloud (LARAVEL_CLOUD=1, which Cloud sets) every deploy resets
+    | the disk, so the feature moves what must outlive one into the database:
+    | content and CP users on statamic/eloquent-driver (with the site's
+    | published config/statamic/eloquent-driver.php), cache, sessions, the
+    | maintenance flag and the snapshots store. It also turns off the stache
+    | watcher and Statamic's git integration and statically caches pages
+    | (`half`). An env var the environment sets keeps its own value. Off
+    | Cloud nothing changes.
+    |
+    | deploy: artisan commands `core-web:deploy` runs after its own steps
+    | (migrate, stache, static cache, search, core:warm), such as
+    | ['inly:robots'].
+    |
+    | detected: null asks Cloud's LARAVEL_CLOUD; true or false forces it.
+    |
+    */
+
+    'cloud' => [
+        'deploy' => [],
+        'detected' => null,
     ],
 ];
