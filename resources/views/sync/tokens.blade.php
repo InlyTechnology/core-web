@@ -5,7 +5,11 @@
     {{-- Statamic compiles this page as a Vue template, so text from elsewhere sits in v-pre elements. --}}
     <ui-header title="{{ $title }}" icon="key"></ui-header>
 
-    @if ($tokens === [])
+    @if ($error !== null)
+        <ui-card>
+            <ui-description v-pre>{{ __('core-web::sync.store_unavailable') }} {{ $error }}</ui-description>
+        </ui-card>
+    @elseif ($tokens === [])
         <ui-card>
             <ui-description>{{ __('core-web::sync.no_tokens') }}</ui-description>
         </ui-card>

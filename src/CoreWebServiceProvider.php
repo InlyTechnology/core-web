@@ -26,6 +26,7 @@ use Inly\CoreWeb\ContentSync\ContentLoginCommand;
 use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
 use Inly\CoreWeb\ContentSync\ContentPullCommand;
 use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
+use Inly\CoreWeb\ContentSync\GuardSyncRequests;
 use Inly\CoreWeb\ContentSync\LocalContent;
 use Inly\CoreWeb\ContentSync\SyncLimits;
 use Inly\CoreWeb\ContentSync\SyncTokens;
@@ -316,6 +317,11 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->label(__('core-web::sync.permission'))
                 ->description(__('core-web::sync.permission_description'));
         }));
+
+        // A site that refuses every sync call has no machines to approve or tokens to list.
+        if (! GuardSyncRequests::mayActAsRemote()) {
+            return;
+        }
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
 

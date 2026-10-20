@@ -75,6 +75,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
+- **Content sync in the CP**: a site that refuses sync calls (APP_ENV=local
+  without `content_sync.allow_local_remote`) no longer shows Tools → Content
+  sync or registers its CP pages, and the tokens page names the migration to
+  run, or the connection to configure, when the token table or its database
+  is missing instead of failing with a server error.
 
 ## v0.13.1
 

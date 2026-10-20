@@ -6,7 +6,6 @@ use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -100,7 +99,7 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
     }
 
     /**
-     * A missing table names its migration rather than surfacing as a bare query error.
+     * A missing table or an unreachable database says what to set up rather than surfacing as a bare query error.
      *
      * @template T
      *
@@ -112,17 +111,19 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
         try {
             return $query();
         } catch (QueryException $e) {
+            $setting = "Content sync keeps its tokens in the `{$this->table}` table (core-web.content_sync.tokens.driver = database)";
+
             try {
                 $missing = ! $this->connection->getSchemaBuilder()->hasTable($this->table);
-            } catch (Throwable) {
-                throw $e;
+            } catch (Throwable $unreachable) {
+                throw new SyncTokenStoreUnavailable("{$setting}, but the database cannot be reached: configure its connection ({$unreachable->getMessage()}).", previous: $e);
             }
 
             if (! $missing) {
                 throw $e;
             }
 
-            throw new RuntimeException("Content sync keeps its tokens in the `{$this->table}` table (core-web.content_sync.tokens.driver = database), which does not exist: publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.", previous: $e);
+            throw new SyncTokenStoreUnavailable("{$setting}, which does not exist: publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.", previous: $e);
         }
     }
 }

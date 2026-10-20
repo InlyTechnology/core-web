@@ -11,6 +11,7 @@ use Inly\CoreWeb\ContentSync\DatabaseSyncTokenStore;
 use Inly\CoreWeb\ContentSync\SyncToken;
 use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ContentSync\SyncTokenStore;
+use Inly\CoreWeb\ContentSync\SyncTokenStoreUnavailable;
 use RuntimeException;
 
 /** Every SyncAuthTest case again with tokens in the database, as a site behind several servers keeps them. */
@@ -129,6 +130,27 @@ class SyncAuthDatabaseTest extends SyncAuthTest
         $this->expectExceptionMessage('core-web-sync-tokens-migration');
 
         SyncTokens::fromConfig()->issue($this->cmsUser('ann@example.com', roles: ['editor']), 'ann@laptop');
+    }
+
+    public function test_the_tokens_page_names_the_migration_when_the_table_is_missing(): void
+    {
+        Schema::drop('core_web_sync_tokens');
+
+        $this->actingAs($this->cmsUser('boss@example.com', super: true))
+            ->get(cp_route('core-web.sync.tokens'))
+            ->assertOk()
+            ->assertSee('The signed-in machines cannot be listed')
+            ->assertSee('core-web-sync-tokens-migration');
+    }
+
+    public function test_a_database_that_does_not_exist_is_reported_as_unreachable(): void
+    {
+        config(['database.connections.gone' => ['driver' => 'sqlite', 'database' => __DIR__.'/does-not-exist.sqlite', 'prefix' => '']]);
+
+        $this->expectException(SyncTokenStoreUnavailable::class);
+        $this->expectExceptionMessage('the database cannot be reached');
+
+        (new DatabaseSyncTokenStore(DB::connection('gone'), 'core_web_sync_tokens'))->all();
     }
 
     public function test_its_own_tag_publishes_only_the_tokens_migration(): void

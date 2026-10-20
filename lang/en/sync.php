@@ -20,6 +20,7 @@ return [
     'continue' => 'Continue',
     'code_unknown' => 'That code is unknown or expired. Run php artisan content:login again for a new one.',
     'tokens_title' => 'Content sync',
+    'store_unavailable' => 'The signed-in machines cannot be listed:',
     'no_tokens' => 'No machine is signed in. Run php artisan content:login in a local checkout to sign one in.',
     'machine' => 'Machine',
     'user' => 'User',

@@ -59,7 +59,16 @@ class SyncCpController
     public function tokens(SyncTokens $tokens): View
     {
         $user = User::current();
-        $rows = collect($user->isSuper() ? $tokens->all() : $tokens->forUser((string) $user->id()))
+
+        try {
+            $found = $user->isSuper() ? $tokens->all() : $tokens->forUser((string) $user->id());
+        } catch (SyncTokenStoreUnavailable $e) {
+            report($e);
+
+            return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => [], 'all' => $user->isSuper(), 'error' => $e->getMessage()]);
+        }
+
+        $rows = collect($found)
             ->map(function (SyncToken $token): array {
                 $owner = User::find($token->userId);
 
@@ -73,7 +82,7 @@ class SyncCpController
             })
             ->all();
 
-        return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => $rows, 'all' => $user->isSuper()]);
+        return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => $rows, 'all' => $user->isSuper(), 'error' => null]);
     }
 
     public function revoke(string $id, SyncTokens $tokens): RedirectResponse
