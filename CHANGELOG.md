@@ -51,10 +51,50 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   from its last use, revocable under Tools → Content sync), `content:pull`
   writes what changed on the site and keeps local edits, tracked in a
   committed `content.lock`, deleting only where the developer may read
-  everything on the site. Approving a machine and using its token need the
-  addon's `pull content` permission. Set `content_sync.remote_url` in the
+  everything on the site; a file that differs only in key order or in
+  `updated_at`/`updated_by` (a site on the Eloquent driver) is left as it
+  is. Approving a machine and using its token need the addon's `pull
+  content` permission. Set `content_sync.remote_url` in the
   site's `config/core-web.php` (committed; there is no env var for it).
-  See README → Content pull.
+  The live site keeps token hashes in private files by default; one behind
+  more than one server or on a host whose disk does not outlive a deploy
+  (Laravel Cloud) sets `content_sync.tokens.driver` to `database` and runs
+  the `core_web_sync_tokens` migration (published with
+  `--tag=core-web-sync-tokens-migration`); the tokens page says what to
+  set up when that table or its database is missing. A site running as
+  APP_ENV=local (without `content_sync.allow_local_remote`) refuses sync
+  calls and has no sync pages in its CP. See README → Content pull.
+- **`core:pull` through the live site**: without `CORE_REMOTE_CLIENT_SECRET`,
+  `core:pull` reads the Core snapshots from the live site's sync API on the
+  `content:login` login, so one login covers content and snapshots and no
+  developer needs a Core client secret. The live site serves the copy it
+  renders from (one cached pull from its own Core when it has none), only
+  for the snapshots it registers, paged, behind the same guards, token and
+  rate limit as the content export. The secret keeps the direct path to
+  the remote Core working unchanged; with neither, the command says to run
+  `content:login`. Pins behave as before. The Pull content permission and
+  the machine approval screen now say the token also reads every snapshot
+  the site keeps, whole. A copy that changes between pages restarts the
+  pull (twice at most), and a 429 or 503 is waited out as `Retry-After`
+  says (a minute at most). See README → Pulling production data.
+
+## v0.14.0
+
+- **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
+  only way into the control panel: the CP login redirects to Core, Core's
+  sealed hand-off is confirmed with Core on the site's client token before
+  anyone is let in, accounts are provisioned and stamped by it with roles
+  mapped from Core's CMS grants (`cms_sign_in.roles`), Core's offboarding
+  notices delete them, and `core:reconcile-cms-users` sweeps nightly. Local
+  machines sign in through the remote Core. A site that signs its CP in from
+  Core with its own code removes that code when it switches this on. See
+  README → CMS sign-in.
+- **Snapshots**: a snapshot can opt into pages with `->pages(fn (array $doc,
+  string $site) => '/path')`, and `SnapshotPage` serves one from the site's
+  own route: `find()` (503 while nothing can be read, Statamic's 404 when
+  gone), `canonical()` (a 301 to the document's own path, query string kept)
+  and `render()` (Statamic's View with an optional cascade entry). Snapshots
+  without `->pages()` are unchanged. See README → Pages.
 
 ## v0.13.1
 

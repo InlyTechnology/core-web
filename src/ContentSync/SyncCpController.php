@@ -58,8 +58,21 @@ class SyncCpController
 
     public function tokens(SyncTokens $tokens): View
     {
+        self::assertMayPull();
+
         $user = User::current();
-        $rows = collect($user->isSuper() ? $tokens->all() : $tokens->forUser((string) $user->id()))
+
+        try {
+            $found = $user->isSuper() ? $tokens->all() : $tokens->forUser((string) $user->id());
+        } catch (SyncTokenStoreUnavailable $e) {
+            // The full message names the connection's host, user or path, so it goes to the log, not the page.
+            report($e);
+            $hint = $e->reason === SyncTokenStoreUnavailable::TABLE_MISSING ? 'core-web::sync.store_table_missing' : 'core-web::sync.store_unreachable';
+
+            return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => [], 'all' => $user->isSuper(), 'error' => __($hint)]);
+        }
+
+        $rows = collect($found)
             ->map(function (SyncToken $token): array {
                 $owner = User::find($token->userId);
 
@@ -73,7 +86,7 @@ class SyncCpController
             })
             ->all();
 
-        return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => $rows, 'all' => $user->isSuper()]);
+        return view('core-web::sync.tokens', ['title' => __('core-web::sync.tokens_title'), 'tokens' => $rows, 'all' => $user->isSuper(), 'error' => null]);
     }
 
     public function revoke(string $id, SyncTokens $tokens): RedirectResponse

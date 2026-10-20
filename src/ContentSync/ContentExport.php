@@ -20,10 +20,10 @@ use Statamic\Facades\Term;
  * terms, global variables, collection trees and nav trees. It walks
  * Statamic's repositories, so it reads the same from flat files as from the
  * Eloquent driver, and each item's `contents` is what the Stache writes for
- * it (`fileContents()`), at the path the default stores lay it out under
- * content/. Only what the user may view is in it, and each page says which
- * scopes that is all of. Blueprints, fieldsets,
- * config, users, submissions and assets are not content to sync.
+ * it (`fileContents()`, less what only the Eloquent driver writes), at the
+ * path the default stores lay it out under content/. Only what the user may
+ * view is in it, and each page says which scopes that is all of. Blueprints,
+ * fieldsets, config, users, submissions and assets are not content to sync.
  */
 class ContentExport
 {
@@ -216,7 +216,7 @@ class ContentExport
      */
     private function item(string $type, array $candidate, string $path): array
     {
-        $contents = (string) $candidate['item']->fileContents();
+        $contents = ContentFile::canonical($type, $path, (string) $candidate['item']->fileContents());
 
         return ['type' => $type, 'id' => $candidate['id'], 'path' => $path, 'contents' => $contents, 'hash' => hash('sha256', $contents)];
     }

@@ -2,10 +2,15 @@
 
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\FileSyncTokenStore;
+use Inly\CoreWeb\ContentSync\SyncToken;
 use Inly\CoreWeb\ContentSync\SyncTokens;
+use Inly\CoreWeb\ContentSync\SyncTokenStore;
 use Inly\CoreWeb\Tests\TestCase;
+use InvalidArgumentException;
 use Statamic\Auth\PermissionCache;
 use Statamic\Facades\CP\Nav as CpNav;
 use Statamic\Facades\Permission;
@@ -25,6 +30,12 @@ class SyncAuthTest extends TestCase
         Storage::fake('local');
         config(['core-web.content_sync.tokens.disk' => 'local']);
         $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries']]);
+    }
+
+    /** The store fromConfig() builds, for tests that step in between its calls. */
+    protected function tokenStore(): SyncTokenStore
+    {
+        return new FileSyncTokenStore(Storage::disk('local'), 'core-web/sync-tokens');
     }
 
     private function startLogin(string $machine = 'ann@laptop'): array
@@ -240,6 +251,7 @@ class SyncAuthTest extends TestCase
         $device = $this->startLogin();
 
         $this->actingAs($viewer)->get($device['verification_uri_complete'])->assertForbidden();
+        $this->actingAs($viewer)->get(cp_route('core-web.sync.tokens'))->assertForbidden();
         $this->actingAs($viewer)->post(cp_route('core-web.sync.approve'), ['code' => $device['user_code']])->assertForbidden();
         $this->poll($device['device_code'])->assertJsonPath('error', 'authorization_pending');
 
@@ -262,7 +274,7 @@ class SyncAuthTest extends TestCase
 
     public function test_tokens_default_to_a_private_local_folder(): void
     {
-        config(['core-web.content_sync.tokens.disk' => null]);
+        config(['core-web.content_sync.tokens' => ['driver' => 'files', 'disk' => null]]);
         $tokens = SyncTokens::fromConfig();
         [, $record] = $tokens->issue($this->cmsUser('ann@example.com', roles: ['editor']), 'ann@laptop');
 
@@ -271,5 +283,68 @@ class SyncAuthTest extends TestCase
         } finally {
             $tokens->revoke($record);
         }
+    }
+
+    public function test_a_use_racing_a_revoke_does_not_bring_the_token_back(): void
+    {
+        $store = $this->tokenStore();
+        [$token, $record] = SyncTokens::fromConfig()->issue($this->cmsUser('ann@example.com', roles: ['editor']), 'ann@laptop');
+
+        $revokedAfterRead = new class($store) implements SyncTokenStore
+        {
+            public function __construct(private SyncTokenStore $inner) {}
+
+            public function get(string $hash): ?SyncToken
+            {
+                $token = $this->inner->get($hash);
+                $this->inner->delete($hash);
+
+                return $token;
+            }
+
+            public function findById(string $id): ?SyncToken
+            {
+                return $this->inner->findById($id);
+            }
+
+            public function put(SyncToken $token): void
+            {
+                $this->inner->put($token);
+            }
+
+            public function touch(string $hash, CarbonImmutable $lastUsedAt, CarbonImmutable $expiresAt): bool
+            {
+                return $this->inner->touch($hash, $lastUsedAt, $expiresAt);
+            }
+
+            public function delete(string $hash): void
+            {
+                $this->inner->delete($hash);
+            }
+
+            public function forUser(string $userId): array
+            {
+                return $this->inner->forUser($userId);
+            }
+
+            public function all(): array
+            {
+                return $this->inner->all();
+            }
+        };
+
+        $this->assertNull((new SyncTokens($revokedAfterRead, 30))->use($token));
+        $this->assertNull(SyncTokens::fromConfig()->use($token));
+        $this->assertNull($store->get($record->hash));
+    }
+
+    public function test_an_unknown_token_driver_is_refused(): void
+    {
+        config(['core-web.content_sync.tokens' => ['driver' => 'redis']]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('[redis]');
+
+        SyncTokens::fromConfig();
     }
 }

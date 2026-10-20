@@ -45,6 +45,14 @@ class LocalContent
         return is_file($file) ? hash_file('sha256', $file) : null;
     }
 
+    /** A file's contents as they are now; null when there is none, or it is a symlink, which a pull never reads through. */
+    public function read(string $path): ?string
+    {
+        $file = $this->absolute($path);
+
+        return is_file($file) && ! is_link($file) ? (string) file_get_contents($file) : null;
+    }
+
     /**
      * Whether a file is exactly as the checkout's last commit has it: with no
      * lock entry yet (a first pull), that is a file nobody changed here.

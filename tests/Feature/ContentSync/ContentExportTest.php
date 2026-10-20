@@ -125,6 +125,22 @@ class ContentExportTest extends TestCase
         $this->assertSame(['globals/default/settings.yaml'], array_keys($this->all($token, 'globals', '&site=default')));
     }
 
+    public function test_an_entry_of_a_structured_collection_is_exported_without_its_parent(): void
+    {
+        $this->content(['default']);
+        Collection::make('articles')->save();
+        // The Eloquent driver keeps an entry's parent in its data; the tree already holds it.
+        $child = Entry::make()->collection('pages')->locale('default')->slug('child')->data(['title' => 'Child', 'parent' => 'home-id']);
+        $child->save();
+        Entry::make()->collection('articles')->locale('default')->slug('note')->data(['title' => 'Note', 'parent' => 'a field'])->save();
+        $token = $this->tokenFor($this->cmsUser('boss@example.com', super: true));
+
+        $entries = $this->all($token, 'entries');
+
+        $this->assertSame("---\nid: {$child->id()}\nblueprint: page\ntitle: Child\n---\n", $entries['collections/pages/child.md']);
+        $this->assertStringContainsString("parent: 'a field'", $entries['collections/articles/note.md'], 'A collection without a structure has no tree to hold it: there it is a field.');
+    }
+
     public function test_a_single_site_export_has_no_site_folders_but_globals_keep_theirs(): void
     {
         Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE']]);

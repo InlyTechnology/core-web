@@ -62,7 +62,7 @@ class ContentPullCommand extends Command
             [$items, $coverage] = $this->fetch($local, $remote, $scopes, $site);
         } catch (RemoteLoginNeeded) {
             if (! $this->input->isInteractive() || $this->call('content:login') !== self::SUCCESS || ($remote = RemoteSite::fromStorage()) === null) {
-                $this->error('The remote site refused this machine\'s login: run php please content:login.');
+                $this->error('The remote site refused this machine\'s login: run php artisan content:login.');
 
                 return self::FAILURE;
             }
@@ -123,7 +123,7 @@ class ContentPullCommand extends Command
         }
 
         if (! $this->input->isInteractive()) {
-            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php please content:login first.');
+            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login first.');
 
             return null;
         }
@@ -181,6 +181,7 @@ class ContentPullCommand extends Command
                         throw new RemoteSiteError("The site sent a {$scope['type']} item at [".(is_string($path) ? $path : '?').'], which is no path of its own inside content/; nothing was written.');
                     }
 
+                    $contents = ContentFile::canonical($scope['type'], $path, $contents);
                     $hash = hash('sha256', $contents);
                     $items[$path] = ['type' => $scope['type'], 'hash' => $hash, 'contents' => self::localHash($local, $path) === $hash ? null : $contents];
                 }
@@ -198,6 +199,15 @@ class ContentPullCommand extends Command
     {
         try {
             return $local->hash($path);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    private static function localContents(LocalContent $local, string $path): ?string
+    {
+        try {
+            return $local->read($path);
         } catch (InvalidArgumentException) {
             return null;
         }
@@ -260,11 +270,26 @@ class ContentPullCommand extends Command
                 continue;
             }
 
+            // Contents are not kept for a file that matched while fetching; it changed here since.
+            if ($item['contents'] === null) {
+                $plan['skipped'][] = $path;
+
+                continue;
+            }
+
+            $contents = $current === null ? null : self::localContents($local, $path);
+
+            // Key order or a save stamp alone (a site on the Eloquent driver) is no change: this file stays as it is.
+            if ($contents !== null && ContentFile::same($path, $item['contents'], $contents)) {
+                $lock[$path] = $current;
+
+                continue;
+            }
+
             // No lock entry yet (a first pull): a file as the last commit has it was not changed here.
             $changedHere = $current !== null && $current !== $locked && ! ($locked === null && $local->matchesCommitted($path));
 
-            // Contents are not kept for a file that matched while fetching; it changed here since.
-            if (($changedHere && ! $force) || $item['contents'] === null) {
+            if ($changedHere && ! $force) {
                 $plan['skipped'][] = $path;
 
                 continue;
@@ -272,8 +297,8 @@ class ContentPullCommand extends Command
 
             $local->assertWritable($path);
             $plan[$current === null ? 'new' : 'changed'][] = $path;
-            $writes[$path] = $item['contents'];
-            $lock[$path] = $item['hash'];
+            $writes[$path] = ContentFile::merge($item['type'], $path, $item['contents'], $contents);
+            $lock[$path] = hash('sha256', $writes[$path]);
         }
 
         foreach (array_keys($lock) as $path) {
