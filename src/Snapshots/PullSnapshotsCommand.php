@@ -93,6 +93,8 @@ class PullSnapshotsCommand extends Command
                     }
 
                     if (($site = $this->signInAgain()) === null) {
+                        $this->line('Not pulled: '.implode(', ', array_slice($types, $index)).'.');
+
                         return self::FAILURE;
                     }
 

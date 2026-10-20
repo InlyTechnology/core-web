@@ -59,6 +59,17 @@ class CpSignInTest extends CmsSignInTestCase
         $this->get('/cp/auth/login')->assertStatus(503);
     }
 
+    public function test_without_core_a_debugging_machine_is_told_how_to_get_in(): void
+    {
+        config(['core-web.client.base_url' => '', 'app.debug' => true]);
+
+        $this->get('/cp/auth/login')->assertStatus(503)->assertSee('set CORE_URL to a Core');
+
+        config(['app.debug' => false]);
+
+        $this->get('/cp/auth/login')->assertStatus(503)->assertDontSee('CORE_URL');
+    }
+
     public function test_a_guest_on_a_cp_page_goes_to_core_with_that_page_as_next(): void
     {
         config(['core-web.cms_sign_in.site' => 'staging']);

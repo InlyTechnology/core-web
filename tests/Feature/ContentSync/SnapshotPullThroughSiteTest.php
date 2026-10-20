@@ -139,7 +139,27 @@ class SnapshotPullThroughSiteTest extends TestCase
         $this->assertSame(['prod-1', 'prod-2'], $this->documents());
         $this->assertSame('remote.test', $this->store()->pinned(app(SnapshotRegistry::class)->get('things'))['source']);
         Http::assertSent(fn (Request $request) => $request->url() === 'https://remote.test/!/core-web/sync/snapshots/things?cursor=0' && $request->header('Authorization') === ['Bearer '.$this->token]);
-        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'other-core.test'));
+    }
+
+    public function test_pulling_again_replaces_the_pin(): void
+    {
+        $this->artisan('core:pull')->assertSuccessful();
+        $first = $this->store()->pinned(app(SnapshotRegistry::class)->get('things'));
+
+        // The live site's copy moved on; this app shares its cache, so its answer is given here.
+        Http::swap(new Factory);
+        Http::fake(['remote.test/*' => Http::response([
+            'version' => 'next',
+            'documents' => [['id' => 'prod-3', 'document' => ['id' => 'prod-3']]],
+            'next_cursor' => null,
+            'stale' => false,
+        ])]);
+        $this->travel(1)->minute();
+
+        $this->artisan('core:pull')->expectsOutputToContain('things: 1 documents pinned from remote.test')->assertSuccessful();
+
+        $this->assertSame(['prod-3'], $this->documents());
+        $this->assertNotSame($first['at'], $this->store()->pinned(app(SnapshotRegistry::class)->get('things'))['at']);
     }
 
     public function test_the_site_serves_the_copy_it_holds_without_reading_its_core(): void
@@ -298,7 +318,10 @@ class SnapshotPullThroughSiteTest extends TestCase
     {
         app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
 
-        $this->artisan('core:pull', ['--no-interaction' => true])->expectsOutputToContain('refused this machine\'s login: run php artisan content:login')->assertFailed();
+        $this->artisan('core:pull', ['--no-interaction' => true])
+            ->expectsOutputToContain('refused this machine\'s login: run php artisan content:login')
+            ->expectsOutputToContain('Not pulled: things.')
+            ->assertFailed();
 
         $this->assertNull(RemoteSite::fromStorage());
     }

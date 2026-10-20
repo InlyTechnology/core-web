@@ -49,10 +49,10 @@ final class SnapshotStore
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
-    /** Where the pull running under pinning() reads from; null outside one. */
+    /** The source pin() is storing a copy from; null outside one. */
     private ?string $pinningFrom = null;
 
-    /** @var array<string, true> the snapshot types the last pinning() pinned */
+    /** @var array<string, true> the snapshot types the last pin() pinned */
     private array $pinnedNow = [];
 
     public function __construct(
@@ -307,35 +307,33 @@ final class SnapshotStore
     }
 
     /**
-     * Runs a pull whose every full refresh stores its copy pinned (no
-     * expiry, the marker naming `$source`), even over a copy pinned before.
-     * A failed refresh, or one too empty to trust, pins nothing and leaves
-     * an earlier pin alone.
+     * Runs pin()'s write so that the copy it stores is pinned (no expiry,
+     * the marker naming `$source`), even over a copy pinned before.
      *
      * @template T
      *
-     * @param  Closure(): T  $pull
+     * @param  Closure(): T  $write
      * @return T
      */
-    public function pinning(string $source, Closure $pull): mixed
+    private function pinning(string $source, Closure $write): mixed
     {
         $this->pinnedNow = [];
         $this->pinningFrom = $source;
 
         try {
-            return $pull();
+            return $write();
         } finally {
             $this->pinningFrom = null;
         }
     }
 
-    /** Whether the last pinning() pinned this snapshot. */
+    /** Whether the last pin() pinned this snapshot. */
     public function pinnedNow(Snapshot $snapshot): bool
     {
         return isset($this->pinnedNow[$snapshot->type]);
     }
 
-    /** Whether a pin stands that only another pinning() may replace. */
+    /** Whether a pin stands that only another pin() may replace. */
     private function pinnedElsewhere(Snapshot $snapshot): bool
     {
         return $this->pinningFrom === null && $this->pinned($snapshot) !== null;
@@ -426,8 +424,7 @@ final class SnapshotStore
             return 0;
         }
 
-        // A pin is a whole copy: a patch would write without expiry and without the marker.
-        if ($this->pinningFrom !== null || ! $snapshot->pullsOne() || ($deleted && $key === null)) {
+        if (! $snapshot->pullsOne() || ($deleted && $key === null)) {
             return $this->refresh($snapshot);
         }
 

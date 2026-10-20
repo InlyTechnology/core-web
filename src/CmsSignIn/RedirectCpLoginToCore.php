@@ -11,8 +11,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * The CP is signed into from Core only: its login page redirects to Core's
  * sign-in (CORE_URL's), naming this site so Core hands the person back here
- * and not to another site it serves. A guest opening a CP page goes to Core straight
- * away, carrying that page as `next`. Statamic's other ways in (password
+ * and not to another site it serves. A guest opening a CP page goes to Core
+ * straight away, carrying that page as `next`. Statamic's other ways in (password
  * login, password reset, account activation, registration and passkey login,
  * in the CP and on the front end) are refused before they route.
  * SsoUserProvider refuses the same at the provider; this makes it visible.
@@ -29,6 +29,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RedirectCpLoginToCore
 {
+    public const NO_CORE = 'The control panel signs in through Core: set CORE_URL to a Core, or enable core-web.cms_sign_in.local_password_sign_in on a local machine.';
+
     public function handle(Request $request, Closure $next): Response
     {
         if (SsoUserProvider::localPasswordSignIn()) {
@@ -58,8 +60,10 @@ class RedirectCpLoginToCore
     {
         $handoff = app(CmsHandoff::class);
 
-        // Without Core there is no way into the CP at all.
-        abort_if($handoff->coreBaseUrl() === '', 503);
+        // Without Core there is no way into the CP at all. Error views drop the message, so a debugging machine gets it as plain text.
+        if ($handoff->coreBaseUrl() === '') {
+            abort(config('app.debug') ? response(self::NO_CORE, 503, ['Content-Type' => 'text/plain; charset=UTF-8']) : 503);
+        }
 
         return redirect()->away($handoff->signInUrl().'?'.http_build_query([
             'site' => $handoff->siteKey(),

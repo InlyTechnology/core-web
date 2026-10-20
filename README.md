@@ -1525,9 +1525,13 @@ of its own, since the client keeps a hand-off on the right host and the key
 keeps it on the site it was minted for.
 
 **Local development.** A local machine signs in through a local Core, set
-as `CORE_URL` with a client of its own, exactly as a live site does. Without
-one, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
-own login, and only while `APP_ENV` is `local`. Data from production comes
+as `CORE_URL` with a client of its own, exactly as a live site does: the
+local Core must know the site under its `cms_sign_in.site` key
+(`CORE_CMS_SITE`, `production` when unset) and serve https (`CORE_CA_BUNDLE`
+for a self-signed certificate). Without one,
+`cms_sign_in.local_password_sign_in` set to `true` restores Statamic's own
+login, and only while `APP_ENV` is `local`; with neither, the CP login
+answers 503, naming both ways in when `APP_DEBUG` is on. Data from production comes
 through `content:login` and `content:pull` / `core:pull`, not through a
 connection to the production Core.
 
