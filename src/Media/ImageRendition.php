@@ -5,8 +5,8 @@ namespace Inly\CoreWeb\Media;
 use Illuminate\Support\Arr;
 
 /**
- * What <x-core-img> renders for one source: the src, a srcset of CDN widths,
- * and the inline style carrying the blurred placeholder, the ratio box and
+ * What <x-core-img> renders for one source: the src, a srcset of CDN widths
+ * (or of Glide presets without a CDN), and the inline style carrying the blurred placeholder, the ratio box and
  * the focal point.
  */
 final class ImageRendition
@@ -52,7 +52,8 @@ final class ImageRendition
             }
         } else {
             $src = $source->url;
-            $srcset = null;
+            $srcset = GlidePresets::srcset($source);
+            $sizes ??= $srcset ? '100vw' : null;
         }
 
         $style = implode(' ', array_filter([

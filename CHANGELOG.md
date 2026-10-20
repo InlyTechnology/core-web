@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,
+  PNG or WebP) the CDN does not serve a srcset from the site's `w<px>` Glide
+  presets narrower than the original, plus the original at its own width,
+  with `sizes` defaulting to `100vw`. A site without such presets renders as
+  before. See README → Media → The components.
+
 ## v0.19.0
 
 - **Agent instructions**: `resources/agents/AGENTS.md` carries the rules an
