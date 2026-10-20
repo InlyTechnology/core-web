@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Pull without a secret**: `core:pull --login` logs a developer's machine
+  in to the remote Core: a developer approves the printed code in Core, and
+  the machine reads as the site's own client (`remote.client_id`), read
+  only, for 30 days from its last use. The login stays on the machine
+  (`storage/core-web/remote-core.json`, ignored by git); `--logout`
+  revokes it. With the site's own client in `remote.client_id`, developers
+  need no `CORE_REMOTE_CLIENT_SECRET` and no separate local pull client; a
+  set secret still works and wins unless `--login` is passed. Needs
+  inly/core with local development logins. See README → Pulling production data.
+
 ## v0.14.0
 
 - **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the

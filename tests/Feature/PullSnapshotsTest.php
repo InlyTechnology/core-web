@@ -257,9 +257,9 @@ class PullSnapshotsTest extends TestCase
 
     public function test_it_needs_a_source_to_pull_from(): void
     {
-        config(['core-web.remote.client_secret' => '']);
+        config(['core-web.remote.client_id' => '']);
 
-        $this->artisan('core:pull')->expectsOutputToContain('CORE_REMOTE_CLIENT_SECRET')->assertFailed();
+        $this->artisan('core:pull')->expectsOutputToContain('remote.client_id')->assertFailed();
 
         Http::assertNothingSent();
     }
