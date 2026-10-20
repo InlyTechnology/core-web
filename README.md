@@ -334,10 +334,12 @@ php artisan core:pull --release  # unpin and forget: the site reads CORE_URL aga
 ```
 
 **Through the live site** is the default, and needs no secret: on a site with
-[Content pull](#content-pull) switched on, a machine signed in with
-`content:login` reads the snapshots from the live site's sync API
+[Content pull](#content-pull) switched on, `core:pull` reads the snapshots
+from the live site's sync API
 (`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
-Pull content permission), so one login covers both content and snapshots.
+Pull content permission), on the same login as `content:pull`: one login
+covers both, and in a terminal either command starts it when the machine has
+none yet or the site refused the one it had.
 That permission therefore also reads the whole of every snapshot the site
 keeps, not only what its pages show, and the approval screen says so.
 
@@ -362,8 +364,8 @@ keeps, not only what its pages show, and the approval screen says so.
 **From Core directly** is the other option, for a site without content pull
 or a developer who holds a read-only client: with `CORE_REMOTE_CLIENT_SECRET`
 set, `core:pull` reads the remote Core instead, and never the live site.
-With neither a login nor a secret it stops and says to run
-`php artisan content:login`.
+Without a secret, a run with no terminal (`--no-interaction`, CI) and no
+login stops and says to run `php artisan content:login`.
 
 *Direct path only:* the Core and the client are the same on every machine,
 so the site commits them as defaults in its own `config/core-web.php`,
@@ -1594,8 +1596,8 @@ the offboarding notices. Its paths are `cms_sign_in.core.*`.
 content into its own `content/` directory, signed in as their own CMS user:
 no shared secret, no env var, and no Core needed. The same login lets
 `core:pull` read the live site's Core snapshots (see
-[Pulling production data](#pulling-production-data)), so one
-`content:login` covers both. Switch it on in the site's
+[Pulling production data](#pulling-production-data)), so one sign-in
+covers both. Switch it on in the site's
 `config/core-web.php` (the live site serves the content, the checkout pulls
 it, and both run the same config) and commit the live site's URL there: it
 is the same for every developer, so it is config, not an env var. A
@@ -1617,17 +1619,21 @@ since one would carry its token to another address, and names the URL to
 set instead.
 
 ```bash
-php artisan content:login     # once per machine
-php artisan content:pull      # every type
+php artisan content:pull      # every type; signs this machine in first when needed
 php artisan content:pull --only=entries:pages,globals --site=default
 php artisan content:pull --dry-run   # what would change; writes nothing
 php artisan content:pull --force     # overwrite (and delete) files changed here too
-php artisan content:logout    # revoke this machine's token
 php artisan core:pull         # the Core snapshots, on the same login
+php artisan content:login     # optional: sign in ahead of time, or as another user
+php artisan content:logout    # revoke this machine's token
 ```
 
-**Signing in.** `content:login` (or the first `content:pull` in a terminal)
-prints a link to the live site's CP and a code, and opens the browser where
+**Signing in.** There is no separate step: a `content:pull` or `core:pull`
+run in a terminal signs the machine in when it has no login, or when the
+site refused the one it had, and then carries on. `content:login` does the
+same on its own, to sign in ahead of time or as another CMS user, and
+`content:logout` signs out; a run without a terminal never starts a sign-in
+and says to run `content:login`. Signing in prints a link to the live site's CP and a code, and opens the browser where
 it can. The developer signs in to the CP the way the site allows (Core
 single sign-on or a native login), checks the code, the machine name (as
 the machine reports it), the address the request came from and how long ago
@@ -1748,6 +1754,13 @@ is its `RemoteSiteBusy` subclass, with the seconds the site asked to wait
 (`retryAfter`, null when it named none). On the
 live site, a route behind the `core-web.sync` middleware runs as the
 token's CMS user (`User::current()`).
+
+A command that calls the site uses the `SignsInToRemoteSite` trait (beside
+`RemoteSite`) rather than reading the login itself: `signedInSite()` returns
+the login, starting `content:login` first in a terminal, and
+`signInAgain()` does the same after a `RemoteLoginNeeded`; each returns null,
+with the reason already said, when no login can be had. `content:pull` and
+`core:pull` both sign in through it.
 
 ## Testing a site
 

@@ -77,6 +77,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   the site keeps, whole. A copy that changes between pages restarts the
   pull (twice at most), and a 429 or 503 is waited out as `Retry-After`
   says (a minute at most). See README → Pulling production data.
+- **Signing in is no separate step**: `core:pull` through the live site now
+  starts `content:login` itself when run in a terminal without a login, or
+  after the site refused the stored one, and carries on pulling, as
+  `content:pull` does; without a terminal both still stop and say to run
+  `content:login`, which remains for signing in ahead of time or as
+  another user. Commands share this through the `SignsInToRemoteSite`
+  trait. See README → Content pull.
 
 ## v0.14.0
 
