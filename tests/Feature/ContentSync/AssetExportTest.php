@@ -123,6 +123,18 @@ class AssetExportTest extends TestCase
         $this->assertSame('Anna, smiling', $data[1]['meta']['data']['alt']);
     }
 
+    public function test_meta_statamic_has_cached_is_sent_when_the_file_has_no_meta_file(): void
+    {
+        $asset = AssetContainer::find('photos')->makeAsset('logo.svg');
+        $asset->cacheStore()->forever($asset->metaCacheKey(), ['data' => ['alt' => 'Cached logo'], 'width' => 64]);
+        $token = $this->tokenFor($this->cmsUser('pia@example.com', roles: ['photographer']));
+
+        $logo = $this->export($token, ['handle' => 'photos'])->assertOk()->json('data.0');
+
+        $this->assertSame(['data' => ['alt' => 'Cached logo'], 'width' => 64], $logo['meta']);
+        $this->assertFileDoesNotExist($this->root.'/photos/.meta/logo.svg.yaml');
+    }
+
     public function test_a_page_boundary_between_containers_neither_repeats_nor_drops_a_file(): void
     {
         config(['core-web.content_sync.page_size' => 2]);
@@ -140,7 +152,7 @@ class AssetExportTest extends TestCase
         $this->app->bind(AssetContract::class, EloquentLikeAsset::class);
         File::delete($this->root.'/photos/team/.meta/anna.jpg.yaml');
         file_put_contents($this->root.'/photos/notes.yaml', "data:\n  alt: The file's own bytes\n");
-        EloquentLikeAsset::$rows = ['team/anna.jpg' => ['data' => ['alt' => 'From the row', 'focus' => '50-50-1'], 'width' => 1200]];
+        EloquentLikeAsset::$rows = ['notes.yaml' => [], 'team/anna.jpg' => ['data' => ['alt' => 'From the row', 'focus' => '50-50-1'], 'width' => 1200]];
         AssetContainer::make('photos')->disk('photos')->save();
         $token = $this->tokenFor($this->cmsUser('pia@example.com', roles: ['photographer']));
 
@@ -150,7 +162,8 @@ class AssetExportTest extends TestCase
 
         $this->assertSame(['logo.svg', 'notes.yaml', 'team/anna.jpg'], array_column($data, 'path'));
         $this->assertSame(['alt' => 'From the row', 'focus' => '50-50-1'], $data[2]['meta']['data']);
-        $this->assertNull($data[1]['meta'], 'A row without meta is sent without one, never by reading the file.');
+        $this->assertNull($data[0]['meta'], 'A row without meta is sent without one.');
+        $this->assertNull($data[1]['meta'], 'A row with empty meta is sent without one, never by reading the file.');
     }
 }
 

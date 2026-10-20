@@ -14,10 +14,11 @@ use Throwable;
 
 /**
  * The site's asset index, a page at a time, for a checkout pulling it: each
- * file's path in its container, its public URL and its Statamic `.meta`
- * data, never its bytes. Only containers the user may view are in it. It
- * only reads: a file whose `.meta` is missing is sent without one rather
- * than measured, which would write it.
+ * file's path in its container, its public URL and its stored meta (the
+ * `.meta` file, or the database row on the Eloquent driver), never its
+ * bytes. Only containers the user may view are in it. It only reads: a file
+ * without stored meta is sent without it rather than measured, which would
+ * write it.
  */
 class AssetExport
 {
@@ -114,7 +115,7 @@ class AssetExport
         try {
             $stored = method_exists($asset, 'getRawMeta') ? $asset->getRawMeta() : null;
 
-            if (is_array($stored)) {
+            if (is_array($stored) && $stored !== []) {
                 return $stored;
             }
 

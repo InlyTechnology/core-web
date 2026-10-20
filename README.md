@@ -1517,8 +1517,8 @@ never written or deleted through. The command runs only where `APP_ENV` is
 **Assets.** With `features.media` on a checkout without the bucket's key,
 the pull also brings the live site's asset index: for every asset container
 the developer may view there, each file's path, its public URL and its
-Statamic `.meta` data (alt, focus, size, dimensions), never the file
-itself. It is written to `storage/core-web/remote-assets/<disk>/` (ignored
+stored meta (alt, focus, size, dimensions: the `.meta` file, or the
+database row on Statamic's Eloquent driver), never the file itself. It is written to `storage/core-web/remote-assets/<disk>/` (ignored
 by git), never to the repo or a bucket, and replaced whole on every pull:
 it is disposable, so there is no lock and nothing to keep. The asset disks
 then list the live site's files over the local layer (see
@@ -1538,7 +1538,8 @@ the disk is removed, and `media:check` reports an index that does not read.
 An assets-only pull does not rebuild the Stache: it clears Statamic's
 listing and path caches for each container itself.
 `content_sync.pull_assets: false` turns this off; the live site only ever
-reads (a file without `.meta` there is sent without it, not measured).
+reads (a file without stored meta there is sent without it, not
+measured).
 
 **Revoking.** **Tools → Content sync** in the live site's CP lists the
 machines signed in as the user (a super user sees everyone's), with when
