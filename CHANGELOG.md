@@ -6,6 +6,30 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Asset index pull**: on a checkout with `APP_ENV=local`,
+  `features.content_sync` and `features.media` on, `content_sync.remote_url`
+  set and no bucket key, `content:pull` (and `--only=assets[:container]`)
+  brings the live site's asset index (each file's path, public URL and
+  `.meta`, never its bytes) into `storage/core-web/remote-assets/`,
+  replaced on every pull. The asset disks then read three layers: uploads
+  in `public/media-layer/`, the committed `public/<folder>` (read only,
+  and still shown before the first pull), and the live files from the
+  index, so the CP browses and renders production's assets and uploads stay
+  local; deleting or moving a committed or pulled file throws
+  `ProductionFileLocked`. `Asset::url()` there is a local-only route
+  (`/!/core-web/media/<disk>/<path>`) that redirects to whichever layer
+  holds the file. In the CP a file only the index holds takes its
+  thumbnail from the CDN (its public URL without one; a video's a CDN
+  frame, or none) rather than Glide downloading every live file for one.
+  The export gains an `assets` type, limited to containers the user may
+  view; a site on Statamic's Eloquent driver sends files in
+  subfolders and their meta too. A live site without the type is skipped
+  with a warning and content still pulls. `content_sync.pull_assets: false` keeps the plain
+  local folder. See README → Content pull → Assets and README → Media → The
+  disks.
+
 ## v0.16.0
 
 - **Content pull**: `features.content_sync` (off by default) lets a local
@@ -29,55 +53,6 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   set up when that table or its database is missing. A site running as
   APP_ENV=local (without `content_sync.allow_local_remote`) refuses sync
   calls and has no sync pages in its CP. See README → Content pull.
-- **Asset index pull**: on a checkout with `APP_ENV=local`,
-  `features.content_sync` and `features.media` on, `content_sync.remote_url`
-  set and no bucket key, `content:pull` (and `--only=assets[:container]`)
-  brings the live site's asset index (each file's path, public URL and
-  `.meta`, never its bytes) into `storage/core-web/remote-assets/`,
-  replaced on every pull. The asset disks then read three layers: uploads
-  in `public/media-layer/`, the committed `public/<folder>` (read only,
-  and still shown before the first pull), and the live files from the
-  index, so the CP browses and renders production's assets and uploads stay
-  local; deleting or moving a committed or pulled file throws
-  `ProductionFileLocked`. `Asset::url()` there is a local-only route
-  (`/!/core-web/media/<disk>/<path>`) that redirects to whichever layer
-  holds the file. In the CP a file only the index holds takes its
-  thumbnail from the CDN (its public URL without one; a video's a CDN
-  frame, or none) rather than Glide downloading every live file for one.
-  The export gains an `assets` type, limited to containers the user may
-  view; a site on Statamic's Eloquent driver sends files in
-  subfolders and their meta too. A live site without the type is skipped
-  with a warning and content still pulls. `content_sync.pull_assets: false` keeps the plain
-  local folder. See README → Content pull → Assets and README → Media → The
-  disks.
-- **Media**: `features.media` (off by default) renders a site's pictures and
-  videos through the transforming CDN, and defines its asset disks on the
-  bucket. See README → Media.
-  - `<x-core-img>`, `<x-core-video>` and `<x-core-media>` take a Statamic
-    Asset, an assets field, a URL or a file from Core alike. Images get
-    `format=auto`, a srcset, the focal point and a blurred placeholder;
-    videos get CDN versions for wide and small screens, a frame poster and a
-    blurred placeholder of that frame until it loads.
-    URLs the CDN does not serve render as is.
-  - The disks in `media.disks` are the bucket in production and the local
-    folder without a key, unless the app's config/filesystems.php defines
-    them (remove the site's own `assets` disk). Elsewhere they sit behind a
-    layer (`CORE_MEDIA_LAYER=false` turns it off on a staging server set up
-    before go-live, so editors build content on the real bucket):
-    writes land in it, and deleting or moving production's files throws
-    `ProductionFileLocked`.
-  - Only the key and secret (`CORE_MEDIA_KEY`/`CORE_MEDIA_SECRET`, or
-    Cloud's) and `CORE_MEDIA_LAYER` are env; the rest of the
-    bucket is committed config, and a site's `media` block keeps the
-    defaults it leaves out. `acl: false` for R2.
-  - On Laravel Cloud, with no key set, the disks use the environment's
-    attached bucket (`LARAVEL_CLOUD_DISK_CONFIG`), without ACLs and without a
-    layer unless `CORE_MEDIA_LAYER=true`; a committed `bucket.url` (the CDN)
-    still wins over the bucket's own URL.
-  - `MediaSource::urlOf()` gives a file's URL as the components render it.
-  - `media:sync push|pull` copies a disk between its folder and the bucket
-    (push adds, `--overwrite` replaces);
-    `media:check` checks the bucket's headers and a CDN rendition.
 - **`core:pull` through the live site**: `core:pull` reads the Core
   snapshots from the live site's sync API on the `content:login` login, so
   one login covers content and snapshots and no developer needs a Core
