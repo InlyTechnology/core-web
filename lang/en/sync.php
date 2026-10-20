@@ -21,6 +21,8 @@ return [
     'code_unknown' => 'That code is unknown or expired. Run php artisan content:login again for a new one.',
     'tokens_title' => 'Content sync',
     'store_unavailable' => 'The signed-in machines cannot be listed:',
+    'store_table_missing' => 'the token table does not exist. Publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.',
+    'store_unreachable' => 'the database that holds the tokens cannot be reached. Check the connection named in core-web.content_sync.tokens (the default one when it names none).',
     'no_tokens' => 'No machine is signed in. Run php artisan content:login in a local checkout to sign one in.',
     'machine' => 'Machine',
     'user' => 'User',

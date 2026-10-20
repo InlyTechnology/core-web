@@ -1479,7 +1479,10 @@ Its own tag publishes this migration alone, so a site that published the
 snapshots migration before does not get a second copy of it. It creates
 `core_web_sync_tokens` on the default connection (or
 `tokens.connection`). Without the table every sync call fails with an error
-naming the migration; it never falls back to files.
+naming the migration; it never falls back to files. The **Tools → Content
+sync** page then says to publish and run the migration, or, when the
+database itself cannot be reached, to check the tokens connection; the full
+error goes to the log.
 
 **Pulling.** The live site exports entries (published or not, every site),
 terms, global variables, collection trees and nav trees, each as the exact
@@ -1563,7 +1566,8 @@ throttled per token and per address (`content_sync.middleware`, the
 the CLI reports a 429 with when to retry. A site running as
 `APP_ENV=local` refuses them, so no one pulls from a developer's checkout
 by mistake (`content_sync.allow_local_remote` lets one serve, to try the
-flow between two checkouts). The approval page cannot be framed by another
+flow between two checkouts), and its CP has no sync pages: no Tools →
+Content sync entry and no approval page. The approval page cannot be framed by another
 site. Pending logins wait in the cache (`content_sync.store`, null for the
 default store), which every server behind the site must share: on more than
 one server that is a `database` or `redis` store, never `file`, or an

@@ -251,6 +251,7 @@ class SyncAuthTest extends TestCase
         $device = $this->startLogin();
 
         $this->actingAs($viewer)->get($device['verification_uri_complete'])->assertForbidden();
+        $this->actingAs($viewer)->get(cp_route('core-web.sync.tokens'))->assertForbidden();
         $this->actingAs($viewer)->post(cp_route('core-web.sync.approve'), ['code' => $device['user_code']])->assertForbidden();
         $this->poll($device['device_code'])->assertJsonPath('error', 'authorization_pending');
 
