@@ -32,7 +32,7 @@ class SyncMediaCommand extends Command
         }
 
         if (! MediaDisks::bucketConfigured()) {
-            $this->error('No bucket key here: set CORE_MEDIA_KEY and CORE_MEDIA_SECRET.');
+            $this->error('No bucket key here: set CORE_MEDIA_KEY and CORE_MEDIA_SECRET, or attach a Laravel Cloud bucket.');
 
             return self::FAILURE;
         }

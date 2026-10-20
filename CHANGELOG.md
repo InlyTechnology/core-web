@@ -27,6 +27,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   - Only `CORE_MEDIA_KEY` and `CORE_MEDIA_SECRET` are env; the rest of the
     bucket is committed config, and a site's `media` block keeps the
     defaults it leaves out. `acl: false` for R2.
+  - On Laravel Cloud, with no key set, the disks use the environment's
+    attached bucket (`LARAVEL_CLOUD_DISK_CONFIG`), without ACLs and without a
+    layer unless `CORE_MEDIA_LAYER=true`; a committed `bucket.url` (the CDN)
+    still wins over the bucket's own URL.
   - `MediaSource::urlOf()` gives a file's URL as the components render it.
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);
