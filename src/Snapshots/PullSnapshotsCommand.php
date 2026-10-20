@@ -12,14 +12,11 @@ use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\ContentSync\RemoteSiteBusy;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
 use Inly\CoreWeb\ContentSync\SignsInToRemoteSite;
-use Throwable;
 
 /**
- * Pulls production's snapshots into this machine's store and pins them, so a
- * local site renders real data without a local Core: through the live site,
- * on this machine's login to it (signing in first in a terminal), or, with a remote client secret set, from
- * another Core directly, running every snapshot's own pull or its warmer on
- * the core-web.remote client in place of core-web.client.
+ * Pulls production's snapshots through the live site, on this machine's login
+ * to it (signing in first in a terminal), and pins them, so a local site
+ * renders real data without a local Core.
  */
 class PullSnapshotsCommand extends Command
 {
@@ -29,7 +26,7 @@ class PullSnapshotsCommand extends Command
         {type? : One snapshot type; every registered type when omitted}
         {--release : Unpin and forget the pulled copies, so the site reads CORE_URL again}';
 
-    protected $description = 'Pull the Core snapshots through the live site (signing in when needed), or from the remote Core (core-web.remote), and pin them locally';
+    protected $description = 'Pull the Core snapshots through the live site (signing in when needed) and pin them locally';
 
     private const MAX_PAGES = 10000;
 
@@ -40,8 +37,6 @@ class PullSnapshotsCommand extends Command
     private const WAITS = 3;
 
     private const MAX_WAIT_SECONDS = 60;
-
-    private const DIRECT = ' (or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly)';
 
     public function handle(SnapshotRegistry $registry, SnapshotStore $store): int
     {
@@ -66,92 +61,20 @@ class PullSnapshotsCommand extends Command
             return self::FAILURE;
         }
 
-        $source = (array) config('core-web.remote');
-
-        if (blank($source['client_secret'] ?? null)) {
-            return $this->throughSite($registry, $store, $types);
-        }
-
-        if (blank($source['base_url'] ?? null) || blank($source['client_id'] ?? null)) {
-            $this->error('Set CORE_REMOTE_CLIENT_SECRET, and remote.base_url and remote.client_id in config/core-web.php: the Core to pull from and a client that may only read (README, Pulling production data).');
-
-            return self::FAILURE;
-        }
-
-        $host = (string) (parse_url((string) $source['base_url'], PHP_URL_HOST) ?: $source['base_url']);
-        $client = config('core-web.client');
-
-        // The pulls build their client from core-web.client when they run (CoreClient::fromConfig()), so the source stands in for it.
-        config(['core-web.client' => array_replace((array) $client, [
-            'base_url' => $source['base_url'],
-            'client_id' => $source['client_id'],
-            'client_secret' => $source['client_secret'],
-            'ca_bundle' => '',
-            'token_cache_key' => $source['token_cache_key'] ?? 'core_web_remote_access_token',
-        ])]);
-
-        try {
-            $exit = self::SUCCESS;
-
-            foreach ($types as $name) {
-                $exit = max($exit, $this->pull($registry, $store, $name, $host));
-            }
-
-            return $exit;
-        } finally {
-            config(['core-web.client' => $client]);
-        }
-    }
-
-    private function pull(SnapshotRegistry $registry, SnapshotStore $store, string $type, string $host): int
-    {
-        $snapshot = $registry->get($type);
-        $warm = $registry->warmer($type);
-        $failure = null;
-
-        try {
-            $result = $store->pinning($host, fn () => $warm ? $warm($this) : $store->refresh($snapshot));
-
-            if ($warm && $result !== self::SUCCESS) {
-                $failure = "its warmer exited with {$result}";
-            }
-        } catch (Throwable $e) {
-            report($e);
-            $failure = $e->getMessage();
-        } finally {
-            $store->forget($snapshot);
-        }
-
-        // A warmer can pin its snapshot and fail afterwards, and core:warm skips a pinned snapshot, so both are said.
-        if (! $store->pinnedNow($snapshot)) {
-            $this->warn("{$type}: nothing pinned from {$host} (".($failure ?? 'the pull failed or came back too empty to trust').').');
-
-            return self::FAILURE;
-        }
-
-        $pinned = $warm ? "{$type}: pinned from {$host}" : "{$type}: {$result} documents pinned from {$host}";
-
-        if ($failure !== null) {
-            $this->warn("{$pinned}, but {$failure}.");
-
-            return self::FAILURE;
-        }
-
-        $this->info("{$pinned}.");
-
-        return self::SUCCESS;
+        return $this->throughSite($registry, $store, $types);
     }
 
     /** @param  list<string>  $types */
     private function throughSite(SnapshotRegistry $registry, SnapshotStore $store, array $types): int
     {
         if (RemoteSite::configuredUrl() === '') {
-            $this->error('Nothing to pull from: set core-web.content_sync.remote_url to pull through the live site, or set CORE_REMOTE_CLIENT_SECRET to pull from Core directly (README, Pulling production data).');
+            $this->error('Nothing to pull from: set core-web.content_sync.remote_url to the live site, then run php artisan content:login (README, Pulling production data).');
 
             return self::FAILURE;
         }
 
-        $site = $this->signedInSite(self::DIRECT);
+        $fresh = RemoteSite::fromStorage() === null;
+        $site = $this->signedInSite();
 
         if ($site === null) {
             return self::FAILURE;
@@ -160,17 +83,27 @@ class PullSnapshotsCommand extends Command
         $host = (string) (parse_url($site->url(), PHP_URL_HOST) ?: $site->url());
         $exit = self::SUCCESS;
 
-        foreach ($types as $type) {
+        foreach ($types as $index => $type) {
             try {
                 try {
                     [$documents, $stale] = $this->fetch($site, $type);
-                } catch (RemoteLoginNeeded) {
-                    if (($site = $this->signInAgain(self::DIRECT)) === null) {
+                } catch (RemoteLoginNeeded $e) {
+                    if ($fresh) {
+                        throw $e;
+                    }
+
+                    if (($site = $this->signInAgain()) === null) {
                         return self::FAILURE;
                     }
 
+                    $fresh = true;
                     [$documents, $stale] = $this->fetch($site, $type);
                 }
+            } catch (RemoteLoginNeeded) {
+                $this->refusedFreshLogin();
+                $this->line('Not pulled: '.implode(', ', array_slice($types, $index)).'.');
+
+                return self::FAILURE;
             } catch (RemoteSiteError $e) {
                 $this->warn("{$type}: nothing pinned from {$host} ({$e->getMessage()}".(self::timedOut($e) ? '; the live site may still be filling its copy from its Core: try again in a minute' : '').').');
                 $exit = self::FAILURE;

@@ -78,26 +78,48 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   - `media:sync push|pull` copies a disk between its folder and the bucket
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
-- **`core:pull` through the live site**: without `CORE_REMOTE_CLIENT_SECRET`,
-  `core:pull` reads the Core snapshots from the live site's sync API on the
-  `content:login` login, so one login covers content and snapshots and no
-  developer needs a Core client secret. The live site serves the copy it
-  renders from (one cached pull from its own Core when it has none), only
-  for the snapshots it registers, paged, behind the same guards, token and
-  rate limit as the content export. The secret keeps the direct path to
-  the remote Core working unchanged; with neither, the command says to run
-  `content:login`. Pins behave as before. The Pull content permission and
-  the machine approval screen now say the token also reads every snapshot
-  the site keeps, whole. A copy that changes between pages restarts the
-  pull (twice at most), and a 429 or 503 is waited out as `Retry-After`
-  says (a minute at most). See README → Pulling production data.
-- **Signing in is no separate step**: `core:pull` through the live site now
+- **`core:pull` through the live site**: `core:pull` reads the Core
+  snapshots from the live site's sync API on the `content:login` login, so
+  one login covers content and snapshots and no developer needs a Core
+  client secret. The live site serves the copy it renders from (one cached
+  pull from its own Core when it has none), only for the snapshots it
+  registers, paged, behind the same guards, token and rate limit as the
+  content export. It no longer pulls from the remote Core directly: the
+  remote client secret plays no part in it, and snapshot warmers no longer
+  run during a pull (the documents are pinned as the live site stored
+  them). Without `content_sync.remote_url` or a login, the command says to
+  set one or run `content:login`. Pins behave as before. The Pull content
+  permission and the machine approval screen now say the token also reads
+  every snapshot the site keeps, whole. A copy that changes between pages
+  restarts the pull (twice at most), and a 429 or 503 is waited out as
+  `Retry-After` says (a minute at most). See README → Pulling production
+  data.
+- **Signing in is no separate step**: `core:pull` now
   starts `content:login` itself when run in a terminal without a login, or
   after the site refused the stored one, and carries on pulling, as
   `content:pull` does; without a terminal both still stop and say to run
   `content:login`, which remains for signing in ahead of time or as
-  another user. Commands share this through the `SignsInToRemoteSite`
-  trait. See README → Content pull.
+  another user. A site that refuses even the login just made (one behind
+  more than one server with the `file` token store) stops the run after
+  that one sign-in, naming the snapshots not pulled. Commands share this
+  through the `SignsInToRemoteSite` trait. See README → Content pull.
+
+### Upgrade notes
+
+- **`core:pull` needs the live site**: it no longer pulls from the remote
+  Core with `CORE_REMOTE_CLIENT_SECRET` (or `CORE_PULL_CLIENT_SECRET`), so
+  a machine that pulled that way now fails with "Nothing to pull from" or
+  "not signed in". Those secrets no longer affect `core:pull`; they still
+  enable local CMS sign-in through the remote Core and the control panel
+  link. Find it: `grep -rn "content_sync\|remote_url" config/core-web.php`
+  comes back empty on a site that pulled directly. Migrate: switch on
+  `features.content_sync` and set `content_sync.remote_url` to the live
+  site in the site's `config/core-web.php` (README → Content pull), deploy
+  that core-web version to the live site so it serves
+  `/!/core-web/sync/snapshots/{type}`, and give developers the Pull content
+  permission there. Verify: `php artisan core:pull` signs in (or uses the
+  existing `content:login`) and reports each snapshot pinned from the live
+  site's host.
 
 ## v0.14.0
 

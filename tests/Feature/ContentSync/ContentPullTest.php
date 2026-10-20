@@ -83,6 +83,10 @@ class ContentPullTest extends TestCase
     private function routeRemoteToThisApp(): void
     {
         Http::fake(function (Request $request) {
+            if ($answer = $this->loginAnswer($request)) {
+                return $answer;
+            }
+
             $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'];
 
             if ($request->hasHeader('Authorization')) {
@@ -258,6 +262,30 @@ class ContentPullTest extends TestCase
 
         $this->assertNull(RemoteSite::fromStorage());
         $this->assertFileDoesNotExist(RemoteSite::loginFile());
+    }
+
+    public function test_in_a_terminal_a_refused_login_signs_in_again_and_pulls(): void
+    {
+        app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
+        $this->approveLoginsWith($this->tokenFor($this->cmsUser('boss@example.com', super: true)));
+
+        $this->artisan('content:pull')
+            ->expectsOutputToContain('refused this machine\'s login; signing in again')
+            ->assertSuccessful();
+
+        $this->assertSame(1, $this->signIns());
+        $this->assertFileExists($this->file('collections/pages/home.md'));
+    }
+
+    public function test_a_site_that_refuses_even_a_fresh_login_stops_after_one_sign_in(): void
+    {
+        app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
+        $this->approveLoginsWith('a-token-this-site-never-issued');
+
+        $this->artisan('content:pull')->expectsOutputToContain('refused even the login just made')->assertFailed();
+
+        $this->assertSame(1, $this->signIns());
+        $this->assertFileDoesNotExist($this->file('collections/pages/home.md'));
     }
 
     public function test_a_login_to_another_site_is_no_login(): void

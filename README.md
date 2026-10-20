@@ -96,7 +96,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
+| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's client, for CMS sign-in and the control panel link without a local Core (see [The remote Core](#the-remote-core)) |
 | `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
@@ -159,6 +159,31 @@ shares with the backoffice under the backoffice's own names:
 | `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
 | `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
 | `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
+
+### The remote Core
+
+`remote.*` is the Core a local machine without `CORE_URL` signs in to the
+control panel through (see [CMS sign-in](#cms-sign-in)) and the
+[Control panel link](#control-panel-link) points at: production, as a rule.
+`core:pull` does not use it (see [Pulling production data](#pulling-production-data)).
+The Core and the client are the same on every machine, so the site commits
+them as defaults in its own `config/core-web.php`, overridable from env, and a
+developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
+there replaces the package's whole, so it names all three:
+
+```php
+'remote' => [
+    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
+    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
+    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
+],
+```
+
+The key was called `pull` before. A site config still naming it keeps
+working, and so do the `CORE_PULL_*` variables while the site leaves the key
+to the package; a site that writes its own `remote` block reads only the
+variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
+default to keep developers' `.env` files working.
 
 ## Where snapshots live
 
@@ -322,8 +347,8 @@ Core's side) needs a schedule of its own, or its own ping.
 
 A site's content references Core's records, and on a developer's machine the
 local Core (if there is one) holds other records, or none. `core:pull` fills
-the local snapshots from another Core, production as a rule, so the site
-renders what the live site renders without a local Core:
+the local snapshots from the live site, so the site renders what the live
+site renders without a local Core:
 
 ```bash
 php artisan core:pull            # every registered snapshot
@@ -331,9 +356,8 @@ php artisan core:pull staff      # one
 php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
 
-**Through the live site** is the default, and needs no secret: on a site with
-[Content pull](#content-pull) switched on, `core:pull` reads the snapshots
-from the live site's sync API
+It needs no secret: on a site with [Content pull](#content-pull) switched
+on, `core:pull` reads the snapshots from the live site's sync API
 (`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
 Pull content permission), on the same login as `content:pull`: one login
 covers both, and in a terminal either command starts it when the machine has
@@ -356,63 +380,25 @@ keeps, not only what its pages show, and the approval screen says so.
 - The live site needs `features.snapshots` and the same snapshots
   registered; a site that lacks one answers 404 for it, and one whose
   core-web predates this endpoint is named as such.
-- A snapshot's warmer does not run on this path: its documents are pinned
-  as the live site stored them.
+- A snapshot's warmer does not run: its documents are pinned as the live
+  site stored them.
 
-**From Core directly** is the other option, for a site without content pull
-or a developer who holds a read-only client: with `CORE_REMOTE_CLIENT_SECRET`
-set, `core:pull` reads the remote Core instead, and never the live site.
-Without a secret, a run with no terminal (`--no-interaction`, CI) and no
-login stops and says to run `php artisan content:login`.
+Without `content_sync.remote_url` there is nothing to pull from, and a run
+with no terminal (`--no-interaction`, CI) and no login stops and says to run
+`php artisan content:login`.
 
-*Direct path only:* the Core and the client are the same on every machine,
-so the site commits them as defaults in its own `config/core-web.php`,
-overridable from env, and a developer sets only the secret
-(`CORE_REMOTE_CLIENT_SECRET`). A `remote` key there replaces the package's
-whole, so it names all three:
-
-```php
-'remote' => [
-    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
-    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
-    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
-],
-```
-
-The key was called `pull` before. A site config still naming it keeps
-working, and so do the `CORE_PULL_*` variables while the site leaves the key
-to the package; a site that writes its own `remote` block reads only the
-variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
-default to keep developers' `.env` files working.
-
-*Direct path only:* the client is an app client in that Core (Settings →
-Apps, client credentials grant): Core shows its id and secret when it is
-created. `core:pull` runs each snapshot's own pull (or its warmer) on the
-`remote.*` client in place of `client.*`, so the documents are exactly what
-the site's projections make of that Core's data.
-
-On either path, what it stores is **pinned**: kept without expiry, and no
-`core:warm`, ping or render replaces it until the next `core:pull` or
-`--release`. A pull that fails, or comes back too empty to trust
-(`emptyWhen()`), pins nothing and leaves an earlier pin alone. A warmer that
-pins and then fails is reported as both. `--release` forgets the pulled
-copies, since another Core's data is no fallback for this one, so the next
-read or warm pulls from `CORE_URL` as from a cold cache.
+What it stores is **pinned**: kept without expiry, and no `core:warm`, ping
+or render replaces it until the next `core:pull` or `--release`. A pull that
+fails, or comes back too empty to trust (`emptyWhen()`), pins nothing and
+leaves an earlier pin alone. `--release` forgets the pulled copies, since
+another Core's data is no fallback for this one, so the next read or warm
+pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read** (direct path only). In the source Core,
-  create an app client for local pulls (Settings → Apps, client
-  credentials) holding the same read permissions as the site's own client
-  and nothing else, and share its secret the way the team shares other
-  secrets. It reads what the public site reads, never more; revoking it in
-  Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
-- **A certificate the machine trusts** (direct path only). The pull ignores
-  `CORE_CA_BUNDLE`, which is for a local Core, so the source needs a public
-  certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
   `CORE_URL`; those keys are not pinned.
@@ -1571,7 +1557,7 @@ of its own, since the client keeps a hand-off on the right host and the key
 keeps it on the site it was minted for.
 
 **Local development.** A local machine without `CORE_URL` signs in through
-the remote Core (`remote.*`, see [Pulling production data](#pulling-production-data))
+the remote Core (`remote.*`, see [The remote Core](#the-remote-core))
 as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
 address as `origin`, the hand-off must name it back, and it is confirmed on
 the remote client's token at `/api/app/cms-sso/local/verify`. Without any
@@ -1622,18 +1608,21 @@ php artisan content:logout    # revoke this machine's token
 
 **Signing in.** There is no separate step: a `content:pull` or `core:pull`
 run in a terminal signs the machine in when it has no login, or when the
-site refused the one it had, and then carries on. `content:login` does the
+site refused the one it had, and then carries on. A site that refuses even
+the login just made (one behind more than one server with the `file` token
+store) stops the run rather than signing in again. `content:login` does the
 same on its own, to sign in ahead of time or as another CMS user, and
 `content:logout` signs out; a run without a terminal never starts a sign-in
-and says to run `content:login`. Signing in prints a link to the live site's CP and a code, and opens the browser where
-it can. The developer signs in to the CP the way the site allows (Core
-single sign-on or a native login), checks the code, the machine name (as
-the machine reports it), the address the request came from and how long ago
-it started, and approves; the terminal then gets a personal token that acts
-as them, so the pull reads exactly what they may view (and, for `core:pull`,
-every Core snapshot the site keeps, whole). Approving a machine,
-and using its token, needs the **Pull content** permission (under Core Web
-in the role editor) besides CP access; a super user always may. Signing in
+and says to run `content:login`. Signing in prints a link to the live
+site's CP and a code, and opens the browser where it can. The developer
+signs in to the CP the way the site allows (Core single sign-on or a native
+login), checks the code, the machine name (as the machine reports it), the
+address the request came from and how long ago it started, and approves;
+the terminal then gets a personal token that acts as them, so the pull
+reads exactly what they may view (and, for `core:pull`, every Core snapshot
+the site keeps, whole). Approving a machine, and using its token, needs the
+**Pull content** permission (under Core Web in the role editor) besides CP
+access; a super user always may. Signing in
 again revokes the machine's previous token. The token is kept in
 `storage/core-web/remote-site.json` (readable by the developer only, in a
 folder that ignores itself in git) and lives 30 days from its last use

@@ -53,6 +53,15 @@ trait SignsInToRemoteSite
         return $this->signInToRemoteSite();
     }
 
+    /**
+     * After the site refused a login this run just made: says so, since
+     * signing in again would be refused the same way.
+     */
+    protected function refusedFreshLogin(): void
+    {
+        $this->error(RemoteSite::configuredUrl().' refused even the login just made; a site on more than one server keeps its tokens in the database (content_sync.tokens.driver, README, Content pull).');
+    }
+
     private function signInToRemoteSite(): ?RemoteSite
     {
         // content:login says itself why a sign-in failed.

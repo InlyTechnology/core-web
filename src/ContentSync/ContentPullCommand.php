@@ -60,6 +60,7 @@ class ContentPullCommand extends Command
 
         $site = is_string($site) && $site !== '' ? $site : null;
 
+        $fresh = RemoteSite::fromStorage() === null;
         $remote = $this->remote();
 
         if ($remote === null) {
@@ -72,19 +73,23 @@ class ContentPullCommand extends Command
         ];
 
         try {
-            [$items, $coverage, $indexes] = $fetch($remote);
-        } catch (RemoteLoginNeeded) {
-            if (($remote = $this->signInAgain()) === null) {
-                return self::FAILURE;
-            }
-
             try {
                 [$items, $coverage, $indexes] = $fetch($remote);
-            } catch (RemoteSiteError $e) {
-                $this->error($e->getMessage());
+            } catch (RemoteLoginNeeded $e) {
+                if ($fresh) {
+                    throw $e;
+                }
 
-                return self::FAILURE;
+                if (($remote = $this->signInAgain()) === null) {
+                    return self::FAILURE;
+                }
+
+                [$items, $coverage, $indexes] = $fetch($remote);
             }
+        } catch (RemoteLoginNeeded) {
+            $this->refusedFreshLogin();
+
+            return self::FAILURE;
         } catch (RemoteSiteError $e) {
             $this->error($e->getMessage());
 
