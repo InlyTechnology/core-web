@@ -120,6 +120,7 @@ class DormantTest extends TestCase
         $this->assertArrayNotHasKey('content:check', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('core-web:doctor', app(Kernel::class)->all());
     }
 
     public function test_no_tag_is_registered(): void
