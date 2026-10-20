@@ -7,6 +7,7 @@ use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
 use RuntimeException;
+use Throwable;
 
 /**
  * One row per token, for a site behind more than one server or on a disk that does not outlive a deploy.
@@ -24,9 +25,16 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
         return $row === null ? null : $this->token((array) $row);
     }
 
+    public function findById(string $id): ?SyncToken
+    {
+        $row = $this->run(fn () => $this->connection->table($this->table)->where('id', $id)->first());
+
+        return $row === null ? null : $this->token((array) $row);
+    }
+
     public function put(SyncToken $token): void
     {
-        $this->run(fn () => $this->connection->table($this->table)->upsert([[
+        $this->run(fn () => $this->connection->table($this->table)->insert([
             'hash' => $token->hash,
             'id' => $token->id,
             'user_id' => $token->userId,
@@ -34,7 +42,25 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
             'created_at' => self::stamp($token->createdAt),
             'last_used_at' => $token->lastUsedAt === null ? null : self::stamp($token->lastUsedAt),
             'expires_at' => self::stamp($token->expiresAt),
-        ]], ['hash'], ['last_used_at', 'expires_at']));
+        ]));
+    }
+
+    public function touch(string $hash, CarbonImmutable $lastUsedAt, CarbonImmutable $expiresAt): bool
+    {
+        $query = fn () => $this->connection->table($this->table)->where('hash', $hash);
+
+        $changed = $this->run(fn () => $query()->update(['last_used_at' => self::stamp($lastUsedAt), 'expires_at' => self::stamp($expiresAt)]));
+
+        // MySQL counts changed rows, not matched ones, so zero can still mean the row is there.
+        return $changed > 0 || $this->run(fn () => $query()->exists());
+    }
+
+    public function forUser(string $userId): array
+    {
+        return $this->run(fn () => $this->connection->table($this->table)->where('user_id', $userId)->get())
+            ->map(fn (object $row) => $this->token((array) $row))
+            ->values()
+            ->all();
     }
 
     public function delete(string $hash): void
@@ -86,11 +112,17 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
         try {
             return $query();
         } catch (QueryException $e) {
-            if ($this->connection->getSchemaBuilder()->hasTable($this->table)) {
+            try {
+                $missing = ! $this->connection->getSchemaBuilder()->hasTable($this->table);
+            } catch (Throwable) {
                 throw $e;
             }
 
-            throw new RuntimeException("Content sync keeps its tokens in the `{$this->table}` table (core-web.content_sync.tokens.driver = database), which does not exist: publish core-web's migrations (php artisan vendor:publish --tag=core-web-migrations) and run php artisan migrate.", previous: $e);
+            if (! $missing) {
+                throw $e;
+            }
+
+            throw new RuntimeException("Content sync keeps its tokens in the `{$this->table}` table (core-web.content_sync.tokens.driver = database), which does not exist: publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.", previous: $e);
         }
     }
 }

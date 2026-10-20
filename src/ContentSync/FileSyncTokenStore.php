@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\ContentSync;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Filesystem\Filesystem;
 
 /**
@@ -18,9 +19,32 @@ final class FileSyncTokenStore implements SyncTokenStore
         return $this->read($this->file($hash));
     }
 
+    public function findById(string $id): ?SyncToken
+    {
+        return collect($this->all())->first(fn (SyncToken $token) => $token->id === $id);
+    }
+
     public function put(SyncToken $token): void
     {
         $this->disk->put($this->file($token->hash), json_encode($token->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    }
+
+    public function touch(string $hash, CarbonImmutable $lastUsedAt, CarbonImmutable $expiresAt): bool
+    {
+        $token = $this->get($hash);
+
+        if ($token === null) {
+            return false;
+        }
+
+        $this->put($token->used($lastUsedAt, $expiresAt));
+
+        return true;
+    }
+
+    public function forUser(string $userId): array
+    {
+        return array_values(array_filter($this->all(), fn (SyncToken $token) => $token->userId === $userId));
     }
 
     public function delete(string $hash): void

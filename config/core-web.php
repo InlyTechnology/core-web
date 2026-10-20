@@ -513,7 +513,7 @@ return [
     | `driver` files: one file each on a filesystem `disk`, under `path`; a
     | null disk is a private local folder, storage/app/private/{path}, and a
     | named one is private, never the site's public bucket. `driver`
-    | database: the `table` (from the published core-web migrations) on
+    | database: the `table` (from the core-web-sync-tokens-migration tag) on
     | `connection`, null for the default. A site behind more than one server,
     | or on a host whose disk does not outlive a deploy (Laravel Cloud), sets
     | database: a local file is seen by one server only, until the next deploy.

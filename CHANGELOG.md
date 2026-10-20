@@ -22,7 +22,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   The live site keeps token hashes in private files by default; one behind
   more than one server or on a host whose disk does not outlive a deploy
   (Laravel Cloud) sets `content_sync.tokens.driver` to `database` and runs
-  the published `core_web_sync_tokens` migration. See README → Content pull.
+  the `core_web_sync_tokens` migration (published with
+  `--tag=core-web-sync-tokens-migration`). See README → Content pull.
 
 ## v0.13.1
 

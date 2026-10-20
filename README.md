@@ -1257,11 +1257,13 @@ then publish and run the migration:
 ```
 
 ```bash
-php artisan vendor:publish --tag=core-web-migrations
+php artisan vendor:publish --tag=core-web-sync-tokens-migration
 php artisan migrate
 ```
 
-It creates `core_web_sync_tokens` on the default connection (or
+Its own tag publishes this migration alone, so a site that published the
+snapshots migration before does not get a second copy of it. It creates
+`core_web_sync_tokens` on the default connection (or
 `tokens.connection`). Without the table every sync call fails with an error
 naming the migration; it never falls back to files.
 

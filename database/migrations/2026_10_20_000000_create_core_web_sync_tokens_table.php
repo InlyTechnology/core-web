@@ -14,7 +14,15 @@ return new class extends Migration
 
     public function up(): void
     {
-        Schema::create(config('core-web.content_sync.tokens.table', 'core_web_sync_tokens'), function (Blueprint $table) {
+        $schema = Schema::connection($this->getConnection());
+        $name = config('core-web.content_sync.tokens.table', 'core_web_sync_tokens');
+
+        // A site that published the combined tag earlier may hold a second copy of this migration.
+        if ($schema->hasTable($name)) {
+            return;
+        }
+
+        $schema->create($name, function (Blueprint $table) {
             $table->char('hash', 64)->primary();
             $table->uuid('id')->unique();
             $table->string('user_id')->index();
@@ -27,6 +35,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists(config('core-web.content_sync.tokens.table', 'core_web_sync_tokens'));
+        Schema::connection($this->getConnection())->dropIfExists(config('core-web.content_sync.tokens.table', 'core_web_sync_tokens'));
     }
 };
