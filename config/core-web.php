@@ -107,15 +107,15 @@ return [
     | The remote Core
     |--------------------------------------------------------------------------
     |
-    | Local only: the Core a local machine uses in place of its own
-    | (production, as a rule), with a client Core should let read and nothing
-    | more. With the secret set, `core:pull` copies its snapshots from here
-    | rather than through the live site (content_sync), and without a
-    | CORE_URL the control panel link points at it. The URL and client id are
-    | the same for every developer, so the site commits them as the defaults
-    | in its own config/core-web.php (env can still override them); only the
-    | secret has to be set (CORE_REMOTE_CLIENT_SECRET). A site config still
-    | naming this `pull`, and the CORE_PULL_* variables, keep working.
+    | Local only: the Core a local machine without a CORE_URL signs in to the
+    | control panel through (cms_sign_in, as its `local` site) and the
+    | control panel link points at; production, as a rule. `core:pull` does
+    | not use it: it reads the snapshots through the live site (content_sync).
+    | The URL and client id are the same for every developer, so the site
+    | commits them as the defaults in its own config/core-web.php (env can
+    | still override them); only the secret has to be set
+    | (CORE_REMOTE_CLIENT_SECRET). A site config still naming this `pull`, and
+    | the CORE_PULL_* variables, keep working.
     |
     */
 

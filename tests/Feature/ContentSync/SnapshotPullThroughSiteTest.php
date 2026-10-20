@@ -22,10 +22,9 @@ use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /**
- * `core:pull` without a remote client secret reads the snapshots through the
- * live site's sync API, signed in with `content:login`; this app plays the
- * live site too, so the cache is shared and what is pinned is checked by its
- * marker.
+ * `core:pull` reads the snapshots through the live site's sync API, signed
+ * in with `content:login`; this app plays the live site too, so the cache is
+ * shared and what is pinned is checked by its marker.
  */
 class SnapshotPullThroughSiteTest extends TestCase
 {
@@ -54,9 +53,6 @@ class SnapshotPullThroughSiteTest extends TestCase
             'core-web.client.base_url' => 'https://core.test',
             'core-web.client.client_id' => 'site',
             'core-web.client.client_secret' => 'site-secret',
-            'core-web.remote.base_url' => 'https://other-core.test',
-            'core-web.remote.client_id' => 'pull',
-            'core-web.remote.client_secret' => '',
         ]);
         $this->roles(['editor' => ['access cp', 'pull content'], 'reader' => ['access cp']]);
 
@@ -289,29 +285,15 @@ class SnapshotPullThroughSiteTest extends TestCase
         $this->assertSame(['prod-1', 'prod-2'], $this->documents());
     }
 
-    public function test_a_remote_client_secret_pulls_from_core_directly_instead(): void
-    {
-        config(['core-web.remote.client_secret' => 'pull-secret']);
-        Http::swap(new Factory);
-        Http::fake([
-            'other-core.test/oauth/token' => Http::response(['access_token' => 'pull-token', 'expires_in' => 3600]),
-            'other-core.test/api/v1/objects/things*' => Http::response(['data' => [['id' => 'direct', 'type' => 'things']], 'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 1]]),
-        ]);
-
-        $this->artisan('core:pull')->expectsOutputToContain('things: 1 documents pinned from other-core.test')->assertSuccessful();
-
-        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'remote.test'));
-    }
-
-    public function test_without_a_login_or_a_secret_a_run_without_a_terminal_points_at_content_login(): void
+    public function test_without_a_login_a_run_without_a_terminal_points_at_content_login(): void
     {
         RemoteSite::forget();
 
-        $this->artisan('core:pull', ['--no-interaction' => true])->expectsOutputToContain('not signed in to https://remote.test: run php artisan content:login (or set CORE_REMOTE_CLIENT_SECRET')->assertFailed();
+        $this->artisan('core:pull', ['--no-interaction' => true])->expectsOutputToContain('not signed in to https://remote.test: run php artisan content:login.')->assertFailed();
 
         config(['core-web.content_sync.remote_url' => '']);
 
-        $this->artisan('core:pull')->expectsOutputToContain('set core-web.content_sync.remote_url to pull through the live site, or set CORE_REMOTE_CLIENT_SECRET')->assertFailed();
+        $this->artisan('core:pull')->expectsOutputToContain('set core-web.content_sync.remote_url to the live site, then run php artisan content:login')->assertFailed();
         Http::assertNothingSent();
     }
 
