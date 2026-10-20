@@ -58,6 +58,12 @@ final class LayeredAdapter implements FilesystemAdapter
         return isset($this->index()[self::key($path)]);
     }
 
+    /** The disk beneath the layer, which on a remote-indexed disk is itself the committed folder over the pulled index. */
+    public function lower(): FilesystemAdapter
+    {
+        return $this->lower;
+    }
+
     public function fileExists(string $path): bool
     {
         return $this->inLayer($path) || $this->lower->fileExists($path) || $this->upper->fileExists($path);

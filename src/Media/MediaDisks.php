@@ -271,6 +271,32 @@ final class MediaDisks
         }
     }
 
+    /** The live file's own URL when only the pulled index holds it on a remote-indexed disk, not the layer or the committed folder; else null. */
+    public static function indexOnlyUrl(Asset $asset): ?string
+    {
+        try {
+            $handle = (string) $asset->container()->diskHandle();
+
+            if (! self::isRemoteIndexed($handle)) {
+                return null;
+            }
+
+            $disk = Storage::disk($handle);
+            $adapter = $disk instanceof FilesystemAdapter ? $disk->getAdapter() : null;
+            $committed = $adapter instanceof LayeredAdapter ? $adapter->lower() : null;
+
+            if (! $committed instanceof LayeredAdapter || $adapter->inLayer($asset->path()) || $committed->inLayer($asset->path())) {
+                return null;
+            }
+
+            return $committed->getUrl(implode('/', array_map('rawurlencode', explode('/', $asset->path()))));
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
     /** @return array<string, mixed> */
     private static function disk(string $name, string $folder, Application $app): array
     {

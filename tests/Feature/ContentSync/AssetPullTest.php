@@ -204,6 +204,59 @@ class AssetPullTest extends TestCase
         $this->get(collect($assets)->firstWhere('basename', 'hero.jpg')['url'])->assertRedirect('https://cdn.test/site/assets/hero.jpg');
     }
 
+    public function test_the_control_panel_s_thumbnail_of_a_live_only_file_is_the_cdn_s_rendition(): void
+    {
+        config(['core-web.media.cdn.origins' => ['https://cdn.test']]);
+        File::ensureDirectoryExists($this->dir.'/public/assets');
+        file_put_contents($this->dir.'/public/assets/committed.jpg', 'committed');
+        $this->pull()->assertSuccessful();
+        Storage::disk('assets')->put('upload.jpg', 'mine');
+        $this->fresh();
+
+        $assets = collect($this->browse('assets'))->keyBy('basename');
+
+        $this->assertSame('https://cdn.test/site/assets/hero.jpg?width=400&height=400&fit=contain&format=auto', $assets['hero.jpg']['thumbnail']);
+        $this->assertSame('https://cdn.test/site/assets/hero.jpg', $assets['hero.jpg']['preview']);
+        $this->assertStringContainsString('/thumbnails/', $assets['upload.jpg']['thumbnail'], 'A file in the local layer keeps Glide.');
+        $this->assertStringContainsString('/thumbnails/', $assets['committed.jpg']['thumbnail'], 'A committed file keeps Glide.');
+    }
+
+    public function test_without_a_cdn_the_thumbnail_of_a_live_only_file_is_its_public_url(): void
+    {
+        config(['core-web.media.cdn.origins' => []]);
+        $this->pull()->assertSuccessful();
+        $this->fresh();
+
+        $hero = collect($this->browse('assets'))->firstWhere('basename', 'hero.jpg');
+
+        $this->assertSame('https://cdn.test/site/assets/hero.jpg', $hero['thumbnail']);
+    }
+
+    public function test_a_container_on_a_disk_without_the_index_keeps_glide_thumbnails(): void
+    {
+        config(['core-web.media.cdn.origins' => ['https://cdn.test']]);
+        config(['filesystems.disks.plain' => ['driver' => 'local', 'root' => $this->dir.'/public/plain', 'url' => '/plain', 'visibility' => 'public']]);
+        File::ensureDirectoryExists($this->dir.'/public/plain');
+        file_put_contents($this->dir.'/public/plain/hero.jpg', 'plain');
+        AssetContainer::make('plain')->disk('plain')->save();
+        $this->pull()->assertSuccessful();
+        $this->fresh();
+
+        $hero = collect($this->browse('plain'))->firstWhere('basename', 'hero.jpg');
+
+        $this->assertStringContainsString('/thumbnails/', $hero['thumbnail']);
+        $this->assertSame('/plain/hero.jpg', $hero['preview']);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function browse(string $container): array
+    {
+        $super = User::make()->email('boss@example.com')->makeSuper();
+        $super->save();
+
+        return $this->actingAs($super)->getJson(cp_route('assets.browse.index').'/folders/'.$container)->assertOk()->json('data');
+    }
+
     public function test_a_remote_file_s_disk_url_is_its_public_url(): void
     {
         $this->pull()->assertSuccessful();

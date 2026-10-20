@@ -38,6 +38,7 @@ use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
@@ -221,6 +222,7 @@ class CoreWebServiceProvider extends ServiceProvider
             // Asset::url() on a disk reading the live site's pulled index; never on a server.
             if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
+                (new CpThumbnails)->register();
             }
 
             if ($this->app->runningInConsole()) {

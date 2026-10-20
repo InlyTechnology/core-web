@@ -38,7 +38,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   local; deleting or moving a committed or pulled file throws
   `ProductionFileLocked`. `Asset::url()` there is a local-only route
   (`/!/core-web/media/<disk>/<path>`) that redirects to whichever layer
-  holds the file. The export gains an `assets` type, limited to containers
+  holds the file. In the CP a file only the index holds takes its
+  thumbnail from the CDN (or its public URL without one) instead of Glide,
+  which cannot read it there. The export gains an `assets` type, limited to containers
   the user may view; a site on Statamic's Eloquent driver sends files in
   subfolders and their meta too. A live site without the type is skipped
   with a warning and content still pulls. `content_sync.pull_assets: false` keeps the plain
