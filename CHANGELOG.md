@@ -79,6 +79,24 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
 
+## v0.14.0
+
+- **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
+  only way into the control panel: the CP login redirects to Core, Core's
+  sealed hand-off is confirmed with Core on the site's client token before
+  anyone is let in, accounts are provisioned and stamped by it with roles
+  mapped from Core's CMS grants (`cms_sign_in.roles`), Core's offboarding
+  notices delete them, and `core:reconcile-cms-users` sweeps nightly. Local
+  machines sign in through the remote Core. A site that signs its CP in from
+  Core with its own code removes that code when it switches this on. See
+  README → CMS sign-in.
+- **Snapshots**: a snapshot can opt into pages with `->pages(fn (array $doc,
+  string $site) => '/path')`, and `SnapshotPage` serves one from the site's
+  own route: `find()` (503 while nothing can be read, Statamic's 404 when
+  gone), `canonical()` (a 301 to the document's own path, query string kept)
+  and `render()` (Statamic's View with an optional cascade entry). Snapshots
+  without `->pages()` are unchanged. See README → Pages.
+
 ## v0.13.1
 
 - **Naming**: the website content protocol is now called the Statamic
