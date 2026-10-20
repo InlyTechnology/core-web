@@ -963,8 +963,10 @@ field (its Value, Collection or query builder), a URL, or a file from Core
 - **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
   wide and 720px on phones (`width`, `small-width`), silent when it plays
   muted (`audio=false` makes them smaller), with a frame of the video as its
-  poster (`poster-time`, or `poster` for an image of your own). Anything else
-  plays the file itself. It autoplays muted in a loop by default: `:autoplay`,
+  poster (`poster-time`, or `poster` for an image of your own) and a 24px
+  version of that poster blurred behind it until the poster or the first
+  frame arrives (`placeholder="none"` turns it off). Anything else plays the
+  file itself. It autoplays muted in a loop by default: `:autoplay`,
   `:muted`, `:loop`, `controls`, `preload`.
 - **`<x-core-media>`**: one or the other, by the source, with each getting only
   its own options: for a field an editor fills with either.

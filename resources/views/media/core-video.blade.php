@@ -12,6 +12,7 @@
     'loop' => true,
     'playsinline' => true,
     'preload' => 'metadata',
+    'placeholder' => config('core-web.media.images.placeholder', 'blur'),
 ])
 @php
     $source = \Inly\CoreWeb\Media\MediaSource::from($src);
@@ -21,6 +22,7 @@
         'muted' => (bool) $muted,
         'poster' => $poster,
         'poster_time' => $posterTime,
+        'placeholder' => $placeholder,
     ]) : null;
     $label = $alt ?? $source?->alt;
 @endphp
@@ -36,6 +38,7 @@
     'preload' => $preload,
     'poster' => $video->poster,
     'aria-label' => $label ?: null,
+    ...$video->attributes,
 ])) }}>
 @foreach ($video->sources as $file)
     <source {{ (new \Illuminate\View\ComponentAttributeBag)->merge(array_filter($file)) }}>

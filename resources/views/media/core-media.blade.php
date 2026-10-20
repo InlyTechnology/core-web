@@ -26,7 +26,7 @@
     $source = \Inly\CoreWeb\Media\MediaSource::from($src);
 @endphp
 @if ($source?->isVideo())
-<x-core-video :src="$source" :alt="$alt" :width="$width" :small-width="$smallWidth" :poster="$poster" :poster-time="$posterTime" :controls="$controls" :autoplay="$autoplay" :muted="$muted" :loop="$loop" :playsinline="$playsinline" :preload="$preload" {{ $attributes }} />
+<x-core-video :src="$source" :alt="$alt" :width="$width" :small-width="$smallWidth" :poster="$poster" :poster-time="$posterTime" :placeholder="$placeholder" :controls="$controls" :autoplay="$autoplay" :muted="$muted" :loop="$loop" :playsinline="$playsinline" :preload="$preload" {{ $attributes }} />
 @elseif ($source)
 <x-core-img :src="$source" :alt="$alt" :width="$width" :height="$height" :quality="$quality" :fit="$fit" :format="$format" :widths="$widths" :sizes="$sizes" :placeholder="$placeholder" :trim="$trim" :ratio="$ratio" {{ $attributes }} />
 @endif

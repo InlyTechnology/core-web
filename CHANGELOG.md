@@ -14,7 +14,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   - `<x-core-img>`, `<x-core-video>` and `<x-core-media>` take a Statamic
     Asset, an assets field, a URL or a file from Core alike. Images get
     `format=auto`, a srcset, the focal point and a blurred placeholder;
-    videos get CDN versions for wide and small screens and a frame poster.
+    videos get CDN versions for wide and small screens, a frame poster and a
+    blurred placeholder of that frame until it loads.
     URLs the CDN does not serve render as is.
   - The disks in `media.disks` are the bucket in production and the local
     folder without a key, unless the app's config/filesystems.php defines
