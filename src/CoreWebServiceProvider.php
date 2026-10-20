@@ -9,6 +9,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -42,6 +43,10 @@ use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\SyncMediaCommand;
+use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
@@ -82,6 +87,8 @@ use Statamic\StaticCaching\Cacher;
  * site's content (`content:check`, nightly, a dashboard widget).
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
+ * The `media` feature renders images and videos through the CDN and defines
+ * the asset disks on the bucket.
  * The `cms_sign_in` feature signs the control panel in from Core alone.
  * The `content_sync` feature lets a local checkout pull the live site's
  * content as the developer's CMS user.
@@ -96,6 +103,11 @@ class CoreWebServiceProvider extends ServiceProvider
         $merge = function (): void {
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
+            }
+
+            if (self::enabled('media')) {
+                $this->mergeMediaDefaults();
+                MediaDisks::define($this->app);
             }
 
             if (self::enabled('cms_sign_in')) {
@@ -130,6 +142,24 @@ class CoreWebServiceProvider extends ServiceProvider
             $app[Cacher::class],
             $app['config']['statamic.static_caching.invalidation.rules'],
         ));
+    }
+
+    /**
+     * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
+     * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
+     */
+    private function mergeMediaDefaults(): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')['media'];
+        $media = (array) config('core-web.media');
+
+        foreach ($defaults as $group => $default) {
+            if ($group !== 'disks' && is_array($default) && is_array($media[$group] ?? null)) {
+                $media[$group] = array_replace($default, $media[$group]);
+            }
+        }
+
+        config(['core-web.media' => array_replace($defaults, $media)]);
     }
 
     public function boot(): void
@@ -171,6 +201,17 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
+        }
+
+        if (self::enabled('media')) {
+            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
+            MediaDisks::registerDriver();
+            // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
+            Blade::anonymousComponentPath(__DIR__.'/../resources/components');
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
         }
 
         if (self::enabled('cms_sign_in')) {

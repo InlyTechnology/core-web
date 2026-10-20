@@ -3,6 +3,7 @@
 use Inly\CoreWeb\Checks\Checks\DeadTargets;
 use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
 use Inly\CoreWeb\Checks\Checks\SeoGaps;
+use Inly\CoreWeb\Media\CoreCdnScheme;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 return [
@@ -53,6 +54,10 @@ return [
     | cp_link: a link to Core right under Dashboard in the control panel
     | (`cp_link`), for every CP user, opened in a new tab.
     |
+    | media: the <x-core-img>, <x-core-video> and <x-core-media> components,
+    | the asset disks in `media.disks` (a bucket, with a local fallback and a
+    | layer outside production), `media:sync` and `media:check`.
+    |
     | cms_sign_in: the control panel signed into from Core alone
     | (`cms_sign_in`): the hand-off and offboarding routes, the user provider
     | that admits only the accounts Core provisioned, the redirect of the CP
@@ -77,6 +82,7 @@ return [
         'cp_link' => false,
         'cms_sign_in' => false,
         'content_sync' => false,
+        'media' => false,
     ],
 
     /*
@@ -470,6 +476,87 @@ return [
     'cp_link' => [
         'label' => 'Core',
         'icon' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Media
+    |--------------------------------------------------------------------------
+    |
+    | cdn: the transforming CDN in front of the bucket and Core's storage.
+    | `origins` are its base URLs; only URLs under one get transform params,
+    | every other URL (a local file, a foreign host) renders untouched. Empty
+    | turns transforms off. `scheme` builds the URLs (Inly\CoreWeb\Media\UrlScheme);
+    | the default speaks core-cdn's query params.
+    |
+    | bucket: the S3-compatible bucket the asset disks live in (DigitalOcean
+    | Spaces, R2, S3). Everything but the key and secret is the same in every
+    | environment, so the site commits it in its own config/core-web.php; only
+    | the key and secret (CORE_MEDIA_KEY/SECRET, or Cloud's) are env. `url` is the files' public
+    | base URL (the CDN's, for transforms); `root` a folder all disks share.
+    | `acl` false leaves out `visibility: public` for a bucket without
+    | per-object ACLs, such as R2, which rejects it; the bucket itself is then
+    | public. Without a key, the bucket Laravel Cloud attaches is used
+    | (`cloud`, which Cloud sets), without ACLs, and with `url` taken from
+    | here when set. Without either the disks are the local folders below. A failing
+    | read is bounded: 3 seconds to connect and two attempts, since rendering
+    | an asset can read the bucket.
+    |
+    | disks: each Statamic asset disk core-web defines, by name, with the
+    | folder it lives in, in the bucket and locally (public/<folder>). Leave
+    | out disks Statamic addons hardcode as local (favicons, social_images).
+    |
+    | layer: outside production a disk never writes the bucket's own files.
+    | Writes, edits and deletes land in a layer in front of it, and reads try
+    | the layer first: `prefix` in the bucket (staging), or the local folder
+    | `local` (the `local` environment). Files that are only in the bucket
+    | cannot be deleted or moved there. A server set up before the site is
+    | live (staging while editors build the content) sets CORE_MEDIA_LAYER=
+    | false to write the bucket directly, and drops it at go-live. Unset, a
+    | Laravel Cloud bucket (attached per environment) gets no layer.
+    |
+    | images: the defaults <x-core-img> renders with.
+    |
+    | videos: the widths <x-core-video> asks the CDN for, `small_width` for
+    | phones, and the second of the frame it shows as the poster when none is
+    | given (null: no poster). Sources the CDN does not serve play as is.
+    |
+    */
+
+    'media' => [
+        'cdn' => [
+            'origins' => ['https://cdn.inlycore.com'],
+            'scheme' => CoreCdnScheme::class,
+        ],
+        'bucket' => [
+            'key' => env('CORE_MEDIA_KEY', ''),
+            'secret' => env('CORE_MEDIA_SECRET', ''),
+            'endpoint' => '',
+            'region' => 'auto',
+            'bucket' => '',
+            'url' => '',
+            'root' => '',
+            'acl' => true,
+            'cache_control' => 'public, max-age=2592000',
+            'cloud' => env('LARAVEL_CLOUD_DISK_CONFIG', ''),
+        ],
+        'disks' => [
+            'assets' => 'assets',
+        ],
+        'layer' => [
+            'enabled' => env('CORE_MEDIA_LAYER'),
+            'prefix' => '_staging',
+            'local' => 'media-layer',
+        ],
+        'images' => [
+            'format' => 'auto',
+            'placeholder' => 'blur',
+        ],
+        'videos' => [
+            'width' => 1280,
+            'small_width' => 720,
+            'poster_time' => 0,
+        ],
     ],
 
     /*

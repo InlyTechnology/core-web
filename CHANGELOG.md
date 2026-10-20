@@ -63,6 +63,35 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are gone
   with it. See README → CMS sign-in.
 
+- **Media**: `features.media` (off by default) renders a site's pictures and
+  videos through the transforming CDN, and defines its asset disks on the
+  bucket. See README → Media.
+  - `<x-core-img>`, `<x-core-video>` and `<x-core-media>` take a Statamic
+    Asset, an assets field, a URL or a file from Core alike. Images get
+    `format=auto`, a srcset, the focal point and a blurred placeholder;
+    videos get CDN versions for wide and small screens, a frame poster and a
+    blurred placeholder of that frame until it loads.
+    URLs the CDN does not serve render as is.
+  - The disks in `media.disks` are the bucket in production and the local
+    folder without a key, unless the app's config/filesystems.php defines
+    them (remove the site's own `assets` disk). Elsewhere they sit behind a
+    layer (`CORE_MEDIA_LAYER=false` turns it off on a staging server set up
+    before go-live, so editors build content on the real bucket):
+    writes land in it, and deleting or moving production's files throws
+    `ProductionFileLocked`.
+  - Only the key and secret (`CORE_MEDIA_KEY`/`CORE_MEDIA_SECRET`, or
+    Cloud's) and `CORE_MEDIA_LAYER` are env; the rest of the
+    bucket is committed config, and a site's `media` block keeps the
+    defaults it leaves out. `acl: false` for R2.
+  - On Laravel Cloud, with no key set, the disks use the environment's
+    attached bucket (`LARAVEL_CLOUD_DISK_CONFIG`), without ACLs and without a
+    layer unless `CORE_MEDIA_LAYER=true`; a committed `bucket.url` (the CDN)
+    still wins over the bucket's own URL.
+  - `MediaSource::urlOf()` gives a file's URL as the components render it.
+  - `media:sync push|pull` copies a disk between its folder and the bucket
+    (push adds, `--overwrite` replaces);
+    `media:check` checks the bucket's headers and a CDN rendition.
+
 ### Upgrade notes
 
 - **`core:pull` needs the live site**: it no longer pulls from the remote
