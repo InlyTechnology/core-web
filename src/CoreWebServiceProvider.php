@@ -195,7 +195,8 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('media')) {
             $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
             MediaDisks::registerDriver();
-            Blade::anonymousComponentPath(__DIR__.'/../resources/views/media');
+            // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
+            Blade::anonymousComponentPath(__DIR__.'/../resources/components');
 
             if ($this->app->runningInConsole()) {
                 $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
