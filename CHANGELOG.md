@@ -13,6 +13,17 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   site with `features.media` on that still defines its own `assets` disk (or
   any disk in `media.disks`). Docs: README, "Site rules".
 
+## v0.19.0
+
+- **Agent instructions**: `resources/agents/AGENTS.md` carries the rules an
+  agent working on a site needs, per feature. A site imports it from its
+  `CLAUDE.md` (`@vendor/inly/core-web/resources/agents/AGENTS.md`), so the
+  rules update with the package. See README → Agent instructions.
+- **`core-web:doctor`**: checks what the switched-on features need from the
+  environment (the Core client, a real queue, the schedule, the legacy ping
+  secret, CMS accounts kept out of git), exiting non-zero on a failure.
+  Registered once any feature is on. See README → Checking a site's setup.
+
 ## v0.18.0
 
 - **Laravel Cloud**: `features.cloud` (off by default). On Laravel Cloud

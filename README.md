@@ -1843,6 +1843,36 @@ refuses to run while content would still be on the disk. Build commands
 stay the host's: `composer install`, the front-end build and
 `php artisan optimize`.
 
+## Checking a site's setup
+
+`php artisan core-web:doctor` (registered once any feature is on) checks
+what the switched-on features need from the environment it runs in, offline:
+
+| Check | Fails when |
+|---|---|
+| Core client | `CORE_URL`, `CORE_CLIENT_ID` or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on. On a local machine without `CORE_URL`, a warning: snapshots and content come from `core:pull` / `content:pull` |
+| Queue | `QUEUE_CONNECTION` is `sync` in production with `snapshots` or `cms_sign_in` on; a warning on other servers, skipped locally |
+| Schedule | Never: it lists the commands the features schedule and warns when one's schedule was set to `null` |
+| Pings | Never: it warns while `WEBSITE_SYNC_SECRET` is still set |
+| CMS accounts | Statamic's git integration commits the users folder while `cms_sign_in` is on |
+
+It exits non-zero on a failure, so a deploy or a launch check can run it.
+What it cannot see (a worker or the scheduler actually running, the deploy
+script) stays a launch check. `media:check` covers the media disks.
+
+## Agent instructions
+
+`resources/agents/AGENTS.md` holds the rules an agent working on a site
+needs for each feature, versioned with the code. A site imports it from its
+own `CLAUDE.md`:
+
+```markdown
+@vendor/inly/core-web/resources/agents/AGENTS.md
+```
+
+A change to how a site should use a feature updates that file in the same
+pull request.
+
 ## Testing a site
 
 ```php
@@ -1937,8 +1967,17 @@ CI runs the suite and `pint --test` on every push and pull request.
 
 ## Releasing
 
-Releases are git tags (`v0.3.0`); Packagist picks each one up. Add the
-release's notes to `CHANGELOG.md` under its version before tagging.
+Releases are git tags (`v0.3.0`); Packagist picks each one up. A pull
+request adds its notes to `CHANGELOG.md` under `## Unreleased` (one section,
+at the top). To release, run the **Release** workflow from the Actions tab
+(it works in the GitHub mobile app) with `patch`, `minor`, `major` or an
+exact version. It requires the Tests workflow to have passed on `main`,
+renames `## Unreleased` to the version, commits that to `main`, tags that
+commit and publishes the GitHub release with the section as its notes. It
+refuses an empty or missing `## Unreleased`, an existing or lower version,
+and, before 1.0, a patch release that carries upgrade notes.
+If the publish step fails after the push, publish the existing tag by hand:
+`gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <notes>`.
 
 ## License
 
