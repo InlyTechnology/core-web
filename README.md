@@ -1523,7 +1523,7 @@ what the switched-on features need from the environment it runs in, offline:
 | Check | Fails when |
 |---|---|
 | Core client | `CORE_URL`, `CORE_CLIENT_ID` or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on. On a local machine without `CORE_URL`, a configured remote Core is enough |
-| Queue | `QUEUE_CONNECTION` is `sync` on a server with `snapshots` or `cms_sign_in` on (skipped locally) |
+| Queue | `QUEUE_CONNECTION` is `sync` in production with `snapshots` or `cms_sign_in` on; a warning on other servers, skipped locally |
 | Schedule | Never: it lists the commands the features schedule and warns when one's schedule was set to `null` |
 | Pings | Never: it warns while `WEBSITE_SYNC_SECRET` is still set |
 | CMS accounts | Statamic's git integration commits the users folder while `cms_sign_in` is on |

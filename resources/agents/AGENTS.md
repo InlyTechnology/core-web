@@ -17,7 +17,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Read `CHANGELOG.md`'s upgrade notes** for every version between the one the site had and the one it moves
   to, and apply each.
 - **Env is secrets and what differs per environment** (`CORE_URL`, `CORE_CLIENT_ID`, `CORE_CLIENT_SECRET`,
-  `CORE_MEDIA_KEY`/`_SECRET`, `CORE_REMOTE_CLIENT_SECRET` locally). A value that is the same everywhere (the
+  `CORE_MEDIA_KEY`/`_SECRET`, `CORE_REMOTE_CLIENT_SECRET` locally; the README's env table has the rest, such
+  as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site paired with production Core). A value that is the same everywhere (the
   remote Core's URL and client id, the bucket, the CDN) is committed in `config/core-web.php`.
 - **`php artisan core-web:doctor`** checks what the switched-on features need from the environment: the Core
   client, a real queue, the schedule. Run it after changing features or env, and on every server before launch.
@@ -28,7 +29,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   An editor's own addition to a Core object (an intro, a photo for one page) lives on an entry that references
   the object by its Core id.
 - **A wrong value is fixed in Core.** Core pings the site on every change and the next read has it.
-- **Pings need a real queue with a worker** wherever they arrive (`QUEUE_CONNECTION` other than `sync`), or a
+- **Pings and offboarding notices need a real queue with a worker** wherever they arrive (`QUEUE_CONNECTION` other than `sync`), or a
   bulk ping's pull runs inside Core's request and is cut off.
 - **`core:warm` runs nightly** (the package schedules it, so every server runs `schedule:run`) **and in the
   deploy**, right after `statamic:stache:refresh`, as `php artisan core:warm || true`.
@@ -43,7 +44,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Core is the only way into the control panel.** Access is granted and revoked in Core; never hand-manage a
   Core-provisioned account's access in the CP. Map Core grants to Statamic roles in `cms_sign_in.roles`.
 - **CP accounts have no password and are not committed**: keep `users/` out of git and out of
-  `statamic.git.paths`.
+  `statamic.git.paths`. Without a password, Statamic confirms an elevated session (user and role screens) with
+  an emailed code, so the site's mailer must work wherever editors sign in.
 - **Locally**, a machine without `CORE_URL` signs in through the remote Core; without any Core,
   `cms_sign_in.local_password_sign_in` restores Statamic's own login, only while `APP_ENV` is `local`.
 - A site moving off its own SSO code removes that code in the same change (README → CMS sign-in).
@@ -62,7 +64,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Nothing Core sends goes live by itself**: a fix is a draft, a proposal waits for an editor, and both are
   written as the person's own CP account.
 - **Links to the site's own pages are entry references**, never typed URLs; `content:check own-url-links` finds
-  the ones that are not, and drafts the fix.
+  the ones that are not; fixing a finding writes the draft.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 
 ## Forms, chat and live reads

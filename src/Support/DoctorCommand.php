@@ -77,7 +77,7 @@ class DoctorCommand extends Command
 
         // A local machine without its own Core reads the remote one (core:pull, CMS sign-in through the remote Core).
         if ($this->laravel->environment('local') && blank(config('core-web.client.base_url'))) {
-            $remote = ! blank(config('core-web.remote.base_url')) && ! blank(config('core-web.remote.client_secret'));
+            $remote = ! blank(config('core-web.remote.base_url')) && ! blank(config('core-web.remote.client_id')) && ! blank(config('core-web.remote.client_secret'));
             $remote
                 ? $this->ok('Core client: none here, the remote Core ('.config('core-web.remote.base_url').') stands in')
                 : $this->warning('Core client: none here and no remote Core; set CORE_REMOTE_CLIENT_SECRET to pull and sign in through it');
@@ -98,7 +98,9 @@ class DoctorCommand extends Command
         }
 
         if (config('queue.default') === 'sync') {
-            $this->failure('Queue: QUEUE_CONNECTION is sync, so '.implode(', ', $needing).' run their jobs inside Core\'s request and a bulk ping is cut off; use a real queue with a worker');
+            $message = 'Queue: QUEUE_CONNECTION is sync, so '.implode(', ', $needing).' run their jobs inside Core\'s request and a bulk ping is cut off; use a real queue with a worker';
+            // A staging nothing pings may run sync; production always receives Core's pings and notices.
+            $this->laravel->environment('production') ? $this->failure($message) : $this->warning($message.' wherever Core pings this server');
 
             return;
         }

@@ -46,7 +46,7 @@ class DoctorCommandTest extends TestCase
     public function test_a_local_machine_may_lean_on_the_remote_core(): void
     {
         $this->app['env'] = 'local';
-        config(['core-web.client.base_url' => '', 'core-web.remote.base_url' => 'https://core.example', 'core-web.remote.client_secret' => 'x']);
+        config(['core-web.client.base_url' => '', 'core-web.remote.base_url' => 'https://core.example', 'core-web.remote.client_id' => 'remote', 'core-web.remote.client_secret' => 'x']);
 
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('ok   Core client: none here, the remote Core (https://core.example) stands in')
@@ -61,6 +61,16 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('fail Queue: QUEUE_CONNECTION is sync')
             ->assertFailed();
+    }
+
+    public function test_a_sync_queue_is_a_warning_on_staging(): void
+    {
+        $this->app['env'] = 'staging';
+        config(['queue.default' => 'sync']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Queue: QUEUE_CONNECTION is sync')
+            ->assertSuccessful();
     }
 
     public function test_the_shared_ping_secret_is_a_warning(): void
