@@ -25,6 +25,7 @@ What the package gives a site:
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
+| Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
@@ -57,6 +58,7 @@ nothing.
 | Core snapshots | `features.snapshots` | The `snapshots` cache store, `core:warm` and its schedule, `core:pull`, the degraded guard, the ping route (`ping.enabled`) and the snapshot sitemaps with their `{{ core_sitemaps }}` tag (`sitemaps.enabled`), and the `core_snapshot` dashboard widget (see [Control panel widget](#control-panel-widget)) |
 | Chat | `features.chat` | The relay routes under `/!/core-web/chat/{agent}`, the `core-web` view namespace with `<x-core-web::chat>`, and the hint cookies' exemption from cookie encryption (see [Chat](#chat)) |
 | Live reads | `features.live` | The route `/!/core-web/live/{name}` for the reads named in `live.reads` (see [Live reads](#live-reads)) |
+| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check` (see [Media](#media)) |
 | Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
@@ -98,6 +100,9 @@ shares with the backoffice under the backoffice's own names:
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
+| `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
+| `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -134,6 +139,15 @@ shares with the backoffice under the backoffice's own names:
 | `content.environment` | `CORE_CONTENT_ENVIRONMENT` | The environment a draft or publish must be sealed for; empty is `app()->environment()` |
 | `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
+| `features.media` | `false` | Switch on the media components and disks (see [Media](#media)) |
+| `media.cdn.origins` | `['https://cdn.inlycore.com']` | The transforming CDN's base URLs; only URLs under one get transform params. `[]` turns transforms off |
+| `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
+| `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
+| `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
+| `media.layer.enabled` | `CORE_MEDIA_LAYER`, unset | Outside production, keep production's files behind the layer. Unset means on, except on a Laravel Cloud bucket. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
+| `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
+| `media.images.*` | `format` `auto`, `placeholder` `blur` | `<x-core-img>`'s defaults |
+| `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 | `features.cms_sign_in` | `false` | Switch on CMS sign-in (see [CMS sign-in](#cms-sign-in)) |
 | `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
@@ -972,6 +986,177 @@ including that every key a field carries is one `FormDefinition::KEYS`
 knows. When Core's contract changes, replace the copy and catch up on what
 fails. A field type the reader does not know renders as a text input and is
 logged.
+
+## Media
+
+`features.media` renders a site's pictures and videos through the
+transforming CDN (core-cdn), whatever they are: a Statamic Asset, an assets
+field (its Value, Collection or query builder), a URL, or a file from Core
+(`url`/`original_url`, `alt`, `focus`/`focal_point`, `width`, `height`,
+`mime_type`). It also defines the asset disks on the site's bucket.
+
+### The components
+
+```blade
+<x-core-img :src="$set['image']" :widths="[480, 960, 1440]" sizes="(min-width: 1024px) 50vw, 100vw" ratio="4/3" class="h-full w-full object-cover" />
+<x-core-video :src="$set['video']" class="h-full w-full object-cover" />
+<x-core-media :src="$set['media']" ... />
+```
+
+- **`<x-core-img>`**: an image under a CDN origin gets `format=auto` (the CDN
+  picks AVIF, WebP or the original per browser), the `width`, `height`,
+  `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
+  blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
+  the box and bounds each rendition's height. Anything else (a local file, a
+  foreign host, an SVG) renders as is, without a srcset. The editor's focal point (an
+  Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
+  pass a `style`, and `alt` defaults to the file's own.
+- **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
+  wide and 720px on phones (`width`, `small-width`), silent when it plays
+  muted (`audio=false` makes them smaller), with a frame of the video as its
+  poster (`poster-time`, or `poster` for an image of your own) and a 24px
+  version of that poster blurred behind it until the poster or the first
+  frame arrives (`placeholder="none"` turns it off; `media.images.placeholder`
+  sets the default for videos too). Anything else plays the
+  file itself. It autoplays muted in a loop by default: `:autoplay`,
+  `:muted`, `:loop`, `controls`, `preload`.
+- **`<x-core-media>`**: one or the other, by the source, with each getting only
+  its own options: for a field an editor fills with either.
+
+`width` and `height` on `<x-core-img>` are the rendition's size, not HTML
+attributes: give the box its size in CSS or with `ratio`, or the page shifts
+as the image arrives. The video poster is one frame at `width`, for phones too.
+
+The CDN builds a video version on its first request (30 to 60 seconds for a
+large file) and keeps it a year, so open each new video once after uploading.
+Its limits are Cloudflare's: a source under 100 MB and 10 minutes, and a
+version at most 60 seconds long.
+
+The placeholder and the reduced-motion pause need the shipped CSS and script:
+
+```css
+@import '../../vendor/inly/core-web/resources/css/core-media.css';
+```
+
+```js
+import coreMedia from '../../vendor/inly/core-web/resources/js/core-media.js'
+
+coreMedia() // before Alpine.start()
+```
+
+### The disks
+
+Each disk in `media.disks` is defined unless the app's
+`config/filesystems.php` has one by that name, so **remove the site's own
+`assets` disk** (Statamic's skeleton ships one) and any other it lists there;
+`media:check` says when the app's definition is the one in use. The bucket
+needs `composer require league/flysystem-aws-s3-v3`.
+
+| Where | With `CORE_MEDIA_KEY` | Without |
+|---|---|---|
+| production | the bucket | the local folder `public/<folder>` |
+| staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
+| Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | n/a |
+| anywhere else | the bucket, behind a layer | the local folder |
+
+The layer is what makes the shared bucket safe outside production. Writes,
+edits (an asset's `.meta` included) and deletes land in it, reads try it
+first, and a file only the bucket holds cannot be deleted or moved: staging
+and a laptop see production's files and never change them. On staging the
+layer is `_staging/` in the bucket; in the `local` environment it is
+`public/media-layer/` (add it to `.gitignore`).
+
+Before go-live there is no production content to protect, and staging is
+often where editors build it, so a staging server set up then gets
+`CORE_MEDIA_LAYER=false` and writes the bucket directly. It is a server's
+setup, not the site's code, so it is env: `main` and `develop` stay alike.
+At go-live, remove it from staging's env (the launch checklist's step): the
+layer is on from then on, and what staging uploaded before is already in the
+bucket at the paths production serves, so nothing is copied. A production
+server on a temporary domain writes the bucket anyway.
+
+Refusals are loud: deleting, renaming or moving one of production's files
+throws `ProductionFileLocked` whatever the disk's `throw`, so Statamic stops
+before it strips the asset from entries or saves its new path. A layer file at
+the same path as one of production's hides it, and deleting it shows
+production's again.
+
+A file in the layer renders from the layer's URL in the components. Anywhere
+else, Statamic's `Asset::url()` points at the bucket, where it is not: use
+`Inly\CoreWeb\Media\MediaSource::urlOf($asset)` for a URL of your own (an
+og:image, a feed). The control panel's links to it 404; its thumbnails, which
+Glide reads through the disk, show.
+
+Without a key a disk is its committed local folder: a fresh clone, CI and a
+server missing the key all render from it.
+
+Everything but the key and secret (and `CORE_MEDIA_LAYER`) is committed in the site's
+`config/core-web.php`. Unlike the other top-level keys, a site's `media`
+block keeps the package's defaults for what it leaves out, one group deep
+(the key and secret from env, the CDN, the layer); `disks` is taken whole:
+
+```php
+'media' => [
+    'bucket' => [
+        'endpoint' => 'https://ams3.digitaloceanspaces.com',
+        'region' => 'ams3',
+        'bucket' => 'my-site',
+        'url' => 'https://cdn.inlycore.com/my-client/my-site',
+    ],
+    'disks' => ['assets' => 'assets', 'files' => 'files'],
+],
+```
+
+Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
+`social_images`). For R2, set `endpoint` to the account's R2 endpoint and
+`acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
+
+### On Laravel Cloud
+
+With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
+the environment: the first entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` that
+is not a scoped disk gives the key, secret, bucket, endpoint and region. A
+key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
+them whatever config says. The files' URL is the committed `media.bucket.url`
+(the CDN's, so the components transform them), or the bucket's own URL when
+the site commits none, which serves files untransformed. A committed CDN
+URL must have this Cloud bucket as its origin, or new uploads land in one
+bucket while their URLs point at another.
+
+Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
+Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
+its bucket directly, as editors building the content need. A Cloud staging
+environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
+
+- Name the Cloud bucket's disk anything but a disk in `media.disks`
+  (`assets`, `files`): Cloud registers its disk before core-web, so a clash
+  leaves Cloud's plain disk in place of core-web's, and `media:check` reports
+  it as the app's own.
+- The first deploy copies the git-tracked images into the bucket with
+  `php artisan media:sync push --force`, on the Cloud credentials like any
+  other key.
+
+### Commands
+
+- **`media:sync push|pull [--disk=] [--dry-run] [--overwrite]`** copies each
+  disk's files, `.meta` folders included, between its committed local folder
+  and the bucket, and never deletes. `push` is the move to a bucket: it adds
+  the files the bucket lacks and leaves the rest, since a file of a different
+  size there is usually an editor's later change (`--overwrite` replaces
+  those). It asks first; `--force` skips the question. `pull` refreshes the
+  committed folder from the bucket. Neither touches a layer. Dry run first; a
+  second dry run after a push finds nothing.
+- **`media:check [path] [--disk=assets]`** says what the disk is here and, with
+  a key, checks a file (the first image when no path is given): its URL is
+  under a CDN origin, the raw file answers with `Cache-Control` and CORS, and a
+  CDN rendition answers with an image.
+
+### Another CDN
+
+`media.cdn.scheme` names the `Inly\CoreWeb\Media\UrlScheme` that builds the
+transform URLs: `serves()` (which URLs it transforms), `image()`, `video()`
+and `frame()`. `CoreCdnScheme` speaks core-cdn's v1 query params and clamps
+every value to the ranges the CDN accepts.
 
 ## Website content
 

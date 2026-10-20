@@ -7,11 +7,13 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\View;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
@@ -35,7 +37,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'media' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -57,6 +59,15 @@ class DormantTest extends TestCase
     {
         $this->assertFalse(app(Router::class)->has('core-web.live'));
         $this->get('/!/core-web/live/quote')->assertNotFound();
+    }
+
+    public function test_no_media_component_disk_or_driver_is_registered(): void
+    {
+        $this->assertFalse(config()->has('filesystems.disks.assets'));
+        $this->assertArrayNotHasKey(MediaDisks::LAYERED_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
+
+        $this->expectExceptionMessage('Unable to locate a class or view for component [core-img]');
+        Blade::render('<x-core-img src="https://cdn.inlycore.com/a/b.jpg" />');
     }
 
     public function test_no_cms_sign_in_is_wired(): void
@@ -107,6 +118,8 @@ class DormantTest extends TestCase
         $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core:pull', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('content:check', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
     }
 
     public function test_no_tag_is_registered(): void
