@@ -2,10 +2,13 @@
 
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
 use Inly\CoreWeb\Tests\TestCase;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Statamic\Facades\CP\Nav as CpNav;
+use Statamic\Facades\Permission;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /** A local checkout refuses every sync call, so its CP has no sync pages to offer. */
@@ -45,6 +48,15 @@ class SyncCpLocalTest extends TestCase
         $this->assertFalse(Route::has('statamic.cp.core-web.sync.authorize'));
         $this->get('/cp/core-web/sync/tokens')->assertNotFound();
         $this->postJson('/!/core-web/sync/device', ['machine' => 'x'])->assertForbidden()->assertJsonPath('error', 'local_remote');
+    }
+
+    public function test_a_site_booted_as_local_keeps_the_commands_and_the_permission(): void
+    {
+        $this->assertTrue($this->app->environment('local'));
+        $this->assertArrayHasKey('content:pull', Artisan::all());
+        $this->assertArrayHasKey('content:login', Artisan::all());
+        $this->assertArrayHasKey('content:logout', Artisan::all());
+        $this->assertContains(AuthenticateSyncToken::PERMISSION, Permission::boot()->all()->map->value()->all());
     }
 
     #[DefineEnvironment('allowLocalRemote')]

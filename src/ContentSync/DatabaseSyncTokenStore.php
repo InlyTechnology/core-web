@@ -116,14 +116,14 @@ final class DatabaseSyncTokenStore implements SyncTokenStore
             try {
                 $missing = ! $this->connection->getSchemaBuilder()->hasTable($this->table);
             } catch (Throwable $unreachable) {
-                throw new SyncTokenStoreUnavailable("{$setting}, but the database cannot be reached: configure its connection ({$unreachable->getMessage()}).", previous: $e);
+                throw new SyncTokenStoreUnavailable("{$setting}, but the database cannot be reached: configure its connection ({$unreachable->getMessage()}).", SyncTokenStoreUnavailable::DATABASE_UNREACHABLE, $e);
             }
 
             if (! $missing) {
                 throw $e;
             }
 
-            throw new SyncTokenStoreUnavailable("{$setting}, which does not exist: publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.", previous: $e);
+            throw new SyncTokenStoreUnavailable("{$setting}, which does not exist: publish its migration (php artisan vendor:publish --tag=core-web-sync-tokens-migration) and run php artisan migrate.", SyncTokenStoreUnavailable::TABLE_MISSING, $e);
         }
     }
 }

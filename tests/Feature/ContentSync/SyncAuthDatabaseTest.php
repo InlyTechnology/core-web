@@ -140,7 +140,23 @@ class SyncAuthDatabaseTest extends SyncAuthTest
             ->get(cp_route('core-web.sync.tokens'))
             ->assertOk()
             ->assertSee('The signed-in machines cannot be listed')
-            ->assertSee('core-web-sync-tokens-migration');
+            ->assertSee('core-web-sync-tokens-migration')
+            ->assertDontSee('core_web_sync_tokens')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_the_tokens_page_points_at_the_connection_without_showing_it_when_the_database_is_unreachable(): void
+    {
+        $path = __DIR__.'/does-not-exist.sqlite';
+        config(['database.connections.gone' => ['driver' => 'sqlite', 'database' => $path, 'prefix' => '']]);
+        config(['core-web.content_sync.tokens' => ['driver' => 'database', 'connection' => 'gone']]);
+
+        $this->actingAs($this->cmsUser('boss@example.com', super: true))
+            ->get(cp_route('core-web.sync.tokens'))
+            ->assertOk()
+            ->assertSee('the database that holds the tokens cannot be reached')
+            ->assertDontSee($path)
+            ->assertDontSee('does-not-exist');
     }
 
     public function test_a_database_that_does_not_exist_is_reported_as_unreachable(): void
