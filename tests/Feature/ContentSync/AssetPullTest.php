@@ -262,6 +262,24 @@ class AssetPullTest extends TestCase
         $this->assertSame('<svg/>', file_get_contents($this->dir.'/public/assets/logo.svg'));
     }
 
+    public function test_naming_assets_leaves_out_containers_on_the_app_s_own_disks(): void
+    {
+        config(['filesystems.disks.favicons' => ['driver' => 'local', 'root' => $this->dir.'/public/favicons']]);
+        AssetContainer::make('favicons')->disk('favicons')->save();
+
+        $this->pull()->doesntExpectOutputToContain('favicons')->assertSuccessful();
+    }
+
+    public function test_a_checkout_with_the_bucket_s_key_says_why_no_assets_came(): void
+    {
+        config(['core-web.media.bucket.key' => 'key', 'core-web.media.bucket.secret' => 'secret']);
+        config(['filesystems.disks' => array_diff_key(config('filesystems.disks'), ['assets' => true])]);
+        MediaDisks::define($this->app);
+        $this->fresh();
+
+        $this->pull(['--only' => null])->expectsOutputToContain('this checkout has the media bucket\'s key')->assertSuccessful();
+    }
+
     public function test_an_upload_lands_in_the_local_layer_only(): void
     {
         $this->pull()->assertSuccessful();

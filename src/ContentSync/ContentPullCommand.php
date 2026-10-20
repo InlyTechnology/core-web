@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Console\Command;
+use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Media\MediaDisks;
 use InvalidArgumentException;
 use Statamic\Contracts\Assets\AssetContainer;
 use Statamic\Facades\Site;
@@ -133,6 +135,13 @@ class ContentPullCommand extends Command
 
             foreach ($found['pull'] as $container) {
                 $containers[$container->handle()] = $container;
+            }
+
+            // A site without core-web's media pulls no assets by design; one with it hears why none came.
+            if (! $named && $found['pull'] === [] && CoreWebServiceProvider::enabled('media') && filter_var(config('core-web.content_sync.pull_assets', true), FILTER_VALIDATE_BOOLEAN)) {
+                $this->line('Assets: not pulled, '.(MediaDisks::bucketConfigured()
+                    ? 'this checkout has the media bucket\'s key (core-web.media.bucket.key), so its disks read the bucket itself.'
+                    : 'no asset disk here reads the live site\'s index (only a disk in core-web.media.disks, with features.media on, does).'));
             }
 
             if ($named && ($found['skipped'] !== [] || $found['pull'] === [])) {
