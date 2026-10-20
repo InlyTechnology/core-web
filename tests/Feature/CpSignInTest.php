@@ -52,39 +52,22 @@ class CpSignInTest extends CmsSignInTestCase
         $this->get('/cp/auth/login')->assertRedirect('https://core.test/cms/sign-in?site=production&next=%2Fcp');
     }
 
-    public function test_a_local_checkout_without_core_url_signs_in_through_the_remote_core(): void
-    {
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test/',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-
-        $origin = rawurlencode(rtrim(url('/'), '/'));
-
-        $this->get('/cp/auth/login')->assertRedirect("https://remote-core.test/sso/cms?site=local&origin={$origin}&next=%2Fcp");
-    }
-
-    public function test_without_core_url_or_a_remote_secret_there_is_no_way_in(): void
-    {
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => '',
-        ]);
-
-        $this->get('/cp/auth/login')->assertStatus(503);
-    }
-
     public function test_without_core_there_is_no_way_into_the_cp(): void
     {
         config(['core-web.client.base_url' => '']);
 
         $this->get('/cp/auth/login')->assertStatus(503);
+    }
+
+    public function test_without_core_a_debugging_machine_is_told_how_to_get_in(): void
+    {
+        config(['core-web.client.base_url' => '', 'app.debug' => true]);
+
+        $this->get('/cp/auth/login')->assertStatus(503)->assertSee('set CORE_URL to a Core');
+
+        config(['app.debug' => false]);
+
+        $this->get('/cp/auth/login')->assertStatus(503)->assertDontSee('CORE_URL');
     }
 
     public function test_a_guest_on_a_cp_page_goes_to_core_with_that_page_as_next(): void

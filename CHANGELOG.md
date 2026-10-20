@@ -8,6 +8,61 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Content pull**: `features.content_sync` (off by default) lets a local
+  checkout pull the live site's content (entries, terms, global variables,
+  collection and nav trees) into `content/` as the files the Stache
+  writes, signed in as the developer's CMS user: `content:login` approves
+  the machine in the live site's CP and stores a personal token (30 days
+  from its last use, revocable under Tools → Content sync), `content:pull`
+  writes what changed on the site and keeps local edits, tracked in a
+  committed `content.lock`, deleting only where the developer may read
+  everything on the site; a file that differs only in key order or in
+  `updated_at`/`updated_by` (a site on the Eloquent driver) is left as it
+  is. Approving a machine and using its token need the addon's `pull
+  content` permission. Set `content_sync.remote_url` in the
+  site's `config/core-web.php` (committed; there is no env var for it).
+  The live site keeps token hashes in private files by default; one behind
+  more than one server or on a host whose disk does not outlive a deploy
+  (Laravel Cloud) sets `content_sync.tokens.driver` to `database` and runs
+  the `core_web_sync_tokens` migration (published with
+  `--tag=core-web-sync-tokens-migration`); the tokens page says what to
+  set up when that table or its database is missing. A site running as
+  APP_ENV=local (without `content_sync.allow_local_remote`) refuses sync
+  calls and has no sync pages in its CP. See README → Content pull.
+- **`core:pull` through the live site**: `core:pull` reads the Core
+  snapshots from the live site's sync API on the `content:login` login, so
+  one login covers content and snapshots and no developer needs a Core
+  client secret. The live site serves the copy it renders from (one cached
+  pull from its own Core when it has none), only for the snapshots it
+  registers, paged, behind the same guards, token and rate limit as the
+  content export. It no longer pulls from the remote Core directly: the
+  remote client secret plays no part in it, and snapshot warmers no longer
+  run during a pull (the documents are pinned as the live site stored
+  them). Without `content_sync.remote_url` or a login, the command says to
+  set one or run `content:login`. Pins behave as before. The Pull content
+  permission and the machine approval screen now say the token also reads
+  every snapshot the site keeps, whole. A copy that changes between pages
+  restarts the pull (twice at most), and a 429 or 503 is waited out as
+  `Retry-After` says (a minute at most). See README → Pulling production
+  data.
+- **Signing in is no separate step**: `core:pull` now
+  starts `content:login` itself when run in a terminal without a login, or
+  after the site refused the stored one, and carries on pulling, as
+  `content:pull` does; without a terminal both still stop and say to run
+  `content:login`, which remains for signing in ahead of time or as
+  another user. A site that refuses even the login just made (one behind
+  more than one server with the `file` token store) stops the run after
+  that one sign-in, naming the snapshots not pulled. Commands share this
+  through the `SignsInToRemoteSite` trait. See README → Content pull.
+- **The remote Core is gone**: the `remote` config block
+  (`CORE_REMOTE_URL`, `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`),
+  its legacy name `pull` and the `CORE_PULL_*` variables are no longer
+  read, and no developer needs a Core secret. A local CMS sign-in goes to
+  `CORE_URL` (a local Core) or, with `cms_sign_in.local_password_sign_in`,
+  Statamic's own login; the control panel link points at `CORE_URL` only.
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are gone
+  with it. See README → CMS sign-in.
+
 - **Media**: `features.media` (off by default) renders a site's pictures and
   videos through the transforming CDN, and defines its asset disks on the
   bucket. See README → Media.
@@ -37,6 +92,46 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     (push adds, `--overwrite` replaces);
     `media:check` checks the bucket's headers and a CDN rendition.
 
+### Upgrade notes
+
+- **`core:pull` needs the live site**: it no longer pulls from the remote
+  Core with `CORE_REMOTE_CLIENT_SECRET` (or `CORE_PULL_CLIENT_SECRET`), so
+  a machine that pulled that way now fails with "Nothing to pull from" or
+  "not signed in". Find it: `php artisan config:show
+  core-web.content_sync.remote_url` is empty, or `.env` holds
+  `CORE_REMOTE_CLIENT_SECRET` or `CORE_PULL_CLIENT_SECRET`. Migrate:
+  switch on `features.content_sync` and set `content_sync.remote_url` to
+  the live site in the site's `config/core-web.php` (README → Content
+  pull); deploy this core-web version to the live site, so it serves
+  `/!/core-web/sync/snapshots/{type}`, with `features.snapshots` on and
+  the same snapshots registered as the checkout pulls; and give developers
+  the Pull content permission there. Verify: `php artisan core:pull` signs
+  in (or uses the existing `content:login`) and reports each snapshot
+  pinned from the live site's host.
+- **The remote Core is removed**: the `remote` and `pull` keys in a site's
+  `config/core-web.php`, the `CORE_REMOTE_*` / `CORE_PULL_*` variables,
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` are
+  ignored, and the class `Inly\CoreWeb\Client\RemoteCore` is gone, so
+  site code that uses it now fatals. A local machine no longer signs in to
+  the CP through the production Core: with `features.cms_sign_in` on, no
+  `CORE_URL` and `local_password_sign_in` not active, the CP login answers
+  503. The control panel link points at `CORE_URL` only, so a machine
+  without one shows no link. Find it: `grep -rn
+  "core-web\.\(remote\|pull\)\|RemoteCore" app/ config/ tests/ resources/`,
+  `grep -n "'remote'\|'pull'\|remote_site\|verify_remote"
+  config/core-web.php` and `grep -rn "CORE_REMOTE_\|CORE_PULL_" .env*`.
+  Migrate: remove or replace the code that uses `RemoteCore` or
+  `core-web.remote` / `core-web.pull` (`Inly\CoreWeb\Client\CoreClient::fromConfig()`
+  is the site's own Core); delete the `remote` / `pull` blocks,
+  `cms_sign_in.remote_site` and `cms_sign_in.core.verify_remote` from the
+  site's config and the `CORE_REMOTE_*` / `CORE_PULL_*` lines from `.env`
+  and `.env.example`; to sign in to the CP locally, run a local Core as
+  `CORE_URL` that knows the site under `cms_sign_in.site` (README → CMS
+  sign-in), or set `cms_sign_in.local_password_sign_in` to `true` (only
+  with `APP_ENV=local`). Verify: the greps come back empty, `php artisan
+  config:show core-web` lists no `remote` key, and `/cp/auth/login` goes
+  to the local Core or shows Statamic's login.
+
 ## v0.14.0
 
 - **CMS sign-in**: `features.cms_sign_in` (off by default) makes Core the
@@ -54,6 +149,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   gone), `canonical()` (a 301 to the document's own path, query string kept)
   and `render()` (Statamic's View with an optional cascade entry). Snapshots
   without `->pages()` are unchanged. See README → Pages.
+
 ## v0.13.1
 
 - **Naming**: the website content protocol is now called the Statamic

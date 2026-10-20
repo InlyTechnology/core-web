@@ -49,10 +49,10 @@ final class SnapshotStore
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
-    /** Where the pull running under pinning() reads from; null outside one. */
+    /** The source pin() is storing a copy from; null outside one. */
     private ?string $pinningFrom = null;
 
-    /** @var array<string, true> the snapshot types the last pinning() pinned */
+    /** @var array<string, true> the snapshot types the last pin() pinned */
     private array $pinnedNow = [];
 
     public function __construct(
@@ -233,6 +233,59 @@ final class SnapshotStore
             return null;
         }
 
+        return $this->keep($snapshot, $documents);
+    }
+
+    /**
+     * Pins documents read elsewhere (another site's copy) under `$source`:
+     * the number stored, or null for documents too empty to trust, which
+     * write nothing and leave an earlier pin alone.
+     *
+     * @param  array<string, array<string, mixed>>  $documents
+     *
+     * @throws LockTimeoutException when another write held the snapshot too long
+     */
+    public function pin(Snapshot $snapshot, string $source, array $documents): ?int
+    {
+        // Unlike a refresh, no brief empty copy: there is no render waiting on one.
+        if ($snapshot->isEmpty($documents)) {
+            $this->pinnedNow = [];
+
+            return null;
+        }
+
+        return $this->pinning($source, function () use ($snapshot, $documents): ?int {
+            $this->forget($snapshot);
+
+            return $this->keep($snapshot, $documents, rethrow: true);
+        });
+    }
+
+    /**
+     * What a read of the partition serves, as the hash its store keeps (the
+     * fresh marker or the stored copy's); null for a copy kept inline or
+     * nothing cached, which a caller hashes itself.
+     */
+    public function version(Snapshot $snapshot, ?string $partition = null): ?string
+    {
+        $fresh = $this->cache->get($snapshot->key('fresh', $partition));
+
+        if (is_string($fresh)) {
+            return $fresh;
+        }
+
+        if ($fresh !== null) {
+            return null;
+        }
+
+        $stored = $this->cache->get($snapshot->key('stored', $partition));
+
+        return is_array($stored) && is_string($stored['hash'] ?? null) ? $stored['hash'] : null;
+    }
+
+    /** @param  array<string, array<string, mixed>>  $documents */
+    private function keep(Snapshot $snapshot, array $documents, bool $rethrow = false): ?int
+    {
         // Checked again under the lock: a pull that started before core:pull pinned must not overwrite the pin.
         return $this->writing($snapshot, function () use ($snapshot, $documents): ?int {
             if ($this->pinnedElsewhere($snapshot)) {
@@ -250,39 +303,37 @@ final class SnapshotStore
             }
 
             return count($documents);
-        });
+        }, $rethrow);
     }
 
     /**
-     * Runs a pull whose every full refresh stores its copy pinned (no
-     * expiry, the marker naming `$source`), even over a copy pinned before.
-     * A failed refresh, or one too empty to trust, pins nothing and leaves
-     * an earlier pin alone.
+     * Runs pin()'s write so that the copy it stores is pinned (no expiry,
+     * the marker naming `$source`), even over a copy pinned before.
      *
      * @template T
      *
-     * @param  Closure(): T  $pull
+     * @param  Closure(): T  $write
      * @return T
      */
-    public function pinning(string $source, Closure $pull): mixed
+    private function pinning(string $source, Closure $write): mixed
     {
         $this->pinnedNow = [];
         $this->pinningFrom = $source;
 
         try {
-            return $pull();
+            return $write();
         } finally {
             $this->pinningFrom = null;
         }
     }
 
-    /** Whether the last pinning() pinned this snapshot. */
+    /** Whether the last pin() pinned this snapshot. */
     public function pinnedNow(Snapshot $snapshot): bool
     {
         return isset($this->pinnedNow[$snapshot->type]);
     }
 
-    /** Whether a pin stands that only another pinning() may replace. */
+    /** Whether a pin stands that only another pin() may replace. */
     private function pinnedElsewhere(Snapshot $snapshot): bool
     {
         return $this->pinningFrom === null && $this->pinned($snapshot) !== null;
@@ -331,8 +382,10 @@ final class SnapshotStore
      *
      * @param  Closure(): T  $write
      * @return T|null
+     *
+     * @throws LockTimeoutException with `$rethrow`
      */
-    private function writing(Snapshot $snapshot, Closure $write): mixed
+    private function writing(Snapshot $snapshot, Closure $write, bool $rethrow = false): mixed
     {
         $store = $this->cache->getStore();
 
@@ -342,8 +395,12 @@ final class SnapshotStore
 
         try {
             return $store->lock($snapshot->key('writing'), self::WRITE_LOCK_SECONDS)->block(self::WRITE_WAIT_SECONDS, $write);
-        } catch (LockTimeoutException) {
+        } catch (LockTimeoutException $e) {
             $this->warn($snapshot, 'write_lock_timeout');
+
+            if ($rethrow) {
+                throw $e;
+            }
 
             return null;
         }
@@ -367,8 +424,7 @@ final class SnapshotStore
             return 0;
         }
 
-        // A pin is a whole copy: a patch would write without expiry and without the marker.
-        if ($this->pinningFrom !== null || ! $snapshot->pullsOne() || ($deleted && $key === null)) {
+        if (! $snapshot->pullsOne() || ($deleted && $key === null)) {
             return $this->refresh($snapshot);
         }
 

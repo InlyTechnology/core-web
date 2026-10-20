@@ -65,6 +65,7 @@ nothing.
 | CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -95,8 +96,6 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
-| `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
@@ -112,7 +111,6 @@ shares with the backoffice under the backoffice's own names:
 |---|---|---|
 | `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
-| `remote.token_cache_key` | `core_web_remote_access_token` | Where the remote Core's access token is cached, apart from the site's own |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |
 | `ping.middleware` | `['throttle:120,1']` | Outside the `web` group, so no CSRF exemption is needed |
@@ -153,11 +151,10 @@ shares with the backoffice under the backoffice's own names:
 | `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
 | `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
 | `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
-| `cms_sign_in.remote_site` | `local` | The site key a local machine signs in as through the remote Core |
 | `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route, always in `web` (it signs into a session); `rate_limit` (10) a minute per address |
 | `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
 | `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
-| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
+| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
 
 ## Where snapshots live
 
@@ -321,8 +318,8 @@ Core's side) needs a schedule of its own, or its own ping.
 
 A site's content references Core's records, and on a developer's machine the
 local Core (if there is one) holds other records, or none. `core:pull` fills
-the local snapshots from another Core, production as a rule, so the site
-renders what the live site renders without a local Core:
+the local snapshots from the live site, so the site renders what the live
+site renders without a local Core:
 
 ```bash
 php artisan core:pull            # every registered snapshot
@@ -330,50 +327,49 @@ php artisan core:pull staff      # one
 php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
 
-The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
-there replaces the package's whole, so it names all three:
+It needs no secret: on a site with [Content pull](#content-pull) switched
+on, `core:pull` reads the snapshots from the live site's sync API
+(`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
+Pull content permission), on the same login as `content:pull`: one login
+covers both, and in a terminal either command starts it when the machine has
+none yet or the site refused the one it had.
+That permission therefore also reads the whole of every snapshot the site
+keeps, not only what its pages show, and the approval screen says so.
 
-```php
-'remote' => [
-    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
-    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
-    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
-],
-```
+- The live site serves the copy it renders from; only when it has nothing
+  cached yet does it pull once from its own Core with its own client,
+  cached as a render's pull would be. That first pull can take longer than
+  the checkout waits: a timeout says the site may still be filling its copy,
+  and a pull a minute later reads it.
+- It serves only the snapshots it registers itself, paged
+  (`content_sync.page_size`). A copy that changes between pages starts the
+  pull of that snapshot over, twice at most, before it pins nothing.
+- A rate limit (429) or a site with no copy to serve yet (503) is waited
+  out once its `Retry-After` says, a minute at most, a few times over.
+- A copy the live site holds stale (its Core unreachable lately) is pinned
+  and said so.
+- The live site needs `features.snapshots` and the same snapshots
+  registered; a site that lacks one answers 404 for it, and one whose
+  core-web predates this endpoint is named as such.
+- A snapshot's warmer does not run: its documents are pinned as the live
+  site stored them.
 
-The key was called `pull` before. A site config still naming it keeps
-working, and so do the `CORE_PULL_*` variables while the site leaves the key
-to the package; a site that writes its own `remote` block reads only the
-variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
-default to keep developers' `.env` files working.
+Without `content_sync.remote_url` there is nothing to pull from, and a run
+with no terminal (`--no-interaction`, CI) and no login stops and says to run
+`php artisan content:login`.
 
-The client is an app client in that Core (Settings → Apps, client
-credentials grant): Core shows its id and secret when it is created.
-
-It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
-place of `client.*`, so the documents are exactly what the site's
-projections make of that Core's data. What it stores is **pinned**: kept
-without expiry, and no `core:warm`, ping or render replaces it until the next
-`core:pull` or `--release`. A pull that fails, or comes back too empty to
-trust (`emptyWhen()`), pins nothing and leaves an earlier pin alone. A
-warmer that pins and then fails is reported as both. `--release` forgets the
-pulled copies, since another Core's data is no fallback for this one, so the
-next read or warm pulls from `CORE_URL` as from a cold cache.
+What it stores is **pinned**: kept without expiry, and no `core:warm`, ping
+or render replaces it until the next `core:pull` or `--release`. A pull that
+fails, or comes back too empty to trust (`emptyWhen()`), pins nothing and
+leaves an earlier pin alone. `--release` forgets the pulled copies, since
+another Core's data is no fallback for this one, so the next read or warm
+pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read.** In the source Core, create an app client
-  for local pulls (Settings → Apps, client credentials) holding the same read
-  permissions as the site's own client and nothing else, and share its secret
-  the way the team shares other secrets. It reads what the public site reads,
-  never more; revoking it in Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
-- **A certificate the machine trusts.** The pull ignores `CORE_CA_BUNDLE`,
-  which is for a local Core, so the source needs a public certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
   `CORE_URL`; those keys are not pinned.
@@ -1410,10 +1406,7 @@ goes live: a fix is a draft, a proposal waits for an editor.
 
 `features.cp_link` adds a link to Core right under Dashboard in the control
 panel, for every CP user, opened in a new tab so unsaved CP work stays open.
-It points at `client.base_url` (`CORE_URL`). On a local machine without one it
-points at the remote Core (`remote.base_url`), once its client id and secret
-are set, since that is the Core the developer's data came from.
-With neither there is no link.
+It points at `client.base_url` (`CORE_URL`); without one there is no link.
 
 The site names the link and may pick its icon, in its own
 `config/core-web.php`; the icon is a Statamic icon name or an SVG, and null
@@ -1504,16 +1497,194 @@ and the confirm and reconcile calls pass it. Every site needs an app client
 of its own, since the client keeps a hand-off on the right host and the key
 keeps it on the site it was minted for.
 
-**Local development.** A local machine without `CORE_URL` signs in through
-the remote Core (`remote.*`, see [Pulling production data](#pulling-production-data))
-as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
-address as `origin`, the hand-off must name it back, and it is confirmed on
-the remote client's token at `/api/app/cms-sso/local/verify`. Without any
-Core, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
-own login, and only while `APP_ENV` is `local`.
+**Local development.** A local machine signs in through a local Core, set
+as `CORE_URL` with a client of its own, exactly as a live site does: the
+local Core must know the site under its `cms_sign_in.site` key
+(`CORE_CMS_SITE`, `production` when unset) and serve https (`CORE_CA_BUNDLE`
+for a self-signed certificate). Without one,
+`cms_sign_in.local_password_sign_in` set to `true` restores Statamic's own
+login, and only while `APP_ENV` is `local`; with neither, the CP login
+answers 503, naming both ways in when `APP_DEBUG` is on. Data from production comes
+through `content:login` and `content:pull` / `core:pull`, not through a
+connection to the production Core.
 
 Core serves the other half: `/sso/cms`, the confirm and reconcile routes and
 the offboarding notices. Its paths are `cms_sign_in.core.*`.
+
+## Content pull
+
+`features.content_sync` lets a developer's checkout pull the live site's
+content into its own `content/` directory, signed in as their own CMS user:
+no shared secret, no env var, and no Core needed. The same login lets
+`core:pull` read the live site's Core snapshots (see
+[Pulling production data](#pulling-production-data)), so one sign-in
+covers both. Switch it on in the site's
+`config/core-web.php` (the live site serves the content, the checkout pulls
+it, and both run the same config) and commit the live site's URL there: it
+is the same for every developer, so it is config, not an env var. A
+`content_sync` block that names only `remote_url` keeps every other
+setting's default:
+
+```php
+return [
+    'features' => ['content_sync' => true],
+    'content_sync' => [
+        'remote_url' => 'https://www.example.com',
+    ],
+];
+```
+
+Set the URL the site answers on, not one that redirects there (`example.com`
+to `www.example.com`, `http` to `https`): the checkout follows no redirect,
+since one would carry its token to another address, and names the URL to
+set instead.
+
+```bash
+php artisan content:pull      # every type; signs this machine in first when needed
+php artisan content:pull --only=entries:pages,globals --site=default
+php artisan content:pull --dry-run   # what would change; writes nothing
+php artisan content:pull --force     # overwrite (and delete) files changed here too
+php artisan core:pull         # the Core snapshots, on the same login
+php artisan content:login     # optional: sign in ahead of time, or as another user
+php artisan content:logout    # revoke this machine's token
+```
+
+**Signing in.** There is no separate step: a `content:pull` or `core:pull`
+run in a terminal signs the machine in when it has no login, or when the
+site refused the one it had, and then carries on. A site that refuses even
+the login just made (one behind more than one server with the `file` token
+store) stops the run rather than signing in again. `content:login` does the
+same on its own, to sign in ahead of time or as another CMS user, and
+`content:logout` signs out; a run without a terminal never starts a sign-in
+and says to run `content:login`. Signing in prints a link to the live
+site's CP and a code, and opens the browser where it can. The developer
+signs in to the CP the way the site allows (Core single sign-on or a native
+login), checks the code, the machine name (as the machine reports it), the
+address the request came from and how long ago it started, and approves;
+the terminal then gets a personal token that acts as them, so the pull
+reads exactly what they may view (and, for `core:pull`, every Core snapshot
+the site keeps, whole). Approving a machine, and using its token, needs the
+**Pull content** permission (under Core Web in the role editor) besides CP
+access; a super user always may. Signing in
+again revokes the machine's previous token. The token is kept in
+`storage/core-web/remote-site.json` (readable by the developer only, in a
+folder that ignores itself in git) and lives 30 days from its last use
+(`content_sync.token_days`). On the live site only its sha256 is kept
+(`content_sync.tokens`), by default one file per token in
+`storage/app/private/core-web/sync-tokens`. Keep that store private: a disk
+named there is a private one, never the site's public bucket.
+
+A live site behind more than one server, or on a host whose disk does not
+outlive a deploy (Laravel Cloud), keeps its tokens in the database instead:
+a local file is seen by one server only, until the next deploy, so a token
+issued there is refused on the others and the checkout loses its login.
+Set the driver in the site's `config/core-web.php` (committed, not env),
+then publish and run the migration:
+
+```php
+'content_sync' => [
+    'remote_url' => 'https://www.example.com',
+    'tokens' => ['driver' => 'database'], // `connection` and `table` optional
+],
+```
+
+```bash
+php artisan vendor:publish --tag=core-web-sync-tokens-migration
+php artisan migrate
+```
+
+Its own tag publishes this migration alone, so a site that published the
+snapshots migration before does not get a second copy of it. It creates
+`core_web_sync_tokens` on the default connection (or
+`tokens.connection`). Without the table every sync call fails with an error
+naming the migration; it never falls back to files. The **Tools → Content
+sync** page then says to publish and run the migration, or, when the
+database itself cannot be reached, to check the tokens connection; the full
+error goes to the log.
+
+**Pulling.** The live site exports entries (published or not, every site),
+terms, global variables, collection trees and nav trees, each as the exact
+file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
+config, users, form submissions and assets are not pulled. `content.lock`
+(committed, beside `content/`) holds the hash of every file as last pulled:
+
+- a file unchanged here since the last pull, or missing here, is written,
+  in the key order this checkout's file already has;
+- a file that differs only in key order or in `updated_at`/`updated_by` (as
+  a site on the Eloquent driver exports it) is left as it is, and an entry
+  of a structured collection is never given a `parent`, which its tree holds;
+- a file changed here is left alone and listed, unless `--force`, which
+  still leaves a file whose only difference is key order or save stamps;
+- a file the site no longer has is deleted only when it is unchanged here
+  since the last pull, and only in a collection, taxonomy, global set or
+  nav (and site) the developer may read in full on the site, as each export
+  page reports; otherwise it is listed and kept (a changed one goes with
+  `--force`, one outside what they may read never does).
+
+**A first pull** on a site whose content is already committed has no
+`content.lock` yet, so it cannot tell a local edit from the site's newer
+version. A file exactly as the checkout's last commit has it (in a git
+checkout) counts as unchanged and is updated; any other file that differs
+is skipped and listed. When the checkout holds no edits worth keeping, run
+the first pull with `--force` to take the site's version of every file.
+
+Key order is ignored at every depth, since a site storing content in a
+database JSON column (Postgres `jsonb`, MySQL `JSON`) reorders the keys of
+nested maps on its own. The known limit: reordering the keys of a keyed map
+on the live site (an array fieldtype in keyed mode, say) is not seen as a
+change, so it is not pulled. Reordering a list (replicator sets, a tree) is.
+
+Then the Stache is refreshed. A path the site sends that is not one of its
+type's files under `content/` stops the pull before anything is written,
+nothing is written outside `content/`, and a symlinked file or folder is
+never written or deleted through. The command runs only where `APP_ENV` is
+`local`.
+
+**Revoking.** **Tools → Content sync** in the live site's CP lists the
+machines signed in as the user (a super user sees everyone's), with when
+each was last used and when it expires, and revokes any of them. A token
+also stops working when its user loses CP access or the Pull content
+permission, or is deleted, and `content:logout` revokes its own (the stored
+one, even after `remote_url` changed).
+
+**Guards.** The sync endpoints answer over HTTPS only (an app running as
+`local` or `testing` excepted). Behind a proxy or load balancer that ends
+TLS, trust it in the site's `TrustProxies` middleware so Laravel sees the
+request as secure; otherwise every sync call is refused. They are
+throttled per token and per address (`content_sync.middleware`, the
+`core-web-sync` limiter), and starting a login has a limiter of its own;
+the CLI reports a 429 with when to retry. A site running as
+`APP_ENV=local` refuses them, so no one pulls from a developer's checkout
+by mistake (`content_sync.allow_local_remote` lets one serve, to try the
+flow between two checkouts), and its CP has no sync pages: no Tools →
+Content sync entry and no approval page. The approval page cannot be framed by another
+site. Pending logins wait in the cache (`content_sync.store`, null for the
+default store), which every server behind the site must share: on more than
+one server that is a `database` or `redis` store, never `file`, or an
+approval made on one server is lost to the machine polling another.
+
+### Building on the login
+
+`Inly\CoreWeb\ContentSync\RemoteSite` is the checkout's client:
+`RemoteSite::fromStorage()` is this machine's login to the configured site
+(null without one), `url()` and `token()` what it signs in with, and
+`get($endpoint, $query)` / `post($endpoint, $data)` call a sync endpoint by
+name (`export`), or any path from the site's root when it starts with `/`,
+with the token as bearer and no redirects followed. The sync endpoints' own
+401 forgets the login and throws `RemoteLoginNeeded`; a site that cannot be
+reached, redirects, rate limits or answers another 401 (basic auth in front
+of a staging host) throws `RemoteSiteError` and keeps the login; a rate limit
+is its `RemoteSiteBusy` subclass, with the seconds the site asked to wait
+(`retryAfter`, null when it named none). On the
+live site, a route behind the `core-web.sync` middleware runs as the
+token's CMS user (`User::current()`).
+
+A command that calls the site uses the `SignsInToRemoteSite` trait (beside
+`RemoteSite`) rather than reading the login itself: `signedInSite()` returns
+the login, starting `content:login` first in a terminal, and
+`signInAgain()` does the same after a `RemoteLoginNeeded`; each returns null,
+with the reason already said, when no login can be had. `content:pull` and
+`core:pull` both sign in through it.
 
 ## Testing a site
 

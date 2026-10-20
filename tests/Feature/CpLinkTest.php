@@ -61,38 +61,6 @@ class CpLinkTest extends TestCase
         $this->assertNull($this->navItem('Core'));
     }
 
-    public function test_a_local_checkout_links_to_the_remote_core(): void
-    {
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test/',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-        $this->actingAs($this->super());
-
-        $this->assertSame('https://remote-core.test', $this->navItem('Core')?->url());
-    }
-
-    public function test_the_remote_core_stands_in_only_locally_and_with_its_client(): void
-    {
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test/',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-        $this->actingAs($this->super());
-
-        $this->assertNull($this->navItem('Core'), 'Off a local machine.');
-
-        $this->app['env'] = 'local';
-        config(['core-web.remote.client_secret' => '']);
-
-        $this->assertNull($this->navItem('Core'), 'Without the remote client.');
-    }
-
     private function navItem(string $display)
     {
         return CpNav::build()

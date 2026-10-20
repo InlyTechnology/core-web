@@ -105,8 +105,11 @@ class SnapshotDatabaseStoreTest extends TestCase
 
         $published = File::glob(database_path('migrations/*_create_core_snapshots_cache_table.php'));
 
-        $this->assertCount(1, $published);
-        File::delete($published);
+        try {
+            $this->assertCount(1, $published);
+        } finally {
+            File::delete(File::glob(database_path('migrations/*_create_core_*.php')));
+        }
     }
 
     public function test_an_unknown_store_driver_is_refused(): void

@@ -8,7 +8,6 @@ use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
 use Inly\CoreWeb\CmsSignIn\CmsHandoff;
 use Inly\CoreWeb\Content\CoreEnvelope;
-use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Testing\CoreEnvelopeSealer;
 use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\CmsSignInTestCase;
@@ -390,118 +389,6 @@ class CmsSignInTest extends CmsSignInTestCase
         $this->get('/admin-sso?payload=x&signature=y&key_id=z')->assertTooManyRequests();
     }
 
-    public function test_a_local_checkout_without_core_url_signs_in_through_the_remote_core(): void
-    {
-        $this->signInThroughRemote();
-        $this->remoteCoreAnswers();
-
-        $this->get($this->remoteHandoff([], ['next' => $this->cp('collections')]))->assertRedirect($this->cp('collections'));
-
-        $this->assertAuthenticated('web');
-        $this->assertTrue(User::findByEmail(self::EMAIL)->isSuper());
-        Http::assertSent(fn (HttpRequest $request): bool => str_starts_with($request->url(), 'https://remote-core.test/api/app/cms-sso/local/verify')
-            && $request->hasHeader('Authorization', 'Bearer remote-token')
-            && $request['site'] === 'local'
-            && $request['key_id'] === CoreEnvelopeSealer::test()->kid());
-    }
-
-    /** @return array<string, array{0: array<string, mixed>}> */
-    public static function refusedRemoteHandoffs(): array
-    {
-        return [
-            'another audience' => [['aud' => 'web']],
-            'another purpose' => [['purpose' => 'cms_revoke']],
-            'expired' => [['expires_at' => time() - 1]],
-            'another address' => [['origin' => 'http://other.localhost:8002']],
-            'no origin' => [['origin' => null]],
-        ];
-    }
-
-    /** @param  array<string, mixed>  $overrides */
-    #[DataProvider('refusedRemoteHandoffs')]
-    public function test_a_remote_hand_off_that_is_not_for_this_address_is_refused_without_confirming(array $overrides): void
-    {
-        $this->signInThroughRemote();
-        $this->remoteCoreAnswers();
-
-        $this->get($this->remoteHandoff($overrides))->assertForbidden();
-
-        $this->assertGuest('web');
-        Http::assertNotSent(fn (HttpRequest $request): bool => str_contains($request->url(), '/api/app/cms-sso/'));
-    }
-
-    public function test_a_remote_hand_off_sealed_with_another_key_is_refused(): void
-    {
-        $this->signInThroughRemote();
-        $this->remoteCoreAnswers();
-
-        $this->get($this->remoteHandoff([], [], new CoreEnvelopeSealer(str_repeat('k', SODIUM_CRYPTO_SIGN_SEEDBYTES))))->assertForbidden();
-
-        $this->assertGuest('web');
-    }
-
-    public function test_a_replayed_remote_hand_off_is_refused(): void
-    {
-        $this->signInThroughRemote();
-        $this->remoteCoreAnswers();
-        $url = $this->remoteHandoff();
-
-        $this->get($url)->assertRedirect();
-        $this->get($url)->assertForbidden();
-    }
-
-    public function test_the_remote_core_refusing_the_confirm_call_refuses_the_sign_in(): void
-    {
-        $this->signInThroughRemote();
-        $this->provisioned(self::EMAIL, super: true);
-        $this->remoteCoreAnswers(status: 403);
-
-        $this->get($this->remoteHandoff())->assertForbidden();
-
-        $this->assertGuest('web');
-        $this->assertFalse(User::findByEmail(self::EMAIL)->isSuper());
-    }
-
-    public function test_a_hand_off_sealed_for_the_site_client_is_refused_when_signing_in_through_the_remote_core(): void
-    {
-        $this->coreAnswers();
-        $url = $this->handoff(['site' => 'local']);
-        $this->signInThroughRemote();
-        $this->remoteCoreAnswers();
-
-        $this->get($url)->assertForbidden();
-
-        Http::assertNotSent(fn (HttpRequest $request): bool => str_contains($request->url(), '/api/app/cms-sso/'));
-    }
-
-    public function test_core_url_wins_over_the_remote_core_on_a_local_machine(): void
-    {
-        $this->signInThroughRemote();
-        config(['core-web.client.base_url' => 'https://core.test']);
-        $handoff = app(CmsHandoff::class);
-
-        $this->assertFalse($handoff->signsInThroughRemote());
-        $this->assertSame('https://core.test', $handoff->coreBaseUrl());
-        $this->assertSame('production', $handoff->siteKey());
-    }
-
-    public function test_the_remote_core_is_never_used_outside_a_local_checkout(): void
-    {
-        $this->signInThroughRemote();
-        $this->app['env'] = 'production';
-
-        $this->assertFalse(app(CmsHandoff::class)->signsInThroughRemote());
-        $this->assertSame('', app(CmsHandoff::class)->coreBaseUrl());
-    }
-
-    public function test_the_remote_core_needs_its_client_secret(): void
-    {
-        $this->signInThroughRemote();
-        config(['core-web.remote.client_secret' => '']);
-
-        $this->assertFalse(app(CmsHandoff::class)->signsInThroughRemote());
-    }
-
     /**
      * A fake Core: its published key, this site's client token, and the confirm call's answer.
      *
@@ -542,59 +429,6 @@ class CmsSignInTest extends CmsSignInTestCase
             'name' => 'Anna Andersson',
             'email' => self::EMAIL,
             'is_admin' => false,
-            ...$overrides,
-        ], $query, $sealer);
-    }
-
-    private function signInThroughRemote(): void
-    {
-        $this->app['env'] = 'local';
-        config([
-            'core-web.client.base_url' => '',
-            'core-web.remote.base_url' => 'https://remote-core.test/',
-            'core-web.remote.client_id' => 'remote',
-            'core-web.remote.client_secret' => 'remote-secret',
-        ]);
-    }
-
-    /** The remote Core: its published key, a token for the remote client, and its confirm call's answer. */
-    private function remoteCoreAnswers(int $status = 200): void
-    {
-        Http::fake([
-            'remote-core.test'.CoreSigningKeys::PATH => Http::response(CoreEnvelopeSealer::test()->document()),
-            'remote-core.test/oauth/token' => Http::response(['access_token' => 'remote-token', 'expires_in' => 3600]),
-            'remote-core.test/api/app/cms-sso/local/verify*' => $status === 200
-                ? Http::response([
-                    'user_id' => 7,
-                    'name' => 'Anna Andersson',
-                    'email' => self::EMAIL,
-                    'is_admin' => true,
-                    'cms_roles' => [],
-                    'purpose' => 'cms_sso',
-                ])
-                : Http::response(['error' => 'refused'], $status),
-        ]);
-    }
-
-    /**
-     * A hand-off as the remote Core seals it for the remote client, handed back to this address.
-     *
-     * @param  array<string, mixed>  $overrides
-     * @param  array<string, string>  $query
-     */
-    private function remoteHandoff(array $overrides = [], array $query = [], ?CoreEnvelopeSealer $sealer = null): string
-    {
-        return $this->sealedUrl([
-            'user_id' => 7,
-            'name' => 'Anna Andersson',
-            'email' => self::EMAIL,
-            'is_admin' => true,
-            // The address the test request answers on.
-            'origin' => rtrim(url('/'), '/'),
-            'aud' => (string) config('core-web.remote.client_id'),
-            'expires_at' => now()->addMinutes(5)->getTimestamp(),
-            'nonce' => bin2hex(random_bytes(16)),
-            'purpose' => 'cms_sso',
             ...$overrides,
         ], $query, $sealer);
     }

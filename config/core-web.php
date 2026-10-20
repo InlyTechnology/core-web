@@ -63,6 +63,12 @@ return [
     | that admits only the accounts Core provisioned, the redirect of the CP
     | login to Core, and `core:reconcile-cms-users` with its schedule.
     |
+    | content_sync: a developer's checkout pulling the live site's content
+    | (`content_sync`), signed in as their own CMS user. On the live site, the
+    | sync endpoints under /!/core-web/sync, the CP page that approves a
+    | machine and the one that lists and revokes them; on the checkout,
+    | `content:login`, `content:logout` and `content:pull`.
+    |
     */
 
     'features' => [
@@ -75,6 +81,7 @@ return [
         'forms' => false,
         'cp_link' => false,
         'cms_sign_in' => false,
+        'content_sync' => false,
         'media' => false,
     ],
 
@@ -99,29 +106,6 @@ return [
         'client_secret' => env('CORE_CLIENT_SECRET', ''),
         'ca_bundle' => env('CORE_CA_BUNDLE', ''),
         'token_cache_key' => 'core_web_access_token',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | The remote Core
-    |--------------------------------------------------------------------------
-    |
-    | Local only: the Core a local machine uses in place of its own
-    | (production, as a rule), with a client Core should let read and nothing
-    | more. `core:pull` copies its snapshots, and without a CORE_URL the
-    | control panel link points at it. The URL and client id are the same for
-    | every developer, so the site commits them as the defaults in its own
-    | config/core-web.php (env can still override them); only the secret has
-    | to be set (CORE_REMOTE_CLIENT_SECRET). A site config still naming this
-    | `pull`, and the CORE_PULL_* variables, keep working.
-    |
-    */
-
-    'remote' => [
-        'base_url' => env('CORE_REMOTE_URL', env('CORE_PULL_URL', '')),
-        'client_id' => env('CORE_REMOTE_CLIENT_ID', env('CORE_PULL_CLIENT_ID', '')),
-        'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', env('CORE_PULL_CLIENT_SECRET', '')),
-        'token_cache_key' => 'core_web_remote_access_token',
     ],
 
     /*
@@ -481,9 +465,8 @@ return [
     | Control panel link
     |--------------------------------------------------------------------------
     |
-    | The link to Core under Dashboard. It points at client.base_url (CORE_URL),
-    | or on a local machine without one at the remote Core, once its client
-    | is set up; with neither there is no link.
+    | The link to Core under Dashboard. It points at client.base_url (CORE_URL);
+    | without it there is no link.
     |
     | label: what the link says, such as the backoffice's own name.
     | icon: a Statamic icon name or an SVG; null is Core's mark.
@@ -598,9 +581,6 @@ return [
     | local_password_sign_in: with APP_ENV `local` as well, restores
     | Statamic's own login, for development without any Core.
     |
-    | remote_site: the site key a local machine without CORE_URL signs in as,
-    | through the remote Core (remote, above).
-    |
     | path / name / middleware: the hand-off route, the address Core sends
     | the browser to. `web` gives it the session it signs into; the limiter
     | caps the unauthenticated calls to Core it costs (rate_limit a minute).
@@ -610,8 +590,8 @@ return [
     | reconcile_schedule: the cron `core:reconcile-cms-users` runs on, the
     | sweep under a lost notice; null schedules nothing.
     |
-    | core: Core's own paths for signing in, confirming a hand-off (on the
-    | site's client, or on the remote client) and reconciling.
+    | core: Core's own paths for signing in, confirming a hand-off and
+    | reconciling.
     |
     */
 
@@ -619,7 +599,6 @@ return [
         'site' => env('CORE_CMS_SITE') ?: 'production',
         'roles' => [],
         'local_password_sign_in' => false,
-        'remote_site' => 'local',
         'path' => 'admin-sso',
         'name' => 'core-web.cms-sign-in',
         'middleware' => ['web', 'throttle:core-web.cms-sign-in'],
@@ -633,8 +612,69 @@ return [
         'core' => [
             'sign_in' => '/sso/cms',
             'verify' => '/api/app/cms-sso/client/verify',
-            'verify_remote' => '/api/app/cms-sso/local/verify',
             'reconcile' => '/api/app/cms-users/client/reconcile',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content sync
+    |--------------------------------------------------------------------------
+    |
+    | A local checkout pulls the live site's content into content/, signed in
+    | as the developer's own CMS user with a personal token they approve in
+    | the live site's CP (`php artisan content:login`). No shared secret.
+    |
+    | remote_url: the live site, the same for every developer, so a site
+    | commits it here, never in .env.
+    |
+    | allow_local_remote: a site running as APP_ENV=local refuses every sync
+    | call, so no one pulls from a developer's checkout by mistake; true lets
+    | one serve as a remote (trying the flow out between two checkouts).
+    |
+    | token_days: how long a machine's token lives unused; every use pushes
+    | its expiry this far out again.
+    |
+    | tokens: where the live site keeps its tokens (only their hashes).
+    | `driver` files: one file each on a filesystem `disk`, under `path`; a
+    | null disk is a private local folder, storage/app/private/{path}, and a
+    | named one is private, never the site's public bucket. `driver`
+    | database: the `table` (from the core-web-sync-tokens-migration tag) on
+    | `connection`, null for the default. A site behind more than one server,
+    | or on a host whose disk does not outlive a deploy (Laravel Cloud), sets
+    | database: a local file is seen by one server only, until the next deploy.
+    |
+    | store: the cache store pending logins wait in for their approval, shared
+    | by every server behind the site (database or redis there, never file);
+    | null is the default store.
+    |
+    | middleware: in front of the sync endpoints, beside the HTTPS and
+    | local-site guards; `core-web-sync` limits each token and address, and
+    | starting a login has a limiter of its own. A pull reads `page_size`
+    | items (or snapshot documents) a request.
+    |
+    | timeouts: seconds the checkout waits to connect to the live site and
+    | for each answer.
+    |
+    */
+
+    'content_sync' => [
+        'remote_url' => '',
+        'allow_local_remote' => false,
+        'token_days' => 30,
+        'tokens' => [
+            'driver' => 'files',
+            'disk' => null,
+            'path' => 'core-web/sync-tokens',
+            'connection' => null,
+            'table' => 'core_web_sync_tokens',
+        ],
+        'store' => null,
+        'middleware' => ['throttle:core-web-sync'],
+        'page_size' => 200,
+        'timeouts' => [
+            'connect' => 5,
+            'request' => 30,
         ],
     ],
 ];
