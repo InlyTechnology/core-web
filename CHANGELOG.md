@@ -54,7 +54,6 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   more than one server with the `file` token store) stops the run after
   that one sign-in, naming the snapshots not pulled. Commands share this
   through the `SignsInToRemoteSite` trait. See README → Content pull.
-
 - **The remote Core is gone**: the `remote` config block
   (`CORE_REMOTE_URL`, `CORE_REMOTE_CLIENT_ID`, `CORE_REMOTE_CLIENT_SECRET`),
   its legacy name `pull` and the `CORE_PULL_*` variables are no longer
