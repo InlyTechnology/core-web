@@ -6,6 +6,13 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Site rules**: `rules/CoreWebRulesTest.php`, run by Inly's site gate
+  (site-ci) on every site that installs core-web. Its first rule fails a
+  site with `features.media` on that still defines its own `assets` disk (or
+  any disk in `media.disks`). Docs: README, "Site rules".
+
 ## v0.18.0
 
 - **Laravel Cloud**: `features.cloud` (off by default). On Laravel Cloud
