@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Client\RemoteCore;
 use Inly\CoreWeb\Client\RemoteCoreLogin;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Snapshots\Snapshot;
@@ -241,5 +242,20 @@ class PullSnapshotsLoginTest extends TestCase
         $this->artisan('core:pull --login');
 
         $this->assertSame('https://prod.test', CoreNavLink::url());
+    }
+
+    public function test_the_remote_client_reads_by_the_login_for_cms_sign_in(): void
+    {
+        $this->app['env'] = 'local';
+        config(['core-web.client.base_url' => '']);
+        $this->fakeCore([['login_token' => 'login-1']]);
+        $this->artisan('core:pull --login');
+        Cache::flush();
+
+        RemoteCore::client()->authenticate();
+
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://prod.test/oauth/token'
+            && $request['grant_type'] === RemoteCoreLogin::GRANT
+            && $request['login_token'] === 'login-1');
     }
 }

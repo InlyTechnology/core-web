@@ -2,7 +2,7 @@
 
 namespace Inly\CoreWeb\ControlPanel;
 
-use Inly\CoreWeb\Client\RemoteCoreLogin;
+use Inly\CoreWeb\Client\RemoteCore;
 use Statamic\Facades\CP\Nav;
 
 /**
@@ -31,25 +31,10 @@ final class CoreNavLink
         });
     }
 
-    /**
-     * CORE_URL, or on a local machine without one the remote Core, once its
-     * secret is set or the machine is logged in: the Core a developer's data came from.
-     */
+    /** CORE_URL, or on a local machine without one the remote Core: the Core a developer's data came from. */
     public static function url(): string
     {
-        $url = rtrim((string) config('core-web.client.base_url'), '/');
-
-        if ($url !== '') {
-            return $url;
-        }
-
-        if (! app()->environment('local')
-            || blank(config('core-web.remote.client_id'))
-            || (blank(config('core-web.remote.client_secret')) && RemoteCoreLogin::stored((string) config('core-web.remote.base_url'), (string) config('core-web.remote.client_id')) === null)) {
-            return '';
-        }
-
-        return rtrim((string) config('core-web.remote.base_url'), '/');
+        return RemoteCore::browserUrl();
     }
 
     /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */
