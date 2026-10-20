@@ -6,7 +6,6 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Inly\CoreWeb\Client\CoreClient;
-use Inly\CoreWeb\Client\RemoteCore;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\EnvelopeRefused;
 use Inly\CoreWeb\Content\WrongEnvironment;
@@ -16,9 +15,7 @@ use Throwable;
 /**
  * The CMS access envelopes Core seals with its own key for this site's app
  * client, and the calls back to Core on that client's token (README → CMS
- * sign-in). A local machine without CORE_URL signs in through the remote
- * Core instead, as that Core's developer-machine site, on its seal for the
- * remote client.
+ * sign-in).
  */
 class CmsHandoff
 {
@@ -55,27 +52,6 @@ class CmsHandoff
     }
 
     /**
-     * The claims of a hand-off the remote Core sealed for the remote client.
-     * Every checkout shares that client, and most answer on the same address,
-     * so the hand-off must name this very address as its origin: it binds the
-     * hand-off to an address, not to a machine.
-     *
-     * @return array<string, mixed>
-     */
-    public function openRemote(string $payload, string $signature, string $keyId, string $origin): array
-    {
-        try {
-            $claims = RemoteCore::envelope()->open($payload, $signature, $keyId, self::PURPOSE);
-        } catch (EnvelopeRefused|WrongEnvironment) {
-            abort(403);
-        }
-
-        abort_unless(is_string($claims['origin'] ?? null) && rtrim($claims['origin'], '/') === rtrim($origin, '/'), 403);
-
-        return $claims;
-    }
-
-    /**
      * The person and site in the body of an offboarding notice Core sealed to
      * this very request.
      *
@@ -106,10 +82,8 @@ class CmsHandoff
      */
     public function confirm(string $payload, string $signature, string $keyId): ?array
     {
-        $remote = $this->signsInThroughRemote();
-
         try {
-            $response = ($remote ? RemoteCore::client() : CoreClient::fromConfig())->sendResponse('get', $this->corePath($remote ? 'verify_remote' : 'verify'), [
+            $response = CoreClient::fromConfig()->sendResponse('get', $this->corePath('verify'), [
                 'site' => $this->siteKey(),
                 'payload' => $payload,
                 'signature' => $signature,
@@ -120,7 +94,7 @@ class CmsHandoff
         }
 
         // A 403 can also be the token layer refusing the call (pairing, scope), which must not strip anyone.
-        if ($response->status() === 403 && ($remote || $response->json('error') === self::NOT_ADMITTED)) {
+        if ($response->status() === 403 && $response->json('error') === self::NOT_ADMITTED) {
             return null;
         }
 
@@ -170,29 +144,22 @@ class CmsHandoff
         return $this->verdicts($response, $emails);
     }
 
-    /** Whether reconcile can be asked: on this site's own client, never through the remote Core. */
+    /** Whether reconcile can be asked: on this site's own client. */
     public function canReconcile(): bool
     {
-        return ! $this->signsInThroughRemote() && CoreClient::fromConfig()->configured();
+        return CoreClient::fromConfig()->configured();
     }
 
-    /** The Core the CP signs in through: CORE_URL, or the remote Core on a local machine without one. */
+    /** The Core the CP signs in through: CORE_URL. */
     public function coreBaseUrl(): string
     {
-        return RemoteCore::browserUrl();
-    }
-
-    public function signsInThroughRemote(): bool
-    {
-        return RemoteCore::url() !== '';
+        return CoreClient::fromConfig()->baseUrl();
     }
 
     /** This site's key among the CMS sites Core signs into. */
     public function siteKey(): string
     {
-        return $this->signsInThroughRemote()
-            ? (string) config('core-web.cms_sign_in.remote_site', 'local')
-            : (string) config('core-web.cms_sign_in.site');
+        return (string) config('core-web.cms_sign_in.site');
     }
 
     /** Where Core sends the browser to sign in. */

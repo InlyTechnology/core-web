@@ -37,7 +37,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'media' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -86,6 +86,13 @@ class DormantTest extends TestCase
         $this->assertStringEndsWith('/cp/auth/login', (string) $this->get('/cp')->headers->get('Location'));
     }
 
+    public function test_no_content_sync_route_or_middleware_is_registered(): void
+    {
+        $this->assertFalse(app(Router::class)->has('core-web.sync.export'));
+        $this->post('/!/core-web/sync/device', ['machine' => 'laptop'])->assertNotFound();
+        $this->assertArrayNotHasKey('core-web.sync', app(Router::class)->getMiddleware());
+    }
+
     public function test_no_draft_preview_route_is_registered(): void
     {
         $this->assertFalse(app(Router::class)->has('core.preview'));
@@ -118,6 +125,8 @@ class DormantTest extends TestCase
         $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core:pull', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('content:check', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:pull', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:login', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core-web:doctor', app(Kernel::class)->all());

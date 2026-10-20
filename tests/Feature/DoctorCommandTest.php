@@ -43,13 +43,13 @@ class DoctorCommandTest extends TestCase
             ->assertFailed();
     }
 
-    public function test_a_local_machine_may_lean_on_the_remote_core(): void
+    public function test_a_local_machine_may_run_without_a_core(): void
     {
         $this->app['env'] = 'local';
-        config(['core-web.client.base_url' => '', 'core-web.remote.base_url' => 'https://core.example', 'core-web.remote.client_id' => 'remote', 'core-web.remote.client_secret' => 'x']);
+        config(['core-web.client.base_url' => '']);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain('ok   Core client: none here, the remote Core (https://core.example) stands in')
+            ->expectsOutputToContain('warn Core client: no CORE_URL here')
             ->assertSuccessful();
     }
 

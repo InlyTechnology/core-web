@@ -75,12 +75,9 @@ class DoctorCommand extends Command
             return;
         }
 
-        // A local machine without its own Core reads the remote one (core:pull, CMS sign-in through the remote Core).
+        // A local machine may run without a Core: its data comes from core:pull and content:pull.
         if ($this->laravel->environment('local') && blank(config('core-web.client.base_url'))) {
-            $remote = ! blank(config('core-web.remote.base_url')) && ! blank(config('core-web.remote.client_id')) && ! blank(config('core-web.remote.client_secret'));
-            $remote
-                ? $this->ok('Core client: none here, the remote Core ('.config('core-web.remote.base_url').') stands in')
-                : $this->warning('Core client: none here and no remote Core; set CORE_REMOTE_CLIENT_SECRET to pull and sign in through it');
+            $this->warning('Core client: no CORE_URL here; snapshots come from `core:pull`, and the CP needs a local Core or cms_sign_in.local_password_sign_in');
 
             return;
         }

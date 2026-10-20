@@ -17,9 +17,10 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Read `CHANGELOG.md`'s upgrade notes** for every version between the one the site had and the one it moves
   to, and apply each.
 - **Env is secrets and what differs per environment** (`CORE_URL`, `CORE_CLIENT_ID`, `CORE_CLIENT_SECRET`,
-  `CORE_MEDIA_KEY`/`_SECRET`, `CORE_REMOTE_CLIENT_SECRET` locally; the README's env table has the rest, such
-  as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site paired with production Core). A value that is the same everywhere (the
-  remote Core's URL and client id, the bucket, the CDN) is committed in `config/core-web.php`.
+  `CORE_MEDIA_KEY`/`_SECRET`; the README's env table has the rest, such as `CORE_CMS_SITE` and
+  `CORE_CONTENT_CONNECTOR_ID` for a staging site paired with production Core). A value that is the same
+  everywhere (the live site's `content_sync.remote_url`, the bucket, the CDN) is committed in
+  `config/core-web.php`.
 - **`php artisan core-web:doctor`** checks what the switched-on features need from the environment: the Core
   client, a real queue, the schedule. Run it after changing features or env, and on every server before launch.
 
@@ -36,8 +37,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Bump a snapshot's `version()`** whenever the document shape it stores changes, or the old shape is served
   until it expires.
 - Snapshot sitemaps are listed in the robots view with `{{ core_sitemaps }}`.
-- Locally, `php artisan core:pull` copies the remote Core's snapshots, so a machine without its own Core still
-  renders real data.
+- **Locally, data comes from the live site, not from production Core**: `content:pull` (with `content_sync`)
+  brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
 
 ## CMS sign-in (`cms_sign_in`)
 
@@ -46,7 +47,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **CP accounts have no password and are not committed**: keep `users/` out of git and out of
   `statamic.git.paths`. Without a password, Statamic confirms an elevated session (user and role screens) with
   an emailed code, so the site's mailer must work wherever editors sign in.
-- **Locally**, a machine without `CORE_URL` signs in through the remote Core; without any Core,
+- **Locally**, the CP signs in through a local Core (`CORE_URL`); without one,
   `cms_sign_in.local_password_sign_in` restores Statamic's own login, only while `APP_ENV` is `local`.
 - A site moving off its own SSO code removes that code in the same change (README → CMS sign-in).
 
