@@ -283,13 +283,12 @@ final class MediaDisks
 
             $disk = Storage::disk($handle);
             $adapter = $disk instanceof FilesystemAdapter ? $disk->getAdapter() : null;
-            $committed = $adapter instanceof LayeredAdapter ? $adapter->lower() : null;
 
-            if (! $committed instanceof LayeredAdapter || $adapter->inLayer($asset->path()) || $committed->inLayer($asset->path())) {
+            if (! $adapter instanceof LayeredAdapter || ! $adapter->onlyAtBottom($asset->path())) {
                 return null;
             }
 
-            return $committed->getUrl(implode('/', array_map('rawurlencode', explode('/', $asset->path()))));
+            return $adapter->getUrl(implode('/', array_map('rawurlencode', explode('/', $asset->path()))));
         } catch (Throwable $e) {
             report($e);
 

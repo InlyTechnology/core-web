@@ -13,8 +13,8 @@ use Statamic\Http\Resources\CP\Assets\FolderAsset;
 
 /**
  * The CP's thumbnail and preview of a file only the pulled index holds: Glide
- * cannot read its bytes here, so they point at the live file instead, through
- * the CDN at the CP's thumbnail size where the CDN serves it.
+ * would download every live file for its thumbnail, while the CDN already
+ * renders it at the CP's size (the plain public URL where the CDN does not).
  */
 final class CpThumbnails
 {
@@ -35,13 +35,21 @@ final class CpThumbnails
 
     public static function apply(Fluent $data, mixed $asset): void
     {
-        if (! $asset instanceof Asset || ! $data->get('is_image') || ! $url = MediaDisks::indexOnlyUrl($asset)) {
+        if (! $asset instanceof Asset || ! ($data->get('is_image') || $asset->isVideo()) || ! $url = MediaDisks::indexOnlyUrl($asset)) {
             return;
         }
 
         $size = (int) (Image::cpManipulationPresets()['cp_thumbnail_small_landscape']['w'] ?? 400);
+        $scheme = app(UrlScheme::class);
 
-        $data->thumbnail = app(UrlScheme::class)->image($url, [
+        // Null without a CDN frame: Glide's extractor would download the whole live video for one thumbnail.
+        if ($asset->isVideo()) {
+            $data->thumbnail = $scheme->frame($url, 0, $size, $size);
+
+            return;
+        }
+
+        $data->thumbnail = $scheme->image($url, [
             'width' => $size,
             'height' => $size,
             'fit' => 'contain',

@@ -2,6 +2,8 @@
 
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -219,6 +221,35 @@ class AssetPullTest extends TestCase
         $this->assertSame('https://cdn.test/site/assets/hero.jpg', $assets['hero.jpg']['preview']);
         $this->assertStringContainsString('/thumbnails/', $assets['upload.jpg']['thumbnail'], 'A file in the local layer keeps Glide.');
         $this->assertStringContainsString('/thumbnails/', $assets['committed.jpg']['thumbnail'], 'A committed file keeps Glide.');
+
+        $show = $this->getJson(cp_route('assets.show', base64_encode('assets::hero.jpg')))->assertOk()->json('data');
+        $this->assertSame($assets['hero.jpg']['thumbnail'], $show['thumbnail']);
+
+        $fieldtype = $this->withoutMiddleware([ValidateCsrfToken::class, VerifyCsrfToken::class])->postJson(cp_route('assets.index').'-fieldtype', ['assets' => ['assets::hero.jpg']])->assertOk()->json();
+        $this->assertSame($assets['hero.jpg']['thumbnail'], collect($fieldtype)->firstWhere('id', 'assets::hero.jpg')['thumbnail']);
+
+        $this->assertNull(MediaDisks::indexOnlyUrl(Asset::make()->container('assets')->path('gone.jpg')), 'A row the index no longer holds keeps Glide.');
+    }
+
+    public function test_the_control_panel_s_thumbnails_of_live_only_svgs_videos_and_other_files(): void
+    {
+        config(['core-web.media.cdn.origins' => ['https://cdn.test']]);
+        $this->live = [
+            'logo.svg' => ['url' => 'https://cdn.test/site/assets/logo.svg', 'meta' => null],
+            'clip.mp4' => ['url' => 'https://cdn.test/site/assets/clip.mp4', 'meta' => null],
+            'notes.pdf' => ['url' => 'https://cdn.test/site/assets/notes.pdf', 'meta' => null],
+        ];
+        $this->pull()->assertSuccessful();
+        $this->fresh();
+
+        $assets = collect($this->browse('assets'))->keyBy('basename');
+
+        $this->assertSame('https://cdn.test/site/assets/logo.svg', $assets['logo.svg']['thumbnail']);
+        $this->assertSame('https://cdn.test/site/assets/clip.mp4?mode=frame&time=0&width=400&height=400&fit=cover', $assets['clip.mp4']['thumbnail']);
+        $this->assertNull($assets['notes.pdf']['thumbnail']);
+
+        config(['core-web.media.cdn.origins' => []]);
+        $this->assertNull(collect($this->browse('assets'))->firstWhere('basename', 'clip.mp4')['thumbnail'], 'Without a CDN frame no thumbnail, never Glide fetching the whole video.');
     }
 
     public function test_without_a_cdn_the_thumbnail_of_a_live_only_file_is_its_public_url(): void
@@ -251,8 +282,7 @@ class AssetPullTest extends TestCase
     /** @return list<array<string, mixed>> */
     private function browse(string $container): array
     {
-        $super = User::make()->email('boss@example.com')->makeSuper();
-        $super->save();
+        $super = User::find('boss') ?? tap(User::make()->id('boss')->email('boss@example.com')->makeSuper())->save();
 
         return $this->actingAs($super)->getJson(cp_route('assets.browse.index').'/folders/'.$container)->assertOk()->json('data');
     }

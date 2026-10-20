@@ -1063,8 +1063,10 @@ local upload and a live file both resolve. The components skip the redirect
 and render the file's own URL, so the CDN still transforms live files. So
 does the CP: a file only the index holds gets its thumbnail from the CDN at
 the CP's thumbnail size (the plain public URL when the CDN does not serve
-it) and its preview from its public URL, since Glide cannot read it here;
-uploads and committed files keep Glide's thumbnails.
+it; a video a CDN frame, or no thumbnail) and its preview from its public
+URL. Glide could read it through the index, but would download every live
+file to make one thumbnail the CDN already renders. Uploads and committed
+files keep Glide's thumbnails.
 
 Everything but the key and secret is committed in the site's
 `config/core-web.php`. Unlike the other top-level keys, a site's `media`
