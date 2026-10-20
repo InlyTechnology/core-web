@@ -23,33 +23,50 @@ class AssetExport
 {
     public const TYPE = 'assets';
 
+    /** @var array<string, array<string, int>> */
+    private array $metaFiles = [];
+
     /**
      * @return array{data: list<array{type: string, id: string, container: string, path: string, url: ?string, meta: ?array<string, mixed>}>, next_cursor: ?string, containers: array<string, array{url: ?string}>}
      */
     public function page(User $user, ?string $handle, int $offset, int $size): array
     {
+        $this->metaFiles = [];
+
         $containers = AssetContainer::all()
             ->filter(fn (Container $container) => ($handle === null || $container->handle() === $handle) && $user->can('view', $container))
             ->sortBy(fn (Container $container) => $container->handle())
             ->values();
 
-        $candidates = $containers
-            ->flatMap(fn (Container $container) => $container->files()->sort()->values()->map(fn (string $path) => [$container, $path]))
-            ->slice($offset, $size + 1)
-            ->values();
+        // One asset past the page says whether another page follows.
+        $assets = [];
+        $skip = $offset;
 
-        // Each container's `.meta` files as a set, once a page, not searched per item.
-        $metaFiles = [];
-        $page = $candidates->take($size)->map(function (array $candidate) use (&$metaFiles): array {
-            [$container, $path] = $candidate;
-            $metaFiles[$container->handle()] ??= array_flip($container->metaFiles()->all());
+        foreach ($containers as $container) {
+            $count = $container->queryAssets()->count();
 
-            return $this->item($container, $path, $metaFiles[$container->handle()]);
-        });
+            if ($skip >= $count) {
+                $skip -= $count;
+
+                continue;
+            }
+
+            foreach ($container->queryAssets()->orderBy('path')->offset($skip)->limit($size + 1 - count($assets))->get() as $asset) {
+                $assets[] = [$container, $asset];
+            }
+
+            $skip = 0;
+
+            if (count($assets) > $size) {
+                break;
+            }
+        }
+
+        $page = array_map(fn (array $pair) => $this->item(...$pair), array_slice($assets, 0, $size));
 
         return [
-            'data' => $page->all(),
-            'next_cursor' => $candidates->count() > $size ? (string) ($offset + $size) : null,
+            'data' => $page,
+            'next_cursor' => count($assets) > $size ? (string) ($offset + $size) : null,
             'containers' => $containers->mapWithKeys(fn (Container $container) => [$container->handle() => ['url' => self::absolute($container->url())]])->all(),
         ];
     }
@@ -63,20 +80,17 @@ class AssetExport
     }
 
     /**
-     * @param  array<string, int>  $metaFiles
      * @return array{type: string, id: string, container: string, path: string, url: ?string, meta: ?array<string, mixed>}
      */
-    private function item(Container $container, string $path, array $metaFiles): array
+    private function item(Container $container, Asset $asset): array
     {
-        $asset = $container->makeAsset($path);
-
         return [
             'type' => self::TYPE,
             'id' => $asset->id(),
             'container' => $container->handle(),
-            'path' => $path,
+            'path' => $asset->path(),
             'url' => $this->url($asset),
-            'meta' => $this->meta($container, $asset, $metaFiles),
+            'meta' => $this->meta($container, $asset),
         ];
     }
 
@@ -89,21 +103,31 @@ class AssetExport
     }
 
     /**
-     * The meta Statamic keeps for the file: its cache, else its `.meta` file.
+     * The meta Statamic keeps for the file, read where it is stored: the
+     * asset's own (a database row on the Eloquent driver), its cache, or its
+     * `.meta` file. Never `meta()`, which measures and writes a file it lacks.
      *
-     * @param  array<string, int>  $metaFiles
      * @return array<string, mixed>|null
      */
-    private function meta(Container $container, Asset $asset, array $metaFiles): ?array
+    private function meta(Container $container, Asset $asset): ?array
     {
         try {
+            $stored = method_exists($asset, 'getRawMeta') ? $asset->getRawMeta() : null;
+
+            if (is_array($stored)) {
+                return $stored;
+            }
+
             $cached = $asset->cacheStore()->get($asset->metaCacheKey());
 
             if (is_array($cached)) {
                 return $cached;
             }
 
-            if (! isset($metaFiles[$asset->metaPath()])) {
+            // The container's `.meta` files as a set, listed once a page and only when a file needs it.
+            $this->metaFiles[$container->handle()] ??= array_flip($container->metaFiles()->all());
+
+            if (! isset($this->metaFiles[$container->handle()][$asset->metaPath()])) {
                 return null;
             }
 

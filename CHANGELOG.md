@@ -39,7 +39,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `ProductionFileLocked`. `Asset::url()` there is a local-only route
   (`/!/core-web/media/<disk>/<path>`) that redirects to whichever layer
   holds the file. The export gains an `assets` type, limited to containers
-  the user may view; a live site without it is skipped with a warning and
+  the user may view and listed through Statamic's asset query (so a site on
+  the Eloquent driver sends its subfolders and their meta too); a live site without it is skipped with a warning and
   content still pulls. `content_sync.pull_assets: false` keeps the plain
   local folder. See README → Content pull → Assets and README → Media → The
   disks.
