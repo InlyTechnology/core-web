@@ -333,6 +333,70 @@ class ContentPullTest extends TestCase
         $this->assertStringContainsString('title: Mine', file_get_contents($this->file('collections/pages/about.md')));
     }
 
+    /** @param  array<string, string>  $files  path => contents, as a site on the Eloquent driver exports them */
+    private function fakeEloquentExport(array $files): void
+    {
+        Http::swap(new Factory);
+        Http::fake(['*' => Http::response([
+            'data' => collect($files)->map(fn (string $contents, string $path) => ['type' => 'entries', 'id' => $path, 'path' => $path, 'contents' => $contents, 'hash' => hash('sha256', $contents)])->values()->all(),
+            'next_cursor' => null,
+            'covers_all' => false,
+            'covers' => [],
+        ])]);
+        Collection::make('pages')->structureContents(['root' => true])->save();
+    }
+
+    private function local(string $path, string $contents): void
+    {
+        File::ensureDirectoryExists(dirname($this->file($path)));
+        file_put_contents($this->file($path), $contents);
+    }
+
+    public function test_a_save_stamp_key_order_or_a_parent_alone_is_no_change(): void
+    {
+        $mine = "---\nid: home\ntitle: Home\nupdated_by: ann\nupdated_at: 1700000000\ntemplate: default\n---\nHello *world*.\n";
+        $this->local('collections/pages/home.md', $mine);
+        $this->fakeEloquentExport(['collections/pages/home.md' => "---\nid: home\ntemplate: default\ntitle: Home\nparent: about\nupdated_by: importer\nupdated_at: 1760000000\n---\nHello *world*.\n"]);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Already up to date')->expectsOutputToContain('0 new, 0 changed')->assertSuccessful();
+
+        $this->assertSame($mine, file_get_contents($this->file('collections/pages/home.md')));
+        $this->assertSame(hash('sha256', $mine), $this->locked()['items']['collections/pages/home.md']);
+        $this->assertSame(0, app(LocalContent::class)->refreshes);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Already up to date')->assertSuccessful();
+        $this->assertSame($mine, file_get_contents($this->file('collections/pages/home.md')));
+    }
+
+    public function test_a_real_change_is_written_in_this_file_s_key_order_with_the_site_s_stamps(): void
+    {
+        $mine = "---\nid: home\ntitle: Home\nupdated_by: ann\nupdated_at: 1700000000\ntemplate: default\n---\nHello *world*.\n";
+        $this->local('collections/pages/home.md', $mine);
+        file_put_contents($this->lock, json_encode(['remote' => 'https://remote.test', 'items' => ['collections/pages/home.md' => hash('sha256', $mine)]]));
+        $this->fakeEloquentExport(['collections/pages/home.md' => "---\nid: home\ntemplate: default\ntitle: Welcome\nhero: big\nparent: about\npublished: false\nupdated_by: importer\nupdated_at: 1760000000\n---\nHello *world*.\n"]);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Changed')->expectsOutputToContain('0 new, 1 changed')->assertSuccessful();
+
+        $written = file_get_contents($this->file('collections/pages/home.md'));
+        $this->assertSame("---\nid: home\npublished: false\ntitle: Welcome\nupdated_by: importer\nupdated_at: 1760000000\ntemplate: default\nhero: big\n---\nHello *world*.\n", $written);
+        $this->assertSame(hash('sha256', $written), $this->locked()['items']['collections/pages/home.md']);
+
+        $this->pull(['--only' => 'entries:pages'])->expectsOutputToContain('Already up to date')->assertSuccessful();
+    }
+
+    public function test_a_new_entry_of_a_structured_collection_is_written_without_its_parent(): void
+    {
+        $this->fakeEloquentExport([
+            'collections/pages/about.md' => "---\nid: about\ntitle: About\nparent: home\n---\n",
+            'collections/articles/note.md' => "---\nid: note\ntitle: Note\nparent: home\n---\n",
+        ]);
+
+        $this->pull(['--only' => 'entries'])->expectsOutputToContain('2 new')->assertSuccessful();
+
+        $this->assertSame("---\nid: about\ntitle: About\n---\n", file_get_contents($this->file('collections/pages/about.md')));
+        $this->assertStringContainsString('parent: home', file_get_contents($this->file('collections/articles/note.md')), 'Without a structure there is no tree to hold it: there it is a field.');
+    }
+
     public function test_a_symlinked_file_is_neither_written_nor_deleted(): void
     {
         $outside = dirname($this->root).'/outside.md';

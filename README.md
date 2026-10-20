@@ -1273,7 +1273,11 @@ file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
 config, users, form submissions and assets are not pulled. `content.lock`
 (committed, beside `content/`) holds the hash of every file as last pulled:
 
-- a file unchanged here since the last pull, or missing here, is written;
+- a file unchanged here since the last pull, or missing here, is written,
+  in the key order this checkout's file already has;
+- a file that differs only in key order or in `updated_at`/`updated_by` (as
+  a site on the Eloquent driver exports it) is left as it is, and an entry
+  of a structured collection is never given a `parent`, which its tree holds;
 - a file changed here is left alone and listed, unless `--force`;
 - a file the site no longer has is deleted only when it is unchanged here
   since the last pull, and only in a collection, taxonomy, global set or
