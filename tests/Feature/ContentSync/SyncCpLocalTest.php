@@ -59,6 +59,18 @@ class SyncCpLocalTest extends TestCase
         $this->assertContains(AuthenticateSyncToken::PERMISSION, Permission::boot()->all()->map->value()->all());
     }
 
+    protected function withMedia($app): void
+    {
+        $app['config']->set('core-web.features.media', true);
+    }
+
+    #[DefineEnvironment('withMedia')]
+    public function test_a_site_booted_as_local_with_media_keeps_the_pulled_files_route(): void
+    {
+        $this->assertTrue(Route::has('core-web.media.file'));
+        $this->assertFalse(Route::has('statamic.cp.core-web.sync.tokens'));
+    }
+
     #[DefineEnvironment('allowLocalRemote')]
     public function test_a_local_site_that_allows_being_a_remote_keeps_them(): void
     {

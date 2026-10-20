@@ -61,15 +61,6 @@ class DormantTest extends TestCase
         $this->get('/!/core-web/live/quote')->assertNotFound();
     }
 
-    public function test_no_media_component_disk_or_driver_is_registered(): void
-    {
-        $this->assertFalse(config()->has('filesystems.disks.assets'));
-        $this->assertArrayNotHasKey(MediaDisks::LAYERED_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
-
-        $this->expectExceptionMessage('Unable to locate a class or view for component [core-img]');
-        Blade::render('<x-core-img src="https://cdn.inlycore.com/a/b.jpg" />');
-    }
-
     public function test_no_cms_sign_in_is_wired(): void
     {
         $this->assertFalse(app(Router::class)->has('core-web.cms-sign-in'));
@@ -97,6 +88,15 @@ class DormantTest extends TestCase
     {
         $this->assertFalse(app(Router::class)->has('core.preview'));
         $this->get('/core-preview/abc')->assertNotFound();
+    }
+
+    public function test_no_media_component_disk_or_driver_is_registered(): void
+    {
+        $this->assertFalse(config()->has('filesystems.disks.assets'));
+        $this->assertArrayNotHasKey(MediaDisks::LAYERED_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
+
+        $this->expectExceptionMessage('Unable to locate a class or view for component [core-img]');
+        Blade::render('<x-core-img src="https://cdn.inlycore.com/a/b.jpg" />');
     }
 
     public function test_the_envelope_alias_is_registered_but_joins_no_group(): void

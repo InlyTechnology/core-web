@@ -9,6 +9,8 @@ return [
     'unknown_snapshot' => 'This site keeps no Core snapshot [:type].',
     'snapshot_unavailable' => 'This site has no copy of the [:type] snapshot to serve right now (its Core could not be read, or it is filling its copy). Try again in a minute.',
     'unknown_type' => 'Name a type to export: :types.',
+    'no_container' => 'There is no asset container [:handle] here.',
+    'container_forbidden' => 'You may not view the asset container [:handle].',
     'authorize_title' => 'Sign in a machine',
     'allow' => 'Allow the machine that calls itself “:machine” to pull this site\'s content and Core data as you?',
     'requested' => 'Requested from :ip, :ago. The name above is what the machine says it is; the address is where the request came from.',
