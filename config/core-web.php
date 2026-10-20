@@ -509,7 +509,7 @@ return [
     | bucket: the S3-compatible bucket the asset disks live in (DigitalOcean
     | Spaces, R2, S3). Everything but the key and secret is the same in every
     | environment, so the site commits it in its own config/core-web.php; only
-    | CORE_MEDIA_KEY and CORE_MEDIA_SECRET are env. `url` is the files' public
+    | the key and secret (CORE_MEDIA_KEY/SECRET, or Cloud's) are env. `url` is the files' public
     | base URL (the CDN's, for transforms); `root` a folder all disks share.
     | `acl` false leaves out `visibility: public` for a bucket without
     | per-object ACLs, such as R2, which rejects it; the bucket itself is then

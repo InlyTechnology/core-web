@@ -1090,7 +1090,7 @@ Glide reads through the disk, show.
 Without a key a disk is its committed local folder: a fresh clone, CI and a
 server missing the key all render from it.
 
-Everything but the key and secret is committed in the site's
+Everything but the key and secret (and `CORE_MEDIA_LAYER`) is committed in the site's
 `config/core-web.php`. Unlike the other top-level keys, a site's `media`
 block keeps the package's defaults for what it leaves out, one group deep
 (the key and secret from env, the CDN, the layer); `disks` is taken whole:

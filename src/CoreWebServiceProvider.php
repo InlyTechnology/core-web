@@ -131,7 +131,6 @@ class CoreWebServiceProvider extends ServiceProvider
         ));
     }
 
-    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
     /**
      * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
      * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
@@ -150,6 +149,7 @@ class CoreWebServiceProvider extends ServiceProvider
         config(['core-web.media' => array_replace($defaults, $media)]);
     }
 
+    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
     private function mergeLegacyRemote(): void
     {
         $legacy = config('core-web.pull');
