@@ -73,6 +73,7 @@ class PullSnapshotsCommand extends Command
             return self::FAILURE;
         }
 
+        $fresh = RemoteSite::fromStorage() === null;
         $site = $this->signedInSite();
 
         if ($site === null) {
@@ -82,17 +83,27 @@ class PullSnapshotsCommand extends Command
         $host = (string) (parse_url($site->url(), PHP_URL_HOST) ?: $site->url());
         $exit = self::SUCCESS;
 
-        foreach ($types as $type) {
+        foreach ($types as $index => $type) {
             try {
                 try {
                     [$documents, $stale] = $this->fetch($site, $type);
-                } catch (RemoteLoginNeeded) {
+                } catch (RemoteLoginNeeded $e) {
+                    if ($fresh) {
+                        throw $e;
+                    }
+
                     if (($site = $this->signInAgain()) === null) {
                         return self::FAILURE;
                     }
 
+                    $fresh = true;
                     [$documents, $stale] = $this->fetch($site, $type);
                 }
+            } catch (RemoteLoginNeeded) {
+                $this->refusedFreshLogin();
+                $this->line('Not pulled: '.implode(', ', array_slice($types, $index)).'.');
+
+                return self::FAILURE;
             } catch (RemoteSiteError $e) {
                 $this->warn("{$type}: nothing pinned from {$host} ({$e->getMessage()}".(self::timedOut($e) ? '; the live site may still be filling its copy from its Core: try again in a minute' : '').').');
                 $exit = self::FAILURE;

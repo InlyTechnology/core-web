@@ -50,8 +50,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   after the site refused the stored one, and carries on pulling, as
   `content:pull` does; without a terminal both still stop and say to run
   `content:login`, which remains for signing in ahead of time or as
-  another user. Commands share this through the `SignsInToRemoteSite`
-  trait. See README → Content pull.
+  another user. A site that refuses even the login just made (one behind
+  more than one server with the `file` token store) stops the run after
+  that one sign-in, naming the snapshots not pulled. Commands share this
+  through the `SignsInToRemoteSite` trait. See README → Content pull.
 
 ### Upgrade notes
 

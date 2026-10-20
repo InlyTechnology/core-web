@@ -1395,18 +1395,21 @@ php artisan content:logout    # revoke this machine's token
 
 **Signing in.** There is no separate step: a `content:pull` or `core:pull`
 run in a terminal signs the machine in when it has no login, or when the
-site refused the one it had, and then carries on. `content:login` does the
+site refused the one it had, and then carries on. A site that refuses even
+the login just made (one behind more than one server with the `file` token
+store) stops the run rather than signing in again. `content:login` does the
 same on its own, to sign in ahead of time or as another CMS user, and
 `content:logout` signs out; a run without a terminal never starts a sign-in
-and says to run `content:login`. Signing in prints a link to the live site's CP and a code, and opens the browser where
-it can. The developer signs in to the CP the way the site allows (Core
-single sign-on or a native login), checks the code, the machine name (as
-the machine reports it), the address the request came from and how long ago
-it started, and approves; the terminal then gets a personal token that acts
-as them, so the pull reads exactly what they may view (and, for `core:pull`,
-every Core snapshot the site keeps, whole). Approving a machine,
-and using its token, needs the **Pull content** permission (under Core Web
-in the role editor) besides CP access; a super user always may. Signing in
+and says to run `content:login`. Signing in prints a link to the live
+site's CP and a code, and opens the browser where it can. The developer
+signs in to the CP the way the site allows (Core single sign-on or a native
+login), checks the code, the machine name (as the machine reports it), the
+address the request came from and how long ago it started, and approves;
+the terminal then gets a personal token that acts as them, so the pull
+reads exactly what they may view (and, for `core:pull`, every Core snapshot
+the site keeps, whole). Approving a machine, and using its token, needs the
+**Pull content** permission (under Core Web in the role editor) besides CP
+access; a super user always may. Signing in
 again revokes the machine's previous token. The token is kept in
 `storage/core-web/remote-site.json` (readable by the developer only, in a
 folder that ignores itself in git) and lives 30 days from its last use

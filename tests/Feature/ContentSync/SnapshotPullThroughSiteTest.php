@@ -38,9 +38,6 @@ class SnapshotPullThroughSiteTest extends TestCase
 
     private string $token;
 
-    /** @var array<string, mixed> the site's device flow answers, by endpoint, in place of this app's */
-    private array $login = [];
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -92,7 +89,7 @@ class SnapshotPullThroughSiteTest extends TestCase
                 return Http::response('unexpected host', 500);
             }
 
-            if ($answer = $this->login[basename((string) parse_url($request->url(), PHP_URL_PATH))] ?? null) {
+            if ($answer = $this->loginAnswer($request)) {
                 return $answer;
             }
 
@@ -348,26 +345,29 @@ class SnapshotPullThroughSiteTest extends TestCase
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/sync/snapshots/'));
     }
 
-    /** The site's device flow approves at once and hands out the given token; every other call reaches this app. */
-    private function approveLoginsWith(string $token): void
+    public function test_a_site_that_refuses_even_a_fresh_login_stops_after_one_sign_in(): void
     {
-        Sleep::fake();
-        Process::fake();
-        $this->fakeLoginEndpoints(Http::response(['token' => $token, 'expires_at' => now()->addDays(30)->toIso8601String(), 'user' => ['name' => 'Boss', 'email' => 'boss@example.com']]));
+        app(SnapshotRegistry::class)->register($this->snapshot('others'));
+        app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
+        $this->approveLoginsWith('a-token-this-site-never-issued');
+
+        $this->artisan('core:pull')
+            ->expectsOutputToContain('refused even the login just made')
+            ->expectsOutputToContain('Not pulled: things, others.')
+            ->assertFailed();
+
+        $this->assertSame(1, $this->signIns());
+        $this->assertNull($this->store()->pinned(app(SnapshotRegistry::class)->get('things')));
     }
 
-    private function fakeLoginEndpoints($tokenResponse): void
+    public function test_a_first_sign_in_the_site_refuses_is_not_repeated(): void
     {
-        $this->login = [
-            'device' => Http::response([
-                'device_code' => 'device-code',
-                'user_code' => 'BCDF-GHJK',
-                'verification_uri_complete' => 'https://remote.test/cp/core-web/sync/authorize?code=BCDF-GHJK',
-                'expires_in' => 600,
-                'interval' => 5,
-            ]),
-            'token' => $tokenResponse,
-        ];
+        RemoteSite::forget();
+        $this->approveLoginsWith('a-token-this-site-never-issued');
+
+        $this->artisan('core:pull')->expectsOutputToContain('refused even the login just made')->assertFailed();
+
+        $this->assertSame(1, $this->signIns());
     }
 
     public function test_the_endpoint_runs_behind_the_sync_guards(): void
