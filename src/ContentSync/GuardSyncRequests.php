@@ -18,7 +18,7 @@ class GuardSyncRequests
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (app()->environment('local') && ! config('core-web.content_sync.allow_local_remote', false)) {
+        if (! self::mayActAsRemote()) {
             return new JsonResponse(['error' => 'local_remote', 'message' => __('core-web::sync.local_remote')], 403);
         }
 
@@ -28,5 +28,11 @@ class GuardSyncRequests
         }
 
         return $next($request);
+    }
+
+    /** Whether this site answers sync calls at all, and so whether its CP offers the sync pages. */
+    public static function mayActAsRemote(): bool
+    {
+        return ! app()->environment('local') || (bool) config('core-web.content_sync.allow_local_remote', false);
     }
 }
