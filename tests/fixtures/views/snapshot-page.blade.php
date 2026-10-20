@@ -1,0 +1,1 @@
+{{ $eyebrow ?? '' }}|{{ $title }}|{{ $site->handle() }}

@@ -10,7 +10,7 @@ What the package gives a site:
 
 | Piece | Class | What it does |
 |---|---|---|
-| Snapshot definition | `Inly\CoreWeb\Snapshots\Snapshot` | Where a snapshot lives in the cache, its TTLs, how to pull it whole and one object, partitions (per site), empty guard, change listeners, sitemap |
+| Snapshot definition | `Inly\CoreWeb\Snapshots\Snapshot` | Where a snapshot lives in the cache, its TTLs, how to pull it whole and one object, partitions (per site), empty guard, change listeners, sitemap, pages |
 | Snapshot store | `Inly\CoreWeb\Snapshots\SnapshotStore` | Three cache layers (fresh marker, last good, backoff), cold-pull lock, write lock, single-object patching, no-op writes skipped, change fingerprints and change sets |
 | Registry | `Inly\CoreWeb\Snapshots\SnapshotRegistry` | Every snapshot by type, which ping types refresh which, idle ping types, custom warmers and jobs |
 | `core:warm` | `Inly\CoreWeb\Snapshots\WarmSnapshotsCommand` | Pulls every registered snapshot, or one; scheduled nightly by default, as the safety net under Core's pings |
@@ -18,6 +18,7 @@ What the package gives a site:
 | Degraded guard | `Inly\CoreWeb\Snapshots\UncacheableWhileDegraded` | Keeps a page built on an empty degraded read out of Statamic's static cache |
 | Core client | `Inly\CoreWeb\Client\CoreClient` | Passport client_credentials client for Core's Objects API (JSON:API) |
 | Ping endpoint | `Inly\CoreWeb\Ping\PingController`, `PingSignature` | `POST api/core/objects`, HMAC-signed by Core |
+| Snapshot pages | `Inly\CoreWeb\Snapshots\SnapshotPage` | For a snapshot that declares `->pages()`: find a document for the site's own route (503 while degraded, Statamic's 404 when gone), 301 a stray path to its page, render through Statamic's View |
 | Snapshot sitemaps | `Inly\CoreWeb\Sitemaps\*` | `/sitemap-core-{type}.xml` per site host, and the `{{ core_sitemaps }}` tag |
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
@@ -25,12 +26,13 @@ What the package gives a site:
 | Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
+| CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
 document looks like, how the pages read it), the page routes and views, the TTL
 choices, the chat's markup, context and lead handling, and anything else that
-is not plumbing (CMS single sign-on, …).
+is not plumbing.
 
 ## Installation
 
@@ -60,6 +62,7 @@ nothing.
 | Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
+| CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
 
@@ -100,10 +103,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
 | `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
-
-CMS single sign-on is the site's own: Core seals its hand-offs with its own
-key, which `CoreEnvelope::open()` opens with no secret.
 
 `config/core-web.php`:
 
@@ -148,6 +149,15 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `media.images.*` | `format` `auto`, `placeholder` `blur` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
+| `features.cms_sign_in` | `false` | Switch on CMS sign-in (see [CMS sign-in](#cms-sign-in)) |
+| `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
+| `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
+| `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
+| `cms_sign_in.remote_site` | `local` | The site key a local machine signs in as through the remote Core |
+| `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route, always in `web` (it signs into a session); `rate_limit` (10) a minute per address |
+| `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
+| `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
+| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-sso/local/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
 
 ## Where snapshots live
 
@@ -446,6 +456,47 @@ needs):
 Sitemap: {{ url }}
 {{ /core_sitemaps }}
 ```
+
+## Pages
+
+Not every snapshot is a page, so a snapshot opts in with `->pages()`: given a
+document and a site handle, the path of its page on that site, or null for a
+document without one there. Nothing is routed by the package; the site keeps
+its routes and URL shapes, and `SnapshotPage` does the part every such
+controller repeats:
+
+```php
+Snapshot::make('locations')
+    // ...
+    ->pages(fn (array $doc, string $site) => '/locations/'.$doc['slug']);
+
+Route::get('locations/{slug}', function (Request $request, string $slug) {
+    $pages = SnapshotPage::for('locations');                 // the current site; for('locations', 'second') for another
+    $location = $pages->find(fn (array $doc) => $doc['slug'] === $slug || in_array($slug, $doc['old_slugs'], true));
+
+    return $pages->canonical($request, $location)              // 301 to its own path, or null
+        ?? $pages->render('locations.show', ['location' => $location, 'title' => $location['name']], Entry::findByUri('/locations'));
+});
+```
+
+- `find($id)` or `find(fn (array $doc, string $id) => bool)` reads the site's
+  partition and returns a document that has a page there (a closure only sees
+  documents with one). None is a **503** with `Retry-After`
+  while nothing at all can be read (a cold cache and Core unreachable), so an
+  outage cannot deindex the pages, and Statamic's `NotFoundHttpException`
+  otherwise: `abort(404)` renders Laravel's error view, whose layout lacks the
+  cascade and fails.
+- `canonical($request, $doc)` answers a request that reached the document at
+  another path (an old slug, a renamed brand) with a 301 to its page on the
+  site, under the site's own path on a shared host, percent-encoding a
+  non-ASCII path. The query string goes
+  along (campaign tags, filters); `keepQuery: false` drops it.
+- `render($template, $data, $cascade)` is Statamic's View, with `$cascade`
+  (an entry, say the listing's) as the cascade's content when the layout
+  should read its title or SEO fields.
+- `path($doc)` is the document's page path on the site, for links.
+
+`SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
 ## Control panel widget
 
@@ -1350,7 +1401,7 @@ Core's key:
 A fix or a proposal is made for a person in Core: the body names them in
 `actor` (`core_user_id`, `name`, `email`), with an optional `summary`,
 `core_request_id` and `core_approval_id`. It is written as their CP account
-(the one single sign-on stamped with their Core user id; a site that keeps
+(the one [CMS sign-in](#cms-sign-in) stamped with their Core user id; a site that keeps
 accounts another way binds its own `Inly\CoreWeb\Content\CoreUsers`), marked
 `via: core-ai`, and refused with `no_cms_user` when they have none. Nothing
 goes live: a fix is a draft, a proposal waits for an editor.
@@ -1374,6 +1425,95 @@ return [
     'cp_link' => ['label' => 'Acme Core', 'icon' => null],
 ];
 ```
+
+## CMS sign-in
+
+`features.cms_sign_in` makes Core the only way into the control panel. The
+CP has no passwords: a person signs in to Core, Core hands them back with an
+envelope sealed with its own key, and the site asks Core again before letting
+them in, so Core's answer, not the envelope, decides what they get. Every CP
+account is created by the hand-off, stamped with `core_user_id`, and holds no
+password.
+
+```php
+return [
+    'features' => ['cms_sign_in' => true],
+    'cms_sign_in' => [
+        // Core CMS grants => Statamic role handles. Admins become super users.
+        'roles' => ['cms_editor' => 'editor'],
+    ],
+];
+```
+
+It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
+app client is the audience of every envelope and the token it calls Core back
+with. No secret is shared with Core.
+
+**Moving a site onto it.** A site that already signs its CP in from Core
+with its own code removes that code in the same change that switches the
+feature on, since both claim the same addresses:
+
+- its hand-off route (usually `/admin-sso`) and controller, and its
+  offboarding route (`/api/core/cms-users/revoke`);
+- its CP login redirect middleware, its SSO user provider and the
+  `auth.providers.*.driver` it set for it (put Statamic's `statamic` back; the
+  feature swaps it);
+- its reconcile command and that command's schedule entry;
+- its own rate limiter and tests for these;
+- any shared hand-off secret (`*_HANDOFF_SECRET`): only Core's own seal is
+  accepted.
+
+Switch the driver back to `statamic` before turning the feature on: with the
+CP guard on any other driver the boot fails, `php artisan` included, so a
+cached config holding the old driver has to be cleared by deleting
+`bootstrap/cache/config.php`.
+
+Map the roles its code granted in `cms_sign_in.roles`, and if its accounts
+are stamped with something other than `core_user_id`, copy that value into
+`core_user_id` first: an account without it can no longer sign in.
+
+| Step | Request | Checks |
+|---|---|---|
+| Sign-in | `/admin/auth/login`, or any CP page a guest opens, redirects to `{core}/sso/cms?site=<key>&next=<path>`; Core hands back `GET /admin-sso?payload=…&signature=…&key_id=…&next=…` | Core's signature, `aud` = `CORE_CLIENT_ID`, expiry, purpose `cms_sso`, a `site` claim naming this site, the nonce spent here |
+| Confirm | `GET {core}/api/app/cms-sso/client/verify?site=<key>&payload=…&signature=…&key_id=…` on the client's token | Core re-reads the person's access and answers `{user_id, name, email, is_admin, cms_roles, purpose}`. Only a 403 `{"error": "not_admitted"}` strips the person; any other failure is a 503 that changes nothing |
+| Offboarding | Core posts `POST /api/core/cms-users/revoke`, sealed to the request (the `X-Core-*` headers, purpose `cms_revoke`), JSON body `{site, user_id, email}` | The account Core provisioned for that person is deleted, by a queued `ForgetCmsUserJob` |
+| Reconcile | `core:reconcile-cms-users` (nightly, `cms_sign_in.reconcile_schedule`) posts `{site, emails}` to `{core}/api/app/cms-users/client/reconcile` on the client's token | Deletes accounts whose person is gone from Core, strips the grant of those without CMS access, takes super from those no longer admins. Every verdict must be complete before anything changes; `--dry-run` reports only |
+
+What the feature holds the CP to:
+
+- Password login, password reset, account activation, registration and
+  passkey login are refused, in the CP and on the front end
+  (`RedirectCpLoginToCore`, a global middleware).
+- An expired CP session never asks for a password: Statamic's CP auth is
+  switched off per request, so the session timer sends the browser to the
+  login page, and from there through Core back to the page it was on.
+- An account without `core_user_id` cannot sign in, and the hand-off never
+  adopts one, whatever its address (`SsoUserProvider`, `CmsUsers::canBind`).
+  The feature switches the CP guard's provider to the `core-web-sso` driver
+  when it is Statamic's own (`statamic`); a site on another driver wires
+  `SsoUserProvider` in itself.
+- Roles assigned by hand outside `cms_sign_in.roles` are left alone; the
+  mapped ones and the super flag are rewritten at every sign-in.
+- Keep `users/` out of git, and out of `statamic.git.paths` where Statamic's
+  git integration commits CP saves: accounts live on the server that created
+  them, and every sign-in saves the account.
+
+**Several sites, one Core.** `cms_sign_in.site` (`CORE_CMS_SITE`) is this
+site's key in Core: the login redirect names it, the hand-off must carry it,
+and the confirm and reconcile calls pass it. Every site needs an app client
+of its own, since the client keeps a hand-off on the right host and the key
+keeps it on the site it was minted for.
+
+**Local development.** A local machine without `CORE_URL` signs in through
+the remote Core (`remote.*`, see [Pulling production data](#pulling-production-data))
+as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
+address as `origin`, the hand-off must name it back, and it is confirmed on
+the remote client's token at `/api/app/cms-sso/local/verify`. Without any
+Core, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
+own login, and only while `APP_ENV` is `local`.
+
+Core serves the other half: `/sso/cms`, the confirm and reconcile routes and
+the offboarding notices. Its paths are `cms_sign_in.core.*`.
 
 ## Testing a site
 

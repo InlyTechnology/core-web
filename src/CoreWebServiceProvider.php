@@ -4,9 +4,11 @@ namespace Inly\CoreWeb;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -16,6 +18,9 @@ use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
+use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
+use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -74,6 +79,7 @@ use Statamic\StaticCaching\Cacher;
  * The `cp_link` feature links the control panel to Core under Dashboard.
  * The `media` feature renders images and videos through the CDN and defines
  * the asset disks on the bucket.
+ * The `cms_sign_in` feature signs the control panel in from Core alone.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -92,6 +98,11 @@ class CoreWebServiceProvider extends ServiceProvider
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
                 MediaDisks::define($this->app);
+            }
+
+            if (self::enabled('cms_sign_in')) {
+                $this->mergeCmsSignInDefaults();
+                $this->mergeSsoUserProvider();
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
@@ -203,6 +214,10 @@ class CoreWebServiceProvider extends ServiceProvider
             }
         }
 
+        if (self::enabled('cms_sign_in')) {
+            $this->bootCmsSignIn();
+        }
+
         // Whatever the switch: a site's own routes name the alias, and an unknown alias fails every request, refusals included.
         $this->app->make(Router::class)->aliasMiddleware(VerifyCoreEnvelope::ALIAS, VerifyCoreEnvelope::class);
     }
@@ -272,6 +287,67 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->cron($cron)
                 ->withoutOverlapping()
                 ->runInBackground());
+        }
+    }
+
+    private function bootCmsSignIn(): void
+    {
+        $this->loadRoutesFrom(__DIR__.'/../routes/cms-sign-in.php');
+        $this->commands([ReconcileCmsUsersCommand::class]);
+
+        Auth::provider(SsoUserProvider::DRIVER, fn () => new SsoUserProvider);
+
+        RateLimiter::for('core-web.cms-sign-in', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.cms_sign_in.rate_limit', 10)))
+            ->by((string) $request->ip()));
+
+        // Global, ahead of the session: a signed-in person asking for the login page is sent through Core too.
+        $this->app->make(HttpKernel::class)->prependMiddleware(RedirectCpLoginToCore::class);
+
+        if (is_string($cron = config('core-web.cms_sign_in.reconcile_schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('core:reconcile-cms-users')
+                ->cron($cron)
+                ->withoutOverlapping());
+        }
+    }
+
+    /**
+     * A site's `cms_sign_in` block keeps the package's value for every key it
+     * leaves out, one level into `revoke` and `core` too: a block naming only
+     * its roles must not lose the reconcile schedule or Core's paths.
+     */
+    private function mergeCmsSignInDefaults(): void
+    {
+        $defaults = (require __DIR__.'/../config/core-web.php')['cms_sign_in'];
+        $site = (array) config('core-web.cms_sign_in');
+        $merged = array_replace($defaults, $site);
+
+        foreach (['revoke', 'core'] as $nested) {
+            $merged[$nested] = array_replace($defaults[$nested], (array) ($site[$nested] ?? []));
+        }
+
+        config(['core-web.cms_sign_in' => $merged]);
+    }
+
+    /**
+     * The CP guard's provider admits only the accounts Core provisioned. Any
+     * other driver would keep password sign-in open beside SSO, so it fails
+     * the boot rather than leave that door quietly unlocked.
+     */
+    private function mergeSsoUserProvider(): void
+    {
+        $config = $this->app['config'];
+        $guard = (string) $config->get('statamic.users.guards.cp', 'web');
+        $provider = (string) $config->get("auth.guards.{$guard}.provider", 'users');
+        $driver = $config->get("auth.providers.{$provider}.driver");
+
+        if ($driver === 'statamic') {
+            $config->set("auth.providers.{$provider}.driver", SsoUserProvider::DRIVER);
+
+            return;
+        }
+
+        if ($driver !== SsoUserProvider::DRIVER) {
+            throw new InvalidArgumentException("CMS sign-in needs the CP guard's user provider [{$provider}] on Statamic's driver, not [{$driver}].");
         }
     }
 
