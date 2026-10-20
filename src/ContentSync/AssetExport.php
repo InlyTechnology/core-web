@@ -124,6 +124,11 @@ class AssetExport
                 return $cached;
             }
 
+            // On the Eloquent driver metaPath() is the file itself, which must not be read.
+            if ($asset->metaPath() === $asset->path()) {
+                return null;
+            }
+
             // The container's `.meta` files as a set, listed once a page and only when a file needs it.
             $this->metaFiles[$container->handle()] ??= array_flip($container->metaFiles()->all());
 

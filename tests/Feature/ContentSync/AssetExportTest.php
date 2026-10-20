@@ -139,17 +139,18 @@ class AssetExportTest extends TestCase
         $this->app->bind(ContainerContract::class, EloquentLikeContainer::class);
         $this->app->bind(AssetContract::class, EloquentLikeAsset::class);
         File::delete($this->root.'/photos/team/.meta/anna.jpg.yaml');
+        file_put_contents($this->root.'/photos/notes.yaml', "data:\n  alt: The file's own bytes\n");
         EloquentLikeAsset::$rows = ['team/anna.jpg' => ['data' => ['alt' => 'From the row', 'focus' => '50-50-1'], 'width' => 1200]];
         AssetContainer::make('photos')->disk('photos')->save();
         $token = $this->tokenFor($this->cmsUser('pia@example.com', roles: ['photographer']));
 
-        $this->assertSame(['logo.svg'], AssetContainer::find('photos')->files()->all());
+        $this->assertSame(['logo.svg', 'notes.yaml'], AssetContainer::find('photos')->files()->sort()->values()->all());
 
         $data = $this->export($token, ['handle' => 'photos'])->assertOk()->json('data');
 
-        $this->assertSame(['logo.svg', 'team/anna.jpg'], array_column($data, 'path'));
-        $this->assertSame(['alt' => 'From the row', 'focus' => '50-50-1'], $data[1]['meta']['data']);
-        $this->assertNull($data[0]['meta']);
+        $this->assertSame(['logo.svg', 'notes.yaml', 'team/anna.jpg'], array_column($data, 'path'));
+        $this->assertSame(['alt' => 'From the row', 'focus' => '50-50-1'], $data[2]['meta']['data']);
+        $this->assertNull($data[1]['meta'], 'A row without meta is sent without one, never by reading the file.');
     }
 }
 
@@ -167,7 +168,7 @@ class EloquentLikeContainer extends FileContainer
     }
 }
 
-/** An asset whose meta comes from its database row, as the Eloquent driver hydrates it. */
+/** An asset whose meta comes from its database row and whose meta path is the file itself, as on the Eloquent driver. */
 class EloquentLikeAsset extends Asset
 {
     /** @var array<string, array<string, mixed>> */
@@ -176,5 +177,10 @@ class EloquentLikeAsset extends Asset
     public function getRawMeta()
     {
         return self::$rows[$this->path()] ?? null;
+    }
+
+    public function metaPath()
+    {
+        return $this->path();
     }
 }
