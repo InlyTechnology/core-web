@@ -262,7 +262,7 @@ class SyncAuthTest extends TestCase
 
     public function test_tokens_default_to_a_private_local_folder(): void
     {
-        config(['core-web.content_sync.tokens.disk' => null]);
+        config(['core-web.content_sync.tokens' => ['driver' => 'files', 'disk' => null]]);
         $tokens = SyncTokens::fromConfig();
         [, $record] = $tokens->issue($this->cmsUser('ann@example.com', roles: ['editor']), 'ann@laptop');
 

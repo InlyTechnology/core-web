@@ -1237,10 +1237,33 @@ in the role editor) besides CP access; a super user always may. Signing in
 again revokes the machine's previous token. The token is kept in
 `storage/core-web/remote-site.json` (readable by the developer only, in a
 folder that ignores itself in git) and lives 30 days from its last use
-(`content_sync.token_days`). On the live site only its sha256 is kept, one
-file per token, by default in `storage/app/private/core-web/sync-tokens`
-(`content_sync.tokens`). Keep that store private: a host whose disk does not
-outlive a deploy names a private bucket, never the site's public one.
+(`content_sync.token_days`). On the live site only its sha256 is kept
+(`content_sync.tokens`), by default one file per token in
+`storage/app/private/core-web/sync-tokens`. Keep that store private: a disk
+named there is a private one, never the site's public bucket.
+
+A live site behind more than one server, or on a host whose disk does not
+outlive a deploy (Laravel Cloud), keeps its tokens in the database instead:
+a local file is seen by one server only, until the next deploy, so a token
+issued there is refused on the others and the checkout loses its login.
+Set the driver in the site's `config/core-web.php` (committed, not env),
+then publish and run the migration:
+
+```php
+'content_sync' => [
+    'remote_url' => 'https://www.example.com',
+    'tokens' => ['driver' => 'database'], // `connection` and `table` optional
+],
+```
+
+```bash
+php artisan vendor:publish --tag=core-web-migrations
+php artisan migrate
+```
+
+It creates `core_web_sync_tokens` on the default connection (or
+`tokens.connection`). Without the table every sync call fails with an error
+naming the migration; it never falls back to files.
 
 **Pulling.** The live site exports entries (published or not, every site),
 terms, global variables, collection trees and nav trees, each as the exact
@@ -1286,8 +1309,10 @@ the CLI reports a 429 with when to retry. A site running as
 `APP_ENV=local` refuses them, so no one pulls from a developer's checkout
 by mistake (`content_sync.allow_local_remote` lets one serve, to try the
 flow between two checkouts). The approval page cannot be framed by another
-site. Pending logins wait in the cache (`content_sync.store`), which every
-server behind the site must share.
+site. Pending logins wait in the cache (`content_sync.store`, null for the
+default store), which every server behind the site must share: on more than
+one server that is a `database` or `redis` store, never `file`, or an
+approval made on one server is lost to the machine polling another.
 
 ### Building on the login
 

@@ -19,7 +19,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   everything on the site. Approving a machine and using its token need the
   addon's `pull content` permission. Set `content_sync.remote_url` in the
   site's `config/core-web.php` (committed; there is no env var for it).
-  See README → Content pull.
+  The live site keeps token hashes in private files by default; one behind
+  more than one server or on a host whose disk does not outlive a deploy
+  (Laravel Cloud) sets `content_sync.tokens.driver` to `database` and runs
+  the published `core_web_sync_tokens` migration. See README → Content pull.
 
 ## v0.13.1
 
