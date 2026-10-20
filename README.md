@@ -1341,8 +1341,9 @@ keeps it on the site it was minted for.
 the remote Core (`remote.*`, see [Pulling production data](#pulling-production-data))
 as its `local` site (`cms_sign_in.remote_site`): the redirect also names this
 address as `origin`, the hand-off must name it back, and it is confirmed on
-the remote client's token (its secret, or the machine's `core:pull --login`)
-at `/api/app/cms-sso/local/verify`. Without any
+the remote client's token at `/api/app/cms-sso/local/verify`, so it needs
+`CORE_REMOTE_CLIENT_SECRET`: a `core:pull --login` reads as the site's own
+client, which Core does not seal local hand-offs to. Without any
 Core, `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's
 own login, and only while `APP_ENV` is `local`.
 

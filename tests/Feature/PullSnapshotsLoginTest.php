@@ -6,10 +6,12 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Once;
 use Illuminate\Support\Sleep;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Client\RemoteCore;
 use Inly\CoreWeb\Client\RemoteCoreLogin;
+use Inly\CoreWeb\CmsSignIn\CmsHandoff;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
@@ -240,22 +242,24 @@ class PullSnapshotsLoginTest extends TestCase
 
         $this->fakeCore([['login_token' => 'login-1']]);
         $this->artisan('core:pull --login');
+        Once::flush();
 
         $this->assertSame('https://prod.test', CoreNavLink::url());
     }
 
-    public function test_the_remote_client_reads_by_the_login_for_cms_sign_in(): void
+    public function test_cms_sign_in_through_the_remote_core_still_needs_the_secret(): void
     {
         $this->app['env'] = 'local';
         config(['core-web.client.base_url' => '']);
         $this->fakeCore([['login_token' => 'login-1']]);
         $this->artisan('core:pull --login');
-        Cache::flush();
+        Once::flush();
 
-        RemoteCore::client()->authenticate();
+        $this->assertSame('', RemoteCore::url());
+        $this->assertFalse(app(CmsHandoff::class)->signsInThroughRemote());
 
-        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://prod.test/oauth/token'
-            && $request['grant_type'] === RemoteCoreLogin::GRANT
-            && $request['login_token'] === 'login-1');
+        config(['core-web.remote.client_secret' => 'pull-secret']);
+
+        $this->assertSame('https://prod.test', RemoteCore::url());
     }
 }

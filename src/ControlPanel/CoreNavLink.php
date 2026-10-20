@@ -34,7 +34,7 @@ final class CoreNavLink
     /** CORE_URL, or on a local machine without one the remote Core: the Core a developer's data came from. */
     public static function url(): string
     {
-        return RemoteCore::browserUrl();
+        return RemoteCore::linkUrl();
     }
 
     /** Statamic takes a value as markup only when it starts with `<svg`, so a configured SVG is trimmed first. */

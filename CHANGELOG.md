@@ -16,9 +16,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   revokes it. With the site's own client in `remote.client_id`, developers
   need no `CORE_REMOTE_CLIENT_SECRET` and no separate local pull client; a
   set secret still works and wins unless `--login` is passed. Needs
-  inly/core with local development logins. The same login lets a local
-  machine sign in to the CP through the remote Core (CMS sign-in) and shows
-  the control panel link. See README → Pulling production data.
+  inly/core with local development logins. The login also shows the
+  control panel link; CMS sign-in through the remote Core still needs the
+  remote client's secret. See README → Pulling production data.
 
 ## v0.14.0
 
@@ -37,7 +37,6 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   gone), `canonical()` (a 301 to the document's own path, query string kept)
   and `render()` (Statamic's View with an optional cascade entry). Snapshots
   without `->pages()` are unchanged. See README → Pages.
-
 ## v0.13.1
 
 - **Naming**: the website content protocol is now called the Statamic
