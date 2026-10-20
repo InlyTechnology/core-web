@@ -247,7 +247,7 @@ class ContentPullTest extends TestCase
     {
         RemoteSite::forget();
 
-        $this->pull()->expectsOutputToContain('php please content:login')->assertFailed();
+        $this->pull()->expectsOutputToContain('php artisan content:login')->assertFailed();
     }
 
     public function test_a_refused_login_is_forgotten(): void
