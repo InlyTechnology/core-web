@@ -1929,6 +1929,8 @@ renames `## Unreleased` to the version, commits that to `main`, tags that
 commit and publishes the GitHub release with the section as its notes. It
 refuses an empty or missing `## Unreleased`, an existing or lower version,
 and, before 1.0, a patch release that carries upgrade notes.
+If the publish step fails after the push, publish the existing tag by hand:
+`gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <notes>`.
 
 ## License
 

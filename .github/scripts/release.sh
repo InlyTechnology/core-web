@@ -13,7 +13,7 @@ fail() {
     exit 1
 }
 
-latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
 latest="${latest:-v0.0.0}"
 IFS=. read -r major minor patch <<< "${latest#v}"
 
@@ -42,8 +42,7 @@ grep -q '[^[:space:]]' "$notes" || fail "The \"## Unreleased\" section is empty.
 
 # Before 1.0 a release with upgrade notes bumps the minor (see CHANGELOG.md).
 if [[ "$major" == 0 ]] && grep -q '^### Upgrade notes' "$notes"; then
-    IFS=. read -r _ new_minor _ <<< "$version"
-    [[ "$new_minor" != "$minor" ]] || fail "The release carries upgrade notes, so before 1.0 it must bump the minor, not cut $tag."
+    [[ "${version%.*}" != "$major.$minor" ]] || fail "The release carries upgrade notes, so before 1.0 it must bump the minor, not cut $tag."
 fi
 
 sed -i "s/^## Unreleased[[:space:]]*$/## $tag/" "$changelog"
