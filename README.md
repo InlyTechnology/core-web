@@ -147,7 +147,7 @@ shares with the backoffice under the backoffice's own names:
 | `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
 | `media.layer.enabled` | `CORE_MEDIA_LAYER`, unset | Outside production, keep production's files behind the layer. Unset means on, except on a Laravel Cloud bucket. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
 | `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
-| `media.images.*` | `format` `auto`, `placeholder` `blur`, `glide_presets` `true` | `<x-core-img>`'s defaults |
+| `media.images.*` | `format` `auto`, `placeholder` `blur` | `<x-core-img>`'s defaults |
 | `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
 | `features.cms_sign_in` | `false` | Switch on CMS sign-in (see [CMS sign-in](#cms-sign-in)) |
@@ -1045,8 +1045,7 @@ field (its Value, Collection or query builder), a URL, or a file from Core
   `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
   blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
   the box and bounds each rendition's height. Anything else (a local file, a
-  foreign host, an SVG) renders as is; a local raster Asset gets a srcset from
-  the site's `w<px>` Glide presets instead. The editor's focal point (an
+  foreign host, an SVG) renders as is, without a srcset. The editor's focal point (an
   Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
   pass a `style`, and `alt` defaults to the file's own.
 - **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px

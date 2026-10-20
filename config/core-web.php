@@ -673,9 +673,7 @@ return [
     | false to write the bucket directly, and drops it at go-live. Unset, a
     | Laravel Cloud bucket (attached per environment) gets no layer.
     |
-    | images: the defaults <x-core-img> renders with. `glide_presets` is the
-    | srcset of a site without a CDN: its `w<px>` Glide presets, which
-    | config/statamic/assets.php defines.
+    | images: the defaults <x-core-img> renders with.
     |
     | videos: the widths <x-core-video> asks the CDN for, `small_width` for
     | phones, and the second of the frame it shows as the poster when none is
@@ -711,7 +709,6 @@ return [
         'images' => [
             'format' => 'auto',
             'placeholder' => 'blur',
-            'glide_presets' => true,
         ],
         'videos' => [
             'width' => 1280,
