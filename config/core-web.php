@@ -515,13 +515,18 @@ return [
     | token_days: how long a machine's token lives unused; every use pushes
     | its expiry this far out again.
     |
-    | tokens: where the live site keeps its tokens (only their hashes): a
-    | filesystem `disk` and a `path` on it. Null is a private local folder,
-    | storage/app/private/{path}; a host whose disk does not outlive a deploy
-    | names a private bucket, never a public one.
+    | tokens: where the live site keeps its tokens (only their hashes).
+    | `driver` files: one file each on a filesystem `disk`, under `path`; a
+    | null disk is a private local folder, storage/app/private/{path}, and a
+    | named one is private, never the site's public bucket. `driver`
+    | database: the `table` (from the core-web-sync-tokens-migration tag) on
+    | `connection`, null for the default. A site behind more than one server,
+    | or on a host whose disk does not outlive a deploy (Laravel Cloud), sets
+    | database: a local file is seen by one server only, until the next deploy.
     |
     | store: the cache store pending logins wait in for their approval, shared
-    | by every server behind the site; null is the default store.
+    | by every server behind the site (database or redis there, never file);
+    | null is the default store.
     |
     | middleware: in front of the sync endpoints, beside the HTTPS and
     | local-site guards; `core-web-sync` limits each token and address, and
@@ -546,8 +551,11 @@ return [
         'allow_local_remote' => false,
         'token_days' => 30,
         'tokens' => [
+            'driver' => 'files',
             'disk' => null,
             'path' => 'core-web/sync-tokens',
+            'connection' => null,
+            'table' => 'core_web_sync_tokens',
         ],
         'store' => null,
         'middleware' => ['throttle:core-web-sync'],

@@ -171,6 +171,8 @@ class CoreWebServiceProvider extends ServiceProvider
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
+        // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
 
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();
