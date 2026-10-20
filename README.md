@@ -1009,9 +1009,12 @@ field (its Value, Collection or query builder), a URL, or a file from Core
   Asset (JPEG, PNG or WebP) still gets a srcset from the site's Glide
   presets named `w<px>` (`w640`, `w1080`, …), those narrower than the
   original plus the original at its own width, and `sizes` defaults to
-  `100vw`: pass a real `sizes`. Only presets are rendered, so set
-  `generate_presets_on_upload`; a failing Glide render leaves the plain
-  image. The editor's focal point (an
+  `100vw`: pass a real `sizes`. A `w<px>` preset resizes by width only
+  (`fit=max`), or its candidates come out the wrong shape. Only presets are
+  rendered, so keep
+  `statamic.assets.image_manipulation.generate_presets_on_upload` on (files
+  uploaded before the presets existed render on their first view); if any
+  preset fails to render, the image has no srcset. The editor's focal point (an
   Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
   pass a `style`, and `alt` defaults to the file's own.
 - **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px

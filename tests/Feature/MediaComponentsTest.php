@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Exception;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Media\MediaDisks;
@@ -9,6 +10,7 @@ use Inly\CoreWeb\Tests\TestCase;
 use RuntimeException;
 use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
+use Statamic\Facades\Image;
 use Statamic\Tags\Tags;
 
 class MediaComponentsTest extends TestCase
@@ -216,6 +218,19 @@ class MediaComponentsTest extends TestCase
     {
         $this->withLocalAssets(function (callable $asset): void {
             app('statamic.tags')['glide'] = FailingGlideTag::class;
+
+            $html = Blade::render('<x-core-img :src="$asset" />', ['asset' => $asset('photo.jpg', 1200)]);
+
+            $this->assertStringContainsString('src="/assets/photo.jpg"', $html);
+            $this->assertStringNotContainsString('srcset', $html);
+            $this->assertStringNotContainsString('sizes', $html);
+        });
+    }
+
+    public function test_a_glide_render_the_tag_swallows_leaves_the_plain_image(): void
+    {
+        $this->withLocalAssets(function (callable $asset): void {
+            Image::shouldReceive('manipulate')->andThrow(new Exception('Glide is down'));
 
             $html = Blade::render('<x-core-img :src="$asset" />', ['asset' => $asset('photo.jpg', 1200)]);
 

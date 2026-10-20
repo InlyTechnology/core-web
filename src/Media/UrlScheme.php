@@ -14,7 +14,7 @@ interface UrlScheme
     /**
      * An image rendition; a URL the CDN does not serve, or an SVG, comes back untouched.
      *
-     * @param  array<string, scalar|null>  $params  width, height, fit, format, quality, dpr, trim
+     * @param  array<string, scalar|null>  $params  width, height, fit, format, quality, dpr, trim, gravity ("XxY", fractions of the image a crop keeps)
      */
     public function image(string $url, array $params): string;
 

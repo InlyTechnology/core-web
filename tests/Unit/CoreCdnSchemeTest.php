@@ -49,6 +49,15 @@ class CoreCdnSchemeTest extends TestCase
         $this->assertSame(self::CDN.'/a.jpg?trim.border.color=red&X-Amz-Signature=abc%2F&width=600', $url);
     }
 
+    public function test_gravity_is_a_point_clamped_to_the_image(): void
+    {
+        $scheme = new CoreCdnScheme(self::CDN);
+
+        $this->assertSame(self::CDN.'/a.jpg?gravity=0.3x0.7', $scheme->image(self::CDN.'/a.jpg', ['gravity' => '0.3x0.7']));
+        $this->assertSame(self::CDN.'/a.jpg?gravity=1x0', $scheme->image(self::CDN.'/a.jpg', ['gravity' => '1.2x-0.5']));
+        $this->assertSame(self::CDN.'/a.jpg', $scheme->image(self::CDN.'/a.jpg', ['gravity' => 'center']));
+    }
+
     public function test_svgs_and_foreign_urls_are_untouched(): void
     {
         $scheme = new CoreCdnScheme(self::CDN);

@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Media;
 
+use Illuminate\Support\Arr;
 use Statamic\Statamic;
 
 /**
@@ -25,12 +26,20 @@ final class GlidePresets
 
         // A failing Glide render (or a storage outage measuring the original) leaves the plain image.
         return rescue(function () use ($source, $asset, $presets): ?string {
-            $original = $source->width ?? (int) $asset->width();
+            // Meta read whole, never width(): that re-measures the file on every call while the width is missing.
+            $original = $source->width ?? (int) Arr::get($asset->meta(), 'width');
             $candidates = [];
 
             foreach ($presets as $preset => $width) {
                 if (! $original || $width < $original) {
-                    $candidates[] = Statamic::tag('glide')->params(['src' => $asset, 'preset' => $preset])->fetch().' '.$width.'w';
+                    $url = Statamic::tag('glide')->params(['src' => $asset, 'preset' => $preset])->fetch();
+
+                    // The tag catches its own render failures and returns nothing.
+                    if (blank($url)) {
+                        return null;
+                    }
+
+                    $candidates[] = $url.' '.$width.'w';
                 }
             }
 

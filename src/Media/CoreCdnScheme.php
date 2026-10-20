@@ -62,6 +62,7 @@ final class CoreCdnScheme implements UrlScheme
             'format' => in_array($params['format'] ?? null, self::IMAGE_FORMATS, true) ? $params['format'] : null,
             'quality' => self::clamp($params['quality'] ?? null, self::QUALITY),
             'dpr' => self::clamp($params['dpr'] ?? null, self::DPR),
+            'gravity' => self::gravity($params['gravity'] ?? null),
         ], fn ($value) => $value !== null));
     }
 
@@ -129,6 +130,16 @@ final class CoreCdnScheme implements UrlScheme
         }
 
         return max($range[0], min($range[1], (int) round((float) $value)));
+    }
+
+    /** An "XxY" point as fractions of the image, clamped to 0-1 since the CDN rejects anything outside. */
+    private static function gravity(mixed $gravity): ?string
+    {
+        if (! is_string($gravity) || preg_match('/^(-?\d+(?:\.\d+)?)x(-?\d+(?:\.\d+)?)$/', $gravity, $m) !== 1) {
+            return null;
+        }
+
+        return implode('x', array_map(fn (string $value) => round(max(0, min(1, (float) $value)), 4), [$m[1], $m[2]]));
     }
 
     private static function trim(mixed $trim): ?string
