@@ -22,6 +22,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   core-web's own disks for the app's. They now know which disks core-web
   defined.
 
+## v0.20.0
+
+- **Site rules**: `rules/CoreWebRulesTest.php`, run by Inly's site gate
+  (site-ci) on every site that installs core-web. Its first rule fails a
+  site with `features.media` on that still defines its own `assets` disk (or
+  any disk in `media.disks`). Docs: README, "Site rules".
+
 ## v0.19.0
 
 - **Agent instructions**: `resources/agents/AGENTS.md` carries the rules an
