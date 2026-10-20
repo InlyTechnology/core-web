@@ -29,6 +29,8 @@ final class CloudDefaults
         'app.maintenance.driver' => ['APP_MAINTENANCE_DRIVER', 'cache'],
         'app.maintenance.store' => ['APP_MAINTENANCE_STORE', 'database'],
         'core-web.snapshots.store_driver' => ['CORE_SNAPSHOT_STORE', 'database'],
+        // A token file is gone at the next deploy and seen by one replica only.
+        'core-web.content_sync.tokens.driver' => ['CORE_SYNC_TOKENS_DRIVER', 'database'],
     ];
 
     /** What editors write, which the eloquent driver moves to the database; blueprints, collections and the rest stay files from git. */

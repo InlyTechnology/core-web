@@ -63,6 +63,7 @@ class CloudTest extends TestCase
         $this->assertSame('eloquent', config('statamic.users.repository'));
         $this->assertSame('database', config('session.driver'));
         $this->assertSame('database', config('core-web.snapshots.store_driver'));
+        $this->assertSame('database', config('core-web.content_sync.tokens.driver'));
         $this->assertSame('half', config('statamic.static_caching.strategy'));
         $this->assertFalse(config('statamic.git.enabled'));
         $this->assertTrue(config('statamic.revisions.enabled'));

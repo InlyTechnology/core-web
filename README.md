@@ -1756,6 +1756,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | `cache.default`, `session.driver` | `database` | `CACHE_STORE`, `SESSION_DRIVER` |
 | Maintenance mode | the `cache` driver on the `database` store | `APP_MAINTENANCE_DRIVER`, `APP_MAINTENANCE_STORE` |
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
+| Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
@@ -1778,9 +1779,17 @@ The site does its half once:
 - Give the `users` table a column for every key the site stores on a user
   (an SSO site's `core_user_id`, for instance): eloquent users write each
   data key as a column.
-- Publish the snapshots store migration (`--tag=core-web-migrations`)
-  whenever anything uses the `snapshots` cache store: the snapshots
-  feature, and the spent nonces of Core sign-in and pings.
+- Publish core-web's migrations (`--tag=core-web-migrations`: the
+  snapshots store and the content sync tokens) whenever anything uses them:
+  the snapshots feature, spent nonces when `content.store` is `snapshots`,
+  and `features.content_sync`.
+- Asset files: the disk does not outlive a deploy either, so uploads need a
+  bucket. Attach one in Cloud and turn on `features.media`, whose disks read
+  it from `LARAVEL_CLOUD_DISK_CONFIG` (see [On Laravel Cloud](#on-laravel-cloud)).
+- With `features.cms_sign_in`: run `php please auth:migration` (the
+  `role_user` and `group_user` tables eloquent users write roles and groups
+  to), keep the CP provider on the `statamic` driver with its `model` set,
+  and turn on Cloud's scheduler for `core:reconcile-cms-users`.
 - Search: a `local` index lives on one container's disk, so on Cloud it
   needs a remote search driver; `core-web:deploy` warns about any local
   index.
