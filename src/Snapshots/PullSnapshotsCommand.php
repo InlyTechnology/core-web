@@ -3,8 +3,13 @@
 namespace Inly\CoreWeb\Snapshots;
 
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Sleep;
 use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\ContentSync\RemoteSiteBusy;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
 use Throwable;
 
@@ -24,6 +29,14 @@ class PullSnapshotsCommand extends Command
     protected $description = 'Pull the Core snapshots through the live site (content:login), or from the remote Core (core-web.remote), and pin them locally';
 
     private const MAX_PAGES = 10000;
+
+    /** Pulls of one snapshot started over when its copy changes between pages, after the first. */
+    private const RESTARTS = 2;
+
+    /** Waits for a site that asked this machine to (429, 503), per request, each a minute at most. */
+    private const WAITS = 3;
+
+    private const MAX_WAIT_SECONDS = 60;
 
     public function handle(SnapshotRegistry $registry, SnapshotStore $store): int
     {
@@ -148,15 +161,24 @@ class PullSnapshotsCommand extends Command
 
                 return self::FAILURE;
             } catch (RemoteSiteError $e) {
-                $this->warn("{$type}: nothing pinned from {$host} ({$e->getMessage()}).");
+                $this->warn("{$type}: nothing pinned from {$host} ({$e->getMessage()}".(self::timedOut($e) ? '; the live site may still be filling its copy from its Core: try again in a minute' : '').').');
                 $exit = self::FAILURE;
 
                 continue;
             }
 
             $snapshot = $registry->get($type);
-            $count = $store->pin($snapshot, $host, $documents);
-            $store->forget($snapshot);
+
+            try {
+                $count = $store->pin($snapshot, $host, $documents);
+            } catch (LockTimeoutException) {
+                $this->warn("{$type}: nothing pinned from {$host} (another write held the local copy too long; try again).");
+                $exit = self::FAILURE;
+
+                continue;
+            } finally {
+                $store->forget($snapshot);
+            }
 
             if (! $store->pinnedNow($snapshot)) {
                 $this->warn("{$type}: nothing pinned from {$host} (the pull came back too empty to trust).");
@@ -172,7 +194,8 @@ class PullSnapshotsCommand extends Command
     }
 
     /**
-     * Every page of the site's copy, which must stay one copy throughout.
+     * Every page of the site's copy, one copy throughout: a copy that changes
+     * between pages starts the pull over, a few times at most.
      *
      * @return array{array<string, array<string, mixed>>, bool} the documents by id, and whether the site's copy is stale
      *
@@ -180,27 +203,33 @@ class PullSnapshotsCommand extends Command
      */
     private function fetch(RemoteSite $site, string $type): array
     {
+        for ($attempt = 0; $attempt <= self::RESTARTS; $attempt++) {
+            $fetched = $this->fetchOnce($site, $type);
+
+            if ($fetched !== null) {
+                return $fetched;
+            }
+        }
+
+        throw new RemoteSiteError('the site\'s copy kept changing while pulling; run core:pull again');
+    }
+
+    /**
+     * @return array{array<string, array<string, mixed>>, bool}|null null when the copy changed between pages
+     *
+     * @throws RemoteLoginNeeded|RemoteSiteError
+     */
+    private function fetchOnce(RemoteSite $site, string $type): ?array
+    {
         $documents = [];
         $version = null;
         $cursor = 0;
 
         for ($page = 0; $page < self::MAX_PAGES; $page++) {
-            $response = $site->get('snapshots/'.rawurlencode($type), ['cursor' => $cursor]);
-
-            if (! $response->successful()) {
-                $message = $response->json('message');
-
-                throw new RemoteSiteError(is_string($message) && $message !== '' ? $message : "HTTP {$response->status()}");
-            }
-
-            $body = $response->json();
-
-            if (! is_array($body) || ! is_array($body['documents'] ?? null) || ! is_string($body['version'] ?? null)) {
-                throw new RemoteSiteError('the site answered something that is not a snapshot export; is its core-web up to date?');
-            }
+            $body = $this->page($site, $type, $cursor);
 
             if ($version !== null && $version !== $body['version']) {
-                throw new RemoteSiteError('the site\'s copy changed while pulling; run core:pull again');
+                return null;
             }
 
             $version = $body['version'];
@@ -227,6 +256,82 @@ class PullSnapshotsCommand extends Command
         }
 
         throw new RemoteSiteError('the export never ended');
+    }
+
+    /**
+     * One page, waiting out a rate limit or a copy the site is still filling as the site asks.
+     *
+     * @return array{version: string, documents: list<mixed>, next_cursor?: mixed, stale?: mixed}
+     *
+     * @throws RemoteLoginNeeded|RemoteSiteError
+     */
+    private function page(RemoteSite $site, string $type, int $cursor): array
+    {
+        for ($wait = 0; ; $wait++) {
+            try {
+                $response = $site->get('snapshots/'.rawurlencode($type), ['cursor' => $cursor]);
+            } catch (RemoteSiteBusy $e) {
+                if ($wait >= self::WAITS) {
+                    throw $e;
+                }
+
+                $this->sleep($e->retryAfter);
+
+                continue;
+            }
+
+            if ($response->status() === 503 && $wait < self::WAITS) {
+                $retry = $response->header('Retry-After');
+                $this->sleep(ctype_digit($retry) ? (int) $retry : null);
+
+                continue;
+            }
+
+            return self::body($response);
+        }
+    }
+
+    /**
+     * @return array{version: string, documents: list<mixed>, next_cursor?: mixed, stale?: mixed}
+     *
+     * @throws RemoteSiteError
+     */
+    private static function body(Response $response): array
+    {
+        $body = $response->json();
+
+        if (! $response->successful()) {
+            $message = is_array($body) ? ($body['message'] ?? null) : null;
+
+            if (is_string($message) && $message !== '') {
+                throw new RemoteSiteError($message);
+            }
+
+            throw new RemoteSiteError($response->status() === 404
+                ? 'the site has no snapshot endpoint (HTTP 404); is its core-web up to date?'
+                : "HTTP {$response->status()}");
+        }
+
+        if (! is_array($body) || ! is_array($body['documents'] ?? null) || ! is_string($body['version'] ?? null)) {
+            throw new RemoteSiteError('the site answered something that is not a snapshot export; is its core-web up to date?');
+        }
+
+        return $body;
+    }
+
+    private function sleep(?int $seconds): void
+    {
+        $seconds = max(1, min(self::MAX_WAIT_SECONDS, $seconds ?? 10));
+        $this->line("Waiting {$seconds}s for the live site…");
+        Sleep::for($seconds)->seconds();
+    }
+
+    /** Whether the site took longer than the checkout waits: a first pull from its Core can. */
+    private static function timedOut(RemoteSiteError $e): bool
+    {
+        $previous = $e->getPrevious();
+
+        return $previous instanceof ConnectionException && preg_match('/timed out|cURL error 28/i', $previous->getMessage()) === 1;
     }
 
     /** @param  list<string>  $types */

@@ -21,15 +21,19 @@ final class SnapshotExport
     public function page(Snapshot $snapshot, int $cursor, int $size): ?array
     {
         $documents = [];
+        $versions = [];
         $stale = false;
 
         foreach ($snapshot->partitions() as $partition) {
+            // Taken before the read, so a copy replaced in between shows as a change on the next page rather than hiding one.
+            $version = $this->store->version($snapshot, $partition);
             $read = $this->store->read($snapshot, $partition);
 
             if ($read->degraded) {
                 return null;
             }
 
+            $versions[] = $version ?? $this->store->version($snapshot, $partition) ?? hash('xxh128', serialize($read->documents));
             $documents += $read->documents;
             $stale = $stale || $read->stale;
         }
@@ -39,7 +43,7 @@ final class SnapshotExport
 
         return [
             'type' => $snapshot->type,
-            'version' => hash('xxh128', serialize($documents)),
+            'version' => hash('xxh128', implode('|', $versions)),
             'stale' => $stale,
             'total' => count($documents),
             // A list of pairs: ids that read as numbers would turn a JSON object into a list.
