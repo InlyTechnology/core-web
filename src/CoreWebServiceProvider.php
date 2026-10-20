@@ -4,9 +4,12 @@ namespace Inly\CoreWeb;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -18,11 +21,23 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
+use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
+use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\ContentLoginCommand;
+use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
+use Inly\CoreWeb\ContentSync\ContentPullCommand;
+use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
+use Inly\CoreWeb\ContentSync\GuardSyncRequests;
+use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\SyncLimits;
+use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
@@ -31,6 +46,11 @@ use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\CpThumbnails;
+use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\SyncMediaCommand;
+use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
@@ -47,6 +67,7 @@ use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
@@ -70,6 +91,11 @@ use Statamic\StaticCaching\Cacher;
  * site's content (`content:check`, nightly, a dashboard widget).
  * The `forms` feature keeps the Core forms the site renders itself.
  * The `cp_link` feature links the control panel to Core under Dashboard.
+ * The `cms_sign_in` feature signs the control panel in from Core alone.
+ * The `content_sync` feature lets a local checkout pull the live site's
+ * content as the developer's CMS user.
+ * The `media` feature renders images and videos through the CDN and defines
+ * the asset disks on the bucket.
  * The `cloud` feature runs the site on Laravel Cloud, its content in the
  * database, with `content:import` and `core-web:deploy`.
  */
@@ -86,10 +112,18 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
-            $this->mergeLegacyRemote();
-
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
+            }
+
+            if (self::enabled('cms_sign_in')) {
+                $this->mergeCmsSignInDefaults();
+                $this->mergeSsoUserProvider();
+            }
+
+            if (self::enabled('media')) {
+                $this->mergeMediaDefaults();
+                MediaDisks::define($this->app);
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
@@ -111,6 +145,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
+        $this->app->bind(SyncTokens::class, fn () => SyncTokens::fromConfig());
+        $this->app->bind(DeviceAuthorizations::class, fn () => DeviceAuthorizations::fromConfig());
+        $this->app->bindIf(LocalContent::class, fn () => LocalContent::fromApp());
 
         $this->app->bind(SiteScopedInvalidator::class, fn ($app) => new SiteScopedInvalidator(
             $app[Cacher::class],
@@ -118,25 +155,30 @@ class CoreWebServiceProvider extends ServiceProvider
         ));
     }
 
-    /** `pull` is the old name of `remote`: a site config still naming it fills what its `remote` leaves blank. */
-    private function mergeLegacyRemote(): void
+    /**
+     * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
+     * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
+     */
+    private function mergeMediaDefaults(): void
     {
-        $legacy = config('core-web.pull');
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')['media'];
+        $media = (array) config('core-web.media');
 
-        if (! is_array($legacy)) {
-            return;
+        foreach ($defaults as $group => $default) {
+            if ($group !== 'disks' && is_array($default) && is_array($media[$group] ?? null)) {
+                $media[$group] = array_replace($default, $media[$group]);
+            }
         }
 
-        config(['core-web.remote' => array_replace(
-            $legacy,
-            array_filter((array) config('core-web.remote'), fn (mixed $value): bool => ! blank($value)),
-        )]);
+        config(['core-web.media' => array_replace($defaults, $media)]);
     }
 
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
+        // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
 
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();
@@ -170,6 +212,31 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
+        }
+
+        if (self::enabled('cms_sign_in')) {
+            $this->bootCmsSignIn();
+        }
+
+        if (self::enabled('content_sync')) {
+            $this->bootContentSync();
+        }
+
+        if (self::enabled('media')) {
+            $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
+            MediaDisks::registerDriver();
+            // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
+            Blade::anonymousComponentPath(__DIR__.'/../resources/components');
+
+            // Asset::url() on a disk reading the live site's pulled index; never on a server.
+            if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
+                (new CpThumbnails)->register();
+            }
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([SyncMediaCommand::class, CheckMediaCommand::class]);
+            }
         }
 
         if (self::enabled('cloud')) {
@@ -245,6 +312,98 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->cron($cron)
                 ->withoutOverlapping()
                 ->runInBackground());
+        }
+    }
+
+    private function bootContentSync(): void
+    {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+        $this->loadViews();
+        $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
+        $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+        SyncLimits::register();
+
+        Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {
+            Permission::register(AuthenticateSyncToken::PERMISSION)
+                ->label(__('core-web::sync.permission'))
+                ->description(__('core-web::sync.permission_description'));
+        }));
+
+        // A site that refuses every sync call has no machines to approve or tokens to list.
+        if (! GuardSyncRequests::mayActAsRemote()) {
+            return;
+        }
+
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/sync-cp.php');
+
+        Nav::extend(function ($nav): void {
+            $user = User::current();
+
+            if ($user !== null && AuthenticateSyncToken::mayPull($user)) {
+                $nav->tools(__('core-web::sync.tokens_title'))->route('core-web.sync.tokens')->icon('key');
+            }
+        });
+    }
+
+    private function bootCmsSignIn(): void
+    {
+        $this->loadRoutesFrom(__DIR__.'/../routes/cms-sign-in.php');
+        $this->commands([ReconcileCmsUsersCommand::class]);
+
+        Auth::provider(SsoUserProvider::DRIVER, fn () => new SsoUserProvider);
+
+        RateLimiter::for('core-web.cms-sign-in', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.cms_sign_in.rate_limit', 10)))
+            ->by((string) $request->ip()));
+
+        // Global, ahead of the session: a signed-in person asking for the login page is sent through Core too.
+        $this->app->make(HttpKernel::class)->prependMiddleware(RedirectCpLoginToCore::class);
+
+        if (is_string($cron = config('core-web.cms_sign_in.reconcile_schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('core:reconcile-cms-users')
+                ->cron($cron)
+                ->withoutOverlapping());
+        }
+    }
+
+    /**
+     * A site's `cms_sign_in` block keeps the package's value for every key it
+     * leaves out, one level into `revoke` and `core` too: a block naming only
+     * its roles must not lose the reconcile schedule or Core's paths.
+     */
+    private function mergeCmsSignInDefaults(): void
+    {
+        $defaults = (require __DIR__.'/../config/core-web.php')['cms_sign_in'];
+        $site = (array) config('core-web.cms_sign_in');
+        $merged = array_replace($defaults, $site);
+
+        foreach (['revoke', 'core'] as $nested) {
+            $merged[$nested] = array_replace($defaults[$nested], (array) ($site[$nested] ?? []));
+        }
+
+        config(['core-web.cms_sign_in' => $merged]);
+    }
+
+    /**
+     * The CP guard's provider admits only the accounts Core provisioned. Any
+     * other driver would keep password sign-in open beside SSO, so it fails
+     * the boot rather than leave that door quietly unlocked.
+     */
+    private function mergeSsoUserProvider(): void
+    {
+        $config = $this->app['config'];
+        $guard = (string) $config->get('statamic.users.guards.cp', 'web');
+        $provider = (string) $config->get("auth.guards.{$guard}.provider", 'users');
+        $driver = $config->get("auth.providers.{$provider}.driver");
+
+        if ($driver === 'statamic') {
+            $config->set("auth.providers.{$provider}.driver", SsoUserProvider::DRIVER);
+
+            return;
+        }
+
+        if ($driver !== SsoUserProvider::DRIVER) {
+            throw new InvalidArgumentException("CMS sign-in needs the CP guard's user provider [{$provider}] on Statamic's driver, not [{$driver}].");
         }
     }
 

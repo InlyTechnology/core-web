@@ -5,11 +5,15 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\View;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
@@ -23,9 +27,17 @@ class DormantTest extends TestCase
 {
     protected array $features = [];
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        // As a site configures Statamic's users, so the CMS sign-in switch has a driver it could take over.
+        $app['config']->set('auth.providers.users.driver', 'statamic');
+    }
+
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cloud' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -49,10 +61,42 @@ class DormantTest extends TestCase
         $this->get('/!/core-web/live/quote')->assertNotFound();
     }
 
+    public function test_no_cms_sign_in_is_wired(): void
+    {
+        $this->assertFalse(app(Router::class)->has('core-web.cms-sign-in'));
+        $this->assertFalse(app(Router::class)->has('core-web.cms-users.revoke'));
+        $this->get('/admin-sso?payload=x&signature=y&key_id=z')->assertNotFound();
+        $this->postJson('/api/core/cms-users/revoke', [])->assertNotFound();
+
+        $this->assertArrayNotHasKey('core:reconcile-cms-users', app(Kernel::class)->all());
+        $this->assertSame('statamic', config('auth.providers.users.driver'));
+        $this->assertFalse(app(HttpKernel::class)->hasMiddleware(RedirectCpLoginToCore::class));
+        $this->assertCount(0, collect(app(Schedule::class)->events())->filter(fn (Event $event) => str_contains((string) $event->command, 'core:reconcile-cms-users')));
+
+        config(['core-web.client.base_url' => 'https://core.test']);
+        $this->assertStringEndsWith('/cp/auth/login', (string) $this->get('/cp')->headers->get('Location'));
+    }
+
+    public function test_no_content_sync_route_or_middleware_is_registered(): void
+    {
+        $this->assertFalse(app(Router::class)->has('core-web.sync.export'));
+        $this->post('/!/core-web/sync/device', ['machine' => 'laptop'])->assertNotFound();
+        $this->assertArrayNotHasKey('core-web.sync', app(Router::class)->getMiddleware());
+    }
+
     public function test_no_draft_preview_route_is_registered(): void
     {
         $this->assertFalse(app(Router::class)->has('core.preview'));
         $this->get('/core-preview/abc')->assertNotFound();
+    }
+
+    public function test_no_media_component_disk_or_driver_is_registered(): void
+    {
+        $this->assertFalse(config()->has('filesystems.disks.assets'));
+        $this->assertArrayNotHasKey(MediaDisks::LAYERED_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
+
+        $this->expectExceptionMessage('Unable to locate a class or view for component [core-img]');
+        Blade::render('<x-core-img src="https://cdn.inlycore.com/a/b.jpg" />');
     }
 
     public function test_the_envelope_alias_is_registered_but_joins_no_group(): void
@@ -81,6 +125,10 @@ class DormantTest extends TestCase
         $this->assertArrayNotHasKey('core:warm', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core:pull', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('content:check', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:pull', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('content:login', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('media:sync', app(Kernel::class)->all());
+        $this->assertArrayNotHasKey('media:check', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('content:import', app(Kernel::class)->all());
         $this->assertArrayNotHasKey('core-web:deploy', app(Kernel::class)->all());
     }

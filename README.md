@@ -10,7 +10,7 @@ What the package gives a site:
 
 | Piece | Class | What it does |
 |---|---|---|
-| Snapshot definition | `Inly\CoreWeb\Snapshots\Snapshot` | Where a snapshot lives in the cache, its TTLs, how to pull it whole and one object, partitions (per site), empty guard, change listeners, sitemap |
+| Snapshot definition | `Inly\CoreWeb\Snapshots\Snapshot` | Where a snapshot lives in the cache, its TTLs, how to pull it whole and one object, partitions (per site), empty guard, change listeners, sitemap, pages |
 | Snapshot store | `Inly\CoreWeb\Snapshots\SnapshotStore` | Three cache layers (fresh marker, last good, backoff), cold-pull lock, write lock, single-object patching, no-op writes skipped, change fingerprints and change sets |
 | Registry | `Inly\CoreWeb\Snapshots\SnapshotRegistry` | Every snapshot by type, which ping types refresh which, idle ping types, custom warmers and jobs |
 | `core:warm` | `Inly\CoreWeb\Snapshots\WarmSnapshotsCommand` | Pulls every registered snapshot, or one; scheduled nightly by default, as the safety net under Core's pings |
@@ -18,18 +18,21 @@ What the package gives a site:
 | Degraded guard | `Inly\CoreWeb\Snapshots\UncacheableWhileDegraded` | Keeps a page built on an empty degraded read out of Statamic's static cache |
 | Core client | `Inly\CoreWeb\Client\CoreClient` | Passport client_credentials client for Core's Objects API (JSON:API) |
 | Ping endpoint | `Inly\CoreWeb\Ping\PingController`, `PingSignature` | `POST api/core/objects`, HMAC-signed by Core |
+| Snapshot pages | `Inly\CoreWeb\Snapshots\SnapshotPage` | For a snapshot that declares `->pages()`: find a document for the site's own route (503 while degraded, Statamic's 404 when gone), 301 a stray path to its page, render through Statamic's View |
 | Snapshot sitemaps | `Inly\CoreWeb\Sitemaps\*` | `/sitemap-core-{type}.xml` per site host, and the `{{ core_sitemaps }}` tag |
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
 | Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
+| CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
+| Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
 document looks like, how the pages read it), the page routes and views, the TTL
 choices, the chat's markup, context and lead handling, and anything else that
-is not plumbing (CMS single sign-on, …).
+is not plumbing.
 
 ## Installation
 
@@ -58,9 +61,12 @@ nothing.
 | Drafts | `features.drafts` | The signed preview route (`drafts.preview.path`), the `core-web::drafts` translations and the listener that keeps a draft's provenance through an editor's save (see [Drafts](#drafts)) |
 | Content checks | `features.checks` | `content:check` and its nightly schedule (`checks.schedule`), the `content_checks` dashboard widget (see [Content checks](#content-checks)) |
 | Forms | `features.forms` | The `core-web-forms` snapshot on Core's `forms` ping and the `core-web` view namespace (see [Forms](#forms)); needs `features.snapshots` |
+| CMS sign-in | `features.cms_sign_in` | The hand-off route (`/admin-sso`) and the offboarding route, the `core-web-sso` user provider on the CP guard, the global middleware that sends the CP login to Core, and `core:reconcile-cms-users` with its schedule (see [CMS sign-in](#cms-sign-in)) |
 | Control panel link | `features.cp_link` | A link to Core right under Dashboard in the control panel (see [Control panel link](#control-panel-link)) |
 | Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
+| Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -91,15 +97,14 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_URL` | `client.base_url` | The Core install's URL |
 | `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
-| `CORE_REMOTE_CLIENT_SECRET` | `remote.client_secret` | Local only: the secret of the remote Core's read-only client (see [Pulling production data](#pulling-production-data)) |
-| `CORE_REMOTE_URL` / `CORE_REMOTE_CLIENT_ID` | `remote.base_url` / `remote.client_id` | Optional overrides of the defaults the site commits |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
 | `CORE_CONTENT_CONNECTOR_ID` | `content.connector_id` | The id of the Core connector that holds the site's pairing; content pings go to `{core}/webhooks/connectors/{id}`. Empty sends none |
+| `CORE_CMS_SITE` | `cms_sign_in.site` | This site's key among the CMS sites its Core signs into; `production` when unset |
+| `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
+| `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
+| `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
-
-CMS single sign-on is the site's own: Core seals its hand-offs with its own
-key, which `CoreEnvelope::open()` opens with no secret.
 
 `config/core-web.php`:
 
@@ -107,7 +112,6 @@ key, which `CoreEnvelope::open()` opens with no secret.
 |---|---|---|
 | `features.snapshots` | `false` | Switch on Core snapshots, pings and snapshot sitemaps (see [Features](#features)) |
 | `client.token_cache_key` | `core_web_access_token` | Where the access token is cached (default cache store) |
-| `remote.token_cache_key` | `core_web_remote_access_token` | Where the remote Core's access token is cached, apart from the site's own |
 | `ping.enabled` | `true` | Register the ping route |
 | `ping.path` / `ping.name` | `api/core/objects` / `api.core.objects` | The endpoint Core posts to |
 | `ping.middleware` | `['throttle:120,1']` | Outside the `web` group, so no CSRF exemption is needed |
@@ -134,7 +138,24 @@ key, which `CoreEnvelope::open()` opens with no secret.
 | `content.environment` | `CORE_CONTENT_ENVIRONMENT` | The environment a draft or publish must be sealed for; empty is `app()->environment()` |
 | `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
+| `features.media` | `false` | Switch on the media components and disks (see [Media](#media)) |
+| `media.cdn.origins` | `['https://cdn.inlycore.com']` | The transforming CDN's base URLs; only URLs under one get transform params. `[]` turns transforms off |
+| `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
+| `media.bucket.*` | | `endpoint`, `region` (`auto`), `bucket`, `url` (the files' public base, the CDN's), `root` (a folder every disk shares), `acl` (`true`; `false` for a bucket without object ACLs, such as R2), `cache_control` (`public, max-age=2592000`) |
+| `media.disks` | `['assets' => 'assets']` | Disk name => its folder, in the bucket and in `public/` |
+| `media.layer.enabled` | `CORE_MEDIA_LAYER`, unset | Outside production, keep production's files behind the layer. Unset means on, except on a Laravel Cloud bucket. A server set up before go-live sets `false` (see [The disks](#the-disks)) |
+| `media.layer.prefix` / `.local` | `_staging` / `media-layer` | Where the layer is: a prefix in the bucket, or `public/<local>` in the `local` environment |
+| `media.images.*` | `format` `auto`, `placeholder` `blur` | `<x-core-img>`'s defaults |
+| `media.videos.*` | `width` 1280, `small_width` 720, `poster_time` 0 | `<x-core-video>`'s CDN widths and frame poster (`null`: none) |
 | `chat.session_key` / `chat.cookie` | `core_web_chat` / `core_chat` | Where conversations live in the session; the hint cookie's prefix (`core_chat_{agent}`) |
+| `features.cms_sign_in` | `false` | Switch on CMS sign-in (see [CMS sign-in](#cms-sign-in)) |
+| `cms_sign_in.site` | `CORE_CMS_SITE`, else `production` | This site's key among the CMS sites Core signs into |
+| `cms_sign_in.roles` | `[]` | Core CMS grant => Statamic role handle. An unmapped grant is inert; a sign-in with nothing mapped (and not an admin) is refused |
+| `cms_sign_in.local_password_sign_in` | `false` | With `APP_ENV=local`, restore Statamic's own login for development without Core |
+| `cms_sign_in.path` / `.name` / `.middleware` | `admin-sso` / `core-web.cms-sign-in` / `['web', 'throttle:core-web.cms-sign-in']` | The hand-off route, always in `web` (it signs into a session); `rate_limit` (10) a minute per address |
+| `cms_sign_in.revoke.*` | `api/core/cms-users/revoke`, `core-web.cms-users.revoke`, `['throttle:120,1']` | The offboarding route, outside the `web` group |
+| `cms_sign_in.reconcile_schedule` | `45 3 * * *` | When `core:reconcile-cms-users` runs; `null` schedules nothing |
+| `cms_sign_in.core.*` | `/sso/cms`, `/api/app/cms-sso/client/verify`, `/api/app/cms-users/client/reconcile` | Core's paths |
 
 ## Where snapshots live
 
@@ -298,8 +319,8 @@ Core's side) needs a schedule of its own, or its own ping.
 
 A site's content references Core's records, and on a developer's machine the
 local Core (if there is one) holds other records, or none. `core:pull` fills
-the local snapshots from another Core, production as a rule, so the site
-renders what the live site renders without a local Core:
+the local snapshots from the live site, so the site renders what the live
+site renders without a local Core:
 
 ```bash
 php artisan core:pull            # every registered snapshot
@@ -307,50 +328,49 @@ php artisan core:pull staff      # one
 php artisan core:pull --release  # unpin and forget: the site reads CORE_URL again
 ```
 
-The Core and the client are the same on every machine, so the site commits
-them as defaults in its own `config/core-web.php`, overridable from env, and a
-developer sets only the secret (`CORE_REMOTE_CLIENT_SECRET`). A `remote` key
-there replaces the package's whole, so it names all three:
+It needs no secret: on a site with [Content pull](#content-pull) switched
+on, `core:pull` reads the snapshots from the live site's sync API
+(`/!/core-web/sync/snapshots/{type}`, as the developer's CMS user with the
+Pull content permission), on the same login as `content:pull`: one login
+covers both, and in a terminal either command starts it when the machine has
+none yet or the site refused the one it had.
+That permission therefore also reads the whole of every snapshot the site
+keeps, not only what its pages show, and the approval screen says so.
 
-```php
-'remote' => [
-    'base_url' => env('CORE_REMOTE_URL', 'https://core.example.com'),
-    'client_id' => env('CORE_REMOTE_CLIENT_ID', '…'),
-    'client_secret' => env('CORE_REMOTE_CLIENT_SECRET', ''),
-],
-```
+- The live site serves the copy it renders from; only when it has nothing
+  cached yet does it pull once from its own Core with its own client,
+  cached as a render's pull would be. That first pull can take longer than
+  the checkout waits: a timeout says the site may still be filling its copy,
+  and a pull a minute later reads it.
+- It serves only the snapshots it registers itself, paged
+  (`content_sync.page_size`). A copy that changes between pages starts the
+  pull of that snapshot over, twice at most, before it pins nothing.
+- A rate limit (429) or a site with no copy to serve yet (503) is waited
+  out once its `Retry-After` says, a minute at most, a few times over.
+- A copy the live site holds stale (its Core unreachable lately) is pinned
+  and said so.
+- The live site needs `features.snapshots` and the same snapshots
+  registered; a site that lacks one answers 404 for it, and one whose
+  core-web predates this endpoint is named as such.
+- A snapshot's warmer does not run: its documents are pinned as the live
+  site stored them.
 
-The key was called `pull` before. A site config still naming it keeps
-working, and so do the `CORE_PULL_*` variables while the site leaves the key
-to the package; a site that writes its own `remote` block reads only the
-variables it names, so it nests `env('CORE_PULL_CLIENT_SECRET')` as the
-default to keep developers' `.env` files working.
+Without `content_sync.remote_url` there is nothing to pull from, and a run
+with no terminal (`--no-interaction`, CI) and no login stops and says to run
+`php artisan content:login`.
 
-The client is an app client in that Core (Settings → Apps, client
-credentials grant): Core shows its id and secret when it is created.
-
-It runs each snapshot's own pull (or its warmer) on the `remote.*` client in
-place of `client.*`, so the documents are exactly what the site's
-projections make of that Core's data. What it stores is **pinned**: kept
-without expiry, and no `core:warm`, ping or render replaces it until the next
-`core:pull` or `--release`. A pull that fails, or comes back too empty to
-trust (`emptyWhen()`), pins nothing and leaves an earlier pin alone. A
-warmer that pins and then fails is reported as both. `--release` forgets the
-pulled copies, since another Core's data is no fallback for this one, so the
-next read or warm pulls from `CORE_URL` as from a cold cache.
+What it stores is **pinned**: kept without expiry, and no `core:warm`, ping
+or render replaces it until the next `core:pull` or `--release`. A pull that
+fails, or comes back too empty to trust (`emptyWhen()`), pins nothing and
+leaves an earlier pin alone. `--release` forgets the pulled copies, since
+another Core's data is no fallback for this one, so the next read or warm
+pulls from `CORE_URL` as from a cold cache.
 
 - **Local only.** A pinned copy stops a site following its Core, so the
   command runs only where `APP_ENV` is `local` (`--release` runs anywhere).
-- **A client that may only read.** In the source Core, create an app client
-  for local pulls (Settings → Apps, client credentials) holding the same read
-  permissions as the site's own client and nothing else, and share its secret
-  the way the team shares other secrets. It reads what the public site reads,
-  never more; revoking it in Core stops every pull.
 - **Stays on the machine.** The copies live in the `snapshots` store
   (`storage/framework/snapshots` with the `file` driver, its own tables with
   `database`), never in the repository.
-- **A certificate the machine trusts.** The pull ignores `CORE_CA_BUNDLE`,
-  which is for a local Core, so the source needs a public certificate.
 - **Only what goes through the store.** A warmer that also writes cache keys
   of its own, or reads Core during a render, keeps doing so against
   `CORE_URL`; those keys are not pinned.
@@ -433,6 +453,47 @@ needs):
 Sitemap: {{ url }}
 {{ /core_sitemaps }}
 ```
+
+## Pages
+
+Not every snapshot is a page, so a snapshot opts in with `->pages()`: given a
+document and a site handle, the path of its page on that site, or null for a
+document without one there. Nothing is routed by the package; the site keeps
+its routes and URL shapes, and `SnapshotPage` does the part every such
+controller repeats:
+
+```php
+Snapshot::make('locations')
+    // ...
+    ->pages(fn (array $doc, string $site) => '/locations/'.$doc['slug']);
+
+Route::get('locations/{slug}', function (Request $request, string $slug) {
+    $pages = SnapshotPage::for('locations');                 // the current site; for('locations', 'second') for another
+    $location = $pages->find(fn (array $doc) => $doc['slug'] === $slug || in_array($slug, $doc['old_slugs'], true));
+
+    return $pages->canonical($request, $location)              // 301 to its own path, or null
+        ?? $pages->render('locations.show', ['location' => $location, 'title' => $location['name']], Entry::findByUri('/locations'));
+});
+```
+
+- `find($id)` or `find(fn (array $doc, string $id) => bool)` reads the site's
+  partition and returns a document that has a page there (a closure only sees
+  documents with one). None is a **503** with `Retry-After`
+  while nothing at all can be read (a cold cache and Core unreachable), so an
+  outage cannot deindex the pages, and Statamic's `NotFoundHttpException`
+  otherwise: `abort(404)` renders Laravel's error view, whose layout lacks the
+  cascade and fails.
+- `canonical($request, $doc)` answers a request that reached the document at
+  another path (an old slug, a renamed brand) with a 301 to its page on the
+  site, under the site's own path on a shared host, percent-encoding a
+  non-ASCII path. The query string goes
+  along (campaign tags, filters); `keepQuery: false` drops it.
+- `render($template, $data, $cascade)` is Statamic's View, with `$cascade`
+  (an entry, say the listing's) as the cascade's content when the layout
+  should read its title or SEO fields.
+- `path($doc)` is the document's page path on the site, for links.
+
+`SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
 ## Control panel widget
 
@@ -923,6 +984,204 @@ knows. When Core's contract changes, replace the copy and catch up on what
 fails. A field type the reader does not know renders as a text input and is
 logged.
 
+## Media
+
+`features.media` renders a site's pictures and videos through the
+transforming CDN (core-cdn), whatever they are: a Statamic Asset, an assets
+field (its Value, Collection or query builder), a URL, or a file from Core
+(`url`/`original_url`, `alt`, `focus`/`focal_point`, `width`, `height`,
+`mime_type`). It also defines the asset disks on the site's bucket.
+
+### The components
+
+```blade
+<x-core-img :src="$set['image']" :widths="[480, 960, 1440]" sizes="(min-width: 1024px) 50vw, 100vw" ratio="4/3" class="h-full w-full object-cover" />
+<x-core-video :src="$set['video']" class="h-full w-full object-cover" />
+<x-core-media :src="$set['media']" ... />
+```
+
+- **`<x-core-img>`**: an image under a CDN origin gets `format=auto` (the CDN
+  picks AVIF, WebP or the original per browser), the `width`, `height`,
+  `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
+  blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
+  the box and bounds each rendition's height. Anything else (a local file, a
+  foreign host, an SVG) renders as is, without a srcset. The editor's focal point (an
+  Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
+  pass a `style`, and `alt` defaults to the file's own.
+- **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
+  wide and 720px on phones (`width`, `small-width`), silent when it plays
+  muted (`audio=false` makes them smaller), with a frame of the video as its
+  poster (`poster-time`, or `poster` for an image of your own) and a 24px
+  version of that poster blurred behind it until the poster or the first
+  frame arrives (`placeholder="none"` turns it off; `media.images.placeholder`
+  sets the default for videos too). Anything else plays the
+  file itself. It autoplays muted in a loop by default: `:autoplay`,
+  `:muted`, `:loop`, `controls`, `preload`.
+- **`<x-core-media>`**: one or the other, by the source, with each getting only
+  its own options: for a field an editor fills with either.
+
+`width` and `height` on `<x-core-img>` are the rendition's size, not HTML
+attributes: give the box its size in CSS or with `ratio`, or the page shifts
+as the image arrives. The video poster is one frame at `width`, for phones too.
+
+The CDN builds a video version on its first request (30 to 60 seconds for a
+large file) and keeps it a year, so open each new video once after uploading.
+Its limits are Cloudflare's: a source under 100 MB and 10 minutes, and a
+version at most 60 seconds long.
+
+The placeholder and the reduced-motion pause need the shipped CSS and script:
+
+```css
+@import '../../vendor/inly/core-web/resources/css/core-media.css';
+```
+
+```js
+import coreMedia from '../../vendor/inly/core-web/resources/js/core-media.js'
+
+coreMedia() // before Alpine.start()
+```
+
+### The disks
+
+Each disk in `media.disks` is defined unless the app's
+`config/filesystems.php` has one by that name, so **remove the site's own
+`assets` disk** (Statamic's skeleton ships one) and any other it lists there;
+`media:check` says when the app's definition is the one in use. The bucket
+needs `composer require league/flysystem-aws-s3-v3`.
+
+| Where | With `CORE_MEDIA_KEY` | Without |
+|---|---|---|
+| production | the bucket | the local folder `public/<folder>` |
+| staging before go-live (`CORE_MEDIA_LAYER=false`) | the bucket | the local folder |
+| Laravel Cloud, with a bucket attached and no key | its bucket (no layer unless `CORE_MEDIA_LAYER=true`) | n/a |
+| `local`, pulling content (`features.content_sync` and a `remote_url`) | the bucket, behind a layer | the live site's pulled index, behind a layer |
+| anywhere else | the bucket, behind a layer | the local folder |
+
+The layer is what makes the shared bucket safe outside production. Writes,
+edits (an asset's `.meta` included) and deletes land in it, reads try it
+first, and a file only the bucket holds cannot be deleted or moved: staging
+and a laptop see production's files and never change them. On staging the
+layer is `_staging/` in the bucket; in the `local` environment it is
+`public/media-layer/` (add it to `.gitignore`).
+
+Before go-live there is no production content to protect, and staging is
+often where editors build it, so a staging server set up then gets
+`CORE_MEDIA_LAYER=false` and writes the bucket directly. It is a server's
+setup, not the site's code, so it is env: `main` and `develop` stay alike.
+At go-live, remove it from staging's env (the launch checklist's step): the
+layer is on from then on, and what staging uploaded before is already in the
+bucket at the paths production serves, so nothing is copied. A production
+server on a temporary domain writes the bucket anyway.
+
+Refusals are loud: deleting, renaming or moving one of production's files
+throws `ProductionFileLocked` whatever the disk's `throw`, so Statamic stops
+before it strips the asset from entries or saves its new path. A layer file at
+the same path as one of production's hides it, and deleting it shows
+production's again.
+
+A file in the layer renders from the layer's URL in the components. Anywhere
+else, Statamic's `Asset::url()` points at the bucket, where it is not: use
+`Inly\CoreWeb\Media\MediaSource::urlOf($asset)` for a URL of your own (an
+og:image, a feed). The control panel's links to it 404; its thumbnails, which
+Glide reads through the disk, show.
+
+Without a key a disk is its committed local folder: a fresh clone, CI and a
+server missing the key all render from it. The exception is a laptop that
+pulls content (`APP_ENV=local`, `features.content_sync` and `features.media`
+on, `content_sync.remote_url` set): there the disk reads three layers, first
+match wins. On top is `public/media-layer/`, as with a key: uploads, and
+edits to a pulled file's alt or focus, land there and survive the next
+pull. Below it the committed folder `public/<folder>`, read only. At the
+bottom the live site's asset index as `content:pull` last brought it
+([Content pull](#content-pull) → Assets), so no key is needed to see and
+use production's files: it lists them, serves their `.meta` from the index
+and reads their bytes from their public URLs (Glide's CP thumbnails fetch
+them over HTTP, a file at a time, never following a redirect). Deleting or
+moving a committed or pulled file throws `ProductionFileLocked`. Before the
+first pull the disk shows the layer and the committed folder.
+
+In this mode `Asset::url()` is a local route, `/!/core-web/media/<disk>/<path>`
+(registered only when `APP_ENV` is `local` or `testing`), that redirects to
+whichever layer holds the file: the layer's or the committed folder's URL,
+else the live file's public URL from the index, else a 404. Statamic builds
+every asset's URL on its container's one URL, so the route is what lets a
+local upload and a live file both resolve. The components skip the redirect
+and render the file's own URL, so the CDN still transforms live files. So
+does the CP: a file only the index holds gets its thumbnail from the CDN at
+the CP's thumbnail size (the plain public URL when the CDN does not serve
+it; a video a CDN frame, or no thumbnail) and its preview from its public
+URL. Glide could read it through the index, but would download every live
+file to make one thumbnail the CDN already renders. Uploads and committed
+files keep Glide's thumbnails.
+
+Everything but the key and secret is committed in the site's
+`config/core-web.php`. Unlike the other top-level keys, a site's `media`
+block keeps the package's defaults for what it leaves out, one group deep
+(the key and secret from env, the CDN, the layer); `disks` is taken whole:
+
+```php
+'media' => [
+    'bucket' => [
+        'endpoint' => 'https://ams3.digitaloceanspaces.com',
+        'region' => 'ams3',
+        'bucket' => 'my-site',
+        'url' => 'https://cdn.inlycore.com/my-client/my-site',
+    ],
+    'disks' => ['assets' => 'assets', 'files' => 'files'],
+],
+```
+
+Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
+`social_images`). For R2, set `endpoint` to the account's R2 endpoint and
+`acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
+
+### On Laravel Cloud
+
+With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
+the environment: the first entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` that
+is not a scoped disk gives the key, secret, bucket, endpoint and region. A
+key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
+them whatever config says. The files' URL is the committed `media.bucket.url`
+(the CDN's, so the components transform them), or the bucket's own URL when
+the site commits none, which serves files untransformed. A committed CDN
+URL must have this Cloud bucket as its origin, or new uploads land in one
+bucket while their URLs point at another.
+
+Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
+Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
+its bucket directly, as editors building the content need. A Cloud staging
+environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
+
+- Name the Cloud bucket's disk anything but a disk in `media.disks`
+  (`assets`, `files`): Cloud registers its disk before core-web, so a clash
+  leaves Cloud's plain disk in place of core-web's, and `media:check` reports
+  it as the app's own.
+- The first deploy copies the git-tracked images into the bucket with
+  `php artisan media:sync push --force`, on the Cloud credentials like any
+  other key.
+
+### Commands
+
+- **`media:sync push|pull [--disk=] [--dry-run] [--overwrite]`** copies each
+  disk's files, `.meta` folders included, between its committed local folder
+  and the bucket, and never deletes. `push` is the move to a bucket: it adds
+  the files the bucket lacks and leaves the rest, since a file of a different
+  size there is usually an editor's later change (`--overwrite` replaces
+  those). It asks first; `--force` skips the question. `pull` refreshes the
+  committed folder from the bucket. Neither touches a layer. Dry run first; a
+  second dry run after a push finds nothing.
+- **`media:check [path] [--disk=assets]`** says what the disk is here and, with
+  a key, checks a file (the first image when no path is given): its URL is
+  under a CDN origin, the raw file answers with `Cache-Control` and CORS, and a
+  CDN rendition answers with an image.
+
+### Another CDN
+
+`media.cdn.scheme` names the `Inly\CoreWeb\Media\UrlScheme` that builds the
+transform URLs: `serves()` (which URLs it transforms), `image()`, `video()`
+and `frame()`. `CoreCdnScheme` speaks core-cdn's v1 query params and clamps
+every value to the ranges the CDN accepts.
+
 ## Website content
 
 The site half of Core's Statamic connector API v1.1 (inly-core
@@ -1166,7 +1425,7 @@ Core's key:
 A fix or a proposal is made for a person in Core: the body names them in
 `actor` (`core_user_id`, `name`, `email`), with an optional `summary`,
 `core_request_id` and `core_approval_id`. It is written as their CP account
-(the one single sign-on stamped with their Core user id; a site that keeps
+(the one [CMS sign-in](#cms-sign-in) stamped with their Core user id; a site that keeps
 accounts another way binds its own `Inly\CoreWeb\Content\CoreUsers`), marked
 `via: core-ai`, and refused with `no_cms_user` when they have none. Nothing
 goes live: a fix is a draft, a proposal waits for an editor.
@@ -1175,10 +1434,7 @@ goes live: a fix is a draft, a proposal waits for an editor.
 
 `features.cp_link` adds a link to Core right under Dashboard in the control
 panel, for every CP user, opened in a new tab so unsaved CP work stays open.
-It points at `client.base_url` (`CORE_URL`). On a local machine without one it
-points at the remote Core (`remote.base_url`), once its client id and secret
-are set, since that is the Core the developer's data came from.
-With neither there is no link.
+It points at `client.base_url` (`CORE_URL`); without one there is no link.
 
 The site names the link and may pick its icon, in its own
 `config/core-web.php`; the icon is a Statamic icon name or an SVG, and null
@@ -1190,6 +1446,302 @@ return [
     'cp_link' => ['label' => 'Acme Core', 'icon' => null],
 ];
 ```
+
+## CMS sign-in
+
+`features.cms_sign_in` makes Core the only way into the control panel. The
+CP has no passwords: a person signs in to Core, Core hands them back with an
+envelope sealed with its own key, and the site asks Core again before letting
+them in, so Core's answer, not the envelope, decides what they get. Every CP
+account is created by the hand-off, stamped with `core_user_id`, and holds no
+password.
+
+```php
+return [
+    'features' => ['cms_sign_in' => true],
+    'cms_sign_in' => [
+        // Core CMS grants => Statamic role handles. Admins become super users.
+        'roles' => ['cms_editor' => 'editor'],
+    ],
+];
+```
+
+It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
+app client is the audience of every envelope and the token it calls Core back
+with. No secret is shared with Core.
+
+**Moving a site onto it.** A site that already signs its CP in from Core
+with its own code removes that code in the same change that switches the
+feature on, since both claim the same addresses:
+
+- its hand-off route (usually `/admin-sso`) and controller, and its
+  offboarding route (`/api/core/cms-users/revoke`);
+- its CP login redirect middleware, its SSO user provider and the
+  `auth.providers.*.driver` it set for it (put Statamic's `statamic` back; the
+  feature swaps it);
+- its reconcile command and that command's schedule entry;
+- its own rate limiter and tests for these;
+- any shared hand-off secret (`*_HANDOFF_SECRET`): only Core's own seal is
+  accepted.
+
+Switch the driver back to `statamic` before turning the feature on: with the
+CP guard on any other driver the boot fails, `php artisan` included, so a
+cached config holding the old driver has to be cleared by deleting
+`bootstrap/cache/config.php`.
+
+Map the roles its code granted in `cms_sign_in.roles`, and if its accounts
+are stamped with something other than `core_user_id`, copy that value into
+`core_user_id` first: an account without it can no longer sign in.
+
+| Step | Request | Checks |
+|---|---|---|
+| Sign-in | `/admin/auth/login`, or any CP page a guest opens, redirects to `{core}/sso/cms?site=<key>&next=<path>`; Core hands back `GET /admin-sso?payload=…&signature=…&key_id=…&next=…` | Core's signature, `aud` = `CORE_CLIENT_ID`, expiry, purpose `cms_sso`, a `site` claim naming this site, the nonce spent here |
+| Confirm | `GET {core}/api/app/cms-sso/client/verify?site=<key>&payload=…&signature=…&key_id=…` on the client's token | Core re-reads the person's access and answers `{user_id, name, email, is_admin, cms_roles, purpose}`. Only a 403 `{"error": "not_admitted"}` strips the person; any other failure is a 503 that changes nothing |
+| Offboarding | Core posts `POST /api/core/cms-users/revoke`, sealed to the request (the `X-Core-*` headers, purpose `cms_revoke`), JSON body `{site, user_id, email}` | The account Core provisioned for that person is deleted, by a queued `ForgetCmsUserJob` |
+| Reconcile | `core:reconcile-cms-users` (nightly, `cms_sign_in.reconcile_schedule`) posts `{site, emails}` to `{core}/api/app/cms-users/client/reconcile` on the client's token | Deletes accounts whose person is gone from Core, strips the grant of those without CMS access, takes super from those no longer admins. Every verdict must be complete before anything changes; `--dry-run` reports only |
+
+What the feature holds the CP to:
+
+- Password login, password reset, account activation, registration and
+  passkey login are refused, in the CP and on the front end
+  (`RedirectCpLoginToCore`, a global middleware).
+- An expired CP session never asks for a password: Statamic's CP auth is
+  switched off per request, so the session timer sends the browser to the
+  login page, and from there through Core back to the page it was on.
+- An account without `core_user_id` cannot sign in, and the hand-off never
+  adopts one, whatever its address (`SsoUserProvider`, `CmsUsers::canBind`).
+  The feature switches the CP guard's provider to the `core-web-sso` driver
+  when it is Statamic's own (`statamic`); a site on another driver wires
+  `SsoUserProvider` in itself.
+- Roles assigned by hand outside `cms_sign_in.roles` are left alone; the
+  mapped ones and the super flag are rewritten at every sign-in.
+- Keep `users/` out of git, and out of `statamic.git.paths` where Statamic's
+  git integration commits CP saves: accounts live on the server that created
+  them, and every sign-in saves the account.
+
+**Several sites, one Core.** `cms_sign_in.site` (`CORE_CMS_SITE`) is this
+site's key in Core: the login redirect names it, the hand-off must carry it,
+and the confirm and reconcile calls pass it. Every site needs an app client
+of its own, since the client keeps a hand-off on the right host and the key
+keeps it on the site it was minted for.
+
+**Local development.** A local machine signs in through a local Core, set
+as `CORE_URL` with a client of its own, exactly as a live site does: the
+local Core must know the site under its `cms_sign_in.site` key
+(`CORE_CMS_SITE`, `production` when unset) and serve https (`CORE_CA_BUNDLE`
+for a self-signed certificate). Without one,
+`cms_sign_in.local_password_sign_in` set to `true` restores Statamic's own
+login, and only while `APP_ENV` is `local`; with neither, the CP login
+answers 503, naming both ways in when `APP_DEBUG` is on. Data from production comes
+through `content:login` and `content:pull` / `core:pull`, not through a
+connection to the production Core.
+
+Core serves the other half: `/sso/cms`, the confirm and reconcile routes and
+the offboarding notices. Its paths are `cms_sign_in.core.*`.
+
+## Content pull
+
+`features.content_sync` lets a developer's checkout pull the live site's
+content into its own `content/` directory, signed in as their own CMS user:
+no shared secret, no env var, and no Core needed. The same login lets
+`core:pull` read the live site's Core snapshots (see
+[Pulling production data](#pulling-production-data)), so one sign-in
+covers both. Switch it on in the site's
+`config/core-web.php` (the live site serves the content, the checkout pulls
+it, and both run the same config) and commit the live site's URL there: it
+is the same for every developer, so it is config, not an env var. A
+`content_sync` block that names only `remote_url` keeps every other
+setting's default:
+
+```php
+return [
+    'features' => ['content_sync' => true],
+    'content_sync' => [
+        'remote_url' => 'https://www.example.com',
+    ],
+];
+```
+
+Set the URL the site answers on, not one that redirects there (`example.com`
+to `www.example.com`, `http` to `https`): the checkout follows no redirect,
+since one would carry its token to another address, and names the URL to
+set instead.
+
+```bash
+php artisan content:pull      # every type; signs this machine in first when needed
+php artisan content:pull --only=entries:pages,globals --site=default
+php artisan content:pull --only=assets   # only the asset index (assets:<container> for one)
+php artisan content:pull --dry-run   # what would change; writes nothing
+php artisan content:pull --force     # overwrite (and delete) files changed here too
+php artisan core:pull         # the Core snapshots, on the same login
+php artisan content:login     # optional: sign in ahead of time, or as another user
+php artisan content:logout    # revoke this machine's token
+```
+
+**Signing in.** There is no separate step: a `content:pull` or `core:pull`
+run in a terminal signs the machine in when it has no login, or when the
+site refused the one it had, and then carries on. A site that refuses even
+the login just made (one behind more than one server with the `file` token
+store) stops the run rather than signing in again. `content:login` does the
+same on its own, to sign in ahead of time or as another CMS user, and
+`content:logout` signs out; a run without a terminal never starts a sign-in
+and says to run `content:login`. Signing in prints a link to the live
+site's CP and a code, and opens the browser where it can. The developer
+signs in to the CP the way the site allows (Core single sign-on or a native
+login), checks the code, the machine name (as the machine reports it), the
+address the request came from and how long ago it started, and approves;
+the terminal then gets a personal token that acts as them, so the pull
+reads exactly what they may view (and, for `core:pull`, every Core snapshot
+the site keeps, whole). Approving a machine, and using its token, needs the
+**Pull content** permission (under Core Web in the role editor) besides CP
+access; a super user always may. Signing in
+again revokes the machine's previous token. The token is kept in
+`storage/core-web/remote-site.json` (readable by the developer only, in a
+folder that ignores itself in git) and lives 30 days from its last use
+(`content_sync.token_days`). On the live site only its sha256 is kept
+(`content_sync.tokens`), by default one file per token in
+`storage/app/private/core-web/sync-tokens`. Keep that store private: a disk
+named there is a private one, never the site's public bucket.
+
+A live site behind more than one server, or on a host whose disk does not
+outlive a deploy (Laravel Cloud), keeps its tokens in the database instead:
+a local file is seen by one server only, until the next deploy, so a token
+issued there is refused on the others and the checkout loses its login.
+Set the driver in the site's `config/core-web.php` (committed, not env),
+then publish and run the migration:
+
+```php
+'content_sync' => [
+    'remote_url' => 'https://www.example.com',
+    'tokens' => ['driver' => 'database'], // `connection` and `table` optional
+],
+```
+
+```bash
+php artisan vendor:publish --tag=core-web-sync-tokens-migration
+php artisan migrate
+```
+
+Its own tag publishes this migration alone, so a site that published the
+snapshots migration before does not get a second copy of it. It creates
+`core_web_sync_tokens` on the default connection (or
+`tokens.connection`). Without the table every sync call fails with an error
+naming the migration; it never falls back to files. The **Tools → Content
+sync** page then says to publish and run the migration, or, when the
+database itself cannot be reached, to check the tokens connection; the full
+error goes to the log.
+
+**Pulling.** The live site exports entries (published or not, every site),
+terms, global variables, collection trees and nav trees, each as the exact
+file the Stache writes, at its path under `content/`. Blueprints, fieldsets,
+config, users and form submissions are not pulled, and assets come as an
+index only (below). `content.lock`
+(committed, beside `content/`) holds the hash of every file as last pulled:
+
+- a file unchanged here since the last pull, or missing here, is written,
+  in the key order this checkout's file already has;
+- a file that differs only in key order or in `updated_at`/`updated_by` (as
+  a site on the Eloquent driver exports it) is left as it is, and an entry
+  of a structured collection is never given a `parent`, which its tree holds;
+- a file changed here is left alone and listed, unless `--force`, which
+  still leaves a file whose only difference is key order or save stamps;
+- a file the site no longer has is deleted only when it is unchanged here
+  since the last pull, and only in a collection, taxonomy, global set or
+  nav (and site) the developer may read in full on the site, as each export
+  page reports; otherwise it is listed and kept (a changed one goes with
+  `--force`, one outside what they may read never does).
+
+**A first pull** on a site whose content is already committed has no
+`content.lock` yet, so it cannot tell a local edit from the site's newer
+version. A file exactly as the checkout's last commit has it (in a git
+checkout) counts as unchanged and is updated; any other file that differs
+is skipped and listed. When the checkout holds no edits worth keeping, run
+the first pull with `--force` to take the site's version of every file.
+
+Key order is ignored at every depth, since a site storing content in a
+database JSON column (Postgres `jsonb`, MySQL `JSON`) reorders the keys of
+nested maps on its own. The known limit: reordering the keys of a keyed map
+on the live site (an array fieldtype in keyed mode, say) is not seen as a
+change, so it is not pulled. Reordering a list (replicator sets, a tree) is.
+
+Then the Stache is refreshed. A path the site sends that is not one of its
+type's files under `content/` stops the pull before anything is written,
+nothing is written outside `content/`, and a symlinked file or folder is
+never written or deleted through. The command runs only where `APP_ENV` is
+`local`.
+
+**Assets.** With `features.media` on a checkout without the bucket's key,
+the pull also brings the live site's asset index: for every asset container
+the developer may view there, each file's path, its public URL and its
+stored meta (alt, focus, size, dimensions: the `.meta` file, or the
+database row on Statamic's Eloquent driver), never the file itself. It is written to `storage/core-web/remote-assets/<disk>/` (ignored
+by git), never to the repo or a bucket, and replaced whole on every pull:
+it is disposable, so there is no lock and nothing to keep. The asset disks
+then list the live site's files over the local layer (see
+[Media → The disks](#the-disks)), so the CP shows and renders them and
+`<x-core-img>` points at their public URLs, while uploads stay on the
+laptop. A container the site does not have, or the developer may not view,
+has its index cleared; any other refusal (a proxy's 403, a 500 on a later
+page) fails the pull and keeps the index as it was. A live site on a
+core-web from before the asset export refuses the `assets` type: the pull
+says so, keeps the index and pulls content as usual. A path in the index
+with a way out of the container, or into a `.meta` folder, stops the pull
+before anything is written; a file whose URL is not http(s) on the live
+site's host or its container's is left out (and counted), so the index can
+never have this machine fetch an address the site chose. Oversized `.meta`
+is cut to the keys Statamic writes, the index of a container no longer on
+the disk is removed, and `media:check` reports an index that does not read.
+An assets-only pull does not rebuild the Stache: it clears Statamic's
+listing and path caches for each container itself.
+`content_sync.pull_assets: false` turns this off; the live site only ever
+reads (a file without stored meta there is sent without it, not
+measured).
+
+**Revoking.** **Tools → Content sync** in the live site's CP lists the
+machines signed in as the user (a super user sees everyone's), with when
+each was last used and when it expires, and revokes any of them. A token
+also stops working when its user loses CP access or the Pull content
+permission, or is deleted, and `content:logout` revokes its own (the stored
+one, even after `remote_url` changed).
+
+**Guards.** The sync endpoints answer over HTTPS only (an app running as
+`local` or `testing` excepted). Behind a proxy or load balancer that ends
+TLS, trust it in the site's `TrustProxies` middleware so Laravel sees the
+request as secure; otherwise every sync call is refused. They are
+throttled per token and per address (`content_sync.middleware`, the
+`core-web-sync` limiter), and starting a login has a limiter of its own;
+the CLI reports a 429 with when to retry. A site running as
+`APP_ENV=local` refuses them, so no one pulls from a developer's checkout
+by mistake (`content_sync.allow_local_remote` lets one serve, to try the
+flow between two checkouts), and its CP has no sync pages: no Tools →
+Content sync entry and no approval page. The approval page cannot be framed by another
+site. Pending logins wait in the cache (`content_sync.store`, null for the
+default store), which every server behind the site must share: on more than
+one server that is a `database` or `redis` store, never `file`, or an
+approval made on one server is lost to the machine polling another.
+
+### Building on the login
+
+`Inly\CoreWeb\ContentSync\RemoteSite` is the checkout's client:
+`RemoteSite::fromStorage()` is this machine's login to the configured site
+(null without one), `url()` and `token()` what it signs in with, and
+`get($endpoint, $query)` / `post($endpoint, $data)` call a sync endpoint by
+name (`export`), or any path from the site's root when it starts with `/`,
+with the token as bearer and no redirects followed. The sync endpoints' own
+401 forgets the login and throws `RemoteLoginNeeded`; a site that cannot be
+reached, redirects, rate limits or answers another 401 (basic auth in front
+of a staging host) throws `RemoteSiteError` and keeps the login; a rate limit
+is its `RemoteSiteBusy` subclass, with the seconds the site asked to wait
+(`retryAfter`, null when it named none). On the
+live site, a route behind the `core-web.sync` middleware runs as the
+token's CMS user (`User::current()`).
+
+A command that calls the site uses the `SignsInToRemoteSite` trait (beside
+`RemoteSite`) rather than reading the login itself: `signedInSite()` returns
+the login, starting `content:login` first in a terminal, and
+`signInAgain()` does the same after a `RemoteLoginNeeded`; each returns null,
+with the reason already said, when no login can be had. `content:pull` and
+`core:pull` both sign in through it.
 
 ## Laravel Cloud
 
