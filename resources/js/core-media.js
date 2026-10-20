@@ -32,12 +32,14 @@ const watchPoster = (video) => {
     if (poster.complete) lift(video, 'instant')
 }
 
+const within = (root, selector) => [...(root.matches?.(selector) ? [root] : []), ...root.querySelectorAll(selector)]
+
 const sweep = (root) => {
-    for (const img of root.querySelectorAll(IMAGES)) {
+    for (const img of within(root, IMAGES)) {
         if (img.complete) lift(img, 'instant')
     }
 
-    for (const video of root.querySelectorAll(VIDEOS)) watchPoster(video)
+    for (const video of within(root, VIDEOS)) watchPoster(video)
 }
 
 export default function coreMedia() {

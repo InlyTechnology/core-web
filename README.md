@@ -965,7 +965,8 @@ field (its Value, Collection or query builder), a URL, or a file from Core
   muted (`audio=false` makes them smaller), with a frame of the video as its
   poster (`poster-time`, or `poster` for an image of your own) and a 24px
   version of that poster blurred behind it until the poster or the first
-  frame arrives (`placeholder="none"` turns it off). Anything else plays the
+  frame arrives (`placeholder="none"` turns it off; `media.images.placeholder`
+  sets the default for videos too). Anything else plays the
   file itself. It autoplays muted in a loop by default: `:autoplay`,
   `:muted`, `:loop`, `controls`, `preload`.
 - **`<x-core-media>`**: one or the other, by the source, with each getting only
