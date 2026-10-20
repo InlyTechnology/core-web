@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
@@ -37,6 +38,9 @@ class SnapshotPullThroughSiteTest extends TestCase
     private ?array $core = ['prod-1', 'prod-2'];
 
     private string $token;
+
+    /** @var array<string, mixed> the site's device flow answers, by endpoint, in place of this app's */
+    private array $login = [];
 
     protected function setUp(): void
     {
@@ -90,6 +94,10 @@ class SnapshotPullThroughSiteTest extends TestCase
 
             if ($host !== 'remote.test') {
                 return Http::response('unexpected host', 500);
+            }
+
+            if ($answer = $this->login[basename((string) parse_url($request->url(), PHP_URL_PATH))] ?? null) {
+                return $answer;
             }
 
             $server = ['HTTP_ACCEPT' => 'application/json'];
@@ -295,15 +303,15 @@ class SnapshotPullThroughSiteTest extends TestCase
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'remote.test'));
     }
 
-    public function test_without_a_login_or_a_secret_it_points_at_content_login(): void
+    public function test_without_a_login_or_a_secret_a_run_without_a_terminal_points_at_content_login(): void
     {
         RemoteSite::forget();
 
-        $this->artisan('core:pull')->expectsOutputToContain('not signed in to https://remote.test: run php artisan content:login')->assertFailed();
+        $this->artisan('core:pull', ['--no-interaction' => true])->expectsOutputToContain('not signed in to https://remote.test: run php artisan content:login (or set CORE_REMOTE_CLIENT_SECRET')->assertFailed();
 
         config(['core-web.content_sync.remote_url' => '']);
 
-        $this->artisan('core:pull')->expectsOutputToContain('php artisan content:login, or set CORE_REMOTE_CLIENT_SECRET')->assertFailed();
+        $this->artisan('core:pull')->expectsOutputToContain('set core-web.content_sync.remote_url to pull through the live site, or set CORE_REMOTE_CLIENT_SECRET')->assertFailed();
         Http::assertNothingSent();
     }
 
@@ -311,9 +319,73 @@ class SnapshotPullThroughSiteTest extends TestCase
     {
         app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
 
-        $this->artisan('core:pull')->expectsOutputToContain('run php artisan content:login')->assertFailed();
+        $this->artisan('core:pull', ['--no-interaction' => true])->expectsOutputToContain('refused this machine\'s login: run php artisan content:login')->assertFailed();
 
         $this->assertNull(RemoteSite::fromStorage());
+    }
+
+    public function test_in_a_terminal_it_signs_in_first_and_pulls(): void
+    {
+        RemoteSite::forget();
+        $this->approveLoginsWith($this->token);
+
+        $this->artisan('core:pull')
+            ->expectsOutputToContain('not signed in to https://remote.test yet')
+            ->expectsOutputToContain('Signed in to https://remote.test as Boss')
+            ->expectsOutputToContain('things: 2 documents pinned from remote.test')
+            ->assertSuccessful();
+
+        $this->assertSame(['prod-1', 'prod-2'], $this->documents());
+        $this->assertSame($this->token, RemoteSite::fromStorage()->token());
+    }
+
+    public function test_in_a_terminal_a_refused_login_signs_in_again_and_pulls(): void
+    {
+        app(SyncTokens::class)->revoke(app(SyncTokens::class)->all()[0]);
+        $fresh = $this->tokenFor($this->cmsUser('boss@example.com', super: true));
+        $this->approveLoginsWith($fresh);
+
+        $this->artisan('core:pull')
+            ->expectsOutputToContain('refused this machine\'s login; signing in again')
+            ->expectsOutputToContain('things: 2 documents pinned from remote.test')
+            ->assertSuccessful();
+
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/sync/snapshots/things') && $request->header('Authorization') === ['Bearer '.$fresh]);
+    }
+
+    public function test_in_a_terminal_a_failed_sign_in_pins_nothing(): void
+    {
+        RemoteSite::forget();
+        Sleep::fake();
+        Process::fake();
+        $this->fakeLoginEndpoints(Http::response(['error' => 'access_denied'], 400));
+
+        $this->artisan('core:pull')->expectsOutputToContain('denied')->assertFailed();
+
+        $this->assertNull($this->store()->pinned(app(SnapshotRegistry::class)->get('things')));
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/sync/snapshots/'));
+    }
+
+    /** The site's device flow approves at once and hands out the given token; every other call reaches this app. */
+    private function approveLoginsWith(string $token): void
+    {
+        Sleep::fake();
+        Process::fake();
+        $this->fakeLoginEndpoints(Http::response(['token' => $token, 'expires_at' => now()->addDays(30)->toIso8601String(), 'user' => ['name' => 'Boss', 'email' => 'boss@example.com']]));
+    }
+
+    private function fakeLoginEndpoints($tokenResponse): void
+    {
+        $this->login = [
+            'device' => Http::response([
+                'device_code' => 'device-code',
+                'user_code' => 'BCDF-GHJK',
+                'verification_uri_complete' => 'https://remote.test/cp/core-web/sync/authorize?code=BCDF-GHJK',
+                'expires_in' => 600,
+                'interval' => 5,
+            ]),
+            'token' => $tokenResponse,
+        ];
     }
 
     public function test_the_endpoint_runs_behind_the_sync_guards(): void

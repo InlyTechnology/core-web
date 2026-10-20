@@ -16,6 +16,8 @@ use Statamic\Facades\Site;
  */
 class ContentPullCommand extends Command
 {
+    use SignsInToRemoteSite;
+
     protected $signature = 'content:pull
         {--only= : Types to pull, comma separated, each optionally narrowed to a handle (entries:pages,globals); every type when omitted}
         {--site= : Only this site\'s content}
@@ -61,9 +63,7 @@ class ContentPullCommand extends Command
         try {
             [$items, $coverage] = $this->fetch($local, $remote, $scopes, $site);
         } catch (RemoteLoginNeeded) {
-            if (! $this->input->isInteractive() || $this->call('content:login') !== self::SUCCESS || ($remote = RemoteSite::fromStorage()) === null) {
-                $this->error('The remote site refused this machine\'s login: run php artisan content:login.');
-
+            if (($remote = $this->signInAgain()) === null) {
                 return self::FAILURE;
             }
 
@@ -118,23 +118,7 @@ class ContentPullCommand extends Command
             return null;
         }
 
-        if ($remote = RemoteSite::fromStorage()) {
-            return $remote;
-        }
-
-        if (! $this->input->isInteractive()) {
-            $this->error('This machine is not signed in to '.RemoteSite::configuredUrl().': run php artisan content:login first.');
-
-            return null;
-        }
-
-        $this->line('This machine is not signed in to '.RemoteSite::configuredUrl().' yet.');
-
-        if ($this->call('content:login') !== self::SUCCESS) {
-            return null;
-        }
-
-        return RemoteSite::fromStorage();
+        return $this->signedInSite();
     }
 
     /**
