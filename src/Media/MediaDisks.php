@@ -35,6 +35,14 @@ final class MediaDisks
     public static function define(Application $app): void
     {
         $config = $app['config'];
+
+        // A cached config already holds the disks defined here, so it carries the list too.
+        if ($app->configurationIsCached()) {
+            self::$defined = array_values((array) $config->get('core-web.media.defined_disks', []));
+
+            return;
+        }
+
         self::$defined = [];
 
         foreach ((array) $config->get('core-web.media.disks', []) as $disk => $folder) {
@@ -50,6 +58,8 @@ final class MediaDisks
                 self::$defined[] = (string) $disk;
             }
         }
+
+        $config->set('core-web.media.defined_disks', self::$defined);
     }
 
     /** Whether core-web defined the disk, rather than the app's own config/filesystems.php. */

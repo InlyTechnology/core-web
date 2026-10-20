@@ -2,12 +2,16 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Exception;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Tests\TestCase;
+use RuntimeException;
 use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
+use Statamic\Facades\Image;
+use Statamic\Tags\Tags;
 
 class MediaComponentsTest extends TestCase
 {
@@ -177,5 +181,103 @@ class MediaComponentsTest extends TestCase
         } finally {
             File::deleteDirectory($root);
         }
+    }
+
+    public function test_a_local_asset_gets_a_srcset_of_the_glide_presets_narrower_than_itself(): void
+    {
+        $this->withLocalAssets(function (callable $asset): void {
+            $html = Blade::render('<x-core-img :src="$asset" />', ['asset' => $asset('photo.jpg', 1200)]);
+
+            $this->assertStringContainsString('src="/assets/photo.jpg"', $html);
+            $this->assertMatchesRegularExpression('#srcset="[^"]*p=w640[^"]* 640w, [^"]*p=w1080[^"]* 1080w, /assets/photo\.jpg 1200w"#', $html);
+            $this->assertStringNotContainsString('w1600', $html);
+            $this->assertStringContainsString('sizes="100vw"', $html);
+
+            $html = Blade::render('<x-core-img :src="$asset" sizes="50vw" />', ['asset' => $asset('photo.jpg', 1200)]);
+            $this->assertStringContainsString('sizes="50vw"', $html);
+        });
+    }
+
+    public function test_glide_presets_are_not_offered_for_an_svg_a_url_or_an_image_the_cdn_serves(): void
+    {
+        $this->withLocalAssets(function (callable $asset): void {
+            File::put(config('filesystems.disks.local_assets.root').'/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>');
+
+            $html = Blade::render('<x-core-img :src="$svg" /><x-core-img src="/assets/photo.jpg" /><x-core-img :src="$cdn" placeholder="none" />', [
+                'svg' => $asset('logo.svg'),
+                'cdn' => Asset::make()->container(AssetContainer::make('cdn_assets')->disk('cdn_assets'))->path('photo.jpg'),
+            ]);
+
+            $this->assertStringNotContainsString('srcset', $html);
+            $this->assertStringNotContainsString('sizes', $html);
+            $this->assertStringContainsString('src="'.e(self::CDN.'/photo.jpg?format=auto').'"', $html);
+        });
+    }
+
+    public function test_a_failing_glide_render_leaves_the_plain_image(): void
+    {
+        $this->withLocalAssets(function (callable $asset): void {
+            app('statamic.tags')['glide'] = FailingGlideTag::class;
+
+            $html = Blade::render('<x-core-img :src="$asset" />', ['asset' => $asset('photo.jpg', 1200)]);
+
+            $this->assertStringContainsString('src="/assets/photo.jpg"', $html);
+            $this->assertStringNotContainsString('srcset', $html);
+            $this->assertStringNotContainsString('sizes', $html);
+        });
+    }
+
+    public function test_a_glide_render_the_tag_swallows_leaves_the_plain_image(): void
+    {
+        $this->withLocalAssets(function (callable $asset): void {
+            Image::shouldReceive('manipulate')->andThrow(new Exception('Glide is down'));
+
+            $html = Blade::render('<x-core-img :src="$asset" />', ['asset' => $asset('photo.jpg', 1200)]);
+
+            $this->assertStringContainsString('src="/assets/photo.jpg"', $html);
+            $this->assertStringNotContainsString('srcset', $html);
+            $this->assertStringNotContainsString('sizes', $html);
+        });
+    }
+
+    /** @param  callable(callable(string, int=): \Statamic\Contracts\Assets\Asset): void  $test */
+    private function withLocalAssets(callable $test): void
+    {
+        $root = sys_get_temp_dir().'/core-web-media-glide-'.uniqid();
+        File::ensureDirectoryExists($root);
+        config([
+            'filesystems.disks.local_assets' => ['driver' => 'local', 'root' => $root, 'url' => '/assets'],
+            'filesystems.disks.cdn_assets' => ['driver' => 'local', 'root' => $root, 'url' => self::CDN],
+            'statamic.assets.image_manipulation.presets' => [
+                'w1600' => ['w' => 1600],
+                'w640' => ['w' => 640],
+                'w1080' => ['w' => 1080],
+                'card' => ['w' => 400, 'h' => 300],
+            ],
+        ]);
+        $container = AssetContainer::make('local_assets')->disk('local_assets');
+
+        try {
+            $test(function (string $path, int $width = 0) use ($root, $container) {
+                if ($width > 0) {
+                    $image = imagecreatetruecolor($width, (int) round($width * 2 / 3));
+                    imagejpeg($image, $root.'/'.$path);
+                }
+
+                return Asset::make()->container($container)->path($path);
+            });
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+}
+
+class FailingGlideTag extends Tags
+{
+    protected static $handle = 'glide';
+
+    public function index(): string
+    {
+        throw new RuntimeException('Glide is down');
     }
 }

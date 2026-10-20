@@ -6,6 +6,22 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,
+  PNG or WebP) the CDN does not serve a srcset from the site's `w<px>` Glide
+  presets narrower than the original, plus the original at its own width,
+  with `sizes` defaulting to `100vw`. A site without such presets renders as
+  before. See README → Media → The components.
+- **Gravity on the CDN scheme**: `UrlScheme::image()` takes `gravity`, an
+  `"XxY"` point as fractions of the image, clamped to 0-1 (core-cdn's
+  `gravity`), so a site's own crops (an og:image) keep the editor's focal
+  point without building the query string itself.
+- **`media:check` after `optimize`**: on a server whose config is cached (every
+  Forge deploy), `media:check` and `content:pull`'s asset index took
+  core-web's own disks for the app's. They now know which disks core-web
+  defined.
+
 ## v0.20.0
 
 - **Site rules**: `rules/CoreWebRulesTest.php`, run by Inly's site gate

@@ -197,6 +197,17 @@ class MediaDisksTest extends TestCase
         $this->define('staging', ['core-web.media.disks' => ['assets' => '/']]);
     }
 
+    public function test_a_cached_config_still_knows_which_disks_core_web_defined(): void
+    {
+        $this->define('production');
+        // As after `php artisan optimize`: the disk is in the config, so define() would otherwise take it for the app's.
+        $this->app->instance('config_loaded_from_cache', true);
+
+        MediaDisks::define($this->app);
+
+        $this->assertTrue(MediaDisks::defines('assets'));
+    }
+
     public function test_media_check_says_when_the_app_defines_the_disk_itself(): void
     {
         config(['filesystems.disks.assets' => ['driver' => 'local', 'root' => '/elsewhere']]);
