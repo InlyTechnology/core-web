@@ -65,6 +65,8 @@ class CloudTest extends TestCase
         $this->assertSame('database', config('core-web.snapshots.store_driver'));
         $this->assertSame('half', config('statamic.static_caching.strategy'));
         $this->assertFalse(config('statamic.git.enabled'));
+        $this->assertTrue(config('statamic.revisions.enabled'));
+        $this->assertTrue(config('statamic.editions.pro'));
         $this->assertFalse(config('statamic.stache.watcher'));
         $this->assertSame('file', config('cache.stores.outpost.driver'), 'the build runs artisan before the cache table exists');
         $this->assertTrue(CloudDefaults::contentInDatabase());

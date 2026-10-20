@@ -21,6 +21,9 @@ final class CloudDefaults
         'statamic.static_caching.strategy' => ['STATAMIC_STATIC_CACHING_STRATEGY', 'half'],
         // Content lives in the database on Cloud; a CP save has nothing to commit.
         'statamic.git.enabled' => ['STATAMIC_GIT_ENABLED', false],
+        // Every Cloud site keeps revisions (stored with the content); a collection still opts in with `revisions: true`, and they need Pro.
+        'statamic.revisions.enabled' => ['STATAMIC_REVISIONS_ENABLED', true],
+        'statamic.editions.pro' => ['STATAMIC_PRO_ENABLED', true],
         'cache.default' => ['CACHE_STORE', 'database'],
         'session.driver' => ['SESSION_DRIVER', 'database'],
         'app.maintenance.driver' => ['APP_MAINTENANCE_DRIVER', 'cache'],

@@ -1206,6 +1206,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
+| Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 
 An env var the environment sets keeps its own value, including one Cloud
 itself injects when a resource is attached (a cache cluster sets
