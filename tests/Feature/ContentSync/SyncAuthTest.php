@@ -48,6 +48,24 @@ class SyncAuthTest extends TestCase
         return $this->postJson('/!/core-web/sync/token', ['device_code' => $deviceCode]);
     }
 
+    public function test_a_token_says_who_it_signs_in_as(): void
+    {
+        $this->roles(['editor' => ['access cp', 'pull content', 'view pages entries'], 'author' => ['access cp']]);
+        $ann = $this->cmsUser('ann@example.com', roles: ['editor', 'author']);
+        [$token] = app(SyncTokens::class)->issue($ann, 'ann@laptop');
+
+        $this->withToken($token)->getJson('/!/core-web/sync/me')->assertOk()->assertExactJson([
+            'id' => (string) $ann->id(),
+            'name' => (string) $ann->name(),
+            'email' => 'ann@example.com',
+            'super' => false,
+            'roles' => ['editor', 'author'],
+            'groups' => [],
+        ]);
+
+        $this->flushHeaders()->getJson('/!/core-web/sync/me')->assertStatus(401);
+    }
+
     public function test_a_machine_is_signed_in_once_a_cp_user_approves_it(): void
     {
         $device = $this->startLogin();

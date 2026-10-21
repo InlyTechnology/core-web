@@ -17,6 +17,9 @@ final class SyncLimits
 
     public const DEVICE = 'core-web-sync-device';
 
+    /** Entries relayed from a local checkout are real leads, so a test run cannot send a flood of them. */
+    public const FORM_ENTRIES = 'core-web-sync-form-entries';
+
     public static function register(): void
     {
         // A token gets its own allowance, and the address one big enough for a few machines behind one office NAT.
@@ -26,5 +29,7 @@ final class SyncLimits
         ])));
 
         RateLimiter::for(self::DEVICE, fn (Request $request) => Limit::perMinute(10)->by('device:'.$request->ip()));
+
+        RateLimiter::for(self::FORM_ENTRIES, fn (Request $request) => Limit::perMinute(10)->by('form-entries:'.SyncTokens::hash((string) $request->bearerToken())));
     }
 }

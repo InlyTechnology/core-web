@@ -91,12 +91,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | This site's Core
+    |--------------------------------------------------------------------------
+    |
+    | The Core this site belongs to and its app client id, committed: the same
+    | on every server, so no environment sets them. They fill client.base_url
+    | and client.client_id wherever CORE_URL / CORE_CLIENT_ID are unset, except
+    | where APP_ENV is local or testing (a checkout reaches production through
+    | the live site, and a test never reaches a real Core).
+    |
+    */
+
+    'core' => [
+        'url' => '',
+        'client_id' => '',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Core API client
     |--------------------------------------------------------------------------
     |
     | The Inly Core install this site reads, server to server, with a Passport
-    | client_credentials client (Inly\CoreWeb\Client\CoreClient): CORE_URL,
-    | CORE_CLIENT_ID and CORE_CLIENT_SECRET.
+    | client_credentials client (Inly\CoreWeb\Client\CoreClient). CORE_URL and
+    | CORE_CLIENT_ID override `core` above where an environment pairs with
+    | another Core (a staging Core, a local backoffice); CORE_CLIENT_SECRET is
+    | always env.
     |
     | ca_bundle: local only, a CA bundle for Core's self-signed certificate
     | (CORE_CA_BUNDLE).
@@ -412,11 +432,15 @@ return [
     | timeouts: seconds to connect to Core, to read a definition (from a pull,
     | never a render) and to send an entry, files included.
     |
+    | relay_max_upload_bytes: the files one entry may carry through the form
+    | relay of a local checkout (README → Forms on a local checkout).
+    |
     */
 
     'forms' => [
         'classes' => [],
         'submit_rate_limit' => 5,
+        'relay_max_upload_bytes' => 10 * 1024 * 1024,
         'timeouts' => [
             'connect' => 3,
             'definition' => 5,
@@ -587,6 +611,15 @@ return [
     | storage/core-web/remote-assets. False keeps those disks the plain
     | local folder.
     |
+    | push: whether this site takes `content:push` from a checkout: entries
+    | as drafts (working copies, new entries unpublished; the collections in
+    | drafts.collections), globals and navigation trees as proposals (with
+    | features.drafts on, whose CP page decides them). Pushing needs the
+    | "Push content" permission. False keeps the site pull only.
+    | push_items: the most files one push carries.
+    | push_bytes: the most content (all files together) one push carries.
+    | push_asset_bytes: the largest asset file a push uploads.
+    |
     */
 
     'content_sync' => [
@@ -608,6 +641,10 @@ return [
             'request' => 30,
         ],
         'pull_assets' => true,
+        'push' => true,
+        'push_items' => 200,
+        'push_bytes' => 10 * 1024 * 1024,
+        'push_asset_bytes' => 20 * 1024 * 1024,
     ],
 
     /*

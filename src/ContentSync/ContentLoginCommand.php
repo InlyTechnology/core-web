@@ -16,6 +16,8 @@ use Throwable;
  */
 class ContentLoginCommand extends Command
 {
+    use ReportsProgress;
+
     protected $signature = 'content:login
         {--no-browser : Print the link without trying to open a browser}';
 
@@ -54,6 +56,7 @@ class ContentLoginCommand extends Command
         $this->line("Approve this machine at <href={$link}>{$link}</>");
         $this->line('and check that it shows the code <info>'.$device->json('user_code').'</info>.');
         $this->openBrowser($link);
+        $this->line('Waiting for the approval in the browser…');
 
         return $this->poll($url, (string) $device->json('device_code'), max(1, (int) $device->json('interval', 5)), max(1, (int) $device->json('expires_in', 600)));
     }
@@ -63,6 +66,7 @@ class ContentLoginCommand extends Command
         $waited = 0;
 
         while ($waited < $expiresIn) {
+            $this->progress(sprintf('Waiting… %s left before the code expires.', self::duration($expiresIn - $waited)));
             Sleep::for($interval)->seconds();
             $waited += $interval;
 
@@ -75,9 +79,14 @@ class ContentLoginCommand extends Command
             if ($answer->status() === 429) {
                 $retry = $answer->header('Retry-After');
                 $interval = max($interval + 5, ctype_digit($retry) ? (int) $retry : 0);
+                $this->endProgress();
                 $this->warn("{$url} is rate limiting this machine (HTTP 429); checking every {$interval} seconds now.");
 
                 continue;
+            }
+
+            if ($answer->json('error') !== 'authorization_pending' && $answer->json('error') !== 'slow_down') {
+                $this->endProgress();
             }
 
             try {
@@ -118,9 +127,15 @@ class ContentLoginCommand extends Command
             }
         }
 
+        $this->endProgress();
         $this->error('The code expired before it was approved. Run php artisan content:login again.');
 
         return self::FAILURE;
+    }
+
+    private static function duration(int $seconds): string
+    {
+        return $seconds > 60 ? (int) ceil($seconds / 60).' min' : $seconds.' s';
     }
 
     /** Best effort: a terminal that cannot open a browser still has the link printed above. */

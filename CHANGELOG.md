@@ -6,6 +6,48 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Progress while pulling**: `content:login` says it is waiting for the
+  approval and counts down the code's time, and `content:pull` and
+  `core:pull` show a live count per type and asset container while they
+  page. Only on a terminal: piped output and logs get the result lines alone.
+- **Agent rules for media**: `resources/agents/AGENTS.md` now says the bucket
+  key is for servers only, that a checkout gets assets with `content:pull
+  --only=assets` (and a stale local key must go), how to move a site's own
+  bucket disk onto core-web's, and that local uploads never reach
+  production. README → Media gains "Moving a site's own bucket disk onto
+  these".
+- **Content push**: `content:push` sends a checkout's changed entries,
+  globals and nav trees to the live site as drafts and proposals, never live,
+  with the local media files they name. A file changed on the site since the
+  pull is refused unless `--force`; the push is all-or-nothing unless
+  `--partial`. Needs the new **Push content** permission. `content.lock`
+  gains `bases` (written by `content:pull`), `pushed` and `drafts`. Docs: README →
+  Content push.
+- **Local CP sign-in through the live site**: a local checkout without
+  `CORE_URL` signs its CP in after `php artisan content:login`, as a local
+  account mirroring the developer's live-site account (super flag, roles,
+  groups), re-checked with the live site on every sign-in. The live site
+  answers a new sync endpoint, `me`, so it needs this version first. See
+  README → CMS sign-in → Local development.
+- **Core forms on a local checkout**: without a `CORE_URL`, a local checkout
+  signed in with `content:login` sends its Core forms through the live site:
+  `CoreForms::embedBaseUrl()` gives Core's embed the local relay, and
+  `CoreForm` entries are sent on by the live site with its client token. The
+  live site relays only the forms in its own form list. Entries are real, and
+  `<x-core-web::forms.relay-notice />` says so. Both sides need the release.
+  See README → Forms → Forms on a local checkout.
+- **The site's Core is committed, not env**: `core.url` and `core.client_id`
+  in `config/core-web.php` name the Core a site belongs to and fill
+  `client.base_url` / `client.client_id` on every server where neither
+  `CORE_URL` nor `CORE_CLIENT_ID` is set (never where `APP_ENV` is `local` or
+  `testing`). `CORE_URL` and `CORE_CLIENT_ID` become overrides, set together,
+  for an environment paired with another Core. Once a site commits `core.url`,
+  an empty `CORE_URL` no longer leaves a server unpaired: every server not on
+  `local` pairs with that Core. `core-web:doctor` fails a local checkout
+  whose `CORE_URL` names a remote Core. See README → Configuration.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

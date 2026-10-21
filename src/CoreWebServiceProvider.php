@@ -18,6 +18,7 @@ use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
@@ -33,6 +34,7 @@ use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
 use Inly\CoreWeb\ContentSync\ContentLoginCommand;
 use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
 use Inly\CoreWeb\ContentSync\ContentPullCommand;
+use Inly\CoreWeb\ContentSync\ContentPushCommand;
 use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
 use Inly\CoreWeb\ContentSync\GuardSyncRequests;
 use Inly\CoreWeb\ContentSync\LocalContent;
@@ -113,6 +115,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
+            SiteCore::apply($this->app);
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -326,13 +330,21 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadViews();
         $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
         $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
-        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class]);
+
+        // A local checkout's Core forms, through the live site; never on a server.
+        if (self::enabled('forms') && $this->app->environment(['local', 'testing'])) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/forms-relay.php');
+        }
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class]);
         SyncLimits::register();
 
         Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {
             Permission::register(AuthenticateSyncToken::PERMISSION)
                 ->label(__('core-web::sync.permission'))
                 ->description(__('core-web::sync.permission_description'));
+            Permission::register(AuthenticateSyncToken::PUSH_PERMISSION)
+                ->label(__('core-web::sync.push_permission'))
+                ->description(__('core-web::sync.push_permission_description'));
         }));
 
         // A site that refuses every sync call has no machines to approve or tokens to list.

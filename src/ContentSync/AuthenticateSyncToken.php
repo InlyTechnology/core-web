@@ -30,6 +30,9 @@ class AuthenticateSyncToken
     /** Needed, besides CP access, to approve a machine and to use its token; a super user always may. */
     public const PERMISSION = 'pull content';
 
+    /** Needed besides it to push content as drafts and proposals; a super user always may. */
+    public const PUSH_PERMISSION = 'push content';
+
     public function __construct(private SyncTokens $tokens) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -66,6 +69,11 @@ class AuthenticateSyncToken
     public static function mayPull(User $user): bool
     {
         return $user->isSuper() || ($user->hasPermission('access cp') && $user->hasPermission(self::PERMISSION));
+    }
+
+    public static function mayPush(?User $user): bool
+    {
+        return $user !== null && ($user->isSuper() || (self::mayPull($user) && $user->hasPermission(self::PUSH_PERMISSION)));
     }
 
     /** The guard holds what the user provider returns: the Eloquent model behind an Eloquent user. */

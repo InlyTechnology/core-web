@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Inly\CoreWeb\CmsSignIn\HandoffController;
+use Inly\CoreWeb\CmsSignIn\LocalSignInController;
 use Inly\CoreWeb\CmsSignIn\RevokeController;
 
 // The paths are the ones Core is told for this site, so a site that moves them moves them in Core too.
@@ -14,3 +15,10 @@ Route::get((string) config('core-web.cms_sign_in.path', 'admin-sso'), HandoffCon
 Route::post((string) config('core-web.cms_sign_in.revoke.path', 'api/core/cms-users/revoke'), RevokeController::class)
     ->middleware((array) config('core-web.cms_sign_in.revoke.middleware', []))
     ->name((string) config('core-web.cms_sign_in.revoke.name', 'core-web.cms-users.revoke'));
+
+// A local checkout without Core signs in through the live site; the controller refuses anywhere LocalSignIn does not apply.
+if (app()->environment(['local', 'testing'])) {
+    Route::get(trim((string) config('statamic.routes.action', '!'), '/').'/core-web/local-sign-in', LocalSignInController::class)
+        ->middleware(['web', 'throttle:core-web.cms-sign-in'])
+        ->name('core-web.local-sign-in');
+}

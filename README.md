@@ -66,7 +66,7 @@ nothing.
 | Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
 | Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
-| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull` and `content:push` (see [Content pull](#content-pull) and [Content push](#content-push)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -94,8 +94,9 @@ shares with the backoffice under the backoffice's own names:
 
 | Env | Config key | Meaning |
 |---|---|---|
-| `CORE_URL` | `client.base_url` | The Core install's URL |
-| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
+| — | `core.url` / `core.client_id` | Committed, not env: the Core this site belongs to and its app client id. Fill `client.base_url` / `client.client_id` on every server where neither `CORE_URL` nor `CORE_CLIENT_ID` is set; never where `APP_ENV` is `local` or `testing`, so a checkout runs with exactly `APP_ENV=local`. A server meant to have no Core cannot opt out with an empty `CORE_URL`: once `core.url` is committed, every server not on `local` pairs with it |
+| `CORE_URL` | `client.base_url` | Override only: a Core other than the committed one (a staging site paired with a staging Core, a local backoffice). A local checkout never points it at a remote Core: the live site stands in for Core there (`content:login`), and `core-web:doctor` fails on one |
+| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client: `CORE_URL` and `CORE_CLIENT_ID` override `core` together or not at all (one without the other leaves the client incomplete, which the doctor fails); the secret is always env |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
@@ -984,6 +985,42 @@ knows. When Core's contract changes, replace the copy and catch up on what
 fails. A field type the reader does not know renders as a text input and is
 logged.
 
+### Forms on a local checkout
+
+A local checkout without a Core (no `CORE_URL`) sends its Core forms
+through the live site, on the machine's `content:login`, so they render and
+submit locally with no Core secret. It needs `forms` and `content_sync` on
+both sides and `APP_ENV=local` here; a server never relays.
+
+- **Core's embed**: give it `CoreForms::embedBaseUrl()` as its Core address
+  and load its script from under it (`/public/forms/embed/v1.js`). That is
+  the site's Core when one is set, and otherwise the local relay, which
+  forwards the embed's definition, nonce and submit calls to the live site.
+  The live site sends them on to its Core as its own origin, so the form's
+  origin allowlist needs nothing for local work. `CoreForms::isRelayed()`
+  says which.
+- **`CoreForm` classes**: their entries go to the live site, which sends them
+  with its own client token.
+- **Only the live site's own forms**: the live site relays a form only when
+  it is in its form list (the `core-web-forms` snapshot), and lets one
+  machine send 10 entries a minute.
+- **Only this machine**: the local relay answers a loopback peer
+  (127.0.0.0/8, `::1`) with no proxy or forwarding header (`X-Forwarded-For`,
+  `Via`, …) and is a 404 to anything else, so a LAN visitor or a shared
+  tunnel cannot send entries on the developer's login. A page served to
+  anyone else gets no relay either: `embedBaseUrl()` is null there. A site
+  run in Docker (Sail, DDEV) sees the bridge's address as the peer, so it is
+  not covered: run the site on the host (Herd, `php artisan serve`) to use
+  the relay.
+- **Uploads**: one entry carries at most 10 MB of files through the relay
+  (`core-web.forms.relay_max_upload_bytes`); more is a 413.
+
+What a relayed form sends is a real entry. `<x-core-web::forms.relay-notice />`
+says so above the form while forms are relayed, and renders nothing
+otherwise; a `CoreForm` shows it by itself, an embed needs it placed beside
+it. A form whose Core uses Turnstile cannot be relayed: Turnstile binds its
+answer to the page's host.
+
 ## Media
 
 `features.media` renders a site's pictures and videos through the
@@ -1143,6 +1180,33 @@ block keeps the package's defaults for what it leaves out, one group deep
 Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
 `social_images`). For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
+
+### Moving a site's own bucket disk onto these
+
+A site with a hand-rolled S3 disk keeps its bucket paths and URLs. With an
+old disk of `root: web` and `url: https://cdn.example.com/site/storage/`:
+
+```php
+'media' => [
+    'bucket' => [
+        'endpoint' => 'https://ams3.digitaloceanspaces.com',
+        'region' => 'ams3',
+        'bucket' => 'site',
+        'url' => 'https://cdn.example.com/site/storage',
+    ],
+    'disks' => ['assets' => 'web'],   // the folder the files already sit in
+],
+```
+
+The disk's key is `root/<folder>`, as before, and its URLs are
+`url/root/<folder>/<path>`. Then point the container at the disk (`disk:
+assets` in `content/assets/<container>.yaml`), delete the old disk from
+`config/filesystems.php` and its variables from `.env.example`, and set
+`CORE_MEDIA_KEY`/`CORE_MEDIA_SECRET` on every server before the deploy that
+switches (a server without them falls back to the local folder). A server
+that runs a non-production `APP_ENV` while it serves the live site sets
+`CORE_MEDIA_LAYER=false` until launch. Developers delete the old variables
+from their `.env` and run `content:pull --only=assets`.
 
 ### On Laravel Cloud
 
@@ -1475,7 +1539,7 @@ return [
 ];
 ```
 
-It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
+It needs the site's Core (`core.url` / `core.client_id`, or `CORE_URL` / `CORE_CLIENT_ID`) and `CORE_CLIENT_SECRET`: the site's
 app client is the audience of every envelope and the token it calls Core back
 with. No secret is shared with Core.
 
@@ -1538,10 +1602,18 @@ keeps it on the site it was minted for.
 as `CORE_URL` with a client of its own, exactly as a live site does: the
 local Core must know the site under its `cms_sign_in.site` key
 (`CORE_CMS_SITE`, `production` when unset) and serve https (`CORE_CA_BUNDLE`
-for a self-signed certificate). Without one,
+for a self-signed certificate). Without one, a checkout with `content_sync`
+on signs in through the live site instead: after `php artisan content:login`,
+the CP login asks the live site who the machine's token belongs to (its sync
+API's `me`) and signs into a local account mirroring that one's super flag,
+roles and groups, stamped `core_web_live_user_id`. It asks on every sign-in,
+so a revoked machine or a changed grant lands at the next one, and the live
+site must run a core-web that answers `me`. A local account Core
+provisioned (`core_user_id`) is never taken over, and the mirrored account
+stops resolving once the machine's login is gone (`content:logout`). Offline,
 `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's own
-login, and only while `APP_ENV` is `local`; with neither, the CP login
-answers 503, naming both ways in when `APP_DEBUG` is on. Data from production comes
+login, and only while `APP_ENV` is `local`; with none of these, the CP login
+answers 503, naming the ways in when `APP_DEBUG` is on. Data from production comes
 through `content:login` and `content:pull` / `core:pull`, not through a
 connection to the production Core.
 
@@ -1689,7 +1761,7 @@ it is disposable, so there is no lock and nothing to keep. The asset disks
 then list the live site's files over the local layer (see
 [Media → The disks](#the-disks)), so the CP shows and renders them and
 `<x-core-img>` points at their public URLs, while uploads stay on the
-laptop. A container the site does not have, or the developer may not view,
+laptop until `content:push` carries them (see [Content push](#content-push)). A container the site does not have, or the developer may not view,
 has its index cleared; any other refusal (a proxy's 403, a 500 on a later
 page) fails the pull and keeps the index as it was. A live site on a
 core-web from before the asset export refuses the `assets` type: the pull
@@ -1752,6 +1824,80 @@ the login, starting `content:login` first in a terminal, and
 with the reason already said, when no login can be had. `content:pull` and
 `core:pull` both sign in through it.
 
+## Content push
+
+`content:push` sends what a developer changed in `content/` back to the live
+site, never live: an entry becomes a draft an editor publishes in the CP
+(a working copy of a published entry, or a new unpublished entry), and a
+global's values or a navigation tree becomes a proposal an editor applies
+(see [Drafts](#drafts) and [Proposals](#proposals)). Nothing is published,
+deleted or moved in a tree, and a push makes one proposal per global set or
+nav and site. It uses the same login as [Content pull](#content-pull) and
+is on wherever `content_sync` is (`content_sync.push: false` on the live
+site refuses it).
+
+```bash
+php artisan content:push            # every changed entry, global and nav tree
+php artisan content:push --only=entries:pages,globals --site=default
+php artisan content:push --dry-run  # what the site would do; writes nothing
+php artisan content:push --partial  # push the files that pass, list the rest
+php artisan content:push --force    # skip the "changed on the site since the pull" check
+```
+
+**What is sent.** Each file under `content/collections`, `content/globals`
+or `content/navigation` whose hash differs from `content.lock` and from
+what this checkout last pushed. Collection trees (the page order) and terms
+are not pushed: they stay CP edits. An entry is pushed only into a
+collection the drafts feature covers (`drafts.collections`), and a proposal
+needs `features.drafts`. A new entry keeps the id the checkout gave it and,
+in a structured collection, is placed under its local parent. At most
+`content_sync.push_items` (200) files go in one push; narrow a larger one
+with `--only` or `--site`.
+
+**Never undoing the site.** A pull records, per file, the site's hash of
+the version it wrote (`bases` in `content.lock`). A push names it, and the
+site refuses a file whose live version has changed since (`base_changed`),
+so a push never reverts an editor's edit. An entry with an open working
+copy this checkout did not push (even the developer's own, made in the CP)
+is refused too (`working_copy`). `--force` skips both checks but never the
+drafts' own guard: a working copy someone else holds is still refused.
+Files pulled before this check existed have no base; pull again, or push
+with `--force`, which says which files it cannot check. The whole push is
+checked first and written only when every file passes; with `--partial`
+the passing ones are written and the refused ones listed. Two files that
+are the same entry refuse each other (`duplicate`). A refusal the check
+could not foresee, the site changing between the check and the write,
+still leaves the files before it written. Each refused file prints its
+reason, and the command exits non-zero. One push carries at most
+`content_sync.push_bytes` (10 MB) of content in all.
+
+**The lock.** A push does not change what the lock says was pulled: the
+draft is not live, so the next pull still sees the site's version. The
+pushed hashes go under `pushed`, so an unchanged file is not sent twice,
+and each entry's draft as the site hashed it after the push goes under
+`drafts`, so pushing the same entry again goes over the checkout's own
+draft rather than being taken for a change made on the site.
+
+**Assets.** A file in the local media layer (see [Media → The disks](#the-disks))
+that a pushed file names by its path is uploaded to the same path on the
+site first, with its alt text and focal point. It never overwrites: a path
+the site already has with the same bytes is skipped, and one with other
+bytes refuses the file that names it. Nothing is deleted. Uploading needs
+the container's upload permission (and folder creation for a new folder),
+the path's extension must be the file's own and one the CP takes, the
+container's file rules apply as in the CP, and a file may be at most
+`content_sync.push_asset_bytes` (20 MB). An uploaded asset is on the site
+(and public, on a public container) as soon as it is stored, even when the
+files naming it are then refused.
+
+**Permissions.** Pushing needs the **Push content** permission (under Core
+Web) besides Pull content; a super user always may. Drafts and proposals
+are written as the token's CMS user, as the drafts feature writes any
+draft, with provenance `content-push` (who, which machine, the git commit)
+and the message "Pushed by <name> from <machine>". A push never sets or clears an entry's
+`author`. The command runs only
+where `APP_ENV` is `local`.
+
 ## Laravel Cloud
 
 Laravel Cloud resets the disk on every deploy, so what editors write cannot
@@ -1786,7 +1932,8 @@ The site does its half once:
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
   Statamic's eloquent users write.
 - Give the `users` table a column for every key the site stores on a user
-  (an SSO site's `core_user_id`, for instance): eloquent users write each
+  (an SSO site's `core_user_id`, and `core_web_live_user_id` where a local
+  checkout signs in through the live site, for instance): eloquent users write each
   data key as a column.
 - Publish core-web's migrations (`--tag=core-web-migrations`: the
   snapshots store and the content sync tokens) whenever anything uses them:
@@ -1859,7 +2006,7 @@ what the switched-on features need from the environment it runs in, offline:
 
 | Check | Fails when |
 |---|---|
-| Core client | `CORE_URL`, `CORE_CLIENT_ID` or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on. On a local machine without `CORE_URL`, a warning: snapshots and content come from `core:pull` / `content:pull` |
+| Core client | The Core URL, client id (`core.*` or `CORE_URL` / `CORE_CLIENT_ID`) or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on; or a local checkout's `CORE_URL` names a remote Core (anything but localhost, a private address, `host.docker.internal`, `*.test`, `*.localhost`, `*.local`, `*.ddev.site`, `*.lndo.site`). On a local machine without `CORE_URL`, a warning: snapshots and content come from `core:pull` / `content:pull` |
 | Queue | `QUEUE_CONNECTION` is `sync` in production with `snapshots` or `cms_sign_in` on; a warning on other servers, skipped locally |
 | Schedule | Never: it lists the commands the features schedule and warns when one's schedule was set to `null` |
 | Pings | Never: it warns while `WEBSITE_SYNC_SECRET` is still set |

@@ -72,11 +72,11 @@ class HandoffController
         Auth::guard((string) config('statamic.users.guards.cp', 'web'))->login($user);
         $request->session()->regenerate();
 
-        return redirect($this->safeNext($request->query('next')) ?? cp_route('index'));
+        return redirect(self::safeNext($request->query('next')) ?? cp_route('index'));
     }
 
     /** Only a same-site path may ride along, or the hand-off is an open redirect. */
-    private function safeNext(mixed $next): ?string
+    public static function safeNext(mixed $next): ?string
     {
         if (! is_string($next) || ! str_starts_with($next, '/') || str_starts_with($next, '//')) {
             return null;
