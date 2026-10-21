@@ -17,5 +17,7 @@ Route::prefix(trim((string) config('statamic.routes.action', '!'), '/').'/core-w
         Route::post('token', 'token')->name('token');
         Route::post('logout', 'logout')->middleware(AuthenticateSyncToken::ALIAS)->name('logout');
         Route::get('export', 'export')->middleware(AuthenticateSyncToken::ALIAS)->name('export');
+        Route::post('push', 'push')->middleware(AuthenticateSyncToken::ALIAS)->name('push');
+        Route::post('push/asset', 'pushAsset')->middleware(AuthenticateSyncToken::ALIAS)->name('push.asset');
         Route::get('snapshots/{type}', 'snapshot')->middleware(AuthenticateSyncToken::ALIAS)->where('type', '[A-Za-z0-9_.-]+')->name('snapshot');
     });

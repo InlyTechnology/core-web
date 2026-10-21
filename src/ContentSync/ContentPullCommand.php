@@ -348,7 +348,7 @@ class ContentPullCommand extends Command
      */
     private function apply(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site, array $items, array $coverage): bool
     {
-        $lock = $local->lock()['items'];
+        ['items' => $lock, 'bases' => $bases] = $local->lock();
         $plan = ['new' => [], 'changed' => [], 'deleted' => [], 'skipped' => [], 'kept' => [], 'unread' => []];
         $writes = [];
         $deletes = [];
@@ -360,6 +360,7 @@ class ContentPullCommand extends Command
 
             if ($current === $item['hash']) {
                 $lock[$path] = $item['hash'];
+                $bases[$path] = $item['hash'];
 
                 continue;
             }
@@ -376,6 +377,7 @@ class ContentPullCommand extends Command
             // Key order or a save stamp alone (a site on the Eloquent driver) is no change: this file stays as it is.
             if ($contents !== null && ContentFile::same($path, $item['contents'], $contents)) {
                 $lock[$path] = $current;
+                $bases[$path] = $item['hash'];
 
                 continue;
             }
@@ -393,6 +395,7 @@ class ContentPullCommand extends Command
             $plan[$current === null ? 'new' : 'changed'][] = $path;
             $writes[$path] = ContentFile::merge($item['type'], $path, $item['contents'], $contents);
             $lock[$path] = hash('sha256', $writes[$path]);
+            $bases[$path] = $item['hash'];
         }
 
         foreach (array_keys($lock) as $path) {
@@ -405,7 +408,7 @@ class ContentPullCommand extends Command
             $current = $local->hash($path);
 
             if ($current === null) {
-                unset($lock[$path]);
+                unset($lock[$path], $bases[$path]);
             } elseif (! self::readable($coverage[self::key($scope)] ?? null, $scope['type'], $path)) {
                 // Missing from the export may only mean hidden from this user: never a reason to delete.
                 $plan['unread'][] = $path;
@@ -413,7 +416,7 @@ class ContentPullCommand extends Command
                 $local->assertWritable($path);
                 $plan['deleted'][] = $path;
                 $deletes[] = $path;
-                unset($lock[$path]);
+                unset($lock[$path], $bases[$path]);
             } else {
                 $plan['kept'][] = $path;
             }
@@ -433,7 +436,7 @@ class ContentPullCommand extends Command
             $local->delete($path);
         }
 
-        $local->writeLock($remote->url(), $lock);
+        $local->writeLock($remote->url(), $lock, array_intersect_key($bases, $lock));
 
         $this->info(sprintf('Pulled from %s: %d new, %d changed, %d deleted.', $remote->url(), count($plan['new']), count($plan['changed']), count($plan['deleted'])));
 

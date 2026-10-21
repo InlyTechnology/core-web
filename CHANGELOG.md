@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Content push**: `content:push` sends a checkout's changed entries,
+  globals and nav trees to the live site as drafts and proposals, never live,
+  with the local media files they name. A file changed on the site since the
+  pull is refused unless `--force`; the push is all-or-nothing unless
+  `--partial`. Needs the new **Push content** permission. `content.lock`
+  gains `bases` (written by `content:pull`) and `pushed`. Docs: README →
+  Content push.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

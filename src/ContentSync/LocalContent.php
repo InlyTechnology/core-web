@@ -97,30 +97,76 @@ class LocalContent
         File::delete($this->absolute($path));
     }
 
-    /** @return array{remote: ?string, pulled_at: ?string, items: array<string, string>} */
+    /**
+     * `items`: each file's hash as last pulled here. `bases`: the site's own
+     * hash of the version each file was last pulled from, which a push names
+     * as what its change was made against. `pushed`: each file's hash as last
+     * pushed, so a file unchanged since is not pushed again.
+     *
+     * @return array{remote: ?string, pulled_at: ?string, items: array<string, string>, bases: array<string, string>, pushed: array<string, string>}
+     */
     public function lock(): array
     {
         $data = is_file($this->lockFile) ? json_decode((string) file_get_contents($this->lockFile), true) : null;
 
         if (! is_array($data)) {
-            return ['remote' => null, 'pulled_at' => null, 'items' => []];
+            return ['remote' => null, 'pulled_at' => null, 'items' => [], 'bases' => [], 'pushed' => []];
         }
 
-        $items = array_filter((array) ($data['items'] ?? []), fn (mixed $hash, mixed $path) => is_string($path) && is_string($hash) && ContentPaths::safe($path), ARRAY_FILTER_USE_BOTH);
-
-        return ['remote' => $data['remote'] ?? null, 'pulled_at' => $data['pulled_at'] ?? null, 'items' => $items];
+        return [
+            'remote' => $data['remote'] ?? null,
+            'pulled_at' => $data['pulled_at'] ?? null,
+            'items' => self::hashes($data['items'] ?? []),
+            'bases' => self::hashes($data['bases'] ?? []),
+            'pushed' => self::hashes($data['pushed'] ?? []),
+        ];
     }
 
-    /** @param  array<string, string>  $items */
-    public function writeLock(string $remote, array $items): void
+    /**
+     * After a pull: the lock's `pushed` is kept for the files the pull left as they were.
+     *
+     * @param  array<string, string>  $items
+     * @param  array<string, string>  $bases
+     */
+    public function writeLock(string $remote, array $items, array $bases = []): void
+    {
+        $pushed = array_filter($this->lock()['pushed'], fn (string $hash, string $path) => ($items[$path] ?? null) !== $hash && $this->hash($path) === $hash, ARRAY_FILTER_USE_BOTH);
+
+        $this->put($remote, CarbonImmutable::now()->toIso8601String(), $items, $bases, $pushed);
+    }
+
+    /** @param  array<string, string>  $pushed */
+    public function writePushed(array $pushed): void
+    {
+        $lock = $this->lock();
+
+        $this->put((string) $lock['remote'], $lock['pulled_at'], $lock['items'], $lock['bases'], $pushed);
+    }
+
+    /**
+     * @param  array<string, string>  $items
+     * @param  array<string, string>  $bases
+     * @param  array<string, string>  $pushed
+     */
+    private function put(string $remote, ?string $pulledAt, array $items, array $bases, array $pushed): void
     {
         ksort($items);
+        ksort($bases);
+        ksort($pushed);
 
-        File::put($this->lockFile, json_encode([
+        File::put($this->lockFile, json_encode(array_filter([
             'remote' => $remote,
-            'pulled_at' => CarbonImmutable::now()->toIso8601String(),
+            'pulled_at' => $pulledAt,
             'items' => $items,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
+            'bases' => $bases === [] ? null : $bases,
+            'pushed' => $pushed === [] ? null : $pushed,
+        ], fn (mixed $value) => $value !== null), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
+    }
+
+    /** @return array<string, string> */
+    private static function hashes(mixed $map): array
+    {
+        return array_filter((array) $map, fn (mixed $hash, mixed $path) => is_string($path) && is_string($hash) && ContentPaths::safe($path), ARRAY_FILTER_USE_BOTH);
     }
 
     /** Statamic reads content/ through the Stache, which knows nothing of files written behind its back. */

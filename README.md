@@ -66,7 +66,7 @@ nothing.
 | Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
 | Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
-| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout` and `content:pull` (see [Content pull](#content-pull)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull` and `content:push` (see [Content pull](#content-pull) and [Content push](#content-push)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -1689,7 +1689,7 @@ it is disposable, so there is no lock and nothing to keep. The asset disks
 then list the live site's files over the local layer (see
 [Media → The disks](#the-disks)), so the CP shows and renders them and
 `<x-core-img>` points at their public URLs, while uploads stay on the
-laptop. A container the site does not have, or the developer may not view,
+laptop until `content:push` carries them (see [Content push](#content-push)). A container the site does not have, or the developer may not view,
 has its index cleared; any other refusal (a proxy's 403, a 500 on a later
 page) fails the pull and keeps the index as it was. A live site on a
 core-web from before the asset export refuses the `assets` type: the pull
@@ -1751,6 +1751,68 @@ the login, starting `content:login` first in a terminal, and
 `signInAgain()` does the same after a `RemoteLoginNeeded`; each returns null,
 with the reason already said, when no login can be had. `content:pull` and
 `core:pull` both sign in through it.
+
+## Content push
+
+`content:push` sends what a developer changed in `content/` back to the live
+site, never live: an entry becomes a draft an editor publishes in the CP
+(a working copy of a published entry, or a new unpublished entry), and a
+global's values or a navigation tree becomes a proposal an editor applies
+(see [Drafts](#drafts) and [Proposals](#proposals)). Nothing is published,
+deleted or moved in a tree, and a push makes one proposal per global set or
+nav and site. It uses the same login as [Content pull](#content-pull) and
+is on wherever `content_sync` is (`content_sync.push: false` on the live
+site refuses it).
+
+```bash
+php artisan content:push            # every changed entry, global and nav tree
+php artisan content:push --only=entries:pages,globals --site=default
+php artisan content:push --dry-run  # what the site would do; writes nothing
+php artisan content:push --partial  # push the files that pass, list the rest
+php artisan content:push --force    # skip the "changed on the site since the pull" check
+```
+
+**What is sent.** Each file under `content/collections`, `content/globals`
+or `content/navigation` whose hash differs from `content.lock` and from
+what this checkout last pushed. Collection trees (the page order) and terms
+are not pushed: they stay CP edits. An entry is pushed only into a
+collection the drafts feature covers (`drafts.collections`), and a proposal
+needs `features.drafts`. A new entry keeps the id the checkout gave it and,
+in a structured collection, is placed under its local parent. At most
+`content_sync.push_items` (200) files go in one push; narrow a larger one
+with `--only` or `--site`.
+
+**Never undoing the site.** A pull records, per file, the site's hash of
+the version it wrote (`bases` in `content.lock`). A push names it, and the
+site refuses a file whose live version has changed since (`base_changed`),
+so a push never reverts an editor's edit. `--force` skips that check but
+never the drafts' own guard: a working copy someone else holds is still
+refused. Files pulled before this check existed have no base; pull again,
+or push with `--force`. The whole push is checked first and written only
+when every file passes; with `--partial` the passing ones are written and
+the refused ones listed. Each refused file prints its reason (validation, a
+blueprint change, a moved entry), and the command exits non-zero.
+
+**The lock.** A push does not change what the lock says was pulled: the
+draft is not live, so the next pull still sees the site's version. The
+pushed hashes go under `pushed`, so an unchanged file is not sent twice;
+each is dropped once the file changes again or a pull brings it.
+
+**Assets.** A file in the local media layer (see [Media → The disks](#the-disks))
+that a pushed file names by its path is uploaded to the same path on the
+site first, with its alt text and focal point. It never overwrites: a path
+the site already has with the same bytes is skipped, and one with other
+bytes refuses the file that names it. Nothing is deleted. Uploading needs
+the container's upload permission (and folder creation for a new folder),
+the container's file rules apply as in the CP, and a file may be at most
+`content_sync.push_asset_bytes` (20 MB).
+
+**Permissions.** Pushing needs the **Push content** permission (under Core
+Web) besides Pull content; a super user always may. Drafts and proposals
+are written as the token's CMS user, as the drafts feature writes any
+draft, with provenance `content-push` (who, which machine, the git commit)
+and the message "Pushed by <name> from <machine>". The command runs only
+where `APP_ENV` is `local`.
 
 ## Laravel Cloud
 
