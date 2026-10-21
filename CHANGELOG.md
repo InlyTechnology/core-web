@@ -44,9 +44,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `CORE_URL` nor `CORE_CLIENT_ID` is set (never where `APP_ENV` is `local` or
   `testing`). `CORE_URL` and `CORE_CLIENT_ID` become overrides, set together,
   for an environment paired with another Core. Once a site commits `core.url`,
-  an empty `CORE_URL` no longer leaves a server unpaired: a staging server
-  meant to have no Core needs `APP_ENV=local` or its own pair. `core-web:doctor` fails a local checkout whose
-  `CORE_URL` names a remote Core. See README → Configuration.
+  an empty `CORE_URL` no longer leaves a server unpaired: every server not on
+  `local` pairs with that Core. `core-web:doctor` fails a local checkout
+  whose `CORE_URL` names a remote Core. See README → Configuration.
 
 ## v0.21.0
 

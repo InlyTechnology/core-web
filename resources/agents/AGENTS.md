@@ -76,9 +76,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   (and `root` for any prefix above the folder), map the container's disk to the folder its files already sit in
   (`media.disks`), point the container's `disk:` at it, delete the old disk and its env vars from `.env.example`, and set
   `CORE_MEDIA_KEY`/`_SECRET` on every server before the deploy that switches.
-- **A file uploaded locally stays local** (`public/media-layer/`, never committed). An image an entry needs in
-  production is uploaded in the live site's CP; content that names a local-only file renders a missing image
-  there.
+- **A file uploaded locally stays local** (`public/media-layer/`, never committed) until `content:push` sends it
+  with the content that names it, at the same path and never over another file. Content that names a local-only
+  file and is not pushed renders a missing image in production.
 - `php artisan media:check` checks the disks, the bucket's headers and a CDN rendition, and says on a checkout
   whether the asset index has been pulled.
 
