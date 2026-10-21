@@ -413,4 +413,75 @@ class ContentPushTest extends TestCase
 
         $this->push(['--force' => true])->expectsOutputToContain('pulled before the lock kept bases')->assertSuccessful();
     }
+
+    public function test_publishing_needs_the_site_to_allow_it(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['--publish' => true])->expectsOutputToContain('does not publish pushed content')->assertFailed();
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_a_published_push_goes_live_and_the_next_push_needs_no_pull(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Live now');
+        $this->edit('globals/default/settings.yaml', "'123'", "'456'");
+        File::ensureDirectoryExists($this->root.'/collections/articles');
+        file_put_contents($this->root.'/collections/articles/news.md', "---\nid: news-1\nblueprint: article\ntitle: News\n---\n");
+
+        $this->push(['--publish' => true])
+            ->expectsOutputToContain('3 published or applied, 0 left for an editor')
+            ->assertSuccessful();
+
+        $home = Entry::find('home');
+        $this->assertSame('Live now', $home->get('title'));
+        $this->assertFalse($home->hasWorkingCopy());
+        $this->assertTrue(Entry::find('news-1')->published());
+        $this->assertSame('456', GlobalSet::find('settings')->in('default')->get('phone'));
+        $this->assertSame([], app(Proposals::class)->open());
+        $this->assertSame('publish', $home->revisions()->last()->action());
+
+        $this->edit('collections/pages/home.md', 'title: Live now', 'title: Live again');
+        $this->edit('globals/default/settings.yaml', "'456'", "'789'");
+        $this->push(['--publish' => true])->expectsOutputToContain('2 published or applied')->assertSuccessful();
+        $this->assertSame('Live again', Entry::find('home')->get('title'));
+        $this->assertSame('789', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_what_the_person_may_not_publish_stays_a_draft(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->roles([
+            'editor' => ['access cp', 'pull content', 'push content', 'view pages entries', 'edit pages entries', 'access default site'],
+        ]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('pia@example.com', roles: ['editor'])), ['name' => 'Pia', 'email' => 'pia@example.com'], now()->addDays(30)->toIso8601String());
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['--publish' => true, '--only' => 'entries'])
+            ->expectsOutputToContain('working_copy')
+            ->expectsOutputToContain('0 published or applied, 1 left for an editor')
+            ->assertSuccessful();
+
+        $home = Entry::find('home');
+        $this->assertSame('Home', $home->get('title'));
+        $this->assertSame('Mine', $home->fromWorkingCopy()->get('title'));
+    }
+
+    public function test_a_partial_publish_makes_only_the_written_files_live(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: Also mine');
+        Entry::find('about')->set('title', 'Theirs')->save();
+
+        $this->push(['--publish' => true, '--partial' => true])->expectsOutputToContain('1 refused')->assertFailed();
+
+        $this->assertSame('Mine', Entry::find('home')->get('title'));
+        $this->assertSame('Theirs', Entry::find('about')->get('title'));
+    }
 }

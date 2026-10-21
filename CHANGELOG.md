@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`content:push --publish`**: on a live site with
+  `content_sync.push_publish` on (off by default), a push publishes its
+  drafts and applies its proposals once every file is written, as the
+  pushing person and within their CP permissions; what they may not publish
+  stays a draft. See README → Content push → Publishing.
+
 ## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the

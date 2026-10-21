@@ -20,8 +20,9 @@ use Throwable;
  * Sends what changed in content/ since the last pull to the live site, as
  * drafts and proposals an editor publishes or applies there (ContentPush),
  * with the files uploaded here that they name (AssetPush). Nothing it sends
- * goes live by itself, and content.lock records only what was pushed: the
- * live site is unchanged until an editor acts, and the next pull brings it.
+ * goes live by itself unless `--publish` asks and the site allows it, and
+ * content.lock records only what was pushed: the live site is unchanged
+ * until an editor acts, and the next pull brings it.
  */
 class ContentPushCommand extends Command
 {
@@ -32,7 +33,8 @@ class ContentPushCommand extends Command
         {--site= : Only this site\'s content}
         {--dry-run : Check every file on the site and write nothing}
         {--partial : Write the files that pass even when others are refused}
-        {--force : Push over a change made on the site since the last pull (never over someone else\'s draft)}';
+        {--force : Push over a change made on the site since the last pull (never over someone else\'s draft)}
+        {--publish : Publish the drafts and apply the proposals once all are written, within your permissions (core-web.content_sync.push_publish on the site)}';
 
     protected $description = 'Push content/ changes to the remote site (core-web.content_sync.remote_url) as drafts and proposals';
 
@@ -139,6 +141,7 @@ class ContentPushCommand extends Command
             'git_sha' => $this->gitSha(),
             'partial' => (bool) $this->option('partial'),
             'force' => (bool) $this->option('force'),
+            'publish' => (bool) $this->option('publish'),
         ];
 
         $checked = $this->request($remote, [...$payload, 'dry_run' => true]);
@@ -177,7 +180,9 @@ class ContentPushCommand extends Command
 
         $pushed = $local->lock()['pushed'];
         $drafts = [];
+        $bases = [];
         $written = 0;
+        $live = 0;
 
         foreach ($result['results'] as $item) {
             if ($item['status'] !== ContentPush::STATUS_REFUSED && isset($files[$item['path']])) {
@@ -187,15 +192,29 @@ class ContentPushCommand extends Command
                 if (is_string($item['draft'] ?? null)) {
                     $drafts[$item['path']] = $item['draft'];
                 }
+
+                if (in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true)) {
+                    $live++;
+
+                    if (is_string($item['base'] ?? null)) {
+                        $bases[$item['path']] = $item['base'];
+                    }
+                }
             }
         }
 
         if ($result['written'] ?? false) {
-            $local->writePushed($pushed, $drafts);
+            $local->writePushed($pushed, $drafts, $bases);
         }
 
         $failed = count($result['results']) - $written;
-        $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
+
+        if ($this->option('publish')) {
+            $waiting = $written - $live - count(array_filter($result['results'], fn (array $item) => $item['status'] === ContentPush::STATUS_UNCHANGED));
+            $this->info(sprintf('Pushed to %s: %d published or applied, %d left for an editor in the CP, %d refused.', $remote->url(), $live, $waiting, $failed));
+        } else {
+            $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
+        }
 
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
@@ -501,6 +520,10 @@ class ContentPushCommand extends Command
             }
 
             $this->line($line.(isset($result['cp_url']) ? "  {$result['cp_url']}" : ''));
+
+            if (isset($result['not_published'])) {
+                $this->line("  <comment>{$result['not_published']}</comment>");
+            }
         }
     }
 }

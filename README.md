@@ -1827,7 +1827,7 @@ with the reason already said, when no login can be had. `content:pull` and
 ## Content push
 
 `content:push` sends what a developer changed in `content/` back to the live
-site, never live: an entry becomes a draft an editor publishes in the CP
+site, never live unless asked (see **Publishing** below): an entry becomes a draft an editor publishes in the CP
 (a working copy of a published entry, or a new unpublished entry), and a
 global's values or a navigation tree becomes a proposal an editor applies
 (see [Drafts](#drafts) and [Proposals](#proposals)). Nothing is published,
@@ -1842,6 +1842,7 @@ php artisan content:push --only=entries:pages,globals --site=default
 php artisan content:push --dry-run  # what the site would do; writes nothing
 php artisan content:push --partial  # push the files that pass, list the rest
 php artisan content:push --force    # skip the "changed on the site since the pull" check
+php artisan content:push --publish  # make it live, where the site allows it (below)
 ```
 
 **What is sent.** Each file under `content/collections`, `content/globals`
@@ -1877,6 +1878,20 @@ pushed hashes go under `pushed`, so an unchanged file is not sent twice,
 and each entry's draft as the site hashed it after the push goes under
 `drafts`, so pushing the same entry again goes over the checkout's own
 draft rather than being taken for a change made on the site.
+
+**Publishing.** `--publish` makes the push live on a site that allows it
+(`content_sync.push_publish: true` on the live site; off by default, and
+the site refuses a `--publish` push otherwise). Every file is first written
+as above, and only then is each draft published and each proposal applied,
+as the pushing person and within their own CP permissions: an entry they
+may not publish (or one its collection's rules keep unpublished, such as a
+missing required image) stays a draft, and a proposal they may not apply
+stays open, each listed with the reason. A publish saves a revision, so it
+is undone in the CP like any other. When a file is refused while writing,
+nothing is published; with `--partial` the written files are. A published
+or applied file's new site version goes into the lock's `bases`, so the
+next push of it needs no pull first. `--publish` is separate from
+`--force`, which only skips the "changed on the site" check.
 
 **Assets.** A file in the local media layer (see [Media → The disks](#the-disks))
 that a pushed file names by its path is uploaded to the same path on the

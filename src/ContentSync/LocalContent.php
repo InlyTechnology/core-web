@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -144,12 +145,13 @@ class LocalContent
     /**
      * @param  array<string, string>  $pushed
      * @param  array<string, string>  $drafts
+     * @param  array<string, string>  $bases  the site's version of what a push published or applied, which drops its draft
      */
-    public function writePushed(array $pushed, array $drafts = []): void
+    public function writePushed(array $pushed, array $drafts = [], array $bases = []): void
     {
         $lock = $this->lock();
 
-        $this->put((string) $lock['remote'], $lock['pulled_at'], $lock['items'], $lock['bases'], $pushed, [...$lock['drafts'], ...$drafts]);
+        $this->put((string) $lock['remote'], $lock['pulled_at'], $lock['items'], [...$lock['bases'], ...$bases], $pushed, [...Arr::except($lock['drafts'], array_keys($bases)), ...$drafts]);
     }
 
     /**

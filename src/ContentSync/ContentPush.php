@@ -33,7 +33,11 @@ use Throwable;
  * it was pulled from (`base`), so a push never undoes a change made on the
  * site since. The whole push is checked first and written only when every
  * file passes, unless it asks to write the ones that do (`partial`).
- * Collection trees (the page order) and terms stay CP edits.
+ * Collection trees (the page order) and terms stay CP edits. A push that
+ * asks to publish (`publish`, on a site with `content_sync.push_publish`)
+ * then publishes each draft and applies each proposal as the person, once
+ * every file was written: what their permissions do not allow stays a draft
+ * or proposal.
  */
 class ContentPush
 {
@@ -42,6 +46,10 @@ class ContentPush
     public const STATUS_UNCHANGED = 'unchanged';
 
     public const STATUS_REFUSED = 'refused';
+
+    public const STATUS_PUBLISHED = 'published';
+
+    public const STATUS_APPLIED = 'applied';
 
     public const TYPES = ['entries', 'globals', 'nav-trees'];
 
@@ -55,7 +63,7 @@ class ContentPush
      * @param  array<int, string>  $refusedAssets  item index => why an asset it names cannot be pushed
      * @return array{written: bool, results: list<array<string, mixed>>}
      */
-    public function push(DraftAuthor $author, array $items, bool $partial, bool $force, bool $dryRun, array $refusedAssets = []): array
+    public function push(DraftAuthor $author, array $items, bool $partial, bool $force, bool $dryRun, array $refusedAssets = [], bool $publish = false): array
     {
         $checked = [];
         $duplicates = self::duplicates($items);
@@ -83,7 +91,76 @@ class ContentPush
                 : $this->one($author, $item, $force, false);
         }
 
+        if ($publish) {
+            $results = $this->publishAll($author, $results, $partial);
+        }
+
         return ['written' => true, 'results' => $results];
+    }
+
+    /**
+     * Publishes the drafts and applies the proposals a push wrote. Only a push written whole goes live
+     * (or, with `partial`, the files that were written), so a late refusal leaves everything for an editor.
+     *
+     * @param  list<array<string, mixed>>  $results
+     * @return list<array<string, mixed>>
+     */
+    private function publishAll(DraftAuthor $author, array $results, bool $partial): array
+    {
+        $refused = collect($results)->contains(fn (array $result) => $result['status'] === self::STATUS_REFUSED);
+
+        if ($refused && ! $partial) {
+            return array_map(fn (array $result) => in_array($result['status'], [self::STATUS_REFUSED, self::STATUS_UNCHANGED], true)
+                ? $result
+                : [...$result, 'not_published' => __('core-web::sync.push_publish_skipped')], $results);
+        }
+
+        return array_map(fn (array $result) => match (true) {
+            in_array($result['status'], [DraftWriter::STATUS_WORKING_COPY, DraftWriter::STATUS_DRAFT_ENTRY], true) && is_string($result['entry_id'] ?? null) => $this->publishEntry($author, $result),
+            $result['status'] === self::STATUS_PROPOSAL && is_string($result['proposal_id'] ?? null) => $this->applyProposal($author, $result),
+            default => $result,
+        }, $results);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function publishEntry(DraftAuthor $author, array $result): array
+    {
+        try {
+            $published = $this->writer->publish($author, $result['entry_id']);
+        } catch (DraftRefused|ValidationException $e) {
+            return [...$result, 'not_published' => $e->getMessage()];
+        }
+
+        $entry = Entry::find($result['entry_id']);
+
+        return [
+            ...Arr::except($result, ['draft', 'preview_url']),
+            'status' => self::STATUS_PUBLISHED,
+            'url' => $published['url'] ?? null,
+            'base' => $entry ? self::hash('entries', $entry)['hash'] ?? null : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function applyProposal(DraftAuthor $author, array $result): array
+    {
+        $type = (string) self::typeOf($result['path']);
+
+        try {
+            $this->proposals->apply($result['proposal_id'], $author->user);
+        } catch (DraftRefused $e) {
+            return [...$result, 'not_published' => $e->getMessage()];
+        }
+
+        [, $stored] = $type === 'globals' ? $this->globalTarget($result['path']) : $this->navTarget($result['path']);
+
+        return [...$result, 'status' => self::STATUS_APPLIED, 'base' => self::hash($type, $stored)['hash'] ?? null];
     }
 
     /**
@@ -274,6 +351,7 @@ class ContentPush
             'path' => $path,
             'status' => self::STATUS_PROPOSAL,
             'target' => $target->key(),
+            'proposal_id' => $result['id'] ?? null,
             'changed' => array_keys((array) ($result['changed'] ?? [])),
             'cp_url' => $result['cp_url'] ?? null,
         ];

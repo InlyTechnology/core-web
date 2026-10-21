@@ -46,7 +46,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
 - **Local content changes reach the live site only through `content:push`**, as drafts and proposals an editor
   publishes in the CP, with the local media files they name. Pull before pushing: a file changed on the site since
-  the pull is refused.
+  the pull is refused. `--publish` makes a push live only where the site sets `content_sync.push_publish`; never
+  turn that on for a site without the user's say.
 
 ## CMS sign-in (`cms_sign_in`)
 

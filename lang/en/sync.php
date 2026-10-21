@@ -61,6 +61,8 @@ return [
     'push_too_large' => 'The push is too large; narrow it with --only or --site.',
     'push_asset_path' => '[:path] is not a path an upload may name.',
     'push_asset_missing' => 'The asset :path this file names has not reached the site.',
+    'push_publish_off' => 'This site does not publish pushed content (core-web.content_sync.push_publish is off). Push without --publish and publish in the CP.',
+    'push_publish_skipped' => 'Not published: another file in this push was refused, so everything waits for an editor.',
     'push_asset_request' => 'Send the container, the path and the file.',
     'local_login_needed' => 'This local site signs its control panel in through :site, and this machine is not signed in there (or its login expired or was revoked). Run php artisan content:login, then reload.',
     'local_site_unreachable' => 'Could not ask :site who this machine is signed in as (:reason). Try again in a minute.',
