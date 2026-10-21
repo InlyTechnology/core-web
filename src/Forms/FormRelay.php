@@ -26,13 +26,67 @@ final class FormRelay
     /** The headers of the embed's own calls that Core reads; every other one stays on this side. */
     private const FORWARDED_HEADERS = ['Accept', 'X-Core-Form-Site-Key', 'X-Core-Form-Nonce'];
 
-    /** Whether this checkout may relay at all: local, with forms and content sync on, and signed in to the live site. */
+    /** What the local relay says when the live site answers for no relay at all. */
+    public const NO_RELAY = 'The live site does not offer the form relay: update core-web there and switch its forms feature on.';
+
+    /**
+     * Whether this checkout may relay at all: local, with forms and content
+     * sync on, signed in to the live site, and asked from this machine itself
+     * (RestrictToLoopback), so a page served to anyone else carries no relay.
+     */
     public static function available(): bool
     {
         return app()->environment('local')
             && CoreWebServiceProvider::enabled('forms')
             && CoreWebServiceProvider::enabled('content_sync')
+            && RestrictToLoopback::allows(request())
             && RemoteSite::fromStorage() !== null;
+    }
+
+    /** The live site's own origin, from its configured URL: the address Core allows its embeds from, never the Host a caller chose. */
+    public static function siteOrigin(): ?string
+    {
+        $parts = parse_url((string) config('app.url'));
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        return strtolower($parts['scheme']).'://'.strtolower($parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
+    }
+
+    /** An entry's uploads, refused before they are read: one that did not arrive whole, or all of them past the relay's limit. */
+    public static function refusesUploads(Request $request): ?JsonResponse
+    {
+        $total = 0;
+
+        foreach (self::parts($request->allFiles()) as [, $file]) {
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            if (! $file->isValid()) {
+                return self::error('invalid_upload', 'A file did not arrive whole; try again.', 422);
+            }
+
+            $total += (int) $file->getSize();
+        }
+
+        $limit = (int) config('core-web.forms.relay_max_upload_bytes', 10485760);
+
+        if ($total > $limit) {
+            return self::error('payload_too_large', 'The files are larger than the form relay takes ('.intdiv($limit, 1048576).' MB in all).', 413);
+        }
+
+        return null;
+    }
+
+    /** Turnstile binds its answer to the page's host, which a relayed page never is, so such an entry is refused here with the reason. */
+    public static function refusesTurnstile(Request $request): ?JsonResponse
+    {
+        return $request->headers->has('Cf-Turnstile-Response')
+            ? self::error('turnstile_not_relayable', 'Turnstile forms cannot be relayed from a local checkout: Turnstile only accepts answers from the live site\'s own pages.', 422)
+            : null;
     }
 
     /** The embed has no Core address of its own here, so it loads through the relay. */

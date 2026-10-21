@@ -191,11 +191,17 @@ final class CoreForms
         return $this->store->documents($this->snapshot)[$key] ?? null;
     }
 
+    /** @return list<string> the keys of the Core forms the site's form classes post to */
+    public static function renderedKeys(): array
+    {
+        return array_map(fn (string $class) => $class::coreForm(), self::classes());
+    }
+
     /** @return array<string, mixed>|null the form's row, by its uuid */
     public function formByUuid(string $uuid): ?array
     {
         foreach ($this->store->documents($this->snapshot) as $form) {
-            if (is_array($form) && ($form['uuid'] ?? null) === $uuid) {
+            if (is_array($form) && is_string($form['uuid'] ?? null) && strcasecmp($form['uuid'], $uuid) === 0) {
                 return $form;
             }
         }

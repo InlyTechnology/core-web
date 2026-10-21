@@ -100,7 +100,8 @@ final class FormSubmitter
             if (array_filter($files) === []) {
                 $response = $request->post($url, ['payload' => json_decode($body, true)]);
             } else {
-                $request->attach('payload', $body, 'payload.json', ['Content-Type' => 'application/json']);
+                // A plain field, not a file: the live site reads it as input.
+                $request->attach('payload', $body);
 
                 foreach ($files as $field => $list) {
                     foreach (array_values($list) as $i => $file) {
@@ -118,6 +119,12 @@ final class FormSubmitter
 
         if ($response->status() === 401 && $response->json('error') === AuthenticateSyncToken::REFUSED) {
             RemoteSite::forget();
+        }
+
+        if ($response->status() === 404 && ! is_string($response->json('error.code'))) {
+            Log::warning('core-web forms: '.FormRelay::NO_RELAY, ['form' => $uuid]);
+
+            return SubmissionResult::UNAVAILABLE;
         }
 
         $result = SubmissionResult::tryFrom((string) $response->json('result')) ?? SubmissionResult::UNAVAILABLE;

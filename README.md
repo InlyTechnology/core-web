@@ -1003,10 +1003,16 @@ both sides and `APP_ENV=local` here; a server never relays.
 - **Only the live site's own forms**: the live site relays a form only when
   it is in its form list (the `core-web-forms` snapshot), and lets one
   machine send 10 entries a minute.
-- **Only this machine**: the local relay answers a loopback peer with no
-  proxy or forwarding header (`X-Forwarded-For`, `Via`, …) and is a 404 to
-  anything else, so a LAN visitor or a shared tunnel cannot send entries on
-  the developer's login.
+- **Only this machine**: the local relay answers a loopback peer
+  (127.0.0.0/8, `::1`) with no proxy or forwarding header (`X-Forwarded-For`,
+  `Via`, …) and is a 404 to anything else, so a LAN visitor or a shared
+  tunnel cannot send entries on the developer's login. A page served to
+  anyone else gets no relay either: `embedBaseUrl()` is null there. A site
+  run in Docker (Sail, DDEV) sees the bridge's address as the peer, so it is
+  not covered: run the site on the host (Herd, `php artisan serve`) to use
+  the relay.
+- **Uploads**: one entry carries at most 10 MB of files through the relay
+  (`core-web.forms.relay_max_upload_bytes`); more is a 413.
 
 What a relayed form sends is a real entry. `<x-core-web::forms.relay-notice />`
 says so above the form while forms are relayed, and renders nothing

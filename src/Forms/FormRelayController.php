@@ -59,6 +59,10 @@ class FormRelayController
 
     public function submit(Request $request, string $uuid): Response
     {
+        if ($refused = FormRelay::refusesTurnstile($request) ?? FormRelay::refusesUploads($request)) {
+            return $refused;
+        }
+
         return $this->forward($request, $uuid, fn (PendingRequest $core, string $url) => FormRelay::withBody($core, $request)
             ->timeout((int) config('core-web.forms.timeouts.submit', 20))
             ->post($url.'/submit'));
@@ -67,8 +71,15 @@ class FormRelayController
     /** An entry from a local checkout's form class, sent on this site's own client token as the class would here. */
     public function entry(Request $request, string $uuid, FormSubmitter $submitter): Response
     {
-        if (CoreForms::fromContainer()->formByUuid($uuid) === null) {
+        $form = CoreForms::fromContainer()->formByUuid($uuid);
+
+        // Only what a form class would send here: an embed's form goes through the embed's own calls.
+        if ($form === null || ! in_array($form['key'] ?? null, CoreForms::renderedKeys(), true)) {
             return self::unknown();
+        }
+
+        if ($refused = FormRelay::refusesUploads($request)) {
+            return $refused;
         }
 
         $payload = $request->input('payload');
@@ -83,7 +94,7 @@ class FormRelayController
 
         $files = [];
 
-        foreach ($request->allFiles() as $field => $list) {
+        foreach (Arr::except($request->allFiles(), ['payload']) as $field => $list) {
             $files[(string) $field] = array_values(array_filter(Arr::wrap($list), fn (mixed $file) => $file instanceof UploadedFile));
         }
 
@@ -105,10 +116,16 @@ class FormRelayController
             return self::unknown();
         }
 
+        $origin = FormRelay::siteOrigin();
+
+        if ($origin === null) {
+            return FormRelay::error('relay_unavailable', 'The live site has no app.url to send forms from.', 503);
+        }
+
         $outgoing = self::core()->withHeaders([
             ...FormRelay::forwardedHeaders($request),
             // The address Core allows this site's embeds from, and binds a nonce to.
-            'Origin' => $request->getSchemeAndHttpHost(),
+            'Origin' => $origin,
         ]);
 
         try {

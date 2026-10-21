@@ -8,5 +8,6 @@
     "Page :page of :pages": "Sida :page av :pages",
     "Previous page": "Föregående sida",
     "View": "Visa",
-    "Next page": "Nästa sida"
+    "Next page": "Nästa sida",
+    "Local site: this form sends to production through :host. Submissions are real leads.": "Lokal webbplats: formuläret skickar till produktion via :host. Det som skickas blir riktiga leads."
 }

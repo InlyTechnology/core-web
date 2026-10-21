@@ -20,7 +20,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class LocalFormRelayController
 {
-    /** The embed script changes with a Core release, so a day-old copy is plenty fresh for local work. */
+    /** The embed script changes with a Core release, so an hour-old copy is fresh enough for local work. */
     private const SCRIPT_TTL = 3600;
 
     public function script(string $file): Response
@@ -29,7 +29,7 @@ class LocalFormRelayController
             return self::notSignedIn();
         }
 
-        $cached = Cache::get($key = 'core-web:forms-relay:'.$file);
+        $cached = Cache::get($key = 'core-web:forms-relay:'.sha1(RemoteSite::configuredUrl()).':'.$file);
 
         if (! is_array($cached)) {
             $response = $this->call(fn (PendingRequest $site, string $base) => $site->get($base.'/embed/'.$file));
@@ -64,8 +64,13 @@ class LocalFormRelayController
 
     public function submit(Request $request, string $uuid): Response
     {
+        if ($refused = FormRelay::refusesTurnstile($request) ?? FormRelay::refusesUploads($request)) {
+            return $refused;
+        }
+
+        // Longer than the live site waits on its Core, so its answer arrives rather than this side's timeout.
         return $this->relay(fn (PendingRequest $site, string $base) => FormRelay::withBody($site->withHeaders(FormRelay::forwardedHeaders($request)), $request)
-            ->timeout((int) config('core-web.forms.timeouts.submit', 20))
+            ->timeout((int) config('core-web.forms.timeouts.submit', 20) + 10)
             ->post($base.'/'.rawurlencode($uuid).'/submit'));
     }
 
@@ -106,8 +111,15 @@ class LocalFormRelayController
             return self::notSignedIn();
         }
 
-        if ($response->redirect() || $response->status() === 401) {
+        $code = $response->json('error.code');
+
+        // Core's own refusals (a wrong site key, a form not taking that auth) carry a code; a proxy's 401 does not.
+        if ($response->redirect() || ($response->status() === 401 && ! is_string($code))) {
             return FormRelay::error('relay_unavailable', "{$site->url()} answered HTTP {$response->status()} in front of its form relay.", 502);
+        }
+
+        if ($response->status() === 404 && ! is_string($code)) {
+            return FormRelay::error('relay_missing', FormRelay::NO_RELAY, 502);
         }
 
         return $response;

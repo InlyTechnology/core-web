@@ -8,9 +8,11 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\Forms\CoreForm;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Forms\FormRelay;
 use Inly\CoreWeb\Forms\FormSubmitter;
@@ -19,6 +21,7 @@ use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Tests\Feature\ContentSync\SyncsContent;
 use Inly\CoreWeb\Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /**
@@ -36,6 +39,11 @@ class FormRelayTest extends TestCase
 
     private const OTHER = '0199aaaa-0000-7000-8000-000000000002';
 
+    /** A form on the live site's list that no form class posts to. */
+    private const EMBED_ONLY = '0199aaaa-0000-7000-8000-000000000003';
+
+    private const LIVE_URL = 'https://www.live.test';
+
     private const CORE = [
         'core-web.client.base_url' => 'https://core.test',
         'core-web.client.client_id' => 'site',
@@ -49,6 +57,19 @@ class FormRelayTest extends TestCase
 
     /** @var array<string, array{0: mixed, 1: int}> Core's answer by the end of the path */
     private array $answers = [];
+
+    /** @var array<string, mixed>|null the options of the last call to the live site */
+    private ?array $liveOptions = null;
+
+    /** @var array{0: mixed, 1: int}|null the live site's answer for its whole form relay, as an older core-web without it */
+    private ?array $noRelay = null;
+
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        $app['config']->set('core-web.forms.classes', [RelayedContactForm::class]);
+    }
 
     protected function setUp(): void
     {
@@ -84,7 +105,7 @@ class FormRelayTest extends TestCase
     private function routeToThisApp(): void
     {
         Http::swap(new Factory);
-        Http::fake(function (Request $request) {
+        Http::fake(function (Request $request, array $options) {
             $host = parse_url($request->url(), PHP_URL_HOST);
 
             if ($host === 'core.test') {
@@ -95,6 +116,12 @@ class FormRelayTest extends TestCase
                 return Http::response('unexpected host', 500);
             }
 
+            $this->liveOptions = $options;
+
+            if ($this->noRelay !== null && str_contains($request->url(), '/sync/forms/')) {
+                return Http::response(...$this->noRelay);
+            }
+
             $server = [];
 
             foreach ($request->headers() as $name => $values) {
@@ -102,19 +129,67 @@ class FormRelayTest extends TestCase
             }
 
             $server['CONTENT_TYPE'] = $request->header('Content-Type')[0] ?? '';
+            [$parameters, $files] = $request->isMultipart() ? self::multipart($request->data()) : [$request->isJson() ? [] : (array) $request->data(), []];
 
-            // The live site has its Core; this checkout does not.
-            $local = array_map(fn (string $key) => config($key), array_combine(array_keys(self::CORE), array_keys(self::CORE)));
-            config(self::CORE);
+            // The live site has its Core and its own address; this checkout has neither.
+            $local = array_map(fn (string $key) => config($key), array_combine([...array_keys(self::CORE), 'app.url'], [...array_keys(self::CORE), 'app.url']));
+            config([...self::CORE, 'app.url' => self::LIVE_URL]);
 
             try {
-                $response = $this->call($request->method(), $request->url(), $request->isJson() ? [] : (array) $request->data(), [], [], $server, $request->isJson() ? $request->body() : null);
+                $response = $this->call($request->method(), $request->url(), $parameters, [], $files, $server, $request->isJson() ? $request->body() : null);
             } finally {
                 config($local);
             }
 
             return Http::response($response->getContent(), $response->getStatusCode(), $response->headers->all());
         });
+    }
+
+    /**
+     * The parts a multipart request sent, as PHP would hand them to the live site: fields as input, parts with a file name as uploads.
+     *
+     * @param  list<array{name: string, contents: mixed, filename?: string}>  $parts
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     */
+    private static function multipart(array $parts): array
+    {
+        $fields = [];
+        $files = [];
+
+        foreach ($parts as $part) {
+            $contents = (string) $part['contents'];
+
+            if (! isset($part['filename'])) {
+                self::assign($fields, $part['name'], $contents);
+
+                continue;
+            }
+
+            $path = tempnam(sys_get_temp_dir(), 'relay');
+            file_put_contents($path, $contents);
+            self::assign($files, $part['name'], new UploadedFile($path, $part['filename'], null, null, true));
+        }
+
+        return [$fields, $files];
+    }
+
+    /** @param  array<string, mixed>  $into */
+    private static function assign(array &$into, string $name, mixed $value): void
+    {
+        preg_match_all('/\[([^\]]*)\]/', $name, $matches);
+        $keys = [strtok($name, '['), ...$matches[1]];
+        $target = &$into;
+
+        foreach ($keys as $i => $key) {
+            if ($i === count($keys) - 1) {
+                $key === '' ? $target[] = $value : $target[$key] = $value;
+
+                break;
+            }
+
+            $target[$key] ??= [];
+            $target = &$target[$key];
+        }
     }
 
     private function coreAnswer(Request $request)
@@ -126,7 +201,8 @@ class FormRelayTest extends TestCase
         if (str_contains($request->url(), '/api/v1/objects/core/form')) {
             return Http::response(['data' => [
                 ['type' => 'core/form', 'id' => '7', 'attributes' => ['slug' => 'contact', 'uuid' => self::UUID, 'name' => 'Contact', 'site_key' => 'pk_test', 'accepts_server' => true, 'enabled' => true]],
-            ], 'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 1]]);
+                ['type' => 'core/form', 'id' => '8', 'attributes' => ['slug' => 'newsletter', 'uuid' => self::EMBED_ONLY, 'name' => 'Newsletter', 'site_key' => 'pk_news', 'accepts_server' => true, 'enabled' => true]],
+            ], 'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 2]]);
         }
 
         $this->core[] = $request;
@@ -190,7 +266,7 @@ class FormRelayTest extends TestCase
         $this->assertCount(1, $this->core);
         $this->assertSame('pk_test', $this->core[0]['sk']);
         $this->assertSame('sv', $this->core[0]['locale']);
-        $this->assertSame('https://remote.test', $this->core[0]->header('Origin')[0]);
+        $this->assertSame(self::LIVE_URL, $this->core[0]->header('Origin')[0]);
         $this->assertFalse($this->core[0]->hasHeader('Authorization'));
     }
 
@@ -207,7 +283,7 @@ class FormRelayTest extends TestCase
         $this->assertSame(['name' => 'Ada'], $submit->data());
         $this->assertSame('pk_test', $submit->header('X-Core-Form-Site-Key')[0]);
         $this->assertSame('n-1', $submit->header('X-Core-Form-Nonce')[0]);
-        $this->assertSame('https://remote.test', $submit->header('Origin')[0]);
+        $this->assertSame(self::LIVE_URL, $submit->header('Origin')[0]);
         $this->assertFalse($submit->hasHeader('Cookie'));
         $this->assertFalse($submit->hasHeader('Authorization'));
     }
@@ -338,5 +414,171 @@ class FormRelayTest extends TestCase
         $this->assertSame([], $this->core);
 
         $this->withServerVariables(['REMOTE_ADDR' => '::1'])->getJson($url)->assertOk();
+    }
+
+    public function test_a_form_class_s_files_cross_from_the_checkout_to_the_live_site_to_core(): void
+    {
+        $submitter = new FormSubmitter(CoreClient::fromConfig());
+        $photo = UploadedFile::fake()->image('car.jpg', 20, 20);
+
+        $this->assertSame(SubmissionResult::SENT, $submitter->submit(self::UUID, ['name' => 'Ada'], ['photos' => [$photo]]));
+
+        $sent = $this->core[0];
+        $this->assertTrue($sent->isMultipart());
+        $this->assertSame('Bearer site-access-token', $sent->header('Authorization')[0]);
+        $this->assertSame(['payload', 'photos[]'], self::partNames($sent));
+        $this->assertSame(['name' => 'Ada'], json_decode((string) $sent->data()[0]['contents'], true));
+    }
+
+    public function test_the_live_site_sends_on_no_entry_for_a_form_no_class_posts_to(): void
+    {
+        config(self::CORE);
+
+        $this->postJson('https://remote.test/!/core-web/sync/forms/'.self::EMBED_ONLY.'/entries', ['payload' => ['name' => 'Ada']], ['Authorization' => 'Bearer '.$this->token])
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'unknown_form');
+
+        $this->assertSame([], $this->core);
+    }
+
+    public function test_core_s_own_401_reaches_the_embed_as_core_said_it(): void
+    {
+        $this->answers['/submit'] = [['error' => ['code' => 'invalid_site_key', 'message' => 'Site key is invalid or missing.']], 401];
+
+        $this->postJson($this->relay('api/forms/'.self::UUID.'/submit'), ['name' => 'Ada'], ['X-Core-Form-Nonce' => 'n-1'])
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'invalid_site_key');
+    }
+
+    public function test_a_proxy_s_401_in_front_of_the_live_site_is_named_as_such(): void
+    {
+        $this->noRelay = ['Unauthorized', 401];
+
+        $this->getJson($this->relay('api/forms/'.self::UUID.'/definition'))
+            ->assertStatus(502)
+            ->assertJsonPath('error.code', 'relay_unavailable');
+    }
+
+    public function test_the_local_submit_waits_longer_than_the_live_site_waits_on_core(): void
+    {
+        $this->postJson($this->relay('api/forms/'.self::UUID.'/submit'), ['name' => 'Ada'], ['X-Core-Form-Nonce' => 'n-1'])->assertStatus(201);
+
+        $this->assertSame(config('core-web.forms.timeouts.submit') + 10, $this->liveOptions['timeout']);
+    }
+
+    public function test_the_origin_is_the_live_site_s_configured_address_not_the_host_it_was_called_on(): void
+    {
+        config([...self::CORE, 'app.url' => self::LIVE_URL]);
+
+        $this->getJson('https://remote.test/!/core-web/sync/forms/'.self::UUID.'/nonce', ['Authorization' => 'Bearer '.$this->token, 'Host' => 'evil.test'])->assertOk();
+
+        $this->assertSame(self::LIVE_URL, $this->core[0]->header('Origin')[0]);
+    }
+
+    /** @return iterable<string, array{0: mixed, 1: int}> */
+    public static function liveSitesWithoutTheRelay(): iterable
+    {
+        yield 'json 404' => [['message' => 'Not Found.'], 404];
+        yield 'html 404' => ['<html>Not Found</html>', 404];
+    }
+
+    /** @param  array{0: mixed, 1: int}  $answer */
+    #[DataProvider('liveSitesWithoutTheRelay')]
+    public function test_a_live_site_without_the_relay_is_named_as_such(mixed $body, int $status): void
+    {
+        $this->noRelay = [$body, $status];
+
+        $this->getJson($this->relay('api/forms/'.self::UUID.'/definition'))
+            ->assertStatus(502)
+            ->assertJsonPath('error.code', 'relay_missing')
+            ->assertJsonPath('error.message', FormRelay::NO_RELAY);
+
+        Log::spy();
+        $this->assertSame(SubmissionResult::UNAVAILABLE, (new FormSubmitter(CoreClient::fromConfig()))->submit(self::UUID, ['name' => 'Ada']));
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message) => str_contains($message, FormRelay::NO_RELAY))->once();
+    }
+
+    public function test_the_whole_loopback_range_and_mapped_addresses_count_as_this_machine(): void
+    {
+        $url = $this->relay('api/forms/'.self::UUID.'/definition?sk=pk_test');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.2'])->getJson($url)->assertOk();
+        $this->withServerVariables(['REMOTE_ADDR' => '::ffff:127.0.0.1'])->getJson($url)->assertOk();
+        $this->withServerVariables(['REMOTE_ADDR' => '172.17.0.1'])->getJson($url)->assertNotFound();
+    }
+
+    public function test_a_page_served_to_another_machine_gets_no_relay(): void
+    {
+        $this->app->instance('request', \Illuminate\Http\Request::create('http://default.test/', server: ['REMOTE_ADDR' => '192.168.1.20']));
+
+        $this->assertNull(CoreForms::embedBaseUrl());
+        $this->assertFalse(FormRelay::relaysSubmissions());
+        $this->assertStringNotContainsString('production', Blade::render('<x-core-web::forms.relay-notice />'));
+    }
+
+    public function test_uploads_past_the_limit_are_refused_before_they_are_relayed(): void
+    {
+        config(['core-web.forms.relay_max_upload_bytes' => 1024]);
+
+        $this->post($this->relay('api/forms/'.self::UUID.'/submit'), ['photo' => UploadedFile::fake()->create('big.jpg', 2)], ['Accept' => 'application/json'])
+            ->assertStatus(413)
+            ->assertJsonPath('error.code', 'payload_too_large');
+
+        $this->assertNull($this->liveOptions);
+    }
+
+    public function test_an_upload_that_did_not_arrive_whole_is_a_422(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'relay');
+        file_put_contents($path, 'part');
+        $broken = new UploadedFile($path, 'car.jpg', 'image/jpeg', UPLOAD_ERR_PARTIAL, true);
+
+        $this->post($this->relay('api/forms/'.self::UUID.'/submit'), ['photo' => $broken], ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'invalid_upload');
+
+        config(self::CORE);
+        $this->post('https://remote.test/!/core-web/sync/forms/'.self::UUID.'/entries', ['payload' => '{}', 'photo' => $broken], ['Authorization' => 'Bearer '.$this->token, 'Accept' => 'application/json'])
+            ->assertStatus(422);
+        $this->assertSame([], $this->core);
+    }
+
+    public function test_a_turnstile_entry_is_refused_with_the_reason(): void
+    {
+        $this->postJson($this->relay('api/forms/'.self::UUID.'/submit'), ['name' => 'Ada'], ['Cf-Turnstile-Response' => 'tok'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'turnstile_not_relayable');
+
+        $this->assertNull($this->liveOptions);
+    }
+
+    public function test_a_form_is_found_by_its_uuid_whatever_its_case(): void
+    {
+        $this->assertSame('contact', CoreForms::fromContainer()->formByUuid(strtoupper(self::UUID))['key']);
+    }
+
+    public function test_the_notice_speaks_the_site_s_language(): void
+    {
+        app()->setLocale('sv');
+
+        $this->assertStringContainsString('Det som skickas blir riktiga leads', Blade::render('<x-core-web::forms.relay-notice />'));
+    }
+}
+
+class RelayedContactForm extends CoreForm
+{
+    public static function coreForm(): string
+    {
+        return 'contact';
+    }
+
+    public static function renders(): array
+    {
+        return [];
+    }
+
+    protected function fieldsView(): string
+    {
+        return 'contact-form';
     }
 }

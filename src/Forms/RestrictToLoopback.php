@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Forms;
 
 use Closure;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -13,23 +14,36 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RestrictToLoopback
 {
-    private const LOOPBACK = ['127.0.0.1', '::1'];
-
     private const FORWARDING_HEADERS = ['X-Forwarded-For', 'X-Forwarded-Host', 'X-Real-IP', 'Forwarded', 'Via'];
 
     public function handle(Request $request, Closure $next): Response
     {
-        // The socket's peer, never Request::ip(), which a trusted-proxy setup takes from a header.
-        if (! in_array((string) $request->server('REMOTE_ADDR'), self::LOOPBACK, true)) {
+        if (! self::allows($request)) {
             abort(404);
+        }
+
+        return $next($request);
+    }
+
+    public static function allows(Request $request): bool
+    {
+        // The socket's peer, never Request::ip(), which a trusted-proxy setup takes from a header.
+        $peer = strtolower((string) $request->server('REMOTE_ADDR'));
+
+        if (str_starts_with($peer, '::ffff:')) {
+            $peer = substr($peer, 7);
+        }
+
+        if (! IpUtils::checkIp($peer, ['127.0.0.0/8', '::1'])) {
+            return false;
         }
 
         foreach (self::FORWARDING_HEADERS as $header) {
             if ($request->headers->has($header)) {
-                abort(404);
+                return false;
             }
         }
 
-        return $next($request);
+        return true;
     }
 }
