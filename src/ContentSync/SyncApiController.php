@@ -106,7 +106,8 @@ class SyncApiController
         $max = max(1, (int) config('core-web.content_sync.push_items', 200));
         $validator = Validator::make($request->all(), [
             'items' => ['required', 'array', 'list', "max:{$max}"],
-            'items.*.path' => ['required', 'string', 'max:500'],
+            'items.*.path' => ['required', 'string', 'max:500', 'distinct'],
+            'items.*.draft' => ['nullable', 'string', 'max:128'],
             'items.*.contents' => ['required', 'string', 'max:2000000'],
             'items.*.base' => ['nullable', 'string', 'max:128'],
             'items.*.parent_id' => ['nullable', 'string', 'max:128'],
@@ -116,6 +117,7 @@ class SyncApiController
             'assets.*.container' => ['required', 'string', 'max:100'],
             'assets.*.path' => ['required', 'string', 'max:500'],
             'assets.*.hash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/'],
+            'assets.*.size' => ['nullable', 'integer', 'min:0'],
             'git_sha' => ['nullable', 'string', 'regex:/^[0-9a-f]{7,64}$/'],
         ]);
 
@@ -123,12 +125,17 @@ class SyncApiController
             return new JsonResponse(['error' => 'invalid_request', 'message' => $validator->errors()->first(), 'errors' => $validator->errors()->toArray()], 422);
         }
 
+        // Each file is capped, but a full batch of capped files would still be parsed whole in one request.
+        if (array_sum(array_map(fn (array $item) => strlen((string) $item['contents']), (array) $request->input('items'))) > (int) config('core-web.content_sync.push_bytes', 10 * 1024 * 1024)) {
+            return new JsonResponse(['error' => 'too_large', 'message' => __('core-web::sync.push_too_large')], 413);
+        }
+
         $user = User::current();
         $dryRun = $request->boolean('dry_run');
         $statuses = [];
 
         foreach ((array) $request->input('assets', []) as $asset) {
-            $statuses[$asset['container'].'::'.$asset['path']] = ['container' => $asset['container'], 'path' => $asset['path'], ...$assets->check($user, $asset['container'], $asset['path'], $asset['hash'])];
+            $statuses[$asset['container'].'::'.$asset['path']] = ['container' => $asset['container'], 'path' => $asset['path'], ...$assets->check($user, $asset['container'], $asset['path'], $asset['hash'], isset($asset['size']) ? (int) $asset['size'] : null)];
         }
 
         $items = (array) $request->input('items');
@@ -150,6 +157,7 @@ class SyncApiController
             'path' => (string) $item['path'],
             'contents' => (string) $item['contents'],
             'base' => $item['base'] ?? null,
+            'draft' => $item['draft'] ?? null,
             'parent_id' => $item['parent_id'] ?? null,
         ], $items), $request->boolean('partial'), $request->boolean('force'), $dryRun, $refusedAssets);
 

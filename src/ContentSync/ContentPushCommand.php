@@ -87,6 +87,12 @@ class ContentPushCommand extends Command
             $this->line('  '.$path.($file['assets'] === [] ? '' : ' (with '.implode(', ', array_keys($file['assets'])).')'));
         }
 
+        $unbased = array_keys(array_filter($files, fn (array $file, string $path) => $file['base'] === null && $file['draft'] === null && isset($lock['items'][$path]), ARRAY_FILTER_USE_BOTH));
+
+        if ($this->option('force') && $unbased !== []) {
+            $this->warn(count($unbased).' file(s) were pulled before the lock kept bases, so --force cannot tell whether the site changed them since: '.implode(', ', $unbased).'. Pull first to keep an editor\'s edit.');
+        }
+
         $remote = $this->signedInSite();
 
         if ($remote === null) {
@@ -115,7 +121,7 @@ class ContentPushCommand extends Command
     }
 
     /**
-     * @param  array<string, array{hash: string, contents: string, base: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>  $files
+     * @param  array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>  $files
      */
     private function send(LocalContent $local, RemoteSite $remote, array $files): int
     {
@@ -125,10 +131,11 @@ class ContentPushCommand extends Command
                 'path' => $path,
                 'contents' => $file['contents'],
                 'base' => $file['base'],
+                'draft' => $file['draft'],
                 'parent_id' => $file['parent_id'],
                 'assets' => array_keys($file['assets']),
             ], fn (mixed $value) => $value !== null && $value !== []), array_keys($files), $files)),
-            'assets' => array_values(array_map(fn (array $asset) => Arr::only($asset, ['container', 'path', 'hash']), $assets)),
+            'assets' => array_values(array_map(fn (array $asset) => Arr::only($asset, ['container', 'path', 'hash', 'size']), $assets)),
             'git_sha' => $this->gitSha(),
             'partial' => (bool) $this->option('partial'),
             'force' => (bool) $this->option('force'),
@@ -169,17 +176,22 @@ class ContentPushCommand extends Command
         $this->report($result['results']);
 
         $pushed = $local->lock()['pushed'];
+        $drafts = [];
         $written = 0;
 
         foreach ($result['results'] as $item) {
             if ($item['status'] !== ContentPush::STATUS_REFUSED && isset($files[$item['path']])) {
                 $pushed[$item['path']] = $files[$item['path']]['hash'];
                 $written++;
+
+                if (is_string($item['draft'] ?? null)) {
+                    $drafts[$item['path']] = $item['draft'];
+                }
             }
         }
 
         if ($result['written'] ?? false) {
-            $local->writePushed($pushed);
+            $local->writePushed($pushed, $drafts);
         }
 
         $failed = count($result['results']) - $written;
@@ -229,7 +241,7 @@ class ContentPushCommand extends Command
      *
      * @param  array{items: array<string, string>, bases: array<string, string>, pushed: array<string, string>}  $lock
      * @param  list<array{type: string, handle: ?string}>  $scopes
-     * @return array<string, array{hash: string, contents: string, base: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>
+     * @return array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>
      */
     private function changed(LocalContent $local, array $lock, array $scopes, ?string $site): array
     {
@@ -262,6 +274,7 @@ class ContentPushCommand extends Command
                     'hash' => $hash,
                     'contents' => $contents,
                     'base' => $lock['bases'][$path] ?? null,
+                    'draft' => $lock['drafts'][$path] ?? null,
                     'parent_id' => $scope['type'] === 'entries' ? $this->parentOf($local, $path, $contents) : null,
                     'assets' => $this->assetsIn($contents, $layers),
                 ];
@@ -396,13 +409,21 @@ class ContentPushCommand extends Command
                     'container' => $container,
                     'path' => $path,
                     'file' => $file->getPathname(),
-                    'hash' => hash('sha256', AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname()))),
+                    ...self::fingerprint($file),
                     ...self::meta($file),
                 ];
             }
         }
 
         return $found;
+    }
+
+    /** @return array{hash: string, size: int} of the bytes the site would store for the file */
+    private static function fingerprint(SplFileInfo $file): array
+    {
+        $bytes = AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname()));
+
+        return ['hash' => hash('sha256', $bytes), 'size' => strlen($bytes)];
     }
 
     /** @return array{alt?: string, focus?: string} the editable meta of a file uploaded here, from its `.meta` beside it */

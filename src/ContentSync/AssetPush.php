@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Statamic\Contracts\Assets\Asset as AssetContract;
 use Statamic\Contracts\Assets\AssetContainer as Container;
@@ -41,7 +42,7 @@ class AssetPush
      *
      * @return array{status: string, message?: string}
      */
-    public function check(User $user, string $container, string $path, string $hash): array
+    public function check(User $user, string $container, string $path, string $hash, ?int $size = null): array
     {
         $found = $this->container($user, $container, $path);
 
@@ -55,9 +56,14 @@ class AssetPush
             return ['status' => self::MISSING];
         }
 
-        return hash_equals(hash('sha256', (string) $disk->get($path)), $hash)
-            ? ['status' => self::SAME]
-            : ['status' => self::CONFLICT, 'message' => __('core-web::sync.push_asset_conflict', ['path' => "{$container}::{$path}"])];
+        $conflict = ['status' => self::CONFLICT, 'message' => __('core-web::sync.push_asset_conflict', ['path' => "{$container}::{$path}"])];
+
+        // The size settles most conflicts without reading a file that may sit in a bucket.
+        if ($size !== null && $disk->size($path) !== $size) {
+            return $conflict;
+        }
+
+        return hash_equals(self::streamHash($disk->filesystem()->readStream($disk->normalizePath($path))), $hash) ? ['status' => self::SAME] : $conflict;
     }
 
     /**
@@ -75,6 +81,12 @@ class AssetPush
         }
 
         $container = $found['container'];
+
+        // The file is written at `path`, so the file rules must see its extension, not the upload's name.
+        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) !== strtolower($file->getClientOriginalExtension())) {
+            return ['status' => self::INVALID, 'message' => __('core-web::sync.push_asset_extension', ['path' => $path])];
+        }
+
         $rules = collect($container->validationRules())->map(fn ($rule) => FieldValidator::parse($rule))->all();
         $validator = Validator::make(['file' => $file], ['file' => array_merge(['file', new AllowedFile, 'max:'.self::maxKilobytes()], $rules)]);
 
@@ -84,13 +96,25 @@ class AssetPush
 
         $bytes = self::stored(basename($path), (string) file_get_contents($file->getRealPath()));
         $hash = hash('sha256', $bytes);
-        $existing = $this->check($user, $container->handle(), $path, $hash);
 
-        if ($existing['status'] !== self::MISSING) {
-            return $existing;
+        // Two pushes of one new path would both see it missing; the lock lets only the first write it.
+        $lock = Cache::lock('core-web-asset-push:'.sha1($container->handle().'::'.$path), 30);
+
+        if (! $lock->get()) {
+            return ['status' => self::CONFLICT, 'message' => __('core-web::sync.push_asset_conflict', ['path' => "{$container->handle()}::{$path}"])];
         }
 
-        $container->disk()->put($path, $bytes);
+        try {
+            $existing = $this->check($user, $container->handle(), $path, $hash);
+
+            if ($existing['status'] !== self::MISSING) {
+                return $existing;
+            }
+
+            $container->disk()->put($path, $bytes);
+        } finally {
+            $lock->release();
+        }
 
         $asset = $container->makeAsset($path);
 
@@ -113,6 +137,19 @@ class AssetPush
         }
 
         return $bytes;
+    }
+
+    /** @param  resource|null  $stream */
+    private static function streamHash($stream): string
+    {
+        $context = hash_init('sha256');
+
+        if (is_resource($stream)) {
+            hash_update_stream($context, $stream);
+            fclose($stream);
+        }
+
+        return hash_final($context);
     }
 
     public static function maxKilobytes(): int
@@ -138,11 +175,23 @@ class AssetPush
         return true;
     }
 
+    /** Whether the CP would take an upload with the path's extension (Statamic's AllowedFile list). */
+    private static function allowedExtension(string $path): bool
+    {
+        $named = new UploadedFile('/dev/null', basename($path), null, UPLOAD_ERR_NO_FILE, true);
+
+        return ! Validator::make(['file' => $named], ['file' => [new AllowedFile]])->fails();
+    }
+
     /** @return array{container: Container}|array{status: string, message: string} */
     private function container(User $user, string $handle, string $path): array
     {
         if (! self::safePath($path)) {
             return ['status' => self::INVALID, 'message' => __('core-web::sync.push_asset_path', ['path' => $path])];
+        }
+
+        if (! self::allowedExtension($path)) {
+            return ['status' => self::INVALID, 'message' => __('core-web::sync.push_asset_extension', ['path' => $path])];
         }
 
         $container = AssetContainer::find($handle);

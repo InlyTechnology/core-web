@@ -45,21 +45,27 @@ class ContentPush
 
     public const TYPES = ['entries', 'globals', 'nav-trees'];
 
+    /** Fields a push never sets or clears: who wrote an entry is the site's record, not the checkout's. */
+    private const KEPT = ['author'];
+
     public function __construct(private DraftWriter $writer, private Proposals $proposals, private DraftBase $draftBase) {}
 
     /**
-     * @param  list<array{path: string, contents: string, base?: ?string, parent_id?: ?string}>  $items
+     * @param  list<array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}>  $items
      * @param  array<int, string>  $refusedAssets  item index => why an asset it names cannot be pushed
      * @return array{written: bool, results: list<array<string, mixed>>}
      */
     public function push(DraftAuthor $author, array $items, bool $partial, bool $force, bool $dryRun, array $refusedAssets = []): array
     {
         $checked = [];
+        $duplicates = self::duplicates($items);
 
         foreach ($items as $i => $item) {
-            $checked[$i] = isset($refusedAssets[$i])
-                ? self::refused($item['path'], 'asset_refused', $refusedAssets[$i])
-                : $this->one($author, $item, $force, true);
+            $checked[$i] = match (true) {
+                isset($refusedAssets[$i]) => self::refused($item['path'], 'asset_refused', $refusedAssets[$i]),
+                isset($duplicates[$i]) => self::refused($item['path'], 'duplicate', __('core-web::sync.push_duplicate')),
+                default => $this->one($author, $item, $force, true),
+            };
         }
 
         $refused = collect($checked)->contains(fn (array $result) => $result['status'] === self::STATUS_REFUSED);
@@ -70,6 +76,7 @@ class ContentPush
 
         $results = [];
 
+        // A refusal the check could not foresee (the site changing in between) still leaves the files before it written.
         foreach ($items as $i => $item) {
             $results[] = in_array($checked[$i]['status'], [self::STATUS_REFUSED, self::STATUS_UNCHANGED], true)
                 ? $checked[$i]
@@ -80,7 +87,7 @@ class ContentPush
     }
 
     /**
-     * @param  array{path: string, contents: string, base?: ?string, parent_id?: ?string}  $item
+     * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
      * @return array<string, mixed>
      */
     private function one(DraftAuthor $author, array $item, bool $force, bool $dryRun): array
@@ -114,7 +121,7 @@ class ContentPush
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  array{path: string, contents: string, base?: ?string, parent_id?: ?string}  $item
+     * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
      * @return array<string, mixed>
      */
     private function entry(DraftAuthor $author, string $path, array $data, array $item, bool $force, bool $dryRun): array
@@ -127,7 +134,7 @@ class ContentPush
             return self::refused($path, 'validation', __('core-web::sync.push_no_id'));
         }
 
-        $fields = Arr::except($data, EntryFields::INTERNAL);
+        $fields = Arr::except($data, [...EntryFields::INTERNAL, ...self::KEPT]);
         $fields = [...$fields, ...self::slugAndDate($path, $id)];
         $existing = Entry::find($id);
 
@@ -142,7 +149,7 @@ class ContentPush
                 'dry_run' => $dryRun,
             ], new StoredValues);
 
-            return self::written($path, $result);
+            return $this->drafted($path, $id, $result, $dryRun);
         }
 
         if ($existing->collectionHandle() !== $collection || $existing->locale() !== $site) {
@@ -153,12 +160,22 @@ class ContentPush
             return self::refused($path, 'validation', __('core-web::sync.push_blueprint'));
         }
 
-        if (! $force) {
+        $draftHash = $this->draftBase->hash($existing);
+        $draft = $item['draft'] ?? null;
+        // The site as this checkout's last push left it: its own draft, which the pulled base no longer describes.
+        $ours = is_string($draft) && $draft !== '' && hash_equals($draftHash, $draft);
+
+        if (! $force && ! $ours) {
             $this->assertBase($path, 'entries', $existing, $item['base'] ?? null);
+
+            // The live file is unchanged, but a working copy made since (even the pusher's own in the CP) is not the pulled version.
+            if ($existing->revisionsEnabled() && $existing->hasWorkingCopy()) {
+                throw new DraftRefused('working_copy', __('core-web::sync.push_working_copy'));
+            }
         }
 
         // A field the checkout's file no longer has was cleared there, as a CP save clears it.
-        foreach (array_keys(EntryFields::stored($existing)) as $handle) {
+        foreach (array_keys(Arr::except(EntryFields::stored($existing), self::KEPT)) as $handle) {
             if (! array_key_exists($handle, $fields)) {
                 $fields[$handle] = null;
             }
@@ -169,16 +186,65 @@ class ContentPush
             'entry_id' => $id,
             'site' => $site,
             'fields' => $fields,
-            'base_hash' => $this->draftBase->hash($existing),
+            'base_hash' => $draftHash,
             'dry_run' => $dryRun,
         ], new StoredValues);
 
-        return self::written($path, $result);
+        return $this->drafted($path, $id, $result, $dryRun);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function drafted(string $path, string $id, array $result, bool $dryRun): array
+    {
+        $written = self::written($path, $result);
+        $entry = $dryRun ? null : Entry::find($id);
+
+        return $entry === null ? $written : [...$written, 'draft' => $this->draftBase->hash($entry)];
+    }
+
+    /**
+     * Items that are the same entry (by id) as an earlier one: the check runs before either is written, so it cannot see one undo the other.
+     *
+     * @param  list<array{path: string, contents: string}>  $items
+     * @return array<int, true>
+     */
+    private static function duplicates(array $items): array
+    {
+        $seen = [];
+        $duplicates = [];
+
+        foreach ($items as $i => $item) {
+            if (self::typeOf($item['path']) !== 'entries') {
+                continue;
+            }
+
+            try {
+                $id = self::parse($item['path'], $item['contents'])['id'] ?? null;
+            } catch (ValidationException) {
+                continue;
+            }
+
+            if (! is_string($id) || $id === '') {
+                continue;
+            }
+
+            if (isset($seen[$id])) {
+                $duplicates[$i] = true;
+                $duplicates[$seen[$id]] = true;
+            }
+
+            $seen[$id] ??= $i;
+        }
+
+        return $duplicates;
     }
 
     /**
      * @param  array{data: array<mixed>}  $value
-     * @param  array{path: string, contents: string, base?: ?string, parent_id?: ?string}  $item
+     * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
      * @return array<string, mixed>
      */
     private function proposal(DraftAuthor $author, string $path, string $type, array $resolved, array $value, array $item, bool $force, bool $dryRun): array

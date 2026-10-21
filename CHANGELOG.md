@@ -13,7 +13,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   with the local media files they name. A file changed on the site since the
   pull is refused unless `--force`; the push is all-or-nothing unless
   `--partial`. Needs the new **Push content** permission. `content.lock`
-  gains `bases` (written by `content:pull`) and `pushed`. Docs: README →
+  gains `bases` (written by `content:pull`), `pushed` and `drafts`. Docs: README →
   Content push.
 
 ## v0.21.0

@@ -593,6 +593,7 @@ return [
     | features.drafts on, whose CP page decides them). Pushing needs the
     | "Push content" permission. False keeps the site pull only.
     | push_items: the most files one push carries.
+    | push_bytes: the most content (all files together) one push carries.
     | push_asset_bytes: the largest asset file a push uploads.
     |
     */
@@ -618,6 +619,7 @@ return [
         'pull_assets' => true,
         'push' => true,
         'push_items' => 200,
+        'push_bytes' => 10 * 1024 * 1024,
         'push_asset_bytes' => 20 * 1024 * 1024,
     ],
 
