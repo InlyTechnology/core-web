@@ -135,7 +135,7 @@ class ContentLoginCommand extends Command
 
     private static function duration(int $seconds): string
     {
-        return $seconds >= 60 ? intdiv($seconds, 60).' min' : max(0, $seconds).' s';
+        return $seconds > 60 ? (int) ceil($seconds / 60).' min' : $seconds.' s';
     }
 
     /** Best effort: a terminal that cannot open a browser still has the link printed above. */
