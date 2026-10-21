@@ -327,4 +327,16 @@ class FormRelayTest extends TestCase
 
         $this->assertSame([], $this->core);
     }
+
+    public function test_the_local_relay_answers_only_this_machine_without_a_proxy_in_between(): void
+    {
+        $url = $this->relay('api/forms/'.self::UUID.'/definition?sk=pk_test');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.20'])->getJson($url)->assertNotFound();
+        $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])->getJson($url, ['X-Forwarded-For' => '203.0.113.9'])->assertNotFound();
+        $this->withServerVariables(['REMOTE_ADDR' => '::1'])->getJson($url, ['Via' => '1.1 tunnel'])->assertNotFound();
+        $this->assertSame([], $this->core);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '::1'])->getJson($url)->assertOk();
+    }
 }

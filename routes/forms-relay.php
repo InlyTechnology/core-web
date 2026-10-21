@@ -3,9 +3,11 @@
 use Illuminate\Support\Facades\Route;
 use Inly\CoreWeb\Forms\FormRelay;
 use Inly\CoreWeb\Forms\LocalFormRelayController;
+use Inly\CoreWeb\Forms\RestrictToLoopback;
 
 // Only on a local checkout (CoreWebServiceProvider), outside the `web` group: the embed posts without a CSRF token, as it does to Core.
 Route::prefix(trim((string) config('statamic.routes.action', '!'), '/').'/core-web/forms-relay')
+    ->middleware(RestrictToLoopback::class)
     ->controller(LocalFormRelayController::class)
     ->name('core-web.forms-relay.')
     ->group(function (): void {
