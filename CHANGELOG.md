@@ -12,6 +12,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   approval and counts down the code's time, and `content:pull` and
   `core:pull` show a live count per type and asset container while they
   page. Only on a terminal: piped output and logs get the result lines alone.
+- **Agent rules for media**: `resources/agents/AGENTS.md` now says the bucket
+  key is for servers only, that a checkout gets assets with `content:pull
+  --only=assets` (and a stale local key must go), how to move a site's own
+  bucket disk onto core-web's, and that local uploads never reach
+  production. README → Media gains "Moving a site's own bucket disk onto
+  these".
 
 ## v0.21.0
 
