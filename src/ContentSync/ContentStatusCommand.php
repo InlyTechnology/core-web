@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * What `content:push` with the same arguments would send, read from content/
@@ -24,6 +25,21 @@ class ContentStatusCommand extends Command
     protected $description = 'List what content:push would send to the remote site, without calling it';
 
     public function handle(LocalContent $local): int
+    {
+        try {
+            return $this->status($local);
+        } catch (Throwable $e) {
+            if (! $this->option('json')) {
+                throw $e;
+            }
+
+            report($e);
+
+            return $this->refuse($e->getMessage());
+        }
+    }
+
+    private function status(LocalContent $local): int
     {
         try {
             $selection = PushSelection::fromOptions(
@@ -62,16 +78,19 @@ class ContentStatusCommand extends Command
         $waiting = $this->option('publish') ? [] : $selection->waiting($lock);
         $limit = max(1, (int) config('core-web.content_sync.push_items', 200));
 
+        $tooMany = count($push) > $limit;
+
         if ($this->option('json')) {
             $this->line((string) json_encode([
-                'ok' => true,
+                'ok' => ! $tooMany,
+                ...($tooMany ? ['error' => count($push)." files is more than one push carries ({$limit}): narrow it with paths, --only or --site."] : []),
                 'remote' => $lock['remote'],
                 'push' => $push,
                 'waiting' => $waiting,
                 'limit' => $limit,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
-            return self::SUCCESS;
+            return $tooMany ? self::FAILURE : self::SUCCESS;
         }
 
         if ($push === []) {
@@ -88,8 +107,8 @@ class ContentStatusCommand extends Command
             }
         }
 
-        if (count($push) > $limit) {
-            $this->warn(count($push)." files is more than one push carries ({$limit}): narrow it with paths, --only or --site.");
+        if ($tooMany) {
+            $this->error(count($push)." files is more than one push carries ({$limit}): narrow it with paths, --only or --site.");
         }
 
         if ($waiting !== []) {
@@ -100,7 +119,7 @@ class ContentStatusCommand extends Command
             }
         }
 
-        return self::SUCCESS;
+        return $tooMany ? self::FAILURE : self::SUCCESS;
     }
 
     private function refuse(string $message): int

@@ -21,8 +21,8 @@ class LocalContent
     /** @var array<string, string>|null path => git blob id, as the checkout's HEAD has content/ */
     private ?array $committed = null;
 
-    /** @var array<string, string>|null path => git blob id, as the checkout's index has content/ */
-    private ?array $staged = null;
+    /** @var array<string, array{tracked: array<string, true>, differs: array<string, true>}> by `index` or `HEAD` */
+    private array $git = [];
 
     public function __construct(private string $root, private string $lockFile) {}
 
@@ -80,10 +80,15 @@ class LocalContent
         return hash(strlen($blob) === 64 ? 'sha256' : 'sha1', 'blob '.strlen($contents)."\0".$contents) === $blob;
     }
 
-    /** Whether a file is exactly as git's index has it: `git add`ed, or committed and not changed since. False outside a git checkout. */
-    public function matchesStaged(string $path): bool
+    /**
+     * Whether git holds the file as it is now: `index` for `git add`ed (or committed and unchanged since), `HEAD`
+     * for committed. Git compares through its own filters, so line-ending conversion does not count as a change.
+     */
+    public function inGitAsNow(string $path, string $against): bool
     {
-        return $this->matchesBlob($this->staged()[$path] ?? null, $path);
+        $git = $this->git[$against] ??= $this->readGit($against);
+
+        return isset($git['tracked'][$path]) && ! isset($git['differs'][$path]);
     }
 
     public function inGit(): bool
@@ -254,36 +259,42 @@ class LocalContent
         return $this->committed;
     }
 
-    /**
-     * One `git ls-files --stage` for the folder, as committed() reads HEAD.
-     *
-     * @return array<string, string>
-     */
-    private function staged(): array
+    /** @return array{tracked: array<string, true>, differs: array<string, true>} paths relative to content/ */
+    private function readGit(string $against): array
     {
-        if ($this->staged !== null) {
-            return $this->staged;
-        }
+        $tracked = $against === 'HEAD'
+            ? array_fill_keys(array_keys($this->committed()), true)
+            : $this->gitPaths(['ls-files', '-z', '--stage', '--', '.'], '/^100(?:644|755) [0-9a-f]{40,64} 0\t(.+)$/s');
+        $differs = $this->gitPaths(['diff', ...($against === 'HEAD' ? ['HEAD'] : []), '--name-only', '--relative', '-z', '--', '.'], '/^(.+)$/s');
 
-        $this->staged = [];
+        return ['tracked' => $tracked, 'differs' => $differs];
+    }
 
+    /**
+     * @param  list<string>  $arguments
+     * @return array<string, true>
+     */
+    private function gitPaths(array $arguments, string $pattern): array
+    {
         try {
-            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', 'ls-files', '--stage', '-z', '--', '.']) : null;
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', ...$arguments]) : null;
         } catch (Throwable) {
-            return $this->staged;
+            return [];
         }
 
         if ($result === null || ! $result->successful()) {
-            return $this->staged;
+            return [];
         }
 
+        $paths = [];
+
         foreach (explode("\0", $result->output()) as $line) {
-            if (preg_match('/^100(?:644|755) ([0-9a-f]{40}|[0-9a-f]{64}) 0\t(.+)$/s', $line, $match) === 1) {
-                $this->staged[$match[2]] = $match[1];
+            if ($line !== '' && preg_match($pattern, $line, $match) === 1) {
+                $paths[$match[1]] = true;
             }
         }
 
-        return $this->staged;
+        return $paths;
     }
 
     private function absolute(string $path): string

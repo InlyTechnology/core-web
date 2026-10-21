@@ -53,14 +53,21 @@ class ContentPushCommand extends Command
         $buffer = new BufferedOutput;
         $this->output = new OutputStyle($this->input, $buffer);
 
+        $error = null;
+
         try {
             $exit = $this->push($local);
+        } catch (Throwable $e) {
+            $exit = self::FAILURE;
+            $error = $e->getMessage();
+            report($e);
         } finally {
             $this->output = $terminal;
         }
 
         $this->output->writeln((string) json_encode([
             'ok' => $exit === self::SUCCESS,
+            ...($error === null ? [] : ['error' => $error]),
             'remote' => RemoteSite::configuredUrl() ?: null,
             'dry_run' => (bool) $this->option('dry-run'),
             ...$this->outcome,

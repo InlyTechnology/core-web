@@ -48,7 +48,7 @@ final class PushSelection
     public static function fromOptions(LocalContent $local, ?string $only, ?string $site, array $paths, bool $staged, bool $committed, bool $publish): self
     {
         if ($staged && $committed) {
-            throw new InvalidArgumentException('Pass --staged or --committed, not both: --committed already means the file is staged.');
+            throw new InvalidArgumentException('Pass --staged or --committed, not both: --staged compares with git\'s index, --committed with the last commit.');
         }
 
         $git = match (true) {
@@ -78,13 +78,13 @@ final class PushSelection
         $matched = [];
 
         foreach ($this->candidates() as $path => $type) {
-            $argument = $this->matchingArgument($path);
+            $arguments = $this->matchingArguments($path);
 
-            if ($argument === false) {
+            if ($arguments === false) {
                 continue;
             }
 
-            if ($argument !== null) {
+            foreach ($arguments as $argument) {
                 $matched[$argument] = true;
             }
 
@@ -112,7 +112,7 @@ final class PushSelection
         $unmatched = array_values(array_diff($this->paths, array_keys($matched)));
 
         if ($unmatched !== []) {
-            throw new InvalidArgumentException('No file a push carries matches '.implode(', ', array_map(fn (string $path) => "[{$path}]", $unmatched)).': a path is a file or folder under content/ (or a * pattern) of the types and site the push is limited to.');
+            throw new InvalidArgumentException('No file a push carries matches '.implode(', ', array_map(fn (string $path) => "[{$path}]", $unmatched)).': a path is an existing file or folder under content/ (or a quoted * pattern) of the types and site the push is limited to; a deleted file is never pushed.');
         }
 
         ksort($files);
@@ -131,7 +131,7 @@ final class PushSelection
         $waiting = [];
 
         foreach ($this->candidates() as $path => $type) {
-            if ($this->matchingArgument($path) === false) {
+            if ($this->matchingArguments($path) === false || ! $this->inGitAsNow($path)) {
                 continue;
             }
 
@@ -228,32 +228,28 @@ final class PushSelection
     }
 
     /**
-     * The path argument a file matches: null when the push names no paths, false when it names some and none matches.
+     * Every path argument a file matches: empty when the push names no paths, false when it names some and none matches.
+     *
+     * @return list<string>|false
      */
-    private function matchingArgument(string $path): string|false|null
+    private function matchingArguments(string $path): array|false
     {
         if ($this->paths === []) {
-            return null;
+            return [];
         }
 
-        foreach ($this->paths as $argument) {
-            $matches = str_contains($argument, '*')
-                ? Str::is($argument, $path)
-                : $path === $argument || str_starts_with($path, $argument.'/');
+        $matching = array_values(array_filter($this->paths, fn (string $argument) => str_contains($argument, '*')
+            ? Str::is($argument, $path)
+            : $path === $argument || str_starts_with($path, $argument.'/')));
 
-            if ($matches) {
-                return $argument;
-            }
-        }
-
-        return false;
+        return $matching === [] ? false : $matching;
     }
 
     private function inGitAsNow(string $path): bool
     {
         return match ($this->git) {
-            'staged' => $this->local->matchesStaged($path),
-            'committed' => $this->local->matchesCommitted($path),
+            'staged' => $this->local->inGitAsNow($path, 'index'),
+            'committed' => $this->local->inGitAsNow($path, 'HEAD'),
             default => true,
         };
     }
@@ -274,6 +270,10 @@ final class PushSelection
         }
 
         $relative = rtrim($relative, '/');
+
+        if ($relative.'/' === $prefix || $relative === '.') {
+            $relative = '';
+        }
 
         if ($relative === '' || ! ContentPaths::safe(str_replace('*', 'x', $relative))) {
             throw new InvalidArgumentException("[{$given}] is no file or folder under content/; leave the path out to push everything changed.");

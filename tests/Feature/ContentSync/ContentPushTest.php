@@ -18,6 +18,7 @@ use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\Targets\CollectionTreeTarget;
 use Inly\CoreWeb\Tests\TestCase;
+use RuntimeException;
 use Statamic\Events\EntrySaved;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Blueprint;
@@ -1060,6 +1061,73 @@ class ContentPushTest extends TestCase
         $this->assertFalse($out['ok']);
         $this->assertSame([], $out['results']);
         $this->assertStringContainsString('run php artisan content:login', implode("\n", $out['messages']));
+    }
+
+    public function test_overlapping_paths_match_in_either_order(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->assertSame(['collections/pages/home.md'], $this->statusPaths(['paths' => ['collections', 'collections/pages/home.md']]));
+        $this->assertSame(['collections/pages/home.md'], $this->statusPaths(['paths' => ['collections/pages/home.md', 'collections/*']]));
+    }
+
+    public function test_the_whole_content_folder_as_a_path_says_to_leave_it_out(): void
+    {
+        $this->pull()->assertSuccessful();
+
+        foreach (['content', 'content/', '.'] as $path) {
+            $this->push(['paths' => [$path]])->expectsOutputToContain('leave the path out')->assertFailed();
+        }
+    }
+
+    public function test_status_over_the_push_limit_fails_like_the_push(): void
+    {
+        config(['core-web.content_sync.push_items' => 1]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: Also mine');
+
+        $this->assertSame(1, Artisan::call('content:status', ['--json' => true]));
+        $status = json_decode(Artisan::output(), true);
+        $this->assertFalse($status['ok']);
+        $this->assertStringContainsString('more than one push carries (1)', $status['error']);
+        $this->assertCount(2, $status['push']);
+    }
+
+    public function test_waiting_files_follow_the_git_filter(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->push()->assertSuccessful();
+        $this->git(['init', '-q']);
+
+        $this->freshLocal();
+        Artisan::call('content:status', ['--json' => true]);
+        $this->assertSame(['collections/pages/home.md'], json_decode(Artisan::output(), true)['waiting']);
+
+        $this->freshLocal();
+        Artisan::call('content:status', ['--json' => true, '--staged' => true]);
+        $this->assertSame([], json_decode(Artisan::output(), true)['waiting']);
+    }
+
+    public function test_json_stays_one_document_when_the_command_breaks(): void
+    {
+        $this->app->instance(LocalContent::class, new class($this->root, $this->lock) extends LocalContent
+        {
+            public function lock(): array
+            {
+                throw new RuntimeException('Lock unreadable');
+            }
+        });
+
+        $this->assertSame(1, Artisan::call('content:push', ['--json' => true]));
+        $out = json_decode(Artisan::output(), true);
+        $this->assertFalse($out['ok']);
+        $this->assertSame('Lock unreadable', $out['error']);
+
+        $this->assertSame(1, Artisan::call('content:status', ['--json' => true]));
+        $this->assertSame('Lock unreadable', json_decode(Artisan::output(), true)['error']);
     }
 
     /** @return list<string> the paths content:status lists for the options */
