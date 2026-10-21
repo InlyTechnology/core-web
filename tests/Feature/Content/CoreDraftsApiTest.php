@@ -106,6 +106,27 @@ class CoreDraftsApiTest extends TestCase
     public function test_an_unknown_draft_is_not_found(): void
     {
         $this->callSealed('GET', '/api/core/v1/drafts/nope', 'website.draft')->assertNotFound()->assertJsonPath('error', 'not_found');
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'entry_id' => 'nope', 'fields' => ['title' => 'x'], ...$this->actor()])
+            ->assertNotFound()
+            ->assertExactJson(['error' => 'not_found', 'message' => 'The site has no such entry to draft.']);
+        $this->callSealed('POST', '/api/core/v1/drafts/nope/publish', 'website.publish', $this->actor())
+            ->assertNotFound()
+            ->assertExactJson(['error' => 'not_found', 'message' => 'The site has no such entry to draft.']);
+    }
+
+    public function test_the_request_is_checked_before_the_person(): void
+    {
+        $nobody = $this->actor('99');
+
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'pages', 'fields' => ['title' => 'x'], ...$nobody])->assertUnprocessable();
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'entry_id' => 'nope', 'fields' => ['title' => 'x'], ...$nobody])->assertNotFound();
+        $this->callSealed('POST', '/api/core/v1/drafts/nope/publish', 'website.publish', $nobody)->assertNotFound();
+
+        config(['statamic.revisions.enabled' => false]);
+        Collection::findByHandle('articles')->revisionsEnabled(false)->save();
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'x'], ...$nobody])
+            ->assertConflict()
+            ->assertJsonPath('error', 'revisions_off');
     }
 
     public function test_a_draft_against_an_older_catalog_is_refused_where_the_site_has_one(): void

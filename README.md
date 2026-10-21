@@ -1407,6 +1407,9 @@ rather than change a live entry.
   hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
   checks without saving.
 - `publish()` makes the draft live; `read()` returns it with who holds it.
+  Both writes take the author or a closure that makes one, called only once
+  the request names an entry it may draft, so a refusal about the request
+  (an unknown entry is `not_found`, 404) comes before one about the author.
 
 ```php
 $author = new DraftAuthor($cpUser, $name, DraftProvenance::make('content-push', ['by' => $email]), 'Pushed from local');

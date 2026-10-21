@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Drafts;
 
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
@@ -61,12 +62,13 @@ class DraftWriter
     ) {}
 
     /**
+     * @param  DraftAuthor|Closure(): DraftAuthor  $author  a closure is called only once the request names an entry it may draft, so a refusal about the request comes before one about its author
      * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, base_hash?: ?string}  $request
      * @return array<string, mixed>
      *
      * @throws DraftRefused|ValidationException
      */
-    public function write(DraftAuthor $author, array $request, ?DraftValueNormaliser $values = null): array
+    public function write(DraftAuthor|Closure $author, array $request, ?DraftValueNormaliser $values = null): array
     {
         $this->normaliser = $values ?? $this->values;
         $this->dryRun = (bool) ($request['dry_run'] ?? false);
@@ -97,13 +99,16 @@ class DraftWriter
         if (filled($request['entry_id'] ?? null)) {
             $entry = Entry::find($request['entry_id']);
 
-            abort_unless($entry && $entry->collectionHandle() === $collection->handle(), 404, 'No such entry.');
+            if (! $entry || $entry->collectionHandle() !== $collection->handle()) {
+                throw DraftRefused::notFound();
+            }
 
             if ($entry->locale() !== $site) {
                 throw ValidationException::withMessages(['site' => "The entry is on the site `{$entry->locale()}`, not `{$site}`."]);
             }
         }
 
+        $author = self::resolve($author);
         $gate = Gate::forUser($author->user);
         $permitted = $entry === null
             ? $gate->allows('store', [EntryContract::class, $collection, Site::get($site)])
@@ -205,16 +210,20 @@ class DraftWriter
      *
      * @throws DraftRefused|ValidationException
      */
-    public function publish(DraftAuthor $author, string $id): array
+    /** @param  DraftAuthor|Closure(): DraftAuthor  $author  resolved once the entry is found, as in write() */
+    public function publish(DraftAuthor|Closure $author, string $id): array
     {
         $entry = Entry::find($id);
 
-        abort_unless($entry && DraftableCollections::writable($entry->collectionHandle()), 404, 'No such entry.');
+        if (! $entry || ! DraftableCollections::writable($entry->collectionHandle())) {
+            throw DraftRefused::notFound();
+        }
 
         if (! $entry->revisionsEnabled()) {
             throw DraftRefused::revisionsOff();
         }
 
+        $author = self::resolve($author);
         $user = $author->user;
 
         if (! Gate::forUser($user)->allows('publish', $entry)) {
@@ -261,6 +270,11 @@ class DraftWriter
             'cp_url' => $draft->editUrl(),
             'images_needed' => $imagesNeeded,
         ];
+    }
+
+    private static function resolve(DraftAuthor|Closure $author): DraftAuthor
+    {
+        return $author instanceof Closure ? $author() : $author;
     }
 
     /**

@@ -33,7 +33,7 @@ class CoreDraftsController
 
         $this->assertCatalog($request->input('catalog_hash'));
 
-        $result = $writer->write(CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'base_hash']));
+        $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'base_hash']));
 
         return response()->json(['data' => $result], filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
     }
@@ -53,7 +53,7 @@ class CoreDraftsController
     {
         $request->validate(CoreAiAuthor::rules());
 
-        return response()->json(['data' => $writer->publish(CoreAiAuthor::from($request, 'publish'), $id)]);
+        return response()->json(['data' => $writer->publish(fn () => CoreAiAuthor::from($request, 'publish'), $id)]);
     }
 
     private function assertCatalog(mixed $hash): void
