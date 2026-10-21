@@ -418,8 +418,8 @@ class ContentPush
 
     /**
      * A collection's page tree, which may hold entries this same push creates. While the push is checked
-     * those do not exist yet, so the tree is checked without them (their children in their place); as it
-     * is written, the push's own placing of them is not taken for a change made on the site.
+     * those do not exist yet, so the tree is checked whole with their ids allowed; as it is written, the
+     * push's own placing of them is not taken for a change made on the site.
      *
      * @param  array<string, mixed>  $data
      * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
@@ -431,17 +431,9 @@ class ContentPush
         $tree = (array) ($data['tree'] ?? []);
         $holdsNew = array_intersect(self::entryIds($tree), array_keys($this->newEntries)) !== [];
 
+        // The check runs before the new entries exist, so the tree is checked whole with their ids allowed.
         if ($dryRun && $holdsNew) {
-            $result = $this->proposal($author, $path, 'collection-trees', [$target, $stored], ['data' => $this->withoutNewEntries($tree)], $item, $force, true);
-
-            if ($result['status'] !== self::STATUS_UNCHANGED) {
-                return $result;
-            }
-
-            // Placing the new entries still changes the tree, so it is a proposal someone else's must not hold.
-            $this->proposals->assertNotHeld($author, $target);
-
-            return ['path' => $path, 'status' => self::STATUS_PROPOSAL, 'target' => $target->key(), 'changed' => []];
+            return $this->proposal($author, $path, 'collection-trees', [$target->expecting(array_keys($this->newEntries)), $stored], ['data' => $tree], $item, $force, true);
         }
 
         if ($dryRun || ! $holdsNew || $force || ! $this->placedOnly($path, $stored->tree(), $item['base'] ?? null)) {
@@ -545,7 +537,7 @@ class ContentPush
         $file = self::termFile($taxonomy, $slug);
 
         if ($file === null) {
-            return $this->newTerm($author, $path, $taxonomy, $slug, is_string($data['blueprint'] ?? null) ? $data['blueprint'] : null, $values, $dryRun);
+            return $this->newTerm($author, $path, $taxonomy, $slug, is_string($data['blueprint'] ?? null) ? $data['blueprint'] : null, $values, array_key_exists('localizations', $data) ? ['localizations'] : [], $dryRun);
         }
 
         $stored = $file->fileData();
@@ -563,9 +555,10 @@ class ContentPush
 
     /**
      * @param  array<string, mixed>  $values
+     * @param  list<string>  $ignored  what the file holds that a new term does not take
      * @return array<string, mixed>
      */
-    private function newTerm(DraftAuthor $author, string $path, string $taxonomy, string $slug, ?string $blueprint, array $values, bool $dryRun): array
+    private function newTerm(DraftAuthor $author, string $path, string $taxonomy, string $slug, ?string $blueprint, array $values, array $ignored, bool $dryRun): array
     {
         $found = Taxonomy::find($taxonomy);
 
@@ -588,9 +581,19 @@ class ContentPush
         }
 
         $known = $termBlueprint->fields()->except('slug')->all()->keys()->map(fn ($handle) => (string) $handle)->all();
+        $ignored = [...$ignored, ...array_keys(array_diff_key($values, array_flip($known)))];
         $values = array_intersect_key($values, array_flip($known));
         $fields = $termBlueprint->fields()->except('slug')->addValues($values)->preProcess();
-        $hidden = FieldConditions::omitted($fields, $fields->values()->all());
+        $all = $fields->values()->all();
+        $hidden = FieldConditions::omitted($fields, $all);
+
+        // A value its field's conditions hide is left out, as the CP's form leaves it out of a save.
+        if ($hidden !== []) {
+            $ignored = [...$ignored, ...array_filter($hidden, fn (string $at) => ! blank(Arr::get($values, $at)))];
+            Arr::forget($all, $hidden);
+            $fields = $fields->addValues($all)->setFilled(array_values(array_diff(array_keys($values), $hidden)));
+        }
+
         $validator = $fields->validator()->validator();
 
         if ($validator->fails()) {
@@ -606,11 +609,11 @@ class ContentPush
                 'taxonomy' => $taxonomy,
                 'slug' => $slug,
                 'blueprint' => $blueprint,
-                'values' => array_filter(array_diff_key($fields->process()->values()->only(array_keys($values))->all(), array_flip($hidden)), fn (mixed $v) => $v !== null),
+                'values' => array_filter($fields->process()->values()->only(array_keys($values))->all(), fn (mixed $v) => $v !== null),
             ];
         }
 
-        return ['path' => $path, 'status' => self::STATUS_NEW_TERM];
+        return ['path' => $path, 'status' => self::STATUS_NEW_TERM, 'ignored_fields' => array_values(array_unique($ignored))];
     }
 
     /**

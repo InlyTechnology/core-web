@@ -37,7 +37,7 @@ class Proposals
      *
      * @throws DraftRefused when someone else holds an open proposal on it
      */
-    public function assertNotHeld(DraftAuthor $author, ProposalTarget $target): ?Proposal
+    private function assertNotHeld(DraftAuthor $author, ProposalTarget $target): ?Proposal
     {
         $open = $this->store->openFor($target->key());
 

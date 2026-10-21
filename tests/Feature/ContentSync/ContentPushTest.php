@@ -613,10 +613,11 @@ class ContentPushTest extends TestCase
         $this->assertSame('Mine', Entry::find('home')->fromWorkingCopy()->get('title'));
     }
 
-    private function docs(): void
+    /** @param  array<string, mixed>  $structure */
+    private function docs(array $structure = ['max_depth' => 3]): void
     {
         config(['core-web.drafts.collections' => ['pages' => [], 'articles' => [], 'docs' => ['structured' => true]]]);
-        $docs = Collection::make('docs')->sites(['default'])->revisionsEnabled(true)->structureContents(['max_depth' => 3]);
+        $docs = Collection::make('docs')->sites(['default'])->revisionsEnabled(true)->structureContents($structure);
         $docs->save();
         Blueprint::make('doc')->setNamespace('collections.docs')->setContents(['fields' => [['handle' => 'title', 'field' => ['type' => 'text', 'validate' => ['required']]]]])->save();
 
@@ -842,6 +843,58 @@ class ContentPushTest extends TestCase
 
         $this->push(['--publish' => true])->expectsOutputToContain('validation')->assertFailed();
         $this->assertNull(Term::find('tags::blue'));
+    }
+
+    public function test_a_new_term_leaves_out_hidden_and_unknown_values_and_names_them(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->tags();
+        Blueprint::make('tag')->setNamespace('taxonomies.tags')->setContents(['fields' => [
+            ['handle' => 'title', 'field' => ['type' => 'text', 'validate' => ['required']]],
+            ['handle' => 'kind', 'field' => ['type' => 'text']],
+            ['handle' => 'detail', 'field' => ['type' => 'text', 'validate' => ['integer'], 'if' => ['kind' => 'equals long']]],
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [
+                ['handle' => 'kind', 'field' => ['type' => 'text']],
+                ['handle' => 'note', 'field' => ['type' => 'text', 'validate' => ['integer'], 'if' => ['kind' => 'equals long']]],
+            ]]],
+        ]])->save();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/taxonomies/tags/blue.yaml', "title: Blue\nkind: short\ndetail: abc\ncolour: blue\nrows:\n  -\n    kind: short\n    note: abc\n");
+
+        $this->push(['--publish' => true])->expectsOutputToContain('Left out, as the site does not take them: colour, detail, rows.0.note.')->assertSuccessful();
+
+        $term = Term::find('tags::blue');
+        $this->assertSame('short', $term->get('kind'));
+        $this->assertNull($term->get('detail'));
+        $this->assertNull($term->get('colour'));
+        $this->assertArrayNotHasKey('note', $term->get('rows')[0]);
+    }
+
+    public function test_a_tree_holding_a_new_entry_past_the_tree_s_depth_is_refused_by_the_check(): void
+    {
+        $this->docs(['max_depth' => 2]);
+        Collection::find('docs')->structure()->in('default')->tree([['entry' => 'intro', 'children' => [['entry' => 'setup']]]])->save();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: setup\n        children:\n          -\n            entry: faq\n");
+
+        $this->push()->expectsOutputToContain('at most 2 levels deep')->assertFailed();
+        $this->assertNull(Entry::find('faq'));
+    }
+
+    public function test_a_tree_holding_a_new_entry_before_or_under_the_home_page_is_refused_by_the_check(): void
+    {
+        $this->docs(['root' => true, 'max_depth' => 3]);
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: faq\n  -\n    entry: intro\n  -\n    entry: setup\n");
+        $this->push()->expectsOutputToContain('The first page is the home page')->assertFailed();
+
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n  -\n    entry: setup\n");
+        $this->push()->expectsOutputToContain('The home page holds no pages under it')->assertFailed();
+
+        $this->assertNull(Entry::find('faq'));
     }
 
     public function test_a_new_term_s_file_is_named_by_its_slug(): void

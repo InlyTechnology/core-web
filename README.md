@@ -1862,8 +1862,8 @@ collection. At most `content_sync.push_items` (200) files go in one push;
 narrow a larger one with `--only` or `--site`.
 
 **Page trees holding new entries.** The check, `--dry-run` included, runs
-before those entries exist, so it checks the tree with each new entry's
-branch replaced by its children: what it drops, its home page, the
+before those entries exist, so it checks the whole tree with their ids
+allowed: where they sit (its depth, the home page), what it drops, the
 permission and an open proposal by someone else are all checked there. As
 the push writes, placing the new entries is not taken for a change on the
 site, but any other change since the push began is (`base_changed`), so an
@@ -1878,8 +1878,10 @@ refuses it, `term_needs_publish`). A term's file also holds its values on
 the other sites; a push leaves those alone and refuses a file that changes
 them (`localized_term`) or its `blueprint:`. A new term's file must be
 named by its slug, and the term is validated against its blueprint before
-anything is written. Changing a term needs the person's edit permission on
-its taxonomy, creating one the create permission.
+anything is written; a value its blueprint does not know or its field's
+conditions hide is left out, and named under `ignored_fields` as an
+entry's are. Changing a term needs the person's edit permission on its
+taxonomy, creating one the create permission.
 
 **Never undoing the site.** A pull records, per file, the site's hash of
 the version it wrote (`bases` in `content.lock`). A push names it, and the

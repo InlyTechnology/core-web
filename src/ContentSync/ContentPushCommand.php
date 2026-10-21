@@ -567,6 +567,10 @@ class ContentPushCommand extends Command
                 $this->line("  <comment>{$result['not_published']}</comment>");
             }
 
+            if (($result['ignored_fields'] ?? []) !== []) {
+                $this->line('  <comment>Left out, as the site does not take them: '.implode(', ', (array) $result['ignored_fields']).'.</comment>');
+            }
+
             if ($result['status'] === ContentPush::STATUS_PUBLISHED && ($result['images_needed'] ?? []) !== []) {
                 $this->line('  <comment>Live without the required images: '.implode(', ', (array) $result['images_needed']).'; add them in the CP.</comment>');
             }
