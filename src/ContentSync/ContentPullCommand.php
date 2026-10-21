@@ -20,6 +20,7 @@ use Statamic\Facades\Site;
  */
 class ContentPullCommand extends Command
 {
+    use ReportsProgress;
     use SignsInToRemoteSite;
 
     protected $signature = 'content:pull
@@ -166,11 +167,18 @@ class ContentPullCommand extends Command
     private function fetchAssets(AssetPull $assets, RemoteSite $remote, array $containers): ?array
     {
         try {
-            return array_map(fn (AssetContainer $container) => $assets->fetch($remote, $container), $containers);
+            return array_map(fn (AssetContainer $container) => $assets->fetch(
+                $remote,
+                $container,
+                fn (int $files) => $this->progress(sprintf('Indexing assets %s… %s files', $container->handle(), number_format($files))),
+            ), $containers);
         } catch (AssetsNotExported $e) {
+            $this->endProgress();
             $this->warn("Assets: {$e->getMessage()} The asset index here is left as it was; content is pulled as usual.");
 
             return null;
+        } finally {
+            $this->endProgress();
         }
     }
 
@@ -243,10 +251,25 @@ class ContentPullCommand extends Command
      */
     private function fetch(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site): array
     {
+        try {
+            return $this->fetchScopes($local, $remote, $scopes, $site);
+        } finally {
+            $this->endProgress();
+        }
+    }
+
+    /**
+     * @param  list<array{type: string, handle: ?string}>  $scopes
+     * @return array{0: array<string, array{type: string, hash: string, contents: ?string}>, 1: array<string, array{all: bool, scopes: list<array{handle: string, site: ?string}>}>}
+     */
+    private function fetchScopes(LocalContent $local, RemoteSite $remote, array $scopes, ?string $site): array
+    {
         $items = [];
         $coverage = [];
 
         foreach ($scopes as $scope) {
+            $this->progress("Fetching {$scope['type']}…");
+
             $cursor = '0';
 
             for ($page = 0; $cursor !== null; $page++) {
@@ -279,6 +302,8 @@ class ContentPullCommand extends Command
                     $hash = hash('sha256', $contents);
                     $items[$path] = ['type' => $scope['type'], 'hash' => $hash, 'contents' => self::localHash($local, $path) === $hash ? null : $contents];
                 }
+
+                $this->progress(sprintf('Fetching %s… %s files so far', $scope['type'], number_format(count($items))));
 
                 $next = $response->json('next_cursor');
                 $cursor = is_scalar($next) && (string) $next !== '' ? (string) $next : null;

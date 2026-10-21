@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\ContentSync;
 
+use Closure;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\RemoteIndex;
 use Statamic\Contracts\Assets\AssetContainer as Container;
@@ -52,11 +53,12 @@ class AssetPull
     /**
      * Every file the site lists in the container, each path checked before anything is written.
      *
+     * @param  (Closure(int): void)|null  $progress  told the number of files listed so far, after each page
      * @return array{url: ?string, files: array<string, array{url: ?string, meta: ?array<string, mixed>}>, dropped: int}|null null when the site has no such container or the user may not view it
      *
      * @throws AssetsNotExported when the site's core-web predates the asset export
      */
-    public function fetch(RemoteSite $remote, Container $container): ?array
+    public function fetch(RemoteSite $remote, Container $container, ?Closure $progress = null): ?array
     {
         $handle = $container->handle();
         $files = [];
@@ -113,6 +115,10 @@ class AssetPull
                     'url' => $fileUrl,
                     'meta' => self::meta($item['meta'] ?? null),
                 ];
+            }
+
+            if ($progress !== null) {
+                $progress(count($files));
             }
 
             $next = $response->json('next_cursor');

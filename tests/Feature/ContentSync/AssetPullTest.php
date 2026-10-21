@@ -475,6 +475,18 @@ class AssetPullTest extends TestCase
         $this->assertSame(['hero.jpg', 'team/anna.jpg'], array_keys($this->index()->files()));
     }
 
+    public function test_the_fetch_reports_the_files_listed_after_each_page(): void
+    {
+        $this->pageSize = 1;
+        $counts = [];
+
+        app(AssetPull::class)->fetch(RemoteSite::fromStorage(), AssetContainer::find('assets'), function (int $files) use (&$counts): void {
+            $counts[] = $files;
+        });
+
+        $this->assertSame([1, 2], $counts);
+    }
+
     public function test_a_failing_later_page_keeps_the_old_index(): void
     {
         $this->pull()->assertSuccessful();

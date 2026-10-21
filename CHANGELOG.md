@@ -6,6 +6,13 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Progress while pulling**: `content:login` says it is waiting for the
+  approval and counts down the code's time, and `content:pull` and
+  `core:pull` show a live count per type and asset container while they
+  page. Only on a terminal: piped output and logs get the result lines alone.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

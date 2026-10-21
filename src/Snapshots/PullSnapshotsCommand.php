@@ -11,6 +11,7 @@ use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\ContentSync\RemoteSiteBusy;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
+use Inly\CoreWeb\ContentSync\ReportsProgress;
 use Inly\CoreWeb\ContentSync\SignsInToRemoteSite;
 
 /**
@@ -20,6 +21,7 @@ use Inly\CoreWeb\ContentSync\SignsInToRemoteSite;
  */
 class PullSnapshotsCommand extends Command
 {
+    use ReportsProgress;
     use SignsInToRemoteSite;
 
     protected $signature = 'core:pull
@@ -149,12 +151,16 @@ class PullSnapshotsCommand extends Command
      */
     private function fetch(RemoteSite $site, string $type): array
     {
-        for ($attempt = 0; $attempt <= self::RESTARTS; $attempt++) {
-            $fetched = $this->fetchOnce($site, $type);
+        try {
+            for ($attempt = 0; $attempt <= self::RESTARTS; $attempt++) {
+                $fetched = $this->fetchOnce($site, $type);
 
-            if ($fetched !== null) {
-                return $fetched;
+                if ($fetched !== null) {
+                    return $fetched;
+                }
             }
+        } finally {
+            $this->endProgress();
         }
 
         throw new RemoteSiteError('the site\'s copy kept changing while pulling; run core:pull again');
@@ -172,6 +178,7 @@ class PullSnapshotsCommand extends Command
         $cursor = 0;
 
         for ($page = 0; $page < self::MAX_PAGES; $page++) {
+            $this->progress(sprintf('Pulling %s… %s documents so far', $type, number_format(count($documents))));
             $body = $this->page($site, $type, $cursor);
 
             if ($version !== null && $version !== $body['version']) {
@@ -268,6 +275,7 @@ class PullSnapshotsCommand extends Command
     private function sleep(?int $seconds): void
     {
         $seconds = max(1, min(self::MAX_WAIT_SECONDS, $seconds ?? 10));
+        $this->endProgress();
         $this->line("Waiting {$seconds}s for the live site…");
         Sleep::for($seconds)->seconds();
     }

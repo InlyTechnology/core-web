@@ -55,6 +55,7 @@ class ContentLoginTest extends TestCase
         $this->artisan('content:login', ['--no-interaction' => true])
             ->expectsOutputToContain('https://remote.test/cp/core-web/sync/authorize?code=BCDF-GHJK')
             ->expectsOutputToContain('BCDF-GHJK')
+            ->expectsOutputToContain('Waiting for the approval in the browser')
             ->expectsOutputToContain('Signed in to https://remote.test as Ann')
             ->assertSuccessful();
 
