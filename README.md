@@ -1829,11 +1829,12 @@ with the reason already said, when no login can be had. `content:pull` and
 `content:push` sends what a developer changed in `content/` back to the live
 site as changes an editor makes live: an entry becomes a draft an editor
 publishes in the CP (a working copy of a published entry, or a new
-unpublished entry), and a global's values or a navigation tree becomes a
-proposal an editor applies (see [Drafts](#drafts) and
-[Proposals](#proposals)). A push never deletes anything or moves an entry in
-a tree, makes one proposal per global set or nav and site, and publishes
-only with `--publish` on a site that allows it (see **Publishing** below).
+unpublished entry), and a term's values, a global's values, a collection's
+page tree or a navigation tree becomes a proposal an editor applies (see
+[Drafts](#drafts) and [Proposals](#proposals)). A push never deletes
+anything, makes one proposal per term, global set, tree and site, and
+publishes only with `--publish` on a site that allows it (see
+**Publishing** below).
 It uses the same login as [Content pull](#content-pull) and is on wherever
 `content_sync` is (`content_sync.push: false` on the live site refuses it).
 
@@ -1846,13 +1847,24 @@ php artisan content:push --force    # skip the "changed on the site since the pu
 php artisan content:push --publish  # make it live, where the site allows it (below)
 ```
 
-**What is sent.** Each file under `content/collections`, `content/globals`
-or `content/navigation` whose hash differs from `content.lock` and from
-what this checkout last pushed. Collection trees (the page order) and terms
-are not pushed: they stay CP edits. An entry is pushed only into a
-collection the drafts feature covers (`drafts.collections`), and a proposal
-needs `features.drafts`. A new entry keeps the id the checkout gave it and,
-in a structured collection, is placed under its local parent. At most
+**What is sent.** Each entry, term, global, collection page tree and
+navigation tree file whose hash differs from `content.lock` and from what
+this checkout last pushed, written in that order. An entry is pushed only
+into a collection the drafts feature covers (`drafts.collections`), and a
+proposal needs `features.drafts`. A new entry keeps the id the checkout
+gave it and, in a structured collection, is placed under its local parent;
+a page tree pushed in the same run may hold it, and moves it where the
+checkout's tree has it once applied. A page tree never drops a page the
+site's tree holds (delete pages in the CP), and its home page stays first.
+
+**Terms.** Statamic keeps no draft of a term, so a change to an existing
+term is a proposal of its values on the default site, and a new term is
+created, live, only by a push with `--publish` (a plain push refuses it,
+`term_needs_publish`). A term's file also holds its values on the other
+sites; a push leaves those alone and refuses a file that changes them
+(`localized_term`). Changing a term needs the person's edit permission on
+its taxonomy, creating one the create permission; a page tree needs
+permission to reorder the collection. At most
 `content_sync.push_items` (200) files go in one push; narrow a larger one
 with `--only` or `--site`.
 
@@ -1894,13 +1906,15 @@ listed with the reason:
   (`drafts.collections.<collection>.published_with`), or failing the
   blueprint's validation. Other images the blueprint requires do not block
   a publish: the entry goes live and the push lists them as still needed;
-- a proposal the person may not apply;
+- a proposal the person may not apply (a page tree needs the collection's
+  reorder permission, a term its taxonomy's edit permission);
 - everything, when a file is refused while writing (with `--partial`, the
   written files still go live).
 
 A published entry gets a revision, so it is undone in the CP like any
-other; an applied global or nav tree gets none, as a CP save of one does
-not. A file that went live is recorded under `published` in the lock, with
+other; an applied term, global or tree gets none, as a CP save of one does
+not, and a new term is created with no draft before it. When a file is
+refused while writing, no new term is created either. A file that went live is recorded under `published` in the lock, with
 its new site version in `bases`, so the next push of it needs no pull
 first; a file left as a draft is not recorded as pushed, so the next
 `--publish` sends it again (after a plain push, too). `--publish` cannot be

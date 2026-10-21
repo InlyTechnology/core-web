@@ -15,6 +15,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   or what the checkout keeps `published: false`, stays a draft and is sent
   again by the next `--publish`. Not combined with `--force`. The lock gains
   `published`. See README → Content push → Publishing.
+- **`content:push` carries page trees and terms**: a collection's page tree
+  is a proposal like a nav tree (a new entry pushed in the same run may sit
+  in it), and a term's default-site values are a proposal; a new term,
+  which Statamic cannot keep as a draft, is created only by `--publish`.
+  Each needs the person's own reorder, edit or create permission. See
+  README → Content push → What is sent / Terms.
 
 ## v0.22.0
 

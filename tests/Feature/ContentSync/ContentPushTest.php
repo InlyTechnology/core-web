@@ -22,6 +22,8 @@ use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
+use Statamic\Facades\Taxonomy;
+use Statamic\Facades\Term;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
@@ -246,7 +248,7 @@ class ContentPushTest extends TestCase
 
     public function test_the_page_order_and_other_types_are_not_pushed(): void
     {
-        $this->push(['--only' => 'collection-trees'])->expectsOutputToContain('is not pushed')->assertFailed();
+        $this->push(['--only' => 'assets'])->expectsOutputToContain('is not pushed')->assertFailed();
     }
 
     public function test_pushing_needs_the_push_permission(): void
@@ -607,5 +609,114 @@ class ContentPushTest extends TestCase
 
         $this->assertSame('Home', Entry::find('home')->get('title'));
         $this->assertSame('Mine', Entry::find('home')->fromWorkingCopy()->get('title'));
+    }
+
+    private function docs(): void
+    {
+        config(['core-web.drafts.collections' => ['pages' => [], 'articles' => [], 'docs' => []]]);
+        $docs = Collection::make('docs')->sites(['default'])->revisionsEnabled(true)->structureContents(['max_depth' => 3]);
+        $docs->save();
+        Blueprint::make('doc')->setNamespace('collections.docs')->setContents(['fields' => [['handle' => 'title', 'field' => ['type' => 'text', 'validate' => ['required']]]]])->save();
+
+        foreach (['intro', 'setup'] as $slug) {
+            Entry::make()->id($slug)->collection('docs')->locale('default')->slug($slug)->data(['title' => ucfirst($slug)])->save();
+        }
+
+        $docs->structure()->makeTree('default', [['entry' => 'intro'], ['entry' => 'setup']])->save();
+    }
+
+    private function tree(string $handle): array
+    {
+        return Collection::find($handle)->structure()->in('default')->tree();
+    }
+
+    public function test_a_page_tree_is_a_proposal_and_applied_with_publish(): void
+    {
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        $this->assertFileExists($this->root.'/trees/collections/docs.yaml');
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: setup\n  -\n    entry: intro\n");
+
+        $this->push()->expectsOutputToContain('proposal')->assertSuccessful();
+        $this->assertSame('intro', $this->tree('docs')[0]['entry'], 'A proposal changes nothing yet.');
+        $this->assertSame('tree:docs:default', app(Proposals::class)->open()[0]->target);
+
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('setup', $this->tree('docs')[0]['entry']);
+        $this->assertArrayHasKey('trees/collections/docs.yaml', json_decode(file_get_contents($this->lock), true)['published']);
+    }
+
+    public function test_a_new_entry_sits_in_the_page_tree_pushed_with_it(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: faq\n  -\n    entry: intro\n    children:\n      -\n        entry: setup\n");
+
+        $this->push(['--publish' => true])->expectsOutputToContain('2 published or applied, 0 left')->assertSuccessful();
+
+        $this->assertTrue(Entry::find('faq')->published());
+        $tree = $this->tree('docs');
+        $this->assertSame('faq', $tree[0]['entry']);
+        $this->assertSame('setup', $tree[1]['children'][0]['entry']);
+    }
+
+    public function test_a_page_tree_changed_on_the_site_since_the_pull_is_refused(): void
+    {
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        Collection::find('docs')->structure()->in('default')->tree([['entry' => 'setup'], ['entry' => 'intro']])->save();
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: setup\n");
+
+        $this->push()->expectsOutputToContain('base_changed')->assertFailed();
+    }
+
+    private function tags(): void
+    {
+        Taxonomy::make('tags')->sites(['default'])->save();
+        Term::make()->taxonomy('tags')->slug('red')->dataForLocale('default', ['title' => 'Red'])->save();
+    }
+
+    public function test_a_term_change_is_a_proposal_and_applied_with_publish(): void
+    {
+        $this->tags();
+        $this->pull()->assertSuccessful();
+        $this->edit('taxonomies/tags/red.yaml', 'title: Red', 'title: Crimson');
+
+        $this->push()->expectsOutputToContain('proposal')->assertSuccessful();
+        $this->assertSame('Red', Term::find('tags::red')->title());
+
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('Crimson', Term::find('tags::red')->title());
+    }
+
+    public function test_a_new_term_is_created_only_by_a_push_that_publishes(): void
+    {
+        $this->tags();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/taxonomies/tags/blue.yaml', "title: Blue\n");
+
+        $this->push()->expectsOutputToContain('Push it with --publish')->assertFailed();
+        $this->assertNull(Term::find('tags::blue'));
+
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('Blue', Term::find('tags::blue')->title());
+    }
+
+    public function test_creating_a_term_needs_the_person_s_create_permission(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->tags();
+        $this->roles(['editor' => ['access cp', 'pull content', 'push content', 'view tags terms', 'edit tags terms', 'access default site']]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('pia@example.com', roles: ['editor'])), ['name' => 'Pia', 'email' => 'pia@example.com'], now()->addDays(30)->toIso8601String());
+        $this->pull(['--only' => 'terms'])->assertSuccessful();
+        file_put_contents($this->root.'/taxonomies/tags/blue.yaml', "title: Blue\n");
+
+        $this->push(['--publish' => true, '--only' => 'terms'])->expectsOutputToContain('not_permitted')->assertFailed();
+        $this->assertNull(Term::find('tags::blue'));
     }
 }

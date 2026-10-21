@@ -29,7 +29,7 @@ class ContentPushCommand extends Command
     use SignsInToRemoteSite;
 
     protected $signature = 'content:push
-        {--only= : Types to push, comma separated, each optionally narrowed to a handle (entries:pages,globals,nav-trees:main); every pushable type when omitted}
+        {--only= : Types to push, comma separated, each optionally narrowed to a handle (entries:pages,terms:tags,globals,collection-trees,nav-trees:main); every pushable type when omitted}
         {--site= : Only this site\'s content}
         {--dry-run : Check every file on the site and write nothing}
         {--partial : Write the files that pass even when others are refused}
