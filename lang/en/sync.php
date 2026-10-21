@@ -66,6 +66,8 @@ return [
     'push_publish_unpublished' => 'Unpublished in the checkout, so left a draft.',
     'push_publish_failed' => 'Could not be published (the site logged why); it waits for an editor in the CP.',
     'push_term_localizations' => 'The file changes the term\'s values on other sites. A push changes a term on the default site only; change the others in the CP.',
+    'push_term_blueprint' => 'The term has another blueprint on the site; a push keeps a term the kind it is. Change it in the CP.',
+    'push_term_slug' => 'A term\'s file is named by its slug, and this name is not one: rename it to :slug.yaml.',
     'push_term_needs_publish' => 'A new term goes live as soon as it is created (Statamic keeps no draft of a term). Push it with --publish, or create it in the CP.',
     'push_term_skipped' => 'Not created: another file in this push was refused, so nothing went live.',
     'push_publish_skipped' => 'Not published: another file in this push was refused, so everything waits for an editor.',

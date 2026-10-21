@@ -614,9 +614,9 @@ return [
     | push: whether this site takes `content:push` from a checkout: entries
     | as drafts (working copies, new entries unpublished; the collections in
     | drafts.collections), terms, globals, page trees and navigation trees as
-    | proposals (with
-    | features.drafts on, whose CP page decides them). Pushing needs the
-    | "Push content" permission. False keeps the site pull only.
+    | proposals (with features.drafts on, whose CP page decides them).
+    | Pushing needs the "Push content" permission. False keeps the site pull
+    | only.
     | push_publish: whether `content:push --publish` may make what it pushes
     | live: each draft published and each proposal applied as the pushing
     | person, within their own CP permissions (what they may not publish

@@ -33,6 +33,22 @@ class Proposals
     }
 
     /**
+     * The target's open proposal when it is the author's own, which a new one replaces.
+     *
+     * @throws DraftRefused when someone else holds an open proposal on it
+     */
+    public function assertNotHeld(DraftAuthor $author, ProposalTarget $target): ?Proposal
+    {
+        $open = $this->store->openFor($target->key());
+
+        if ($open !== null && $open->userId !== (string) $author->user->id()) {
+            throw DraftRefused::proposalHeld(User::find($open->userId), $open->createdAt);
+        }
+
+        return $open;
+    }
+
+    /**
      * @param  array<mixed>  $value  the target's whole new value
      * @return array<string, mixed>
      *
@@ -58,11 +74,7 @@ class Proposals
             throw new DraftRefused('unchanged', __('core-web::drafts.unchanged'));
         }
 
-        $open = $this->store->openFor($target->key());
-
-        if ($open !== null && $open->userId !== (string) $author->user->id()) {
-            throw DraftRefused::proposalHeld(User::find($open->userId), $open->createdAt);
-        }
+        $open = $this->assertNotHeld($author, $target);
 
         $changed = $this->changes($target, $target->current(), $value);
 

@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\ContentSync;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Drafts\DraftAuthor;
@@ -12,6 +13,7 @@ use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Drafts\DraftWriter;
 use Inly\CoreWeb\Drafts\EntryFields;
+use Inly\CoreWeb\Drafts\FieldConditions;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalTarget;
@@ -36,19 +38,17 @@ use Throwable;
 
 /**
  * The site's half of `content:push`: each file a checkout sends becomes what
- * an editor publishes or applies in the CP, never a change to what is live.
- * An entry is a draft (DraftWriter); a term's values, a global's values, a
- * collection's page tree or a navigation tree is a proposal (Proposals).
- * Terms have no drafts in Statamic, so a new term is created only by a push
- * that publishes. Every file names the site's hash of the version
- * it was pulled from (`base`), so a push never undoes a change made on the
- * site since. The whole push is checked first and written only when every
- * file passes, unless it asks to write the ones that do (`partial`).
- * A push that
- * asks to publish (`publish`, on a site with `content_sync.push_publish`)
- * then publishes each draft and applies each proposal as the person, once
- * every file was written: what their permissions do not allow stays a draft
- * or proposal.
+ * an editor publishes or applies in the CP. An entry is a draft
+ * (DraftWriter); a term's values, a global's values, a collection's page
+ * tree or a navigation tree is a proposal (Proposals). Every file names the
+ * site's hash of the version it was pulled from (`base`), so a push never
+ * undoes a change made on the site since. The whole push is checked first
+ * and written only when every file passes, unless it asks to write the ones
+ * that do (`partial`). A push that asks to publish (`publish`, on a site
+ * with `content_sync.push_publish`) then publishes each draft and applies
+ * each proposal as the person, once every file was written: what their
+ * permissions do not allow stays a draft or proposal. Statamic keeps no
+ * draft of a term, so a new term is created only by such a push.
  */
 class ContentPush
 {
@@ -71,7 +71,7 @@ class ContentPush
     /** @var array<string, true> ids of the entries this push creates, which its trees may already hold */
     private array $newEntries = [];
 
-    /** @var array<string, string> each pushed page tree's site hash as the write began */
+    /** @var array<string, array{hash: string, tree: array<mixed>}> each pushed page tree on the site as the write began */
     private array $treeBases = [];
 
     /** @var array<string, array{taxonomy: string, slug: string, blueprint: ?string, values: array<string, mixed>}> */
@@ -148,9 +148,11 @@ class ContentPush
             }, $results);
         }
 
+        // New terms first, so an entry going live after them never names a term the site lacks.
+        $results = array_map(fn (array $result) => $result['status'] === self::STATUS_NEW_TERM ? $this->createTerm($author, $result) : $result, $results);
+
         return array_map(fn (array $result) => match (true) {
             ! empty($result['unpublished_here']) => [...$result, 'not_published' => __('core-web::sync.push_publish_unpublished')],
-            $result['status'] === self::STATUS_NEW_TERM => $this->createTerm($author, $result),
             in_array($result['status'], [DraftWriter::STATUS_WORKING_COPY, DraftWriter::STATUS_DRAFT_ENTRY], true) && is_string($result['entry_id'] ?? null) => $this->publishEntry($author, $result),
             $result['status'] === self::STATUS_PROPOSAL && is_string($result['proposal_id'] ?? null) => $this->applyProposal($author, $result),
             default => $result,
@@ -206,7 +208,7 @@ class ContentPush
         try {
             $this->proposals->apply($result['proposal_id'], $author->user);
             [, $stored] = $this->target($type, $result['path']);
-        } catch (DraftRefused $e) {
+        } catch (DraftRefused|ValidationException $e) {
             return [...$result, 'not_published' => $e->getMessage()];
         } catch (Throwable $e) {
             return self::failedToPublish($result, $e);
@@ -396,8 +398,9 @@ class ContentPush
         try {
             $result = $this->proposals->propose($author, $target, $value['data'], Proposals::base($target), $dryRun);
         } catch (DraftRefused $e) {
+            // The site already holds the file, so its version is the one the lock records.
             if ($e->error === 'unchanged') {
-                return ['path' => $path, 'status' => self::STATUS_UNCHANGED];
+                return ['path' => $path, 'status' => self::STATUS_UNCHANGED, 'base' => self::hash($type, $stored)['hash'] ?? null];
             }
 
             throw $e;
@@ -414,8 +417,9 @@ class ContentPush
     }
 
     /**
-     * A collection's page tree, which may place the entries this same push creates: they do not exist
-     * while the push is checked, so such a tree is checked for its base and permission only, and in full as it is written.
+     * A collection's page tree, which may hold entries this same push creates. While the push is checked
+     * those do not exist yet, so the tree is checked without them (their children in their place); as it
+     * is written, the push's own placing of them is not taken for a change made on the site.
      *
      * @param  array<string, mixed>  $data
      * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
@@ -425,35 +429,109 @@ class ContentPush
     {
         [$target, $stored] = $this->treeTarget($path);
         $tree = (array) ($data['tree'] ?? []);
+        $holdsNew = array_intersect(self::entryIds($tree), array_keys($this->newEntries)) !== [];
 
-        if ($dryRun && array_intersect(self::entryIds($tree), array_keys($this->newEntries)) !== []) {
-            if (! CoreWebServiceProvider::enabled('drafts')) {
-                return self::refused($path, 'proposals_off', __('core-web::sync.push_proposals_off'));
+        if ($dryRun && $holdsNew) {
+            $result = $this->proposal($author, $path, 'collection-trees', [$target, $stored], ['data' => $this->withoutNewEntries($tree)], $item, $force, true);
+
+            if ($result['status'] !== self::STATUS_UNCHANGED) {
+                return $result;
             }
 
-            if (! $force) {
-                $this->assertBase($path, 'collection-trees', $stored, $item['base'] ?? null);
-            }
-
-            if (! $target->mayEdit($author->user)) {
-                throw DraftRefused::notPermitted($author->name);
-            }
+            // Placing the new entries still changes the tree, so it is a proposal someone else's must not hold.
+            $this->proposals->assertNotHeld($author, $target);
 
             return ['path' => $path, 'status' => self::STATUS_PROPOSAL, 'target' => $target->key(), 'changed' => []];
         }
 
-        // The entries this push placed under their parents changed the tree since the check; the push's own change is not the site's.
-        if (! $dryRun && isset($this->treeBases[$path]) && is_string($item['base'] ?? null) && hash_equals($this->treeBases[$path], $item['base'])) {
-            $item['base'] = self::hash('collection-trees', $stored)['hash'] ?? $item['base'];
+        if ($dryRun || ! $holdsNew || $force || ! $this->placedOnly($path, $stored->tree(), $item['base'] ?? null)) {
+            return $this->proposal($author, $path, 'collection-trees', [$target, $stored], ['data' => $tree], $item, $force, $dryRun);
         }
 
-        return $this->proposal($author, $path, 'collection-trees', [$target, $stored], ['data' => $tree], $item, $force, $dryRun);
+        $item['base'] = self::hash('collection-trees', $stored)['hash'] ?? $item['base'];
+
+        try {
+            return $this->proposal($author, $path, 'collection-trees', [$target, $stored], ['data' => $tree], $item, $force, $dryRun);
+        } catch (DraftRefused|ValidationException $e) {
+            // The entries are placed on the site by now, so its tree is the version the next push starts from.
+            $refused = $e instanceof DraftRefused
+                ? self::refused($path, $e->error, $e->getMessage(), $e->details)
+                : self::refused($path, 'validation', $e->getMessage(), ['errors' => $e->errors()]);
+
+            return [...$refused, 'base' => $item['base']];
+        }
     }
 
     /**
-     * A term's values on the default site. Its file also holds the other sites' values, which a push
-     * leaves as they are: a file that changes them is refused. Statamic has no draft of a term, so a
-     * new one waits for a push that publishes.
+     * Whether the tree differs from the one the write began with only by the entries this push placed,
+     * and that one was the version the checkout pulled: anything else is a change made on the site.
+     *
+     * @param  array<mixed>  $current
+     */
+    private function placedOnly(string $path, array $current, mixed $base): bool
+    {
+        $start = $this->treeBases[$path] ?? null;
+
+        return $start !== null
+            && is_string($base)
+            && hash_equals($start['hash'], $base)
+            && self::normalised($this->withoutNewEntries($current)) === self::normalised($this->withoutNewEntries($start['tree']));
+    }
+
+    /**
+     * The tree with each branch of an entry this push creates replaced by its children.
+     *
+     * @param  array<mixed>  $branches
+     * @return list<mixed>
+     */
+    private function withoutNewEntries(array $branches): array
+    {
+        $out = [];
+
+        foreach ($branches as $branch) {
+            if (! is_array($branch)) {
+                $out[] = $branch;
+
+                continue;
+            }
+
+            $children = $this->withoutNewEntries((array) ($branch['children'] ?? []));
+
+            if (is_string($branch['entry'] ?? null) && isset($this->newEntries[$branch['entry']])) {
+                array_push($out, ...$children);
+
+                continue;
+            }
+
+            $out[] = $children === [] ? Arr::except($branch, 'children') : [...$branch, 'children' => $children];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<mixed>  $branches
+     * @return list<mixed>
+     */
+    private static function normalised(array $branches): array
+    {
+        return array_values(array_map(function (mixed $branch): mixed {
+            if (! is_array($branch)) {
+                return $branch;
+            }
+
+            $children = self::normalised((array) ($branch['children'] ?? []));
+            $branch = Arr::except($branch, 'children');
+            ksort($branch);
+
+            return $children === [] ? $branch : [...$branch, 'children' => $children];
+        }, $branches));
+    }
+
+    /**
+     * A term's values on its taxonomy's first site, which its file's top level holds. The file also holds
+     * the other sites' values, which a push leaves as they are: a file that changes them is refused.
+     * Statamic has no draft of a term, so a new one waits for a push that publishes.
      *
      * @param  array<string, mixed>  $data
      * @param  array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}  $item
@@ -470,11 +548,17 @@ class ContentPush
             return $this->newTerm($author, $path, $taxonomy, $slug, is_string($data['blueprint'] ?? null) ? $data['blueprint'] : null, $values, $dryRun);
         }
 
-        if ((array) ($data['localizations'] ?? []) != (array) ($file->fileData()['localizations'] ?? [])) {
+        $stored = $file->fileData();
+
+        if ((array) ($data['localizations'] ?? []) != (array) ($stored['localizations'] ?? [])) {
             return self::refused($path, 'localized_term', __('core-web::sync.push_term_localizations'));
         }
 
-        return $this->proposal($author, $path, 'terms', [TermTarget::make($taxonomy, $slug, Site::default()->handle()), $file], ['data' => $values], $item, $force, $dryRun);
+        if (array_key_exists('blueprint', $data) && $data['blueprint'] !== ($stored['blueprint'] ?? null)) {
+            return self::refused($path, 'validation', __('core-web::sync.push_term_blueprint'));
+        }
+
+        return $this->proposal($author, $path, 'terms', [TermTarget::make($taxonomy, $slug, self::termSite($taxonomy)), $file], ['data' => $values], $item, $force, $dryRun);
     }
 
     /**
@@ -489,7 +573,11 @@ class ContentPush
             throw new InvalidArgumentException(__('core-web::sync.push_not_found'));
         }
 
-        if (! Gate::forUser($author->user)->allows('create', [TermContract::class, $found, Site::default()])) {
+        if (Str::slug($slug) !== $slug) {
+            return self::refused($path, 'validation', __('core-web::sync.push_term_slug', ['slug' => Str::slug($slug)]));
+        }
+
+        if (! Gate::forUser($author->user)->allows('create', [TermContract::class, $found, Site::get(self::termSite($taxonomy))])) {
             throw DraftRefused::notPermitted($author->name);
         }
 
@@ -499,7 +587,10 @@ class ContentPush
             throw ValidationException::withMessages(['blueprint' => __('core-web::sync.push_blueprint')]);
         }
 
+        $known = $termBlueprint->fields()->except('slug')->all()->keys()->map(fn ($handle) => (string) $handle)->all();
+        $values = array_intersect_key($values, array_flip($known));
         $fields = $termBlueprint->fields()->except('slug')->addValues($values)->preProcess();
+        $hidden = FieldConditions::omitted($fields, $fields->values()->all());
         $validator = $fields->validator()->validator();
 
         if ($validator->fails()) {
@@ -515,7 +606,7 @@ class ContentPush
                 'taxonomy' => $taxonomy,
                 'slug' => $slug,
                 'blueprint' => $blueprint,
-                'values' => array_filter($fields->process()->values()->only(array_keys($values))->all(), fn (mixed $v) => $v !== null),
+                'values' => array_filter(array_diff_key($fields->process()->values()->only(array_keys($values))->all(), array_flip($hidden)), fn (mixed $v) => $v !== null),
             ];
         }
 
@@ -541,7 +632,7 @@ class ContentPush
                 $term->blueprint($new['blueprint']);
             }
 
-            $term->dataForLocale(Site::default()->handle(), [...$new['values'], 'updated_by' => $author->user->id(), 'updated_at' => now()->timestamp]);
+            $term->dataForLocale(self::termSite($new['taxonomy']), [...$new['values'], 'updated_by' => $author->user->id(), 'updated_at' => now()->timestamp]);
             $term->save();
         } catch (Throwable $e) {
             Log::warning('core-web: content:push could not create '.$result['path'], ['exception' => $e]);
@@ -550,6 +641,12 @@ class ContentPush
         }
 
         return [...$result, 'status' => self::STATUS_PUBLISHED, 'base' => self::hash('terms', $term)['hash'] ?? null];
+    }
+
+    /** The site a term file's top level holds: its taxonomy's first. */
+    private static function termSite(string $taxonomy): string
+    {
+        return (string) (Taxonomy::find($taxonomy)?->sites()->first() ?? Site::default()->handle());
     }
 
     /** A term's file object (every site's values), or null when the site has no such term. */
@@ -571,7 +668,7 @@ class ContentPush
             'globals' => $this->globalTarget($path),
             'collection-trees' => $this->treeTarget($path),
             'nav-trees' => $this->navTarget($path),
-            'terms' => [TermTarget::make(ContentPaths::parse('terms', $path)['handle'], basename($path, '.yaml'), Site::default()->handle()), self::found(self::termFile(ContentPaths::parse('terms', $path)['handle'], basename($path, '.yaml')))],
+            'terms' => [TermTarget::make(ContentPaths::parse('terms', $path)['handle'], basename($path, '.yaml'), self::termSite(ContentPaths::parse('terms', $path)['handle'])), self::found(self::termFile(ContentPaths::parse('terms', $path)['handle'], basename($path, '.yaml')))],
         };
     }
 
@@ -586,7 +683,7 @@ class ContentPush
 
     /**
      * @param  array<int, array{path: string, contents: string}>  $items
-     * @return array<string, string>
+     * @return array<string, array{hash: string, tree: array<mixed>}>
      */
     private function treeHashes(array $items): array
     {
@@ -604,7 +701,7 @@ class ContentPush
             }
 
             if (($hash = self::hash('collection-trees', $stored)) !== null) {
-                $hashes[$item['path']] = $hash['hash'];
+                $hashes[$item['path']] = ['hash' => $hash['hash'], 'tree' => $stored->tree()];
             }
         }
 

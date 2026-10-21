@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\PendingCommand;
 use Inly\CoreWeb\ContentSync\LocalContent;
 use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\Targets\CollectionTreeTarget;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Events\EntrySaved;
 use Statamic\Facades\AssetContainer;
@@ -246,7 +248,7 @@ class ContentPushTest extends TestCase
         $this->push()->expectsOutputToContain('content:pull first')->assertFailed();
     }
 
-    public function test_the_page_order_and_other_types_are_not_pushed(): void
+    public function test_a_type_a_push_does_not_carry_is_refused(): void
     {
         $this->push(['--only' => 'assets'])->expectsOutputToContain('is not pushed')->assertFailed();
     }
@@ -613,7 +615,7 @@ class ContentPushTest extends TestCase
 
     private function docs(): void
     {
-        config(['core-web.drafts.collections' => ['pages' => [], 'articles' => [], 'docs' => []]]);
+        config(['core-web.drafts.collections' => ['pages' => [], 'articles' => [], 'docs' => ['structured' => true]]]);
         $docs = Collection::make('docs')->sites(['default'])->revisionsEnabled(true)->structureContents(['max_depth' => 3]);
         $docs->save();
         Blueprint::make('doc')->setNamespace('collections.docs')->setContents(['fields' => [['handle' => 'title', 'field' => ['type' => 'text', 'validate' => ['required']]]]])->save();
@@ -653,14 +655,14 @@ class ContentPushTest extends TestCase
         $this->docs();
         $this->pull()->assertSuccessful();
         file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
-        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: faq\n  -\n    entry: intro\n    children:\n      -\n        entry: setup\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: setup\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n");
 
         $this->push(['--publish' => true])->expectsOutputToContain('2 published or applied, 0 left')->assertSuccessful();
 
         $this->assertTrue(Entry::find('faq')->published());
         $tree = $this->tree('docs');
-        $this->assertSame('faq', $tree[0]['entry']);
-        $this->assertSame('setup', $tree[1]['children'][0]['entry']);
+        $this->assertSame('setup', $tree[0]['entry']);
+        $this->assertSame('faq', $tree[1]['children'][0]['entry']);
     }
 
     public function test_a_page_tree_changed_on_the_site_since_the_pull_is_refused(): void
@@ -718,5 +720,146 @@ class ContentPushTest extends TestCase
 
         $this->push(['--publish' => true, '--only' => 'terms'])->expectsOutputToContain('not_permitted')->assertFailed();
         $this->assertNull(Term::find('tags::blue'));
+    }
+
+    public function test_a_page_tree_the_placing_left_unchanged_is_recorded_so_the_next_push_passes(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        // Exactly where the writer places a new entry under its parent: the tree is then what the site holds.
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n  -\n    entry: setup\n");
+
+        $this->push(['--publish' => true])->expectsOutputToContain('unchanged')->assertSuccessful();
+        $lock = json_decode(file_get_contents($this->lock), true);
+        $this->assertArrayHasKey('trees/collections/docs.yaml', $lock['published']);
+
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: setup\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n");
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('setup', $this->tree('docs')[0]['entry']);
+    }
+
+    public function test_an_editor_s_change_to_the_tree_while_the_push_writes_is_not_adopted(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n  -\n    entry: setup\n");
+        Event::listen(EntrySaved::class, function (EntrySaved $event): void {
+            if ($event->entry->id() === 'faq') {
+                $tree = Collection::find('docs')->structure()->in('default');
+                $tree->tree([['entry' => 'setup'], ...array_values(array_filter($tree->tree(), fn ($branch) => $branch['entry'] !== 'setup'))])->save();
+            }
+        });
+
+        $this->push(['--publish' => true])->expectsOutputToContain('base_changed')->assertFailed();
+
+        $this->assertSame('setup', $this->tree('docs')[0]['entry'], 'The editor\'s order stands.');
+        $this->assertFalse(Entry::find('faq')->published(), 'A refusal while writing publishes nothing.');
+    }
+
+    public function test_a_tree_refused_after_the_push_placed_its_new_entries_is_recorded_at_the_site_s_version(): void
+    {
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: setup\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n");
+        $other = $this->cmsUser('eva@example.com', super: true);
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use ($other): void {
+            $target = CollectionTreeTarget::make('docs', 'default');
+
+            if ($event->entry->id() === 'faq' && app(Proposals::class)->open() === []) {
+                app(Proposals::class)->propose(new DraftAuthor($other, 'Eva', DraftProvenance::make('test'), 'Mine'), $target, [['entry' => 'setup'], ['entry' => 'intro', 'children' => [['entry' => 'faq']]]], Proposals::base($target));
+            }
+        });
+
+        $pulled = json_decode(file_get_contents($this->lock), true)['bases']['trees/collections/docs.yaml'];
+
+        $this->push()->expectsOutputToContain('[held]')->assertFailed();
+        $this->assertNotSame($pulled, json_decode(file_get_contents($this->lock), true)['bases']['trees/collections/docs.yaml']);
+
+        app(Proposals::class)->discard(app(Proposals::class)->open()[0]->id, $other);
+        $this->push()->expectsOutputToContain('proposal')->assertSuccessful();
+    }
+
+    public function test_a_tree_holding_new_entries_is_refused_while_someone_else_holds_a_proposal_on_it(): void
+    {
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        $other = $this->cmsUser('eva@example.com', super: true);
+        $target = CollectionTreeTarget::make('docs', 'default');
+        app(Proposals::class)->propose(new DraftAuthor($other, 'Eva', DraftProvenance::make('test'), 'Mine'), $target, [['entry' => 'setup'], ['entry' => 'intro']], Proposals::base($target));
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n  -\n    entry: setup\n");
+
+        $this->push()->expectsOutputToContain('[held]')->expectsOutputToContain('Nothing was pushed')->assertFailed();
+        $this->assertNull(Entry::find('faq'));
+    }
+
+    public function test_a_tree_holding_new_entries_is_still_checked_for_what_it_drops(): void
+    {
+        $this->docs();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/collections/docs/faq.md', "---\nid: faq\nblueprint: doc\ntitle: FAQ\n---\n");
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: intro\n    children:\n      -\n        entry: faq\n");
+
+        $this->push()->expectsOutputToContain('leaves out entries')->assertFailed();
+        $this->assertNull(Entry::find('faq'));
+    }
+
+    public function test_a_page_tree_needs_the_reorder_permission(): void
+    {
+        $this->docs();
+        $this->roles(['editor' => ['access cp', 'pull content', 'push content', 'view docs entries', 'edit docs entries', 'access default site']]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('pia@example.com', roles: ['editor'])), ['name' => 'Pia', 'email' => 'pia@example.com'], now()->addDays(30)->toIso8601String());
+        $this->pull(['--only' => 'collection-trees'])->assertSuccessful();
+        file_put_contents($this->root.'/trees/collections/docs.yaml', "tree:\n  -\n    entry: setup\n  -\n    entry: intro\n");
+
+        $this->push(['--only' => 'collection-trees'])->expectsOutputToContain('not_permitted')->assertFailed();
+        $this->assertSame([], app(Proposals::class)->open());
+    }
+
+    public function test_a_term_edit_needs_the_edit_permission(): void
+    {
+        $this->tags();
+        $this->roles(['viewer' => ['access cp', 'pull content', 'push content', 'view tags terms', 'access default site']]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('pia@example.com', roles: ['viewer'])), ['name' => 'Pia', 'email' => 'pia@example.com'], now()->addDays(30)->toIso8601String());
+        $this->pull(['--only' => 'terms'])->assertSuccessful();
+        $this->edit('taxonomies/tags/red.yaml', 'title: Red', 'title: Crimson');
+
+        $this->push(['--only' => 'terms'])->expectsOutputToContain('not_permitted')->assertFailed();
+        $this->assertSame([], app(Proposals::class)->open());
+    }
+
+    public function test_a_new_term_that_fails_validation_is_refused(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->tags();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/taxonomies/tags/blue.yaml', "title: ''\n");
+
+        $this->push(['--publish' => true])->expectsOutputToContain('validation')->assertFailed();
+        $this->assertNull(Term::find('tags::blue'));
+    }
+
+    public function test_a_new_term_s_file_is_named_by_its_slug(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->tags();
+        $this->pull()->assertSuccessful();
+        file_put_contents($this->root.'/taxonomies/tags/Light Blue.yaml', "title: Light blue\n");
+
+        $this->push(['--publish' => true])->expectsOutputToContain('light-blue.yaml')->assertFailed();
+    }
+
+    public function test_a_term_s_blueprint_is_not_changed_by_a_push(): void
+    {
+        $this->tags();
+        $this->pull()->assertSuccessful();
+        $this->edit('taxonomies/tags/red.yaml', 'title: Red', "title: Red\nblueprint: colour");
+
+        $this->push()->expectsOutputToContain('another blueprint')->assertFailed();
     }
 }

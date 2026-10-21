@@ -186,15 +186,26 @@ class ContentPushCommand extends Command
         $live = 0;
 
         foreach ($result['results'] as $item) {
-            if ($item['status'] === ContentPush::STATUS_REFUSED || ! isset($files[$item['path']])) {
+            if (! isset($files[$item['path']])) {
+                continue;
+            }
+
+            // A refused page tree the push still placed new entries in names the site's version, so a retry is not refused as changed.
+            if ($item['status'] === ContentPush::STATUS_REFUSED) {
+                if (is_string($item['base'] ?? null)) {
+                    $bases[$item['path']] = $item['base'];
+                }
+
                 continue;
             }
 
             $written++;
             $isLive = in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true);
+            // A file the site already held as sent is as live as one the push made live, and its version is the site's.
+            $isLanded = $isLive || $item['status'] === ContentPush::STATUS_UNCHANGED;
 
             // What a --publish push left as a draft is not recorded as pushed, so the next one sends it again.
-            if (! $this->option('publish') || $isLive || $item['status'] === ContentPush::STATUS_UNCHANGED) {
+            if (! $this->option('publish') || $isLanded) {
                 $pushed[$item['path']] = $files[$item['path']]['hash'];
             }
 
@@ -204,6 +215,9 @@ class ContentPushCommand extends Command
 
             if ($isLive) {
                 $live++;
+            }
+
+            if ($isLanded) {
                 $published[$item['path']] = $files[$item['path']]['hash'];
 
                 if (is_string($item['base'] ?? null)) {
