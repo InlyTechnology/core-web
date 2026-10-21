@@ -8,6 +8,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Core AI's drafts through core-web**: with `drafts` and `content` on,
+  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
+  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
+  `DraftWriter`, so a site drops its own drafts controller and writer. A site
+  with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
+  check. See README → Drafts → Core AI's drafts.
+
+## v0.22.0
+
 - **Progress while pulling**: `content:login` says it is waiting for the
   approval and counts down the code's time, and `content:pull` and
   `core:pull` show a live count per type and asset container while they
@@ -47,12 +56,6 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   an empty `CORE_URL` no longer leaves a server unpaired: every server not on
   `local` pairs with that Core. `core-web:doctor` fails a local checkout
   whose `CORE_URL` names a remote Core. See README → Configuration.
-- **Core AI's drafts through core-web**: with `drafts` and `content` on,
-  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
-  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
-  `DraftWriter`, so a site drops its own drafts controller and writer. A site
-  with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
-  check. See README → Drafts → Core AI's drafts.
 
 ## v0.21.0
 
