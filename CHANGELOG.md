@@ -21,6 +21,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   which Statamic cannot keep as a draft, is created only by `--publish`.
   Each needs the person's own reorder, edit or create permission. See
   README → Content push → What is sent / Terms.
+- **Choosing what a push sends**: `content:push` takes paths (files,
+  folders or `*` patterns under `content/`), `--staged` (as `git add`ed) and
+  `--committed`, and `--json` for agents. The new `content:status` lists
+  what a push with the same arguments would send, without calling the site.
+  See README → Content push → Choosing what goes.
 
 ## v0.22.0
 

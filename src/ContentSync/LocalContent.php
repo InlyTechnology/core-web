@@ -21,6 +21,9 @@ class LocalContent
     /** @var array<string, string>|null path => git blob id, as the checkout's HEAD has content/ */
     private ?array $committed = null;
 
+    /** @var array<string, string>|null path => git blob id, as the checkout's index has content/ */
+    private ?array $staged = null;
+
     public function __construct(private string $root, private string $lockFile) {}
 
     public static function fromApp(): self
@@ -61,7 +64,11 @@ class LocalContent
      */
     public function matchesCommitted(string $path): bool
     {
-        $blob = $this->committed()[$path] ?? null;
+        return $this->matchesBlob($this->committed()[$path] ?? null, $path);
+    }
+
+    private function matchesBlob(?string $blob, string $path): bool
+    {
         $file = $this->absolute($path);
 
         if ($blob === null || ! is_file($file) || is_link($file)) {
@@ -71,6 +78,23 @@ class LocalContent
         $contents = (string) file_get_contents($file);
 
         return hash(strlen($blob) === 64 ? 'sha256' : 'sha1', 'blob '.strlen($contents)."\0".$contents) === $blob;
+    }
+
+    /** Whether a file is exactly as git's index has it: `git add`ed, or committed and not changed since. False outside a git checkout. */
+    public function matchesStaged(string $path): bool
+    {
+        return $this->matchesBlob($this->staged()[$path] ?? null, $path);
+    }
+
+    public function inGit(): bool
+    {
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(10)->run(['git', 'rev-parse', '--is-inside-work-tree']) : null;
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $result !== null && $result->successful() && trim($result->output()) === 'true';
     }
 
     /** Throws for a path a write or delete must not go through: one out of content/, or a symlink, which would carry it elsewhere. */
@@ -228,6 +252,38 @@ class LocalContent
         }
 
         return $this->committed;
+    }
+
+    /**
+     * One `git ls-files --stage` for the folder, as committed() reads HEAD.
+     *
+     * @return array<string, string>
+     */
+    private function staged(): array
+    {
+        if ($this->staged !== null) {
+            return $this->staged;
+        }
+
+        $this->staged = [];
+
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', 'ls-files', '--stage', '-z', '--', '.']) : null;
+        } catch (Throwable) {
+            return $this->staged;
+        }
+
+        if ($result === null || ! $result->successful()) {
+            return $this->staged;
+        }
+
+        foreach (explode("\0", $result->output()) as $line) {
+            if (preg_match('/^100(?:644|755) ([0-9a-f]{40}|[0-9a-f]{64}) 0\t(.+)$/s', $line, $match) === 1) {
+                $this->staged[$match[2]] = $match[1];
+            }
+        }
+
+        return $this->staged;
     }
 
     private function absolute(string $path): string

@@ -66,7 +66,7 @@ nothing.
 | Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
 | Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
-| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull` and `content:push` (see [Content pull](#content-pull) and [Content push](#content-push)) |
+| Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull`, `content:push` and `content:status` (see [Content pull](#content-pull) and [Content push](#content-push)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
 container binding, and registers nothing.
@@ -1845,7 +1845,45 @@ php artisan content:push --dry-run  # what the site would do; writes nothing
 php artisan content:push --partial  # push the files that pass, list the rest
 php artisan content:push --force    # skip the "changed on the site since the pull" check
 php artisan content:push --publish  # make it live, where the site allows it (below)
+php artisan content:push content/collections/pages/sv/om-oss.md 'globals/*'  # only these files
+php artisan content:push --staged   # only what is git add'ed (--committed: only what is committed)
+php artisan content:status          # what a push would send, without calling the site
 ```
+
+**Choosing what goes.** A push sends every changed file of the types and
+site `--only` and `--site` leave, and three things narrow that further,
+each also taken by `content:status`:
+
+- **Paths**: each argument is a file or folder under `content/` (the
+  `content/` prefix is optional) or a pattern where `*` matches across
+  folders. Only the changed files they match are sent; the rest stay
+  changed for the next push. A path that matches no file a push carries
+  (a typo, a type `--only` leaves out, a file outside `content/`) refuses
+  the push before anything is sent.
+- **`--staged`**: only files whose contents are exactly as git's index has
+  them, so `git add` is how a file is chosen. A file changed again after
+  `git add` is left out.
+- **`--committed`**: only files whose contents are exactly as the last
+  commit has them. Not combined with `--staged`, which it implies.
+
+**Status.** `content:status` lists what `content:push` with the same
+arguments would send, from `content/` and `content.lock` alone: each file
+as `new` (never pulled), `changed`, or `not_live` (pushed as it is, but
+only `--publish` sends it again), whether it updates a draft the last push
+left, and the local media files it names. It also lists the files pushed
+and still waiting for an editor, which a plain push skips. It never calls
+the site, so whether the site would take a file is what
+`content:push --dry-run` answers.
+
+**For agents.** `--json` on `content:push` and `content:status` prints one
+JSON document and nothing else, and never asks anything: a push that needs
+a login fails and says to run `content:login`. `content:status --json`
+gives `ok`, `remote`, `push` (each file's `path`, `type`, `state`,
+`draft_on_site` and `assets`), `waiting` and `limit`, or `ok: false` with
+an `error`. `content:push --json` gives `ok` (the exit code's meaning),
+`remote`, `dry_run`, `files` (what was selected), `written`, `results`
+(the site's answer per file: `status`, and for a refused file `error` and
+`message`) and `messages` (the text the command would have printed).
 
 **What is sent.** Each entry, term, global, collection page tree and
 navigation tree file whose hash differs from `content.lock` and from what

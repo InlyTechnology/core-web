@@ -48,6 +48,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   publishes in the CP, with the local media files they name. Pull before pushing: a file changed on the site since
   the pull is refused. `--publish` makes a push live only where the site sets `content_sync.push_publish`; never
   turn that on for a site without the user's say.
+- **An agent pushes exactly the files it changed**: `content:status --json` first, then
+  `content:push --json <paths>` naming each file (or `--staged` after `git add`), never a bare push that sends
+  everything changed in the checkout, someone else's edits included. `--dry-run` before a `--publish`.
 
 ## CMS sign-in (`cms_sign_in`)
 

@@ -35,6 +35,7 @@ use Inly\CoreWeb\ContentSync\ContentLoginCommand;
 use Inly\CoreWeb\ContentSync\ContentLogoutCommand;
 use Inly\CoreWeb\ContentSync\ContentPullCommand;
 use Inly\CoreWeb\ContentSync\ContentPushCommand;
+use Inly\CoreWeb\ContentSync\ContentStatusCommand;
 use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
 use Inly\CoreWeb\ContentSync\GuardSyncRequests;
 use Inly\CoreWeb\ContentSync\LocalContent;
@@ -335,7 +336,7 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('forms') && $this->app->environment(['local', 'testing'])) {
             $this->loadRoutesFrom(__DIR__.'/../routes/forms-relay.php');
         }
-        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class]);
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class, ContentStatusCommand::class]);
         SyncLimits::register();
 
         Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {

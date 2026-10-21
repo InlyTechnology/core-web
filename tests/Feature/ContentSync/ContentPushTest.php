@@ -4,9 +4,11 @@ namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\PendingCommand;
 use Inly\CoreWeb\ContentSync\LocalContent;
@@ -914,5 +916,172 @@ class ContentPushTest extends TestCase
         $this->edit('taxonomies/tags/red.yaml', 'title: Red', "title: Red\nblueprint: colour");
 
         $this->push()->expectsOutputToContain('another blueprint')->assertFailed();
+    }
+
+    public function test_paths_push_only_the_files_they_name_and_leave_the_rest_for_later(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: Also mine');
+
+        $this->push(['paths' => ['content/collections/pages/home.md']])->assertSuccessful();
+        $this->assertTrue(Entry::find('home')->hasWorkingCopy());
+        $this->assertFalse(Entry::find('about')->hasWorkingCopy());
+
+        $this->push()->expectsOutputToContain('collections/pages/about.md')->assertSuccessful();
+        $this->assertTrue(Entry::find('about')->hasWorkingCopy());
+    }
+
+    public function test_a_path_is_a_file_a_folder_or_a_pattern(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: Also mine');
+        $this->edit('globals/default/settings.yaml', "'123'", "'456'");
+
+        $this->assertSame(['collections/pages/about.md'], $this->statusPaths(['paths' => ['collections/*/about.md']]));
+        $this->assertSame(['collections/pages/about.md', 'collections/pages/home.md'], $this->statusPaths(['paths' => ['content/collections/pages/']]));
+        $this->assertSame(['collections/pages/home.md', 'globals/default/settings.yaml'], $this->statusPaths(['paths' => ['./collections/pages/home.md', 'globals']]));
+    }
+
+    public function test_a_path_that_names_no_pushable_file_refuses_the_push(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['paths' => ['collections/pages/hom.md']])->expectsOutputToContain('No file a push carries matches [collections/pages/hom.md]')->assertFailed();
+        $this->push(['paths' => ['../.env']])->expectsOutputToContain('is no file or folder under content/')->assertFailed();
+        $this->push(['paths' => ['collections/pages/home.md'], '--only' => 'globals'])->expectsOutputToContain('No file a push carries matches')->assertFailed();
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_a_path_to_an_unchanged_file_pushes_nothing(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['paths' => ['collections/pages/about.md']])->expectsOutputToContain('Nothing to push')->assertSuccessful();
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_status_lists_what_a_push_sends_and_what_waits_for_an_editor(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        File::ensureDirectoryExists($this->root.'/collections/articles');
+        file_put_contents($this->root.'/collections/articles/news.md', "---\nid: news-1\nblueprint: article\ntitle: News\n---\n");
+
+        Artisan::call('content:status', ['--json' => true]);
+        $status = json_decode(Artisan::output(), true);
+        $this->assertTrue($status['ok']);
+        $this->assertSame('https://remote.test', $status['remote']);
+        $this->assertSame([
+            ['path' => 'collections/articles/news.md', 'type' => 'entries', 'state' => 'new', 'draft_on_site' => false, 'assets' => []],
+            ['path' => 'collections/pages/home.md', 'type' => 'entries', 'state' => 'changed', 'draft_on_site' => false, 'assets' => []],
+        ], $status['push']);
+        $this->assertSame([], $status['waiting']);
+
+        $this->push(['paths' => ['collections/pages/home.md']])->assertSuccessful();
+
+        $this->artisan('content:status')
+            ->expectsOutputToContain('sends 1 file(s)')
+            ->expectsOutputToContain('collections/articles/news.md')
+            ->expectsOutputToContain('Pushed and waiting for an editor in the CP (1)')
+            ->assertSuccessful();
+        $this->assertSame(['collections/articles/news.md', 'collections/pages/home.md'], $this->statusPaths(['--publish' => true]));
+    }
+
+    public function test_status_before_a_pull_says_so(): void
+    {
+        Artisan::call('content:status', ['--json' => true]);
+
+        $this->assertSame(false, json_decode(Artisan::output(), true)['ok']);
+        $this->artisan('content:status')->expectsOutputToContain('run php artisan content:pull first')->assertFailed();
+    }
+
+    public function test_staged_and_committed_follow_git(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->git(['init', '-q']);
+        $this->git(['add', '.']);
+        $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'pulled']);
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: Also mine');
+        $this->git(['add', 'collections/pages/about.md']);
+
+        $this->assertSame(['collections/pages/about.md'], $this->statusPaths(['--staged' => true]));
+        $this->assertSame([], $this->statusPaths(['--committed' => true]));
+
+        $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'about']);
+        $this->assertSame(['collections/pages/about.md'], $this->statusPaths(['--committed' => true]));
+
+        $this->freshLocal();
+        $this->push(['--committed' => true])->assertSuccessful();
+        $this->assertTrue(Entry::find('about')->hasWorkingCopy());
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_staged_and_committed_need_git_and_not_both(): void
+    {
+        $this->pull()->assertSuccessful();
+
+        $this->push(['--staged' => true])->expectsOutputToContain('not in a git checkout')->assertFailed();
+
+        $this->git(['init', '-q']);
+        $this->freshLocal();
+        $this->push(['--staged' => true, '--committed' => true])->expectsOutputToContain('not both')->assertFailed();
+    }
+
+    public function test_json_prints_one_document_with_the_site_s_answer(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->assertSame(0, Artisan::call('content:push', ['--json' => true]));
+        $out = json_decode(Artisan::output(), true);
+
+        $this->assertTrue($out['ok']);
+        $this->assertFalse($out['dry_run']);
+        $this->assertTrue($out['written']);
+        $this->assertSame(['collections/pages/home.md'], $out['files']);
+        $this->assertSame('working_copy', $out['results'][0]['status']);
+        $this->assertContains('To push:', $out['messages']);
+    }
+
+    public function test_json_never_asks_for_a_login(): void
+    {
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+        RemoteSite::forget();
+
+        $this->assertSame(1, Artisan::call('content:push', ['--json' => true]));
+        $out = json_decode(Artisan::output(), true);
+
+        $this->assertFalse($out['ok']);
+        $this->assertSame([], $out['results']);
+        $this->assertStringContainsString('run php artisan content:login', implode("\n", $out['messages']));
+    }
+
+    /** @return list<string> the paths content:status lists for the options */
+    private function statusPaths(array $options = []): array
+    {
+        $this->freshLocal();
+        Artisan::call('content:status', ['--json' => true, ...$options]);
+
+        return array_column(json_decode(Artisan::output(), true)['push'] ?? [], 'path');
+    }
+
+    /** LocalContent reads git once per instance, as one command run does. */
+    private function freshLocal(): void
+    {
+        $this->app->instance(LocalContent::class, new class($this->root, $this->lock) extends LocalContent
+        {
+            public function refreshStache(): void {}
+        });
+    }
+
+    private function git(array $arguments): void
+    {
+        Process::path($this->root)->run(['git', ...$arguments])->throw();
     }
 }
