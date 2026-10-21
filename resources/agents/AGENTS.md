@@ -50,7 +50,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **CP accounts have no password and are not committed**: keep `users/` out of git and out of
   `statamic.git.paths`. Without a password, Statamic confirms an elevated session (user and role screens) with
   an emailed code, so the site's mailer must work wherever editors sign in.
-- **Locally**, the CP signs in through a local Core (`CORE_URL`); without one,
+- **Locally**, the CP signs in through a local Core (`CORE_URL`); without one, through the live site on the
+  machine's `content:login`, as a local account mirroring the live one's roles. Offline,
   `cms_sign_in.local_password_sign_in` restores Statamic's own login, only while `APP_ENV` is `local`.
 - A site moving off its own SSO code removes that code in the same change (README → CMS sign-in).
 

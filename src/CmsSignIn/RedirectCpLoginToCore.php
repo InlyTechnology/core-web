@@ -29,7 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RedirectCpLoginToCore
 {
-    public const NO_CORE = 'The control panel signs in through Core: set CORE_URL to a Core, or enable core-web.cms_sign_in.local_password_sign_in on a local machine.';
+    public const NO_CORE = 'The control panel signs in through Core: set CORE_URL to a Core, or with APP_ENV=local set core-web.content_sync.remote_url to the live site and run php artisan content:login (or enable core-web.cms_sign_in.local_password_sign_in).';
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -60,7 +60,11 @@ class RedirectCpLoginToCore
     {
         $handoff = app(CmsHandoff::class);
 
-        // Without Core there is no way into the CP at all. Error views drop the message, so a debugging machine gets it as plain text.
+        if ($handoff->coreBaseUrl() === '' && LocalSignIn::applies()) {
+            return redirect()->route('core-web.local-sign-in', ['next' => $next]);
+        }
+
+        // Without Core or a live site to sign in through there is no way into the CP at all. Error views drop the message, so a debugging machine gets it as plain text.
         if ($handoff->coreBaseUrl() === '') {
             abort(config('app.debug') ? response(self::NO_CORE, 503, ['Content-Type' => 'text/plain; charset=UTF-8']) : 503);
         }
