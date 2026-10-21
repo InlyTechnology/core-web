@@ -181,30 +181,43 @@ class ContentPushCommand extends Command
         $pushed = $local->lock()['pushed'];
         $drafts = [];
         $bases = [];
+        $published = [];
         $written = 0;
         $live = 0;
 
         foreach ($result['results'] as $item) {
-            if ($item['status'] !== ContentPush::STATUS_REFUSED && isset($files[$item['path']])) {
+            if ($item['status'] === ContentPush::STATUS_REFUSED || ! isset($files[$item['path']])) {
+                continue;
+            }
+
+            $written++;
+            $isLive = in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true);
+
+            // What a --publish push left as a draft is not recorded as pushed, so the next one sends it again.
+            if (! $this->option('publish') || $isLive || $item['status'] === ContentPush::STATUS_UNCHANGED) {
                 $pushed[$item['path']] = $files[$item['path']]['hash'];
-                $written++;
+            }
 
-                if (is_string($item['draft'] ?? null)) {
-                    $drafts[$item['path']] = $item['draft'];
-                }
+            if (is_string($item['draft'] ?? null)) {
+                $drafts[$item['path']] = $item['draft'];
+            }
 
-                if (in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true)) {
-                    $live++;
+            if ($isLive) {
+                $live++;
+                $published[$item['path']] = $files[$item['path']]['hash'];
 
-                    if (is_string($item['base'] ?? null)) {
-                        $bases[$item['path']] = $item['base'];
-                    }
+                if (is_string($item['base'] ?? null)) {
+                    $bases[$item['path']] = $item['base'];
                 }
             }
         }
 
         if ($result['written'] ?? false) {
-            $local->writePushed($pushed, $drafts, $bases);
+            $local->writePushed($pushed, $drafts, $bases, $published);
+        }
+
+        if ($this->option('publish') && ! self::reportsPublishing($result['results'])) {
+            $this->warn('The site said nothing about publishing: it may predate content:push --publish. What was pushed is a draft or proposal; publish it in the CP, or update core-web on the site.');
         }
 
         $failed = count($result['results']) - $written;
@@ -258,7 +271,7 @@ class ContentPushCommand extends Command
     /**
      * The files of the scopes that differ from the lock (as pulled) and from what was last pushed, each with what the push sends.
      *
-     * @param  array{items: array<string, string>, bases: array<string, string>, pushed: array<string, string>}  $lock
+     * @param  array{items: array<string, string>, bases: array<string, string>, pushed: array<string, string>, published: array<string, string>}  $lock
      * @param  list<array{type: string, handle: ?string}>  $scopes
      * @return array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>
      */
@@ -284,7 +297,10 @@ class ContentPushCommand extends Command
 
                 $hash = $local->hash($path);
 
-                if ($hash === null || $hash === ($lock['items'][$path] ?? null) || $hash === ($lock['pushed'][$path] ?? null)) {
+                // A --publish push resends what an earlier push only drafted, until it is live.
+                $sent = $this->option('publish') ? ($lock['published'][$path] ?? null) : ($lock['pushed'][$path] ?? null);
+
+                if ($hash === null || $hash === ($lock['items'][$path] ?? null) || $hash === $sent) {
                     continue;
                 }
 
@@ -507,6 +523,18 @@ class ContentPushCommand extends Command
         return $result->successful() && preg_match('/^[0-9a-f]{7,64}$/', $sha) === 1 ? $sha : null;
     }
 
+    /**
+     * Whether the site answered a --publish push with what it published or left (a site that predates the flag answers with drafts alone).
+     *
+     * @param  list<array<string, mixed>>  $results
+     */
+    private static function reportsPublishing(array $results): bool
+    {
+        $drafted = array_filter($results, fn (array $result) => ! in_array($result['status'], [ContentPush::STATUS_REFUSED, ContentPush::STATUS_UNCHANGED], true));
+
+        return $drafted === [] || collect($drafted)->contains(fn (array $result) => isset($result['not_published']) || in_array($result['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true));
+    }
+
     /** @param  list<array<string, mixed>>  $results */
     private function report(array $results): void
     {
@@ -523,6 +551,10 @@ class ContentPushCommand extends Command
 
             if (isset($result['not_published'])) {
                 $this->line("  <comment>{$result['not_published']}</comment>");
+            }
+
+            if ($result['status'] === ContentPush::STATUS_PUBLISHED && ($result['images_needed'] ?? []) !== []) {
+                $this->line('  <comment>Live without the required images: '.implode(', ', (array) $result['images_needed']).'; add them in the CP.</comment>');
             }
         }
     }

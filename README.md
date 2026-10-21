@@ -1827,14 +1827,15 @@ with the reason already said, when no login can be had. `content:pull` and
 ## Content push
 
 `content:push` sends what a developer changed in `content/` back to the live
-site, never live unless asked (see **Publishing** below): an entry becomes a draft an editor publishes in the CP
-(a working copy of a published entry, or a new unpublished entry), and a
-global's values or a navigation tree becomes a proposal an editor applies
-(see [Drafts](#drafts) and [Proposals](#proposals)). Nothing is published,
-deleted or moved in a tree, and a push makes one proposal per global set or
-nav and site. It uses the same login as [Content pull](#content-pull) and
-is on wherever `content_sync` is (`content_sync.push: false` on the live
-site refuses it).
+site as changes an editor makes live: an entry becomes a draft an editor
+publishes in the CP (a working copy of a published entry, or a new
+unpublished entry), and a global's values or a navigation tree becomes a
+proposal an editor applies (see [Drafts](#drafts) and
+[Proposals](#proposals)). A push never deletes anything or moves an entry in
+a tree, makes one proposal per global set or nav and site, and publishes
+only with `--publish` on a site that allows it (see **Publishing** below).
+It uses the same login as [Content pull](#content-pull) and is on wherever
+`content_sync` is (`content_sync.push: false` on the live site refuses it).
 
 ```bash
 php artisan content:push            # every changed entry, global and nav tree
@@ -1881,17 +1882,30 @@ draft rather than being taken for a change made on the site.
 
 **Publishing.** `--publish` makes the push live on a site that allows it
 (`content_sync.push_publish: true` on the live site; off by default, and
-the site refuses a `--publish` push otherwise). Every file is first written
-as above, and only then is each draft published and each proposal applied,
-as the pushing person and within their own CP permissions: an entry they
-may not publish (or one its collection's rules keep unpublished, such as a
-missing required image) stays a draft, and a proposal they may not apply
-stays open, each listed with the reason. A publish saves a revision, so it
-is undone in the CP like any other. When a file is refused while writing,
-nothing is published; with `--partial` the written files are. A published
-or applied file's new site version goes into the lock's `bases`, so the
-next push of it needs no pull first. `--publish` is separate from
-`--force`, which only skips the "changed on the site" check.
+the site refuses a `--publish` push, dry run included, otherwise). Every
+file is first written as above, and only then is each draft published and
+each proposal applied, as the pushing person and within their own CP
+permissions. What does not go live stays a draft or an open proposal and is
+listed with the reason:
+
+- an entry the person may not publish, or one whose file says
+  `published: false`;
+- an entry missing a field its collection is never published without
+  (`drafts.collections.<collection>.published_with`), or failing the
+  blueprint's validation. Other images the blueprint requires do not block
+  a publish: the entry goes live and the push lists them as still needed;
+- a proposal the person may not apply;
+- everything, when a file is refused while writing (with `--partial`, the
+  written files still go live).
+
+A published entry gets a revision, so it is undone in the CP like any
+other; an applied global or nav tree gets none, as a CP save of one does
+not. A file that went live is recorded under `published` in the lock, with
+its new site version in `bases`, so the next push of it needs no pull
+first; a file left as a draft is not recorded as pushed, so the next
+`--publish` sends it again (after a plain push, too). `--publish` cannot be
+combined with `--force` (the site refuses it), and `--dry-run --publish`
+checks the files but does not predict which entries would publish.
 
 **Assets.** A file in the local media layer (see [Media → The disks](#the-disks))
 that a pushed file names by its path is uploaded to the same path on the

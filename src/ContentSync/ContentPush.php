@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Drafts\DraftAuthor;
@@ -116,6 +117,7 @@ class ContentPush
         }
 
         return array_map(fn (array $result) => match (true) {
+            ! empty($result['unpublished_here']) => [...$result, 'not_published' => __('core-web::sync.push_publish_unpublished')],
             in_array($result['status'], [DraftWriter::STATUS_WORKING_COPY, DraftWriter::STATUS_DRAFT_ENTRY], true) && is_string($result['entry_id'] ?? null) => $this->publishEntry($author, $result),
             $result['status'] === self::STATUS_PROPOSAL && is_string($result['proposal_id'] ?? null) => $this->applyProposal($author, $result),
             default => $result,
@@ -132,6 +134,8 @@ class ContentPush
             $published = $this->writer->publish($author, $result['entry_id']);
         } catch (DraftRefused|ValidationException $e) {
             return [...$result, 'not_published' => $e->getMessage()];
+        } catch (Throwable $e) {
+            return self::failedToPublish($result, $e);
         }
 
         $entry = Entry::find($result['entry_id']);
@@ -140,8 +144,22 @@ class ContentPush
             ...Arr::except($result, ['draft', 'preview_url']),
             'status' => self::STATUS_PUBLISHED,
             'url' => $published['url'] ?? null,
+            'images_needed' => $published['images_needed'] ?? [],
             'base' => $entry ? self::hash('entries', $entry)['hash'] ?? null : null,
         ];
+    }
+
+    /**
+     * A publish that broke on something unforeseen leaves this file for an editor, never the response or the rest of the push.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private static function failedToPublish(array $result, Throwable $e): array
+    {
+        Log::warning('core-web: content:push could not publish '.$result['path'], ['exception' => $e]);
+
+        return [...$result, 'not_published' => __('core-web::sync.push_publish_failed')];
     }
 
     /**
@@ -154,11 +172,12 @@ class ContentPush
 
         try {
             $this->proposals->apply($result['proposal_id'], $author->user);
+            [, $stored] = $type === 'globals' ? $this->globalTarget($result['path']) : $this->navTarget($result['path']);
         } catch (DraftRefused $e) {
             return [...$result, 'not_published' => $e->getMessage()];
+        } catch (Throwable $e) {
+            return self::failedToPublish($result, $e);
         }
-
-        [, $stored] = $type === 'globals' ? $this->globalTarget($result['path']) : $this->navTarget($result['path']);
 
         return [...$result, 'status' => self::STATUS_APPLIED, 'base' => self::hash($type, $stored)['hash'] ?? null];
     }
@@ -214,6 +233,8 @@ class ContentPush
         $fields = Arr::except($data, [...EntryFields::INTERNAL, ...self::KEPT]);
         $fields = [...$fields, ...self::slugAndDate($path, $id)];
         $existing = Entry::find($id);
+        // An entry the checkout keeps unpublished is never made live by --publish.
+        $unpublished = ($data['published'] ?? true) === false ? ['unpublished_here' => true] : [];
 
         if ($existing === null) {
             $result = $this->writer->write($author, [
@@ -226,7 +247,7 @@ class ContentPush
                 'dry_run' => $dryRun,
             ], new StoredValues);
 
-            return $this->drafted($path, $id, $result, $dryRun);
+            return [...$this->drafted($path, $id, $result, $dryRun), ...$unpublished];
         }
 
         if ($existing->collectionHandle() !== $collection || $existing->locale() !== $site) {
@@ -267,7 +288,7 @@ class ContentPush
             'dry_run' => $dryRun,
         ], new StoredValues);
 
-        return $this->drafted($path, $id, $result, $dryRun);
+        return [...$this->drafted($path, $id, $result, $dryRun), ...$unpublished];
     }
 
     /**

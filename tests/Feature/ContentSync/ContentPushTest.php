@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -13,11 +14,13 @@ use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Events\EntrySaved;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
@@ -483,5 +486,126 @@ class ContentPushTest extends TestCase
 
         $this->assertSame('Mine', Entry::find('home')->get('title'));
         $this->assertSame('Theirs', Entry::find('about')->get('title'));
+    }
+
+    public function test_an_entry_unpublished_in_the_checkout_is_never_published(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        Entry::make()->id('hidden')->collection('pages')->locale('default')->slug('hidden')->published(false)
+            ->data(['title' => 'Hidden', 'updated_by' => User::findByEmail('boss@example.com')->id()])->save();
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/hidden.md', 'title: Hidden', 'title: Still hidden');
+        File::ensureDirectoryExists($this->root.'/collections/articles');
+        file_put_contents($this->root.'/collections/articles/news.md', "---\nid: news-1\nblueprint: article\npublished: false\ntitle: News\n---\n");
+
+        $this->push(['--publish' => true])
+            ->expectsOutputToContain('Unpublished in the checkout')
+            ->expectsOutputToContain('0 published or applied, 2 left for an editor')
+            ->assertSuccessful();
+
+        $this->assertFalse(Entry::find('news-1')->published());
+        $this->assertFalse(Entry::find('hidden')->published());
+        $this->assertSame('Still hidden', Entry::find('hidden')->get('title'));
+    }
+
+    public function test_a_later_publish_resends_what_was_only_drafted(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Drafted first');
+
+        $this->push()->assertSuccessful();
+        $this->assertSame('Home', Entry::find('home')->get('title'));
+
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('Drafted first', Entry::find('home')->get('title'));
+
+        $this->push(['--publish' => true])->expectsOutputToContain('Nothing to push')->assertSuccessful();
+    }
+
+    public function test_a_draft_left_for_want_of_permission_is_published_once_it_is_granted(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $editor = ['access cp', 'pull content', 'push content', 'view pages entries', 'edit pages entries', 'access default site'];
+        $this->roles(['editor' => $editor]);
+        RemoteSite::store('https://remote.test', $this->tokenFor($this->cmsUser('pia@example.com', roles: ['editor'])), ['name' => 'Pia', 'email' => 'pia@example.com'], now()->addDays(30)->toIso8601String());
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['--publish' => true, '--only' => 'entries'])->expectsOutputToContain('1 left for an editor')->assertSuccessful();
+        $this->assertArrayNotHasKey('collections/pages/home.md', json_decode(file_get_contents($this->lock), true)['pushed'] ?? []);
+
+        $this->roles(['editor' => [...$editor, 'publish pages entries']]);
+        $this->push(['--publish' => true, '--only' => 'entries'])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+        $this->assertSame('Mine', Entry::find('home')->get('title'));
+    }
+
+    public function test_publish_and_force_together_are_refused_before_anything_is_written(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['--publish' => true, '--force' => true])->expectsOutputToContain('cannot be combined with --force')->assertFailed();
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_a_dry_run_publish_is_refused_while_the_site_has_it_off(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('pia@example.com', super: true));
+
+        $this->withToken($token)->postJson('/!/core-web/sync/push', ['dry_run' => true, 'publish' => true, 'items' => [['path' => 'collections/pages/home.md', 'contents' => "---\nid: home\ntitle: X\n---\n"]]])
+            ->assertForbidden()
+            ->assertJson(['error' => 'publish_off']);
+    }
+
+    public function test_an_applied_nav_tree_is_live_and_its_base_is_in_the_lock(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $nav = Nav::make('main')->title('Main')->collections(['pages']);
+        $nav->save();
+        $nav->makeTree('default', [['url' => 'https://example.com', 'title' => 'Shop']])->save();
+        $this->pull()->assertSuccessful();
+        $base = json_decode(file_get_contents($this->lock), true)['bases']['trees/navigation/main.yaml'];
+        $this->edit('trees/navigation/main.yaml', 'title: Shop', 'title: Store');
+
+        $this->push(['--publish' => true])->expectsOutputToContain('1 published or applied')->assertSuccessful();
+
+        $this->assertSame('Store', Nav::find('main')->in('default')->tree()[0]['title']);
+        $lock = json_decode(file_get_contents($this->lock), true);
+        $this->assertNotSame($base, $lock['bases']['trees/navigation/main.yaml']);
+        $this->assertArrayHasKey('trees/navigation/main.yaml', $lock['published']);
+    }
+
+    public function test_a_refusal_while_writing_publishes_nothing(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        File::ensureDirectoryExists($this->root.'/collections/articles');
+        file_put_contents($this->root.'/collections/articles/news.md', "---\nid: news-1\nblueprint: article\ntitle: News\n---\n");
+        $this->edit('globals/default/settings.yaml', "'123'", "'456'");
+        // The site changes the global between the check and the write, so only the write refuses it.
+        Event::listen(EntrySaved::class, function (EntrySaved $event): void {
+            if ($event->entry->id() === 'news-1') {
+                GlobalSet::find('settings')->in('default')->set('phone', '999')->save();
+            }
+        });
+
+        $this->push(['--publish' => true])->expectsOutputToContain('another file in this push was refused')->assertFailed();
+
+        $this->assertFalse(Entry::find('news-1')->published());
+        $this->assertSame('999', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_an_entry_missing_what_its_collection_is_published_with_stays_a_draft(): void
+    {
+        config(['core-web.content_sync.push_publish' => true, 'core-web.drafts.collections' => ['pages' => ['published_with' => ['lead']], 'articles' => []]]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Mine');
+
+        $this->push(['--publish' => true])->expectsOutputToContain('1 left for an editor')->assertSuccessful();
+
+        $this->assertSame('Home', Entry::find('home')->get('title'));
+        $this->assertSame('Mine', Entry::find('home')->fromWorkingCopy()->get('title'));
     }
 }

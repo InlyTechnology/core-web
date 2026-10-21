@@ -11,8 +11,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`content:push --publish`**: on a live site with
   `content_sync.push_publish` on (off by default), a push publishes its
   drafts and applies its proposals once every file is written, as the
-  pushing person and within their CP permissions; what they may not publish
-  stays a draft. See README → Content push → Publishing.
+  pushing person and within their CP permissions; what they may not publish,
+  or what the checkout keeps `published: false`, stays a draft and is sent
+  again by the next `--publish`. Not combined with `--force`. The lock gains
+  `published`. See README → Content push → Publishing.
 
 ## v0.22.0
 

@@ -150,6 +150,11 @@ class SyncApiController
             return new JsonResponse(['error' => 'publish_off', 'message' => __('core-web::sync.push_publish_off')], 403);
         }
 
+        // Going live over a change made on the site since the pull would publish over an editor's edit unseen.
+        if ($request->boolean('publish') && $request->boolean('force')) {
+            return new JsonResponse(['error' => 'publish_force', 'message' => __('core-web::sync.push_publish_force')], 422);
+        }
+
         $user = User::current();
         $dryRun = $request->boolean('dry_run');
         $statuses = [];
