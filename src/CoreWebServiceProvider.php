@@ -18,6 +18,7 @@ use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
@@ -114,6 +115,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
+            SiteCore::apply($this->app);
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }

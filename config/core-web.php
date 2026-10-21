@@ -91,12 +91,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | This site's Core
+    |--------------------------------------------------------------------------
+    |
+    | The Core this site belongs to and its app client id, committed: the same
+    | on every server, so no environment sets them. They fill client.base_url
+    | and client.client_id wherever CORE_URL / CORE_CLIENT_ID are unset, except
+    | where APP_ENV is local or testing (a checkout reaches production through
+    | the live site, and a test never reaches a real Core).
+    |
+    */
+
+    'core' => [
+        'url' => '',
+        'client_id' => '',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Core API client
     |--------------------------------------------------------------------------
     |
     | The Inly Core install this site reads, server to server, with a Passport
-    | client_credentials client (Inly\CoreWeb\Client\CoreClient): CORE_URL,
-    | CORE_CLIENT_ID and CORE_CLIENT_SECRET.
+    | client_credentials client (Inly\CoreWeb\Client\CoreClient). CORE_URL and
+    | CORE_CLIENT_ID override `core` above where an environment pairs with
+    | another Core (a staging Core, a local backoffice); CORE_CLIENT_SECRET is
+    | always env.
     |
     | ca_bundle: local only, a CA bundle for Core's self-signed certificate
     | (CORE_CA_BUNDLE).

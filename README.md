@@ -94,8 +94,9 @@ shares with the backoffice under the backoffice's own names:
 
 | Env | Config key | Meaning |
 |---|---|---|
-| `CORE_URL` | `client.base_url` | The Core install's URL |
-| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
+| — | `core.url` / `core.client_id` | Committed, not env: the Core this site belongs to and its app client id. Fill `client.base_url` / `client.client_id` on every server where neither `CORE_URL` nor `CORE_CLIENT_ID` is set; never where `APP_ENV` is `local` or `testing`, so a checkout runs with exactly `APP_ENV=local`. A server meant to have no Core cannot opt out with an empty `CORE_URL`: once `core.url` is committed, every server not on `local` pairs with it |
+| `CORE_URL` | `client.base_url` | Override only: a Core other than the committed one (a staging site paired with a staging Core, a local backoffice). A local checkout never points it at a remote Core: the live site stands in for Core there (`content:login`), and `core-web:doctor` fails on one |
+| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client: `CORE_URL` and `CORE_CLIENT_ID` override `core` together or not at all (one without the other leaves the client incomplete, which the doctor fails); the secret is always env |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |
@@ -1538,7 +1539,7 @@ return [
 ];
 ```
 
-It needs `CORE_URL`, `CORE_CLIENT_ID` and `CORE_CLIENT_SECRET`: the site's
+It needs the site's Core (`core.url` / `core.client_id`, or `CORE_URL` / `CORE_CLIENT_ID`) and `CORE_CLIENT_SECRET`: the site's
 app client is the audience of every envelope and the token it calls Core back
 with. No secret is shared with Core.
 
@@ -2005,7 +2006,7 @@ what the switched-on features need from the environment it runs in, offline:
 
 | Check | Fails when |
 |---|---|
-| Core client | `CORE_URL`, `CORE_CLIENT_ID` or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on. On a local machine without `CORE_URL`, a warning: snapshots and content come from `core:pull` / `content:pull` |
+| Core client | The Core URL, client id (`core.*` or `CORE_URL` / `CORE_CLIENT_ID`) or `CORE_CLIENT_SECRET` is blank while a feature that calls Core is on; or a local checkout's `CORE_URL` names a remote Core (anything but localhost, a private address, `host.docker.internal`, `*.test`, `*.localhost`, `*.local`, `*.ddev.site`, `*.lndo.site`). On a local machine without `CORE_URL`, a warning: snapshots and content come from `core:pull` / `content:pull` |
 | Queue | `QUEUE_CONNECTION` is `sync` in production with `snapshots` or `cms_sign_in` on; a warning on other servers, skipped locally |
 | Schedule | Never: it lists the commands the features schedule and warns when one's schedule was set to `null` |
 | Pings | Never: it warns while `WEBSITE_SYNC_SECRET` is still set |

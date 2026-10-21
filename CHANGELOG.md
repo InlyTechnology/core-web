@@ -38,6 +38,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   live site relays only the forms in its own form list. Entries are real, and
   `<x-core-web::forms.relay-notice />` says so. Both sides need the release.
   See README → Forms → Forms on a local checkout.
+- **The site's Core is committed, not env**: `core.url` and `core.client_id`
+  in `config/core-web.php` name the Core a site belongs to and fill
+  `client.base_url` / `client.client_id` on every server where neither
+  `CORE_URL` nor `CORE_CLIENT_ID` is set (never where `APP_ENV` is `local` or
+  `testing`). `CORE_URL` and `CORE_CLIENT_ID` become overrides, set together,
+  for an environment paired with another Core. Once a site commits `core.url`,
+  an empty `CORE_URL` no longer leaves a server unpaired: a staging server
+  meant to have no Core needs `APP_ENV=local` or its own pair. `core-web:doctor` fails a local checkout whose
+  `CORE_URL` names a remote Core. See README → Configuration.
 
 ## v0.21.0
 
