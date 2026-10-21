@@ -58,7 +58,20 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **The asset disks are core-web's** (`media.disks`): remove a site-defined disk of the same name from
   `config/filesystems.php`. Outside production writes land in a layer and production's files cannot be deleted
   or moved; `CORE_MEDIA_LAYER=false` only on a server built before go-live, removed at launch.
-- `php artisan media:check` checks the disks, the bucket's headers and a CDN rendition.
+- **The bucket key lives on servers only** (`CORE_MEDIA_KEY`/`_SECRET`, or Laravel Cloud's attached bucket).
+  A checkout has none: with `content_sync` on, `php artisan content:pull --only=assets` (or a plain
+  `content:pull`) brings the live site's asset index and `.meta` into `storage/core-web/remote-assets/`, and the
+  CP and pages load the files from their public URLs. Never ask a developer for a bucket key, and remove a
+  stale one from a local `.env`: any key there makes the disk try the bucket instead of the index.
+- **Moving a site onto these disks** keeps its bucket paths: commit the bucket and CDN `url` in `media.bucket`
+  (and `root` for any prefix above the folder), map the container's disk to the folder its files already sit in
+  (`media.disks`), point the container's `disk:` at it, delete the old disk and its env vars from `.env.example`, and set
+  `CORE_MEDIA_KEY`/`_SECRET` on every server before the deploy that switches.
+- **A file uploaded locally stays local** (`public/media-layer/`, never committed). An image an entry needs in
+  production is uploaded in the live site's CP; content that names a local-only file renders a missing image
+  there.
+- `php artisan media:check` checks the disks, the bucket's headers and a CDN rendition, and says on a checkout
+  whether the asset index has been pulled.
 
 ## Content, drafts and checks (`content`, `drafts`, `checks`)
 

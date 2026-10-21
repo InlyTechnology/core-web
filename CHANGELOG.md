@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Agent rules for media**: `resources/agents/AGENTS.md` now says the bucket
+  key is for servers only, that a checkout gets assets with `content:pull
+  --only=assets` (and a stale local key must go), how to move a site's own
+  bucket disk onto core-web's, and that local uploads never reach
+  production. README → Media gains "Moving a site's own bucket disk onto
+  these".
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

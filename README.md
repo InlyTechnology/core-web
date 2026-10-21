@@ -1144,6 +1144,33 @@ Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
 `social_images`). For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
 
+### Moving a site's own bucket disk onto these
+
+A site with a hand-rolled S3 disk keeps its bucket paths and URLs. With an
+old disk of `root: web` and `url: https://cdn.example.com/site/storage/`:
+
+```php
+'media' => [
+    'bucket' => [
+        'endpoint' => 'https://ams3.digitaloceanspaces.com',
+        'region' => 'ams3',
+        'bucket' => 'site',
+        'url' => 'https://cdn.example.com/site/storage',
+    ],
+    'disks' => ['assets' => 'web'],   // the folder the files already sit in
+],
+```
+
+The disk's key is `root/<folder>`, as before, and its URLs are
+`url/root/<folder>/<path>`. Then point the container at the disk (`disk:
+assets` in `content/assets/<container>.yaml`), delete the old disk from
+`config/filesystems.php` and its variables from `.env.example`, and set
+`CORE_MEDIA_KEY`/`CORE_MEDIA_SECRET` on every server before the deploy that
+switches (a server without them falls back to the local folder). A server
+that runs a non-production `APP_ENV` while it serves the live site sets
+`CORE_MEDIA_LAYER=false` until launch. Developers delete the old variables
+from their `.env` and run `content:pull --only=assets`.
+
 ### On Laravel Cloud
 
 With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
