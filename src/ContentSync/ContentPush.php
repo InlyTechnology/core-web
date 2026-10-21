@@ -219,7 +219,7 @@ class ContentPush
         ['handle' => $handle, 'site' => $site] = ContentPaths::parse('globals', $path);
         $target = GlobalTarget::make($handle, (string) $site);
 
-        return [$target, GlobalSet::find($handle)->in((string) $site)];
+        return [$target, self::found(GlobalSet::find($handle)?->in((string) $site))];
     }
 
     /** @return array{0: ProposalTarget, 1: object} */
@@ -228,7 +228,17 @@ class ContentPush
         ['handle' => $handle, 'site' => $site] = ContentPaths::parse('nav-trees', $path);
         $target = NavTarget::make($handle, (string) $site);
 
-        return [$target, Nav::find($handle)->in((string) $site)];
+        return [$target, self::found(Nav::find($handle)?->in((string) $site))];
+    }
+
+    /** A proposal changes what the site has, so a global set or nav (or site) it lacks refuses the file. */
+    private static function found(?object $stored): object
+    {
+        if ($stored === null) {
+            throw new InvalidArgumentException(__('core-web::sync.push_not_found'));
+        }
+
+        return $stored;
     }
 
     /**

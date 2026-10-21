@@ -205,6 +205,16 @@ class ContentPushTest extends TestCase
         $this->assertSame('123', GlobalSet::find('settings')->in('default')->get('phone'), 'An editor applies it; nothing changed yet.');
     }
 
+    public function test_a_global_set_the_site_lacks_is_refused_not_failed(): void
+    {
+        $this->pull()->assertSuccessful();
+        @mkdir($this->root.'/globals/default', 0777, true);
+        file_put_contents($this->root.'/globals/default/missing.yaml', "phone: '1'\n");
+
+        $this->push(['--partial' => true])->expectsOutputToContain('not_found')->assertFailed();
+        $this->assertSame([], app(Proposals::class)->open());
+    }
+
     public function test_a_dry_run_checks_and_writes_nothing(): void
     {
         $this->pull()->assertSuccessful();
