@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the
   approval and counts down the code's time, and `content:pull` and
