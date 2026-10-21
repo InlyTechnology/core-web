@@ -72,8 +72,8 @@ class DoctorCommand extends Command
         }
 
         $missing = array_keys(array_filter([
-            'CORE_URL' => config('core-web.client.base_url'),
-            'CORE_CLIENT_ID' => config('core-web.client.client_id'),
+            'core.url (or CORE_URL)' => config('core-web.client.base_url'),
+            'core.client_id (or CORE_CLIENT_ID)' => config('core-web.client.client_id'),
             'CORE_CLIENT_SECRET' => config('core-web.client.client_secret'),
         ], fn (mixed $value): bool => blank($value)));
 
@@ -173,13 +173,25 @@ class DoctorCommand extends Command
         $this->line("<error>fail</error> {$message}");
     }
 
-    /** A Core on this machine (a Herd `.test` site, localhost), the only kind a local checkout may name. */
+    /** A Core on this machine or its network (Herd, DDEV, Lando, Docker, a LAN address), the only kind a local checkout may name. */
     private static function isLocalHost(string $url): bool
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $host = rtrim(trim(strtolower((string) parse_url($url, PHP_URL_HOST)), '[]'), '.');
 
-        return in_array($host, ['localhost', '127.0.0.1', '::1', '[::1]'], true)
-            || str_ends_with($host, '.test')
-            || str_ends_with($host, '.localhost');
+        if (in_array($host, ['localhost', 'host.docker.internal'], true)) {
+            return true;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return ! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+        }
+
+        foreach (['.test', '.localhost', '.local', '.ddev.site', '.lndo.site'] as $suffix) {
+            if (str_ends_with($host, $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

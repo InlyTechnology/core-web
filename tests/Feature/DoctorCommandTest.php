@@ -71,6 +71,26 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')->expectsOutputToContain('ok   Core client: https://backoffice.test');
     }
 
+    public function test_a_local_machine_may_name_a_core_on_its_network(): void
+    {
+        $this->app['env'] = 'local';
+
+        foreach (['http://host.docker.internal:8000', 'https://192.168.1.20', 'https://backoffice.ddev.site', 'http://127.0.0.2', 'https://backoffice.test.'] as $url) {
+            config(['core-web.client.base_url' => $url]);
+            $this->artisan('core-web:doctor')->expectsOutputToContain("ok   Core client: {$url}");
+        }
+    }
+
+    public function test_a_half_override_fails(): void
+    {
+        $this->app['env'] = 'staging';
+        config(['core-web.client.base_url' => 'https://staging-core.example', 'core-web.client.client_id' => '']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Core client: core.client_id (or CORE_CLIENT_ID) not set')
+            ->assertFailed();
+    }
+
     public function test_a_sync_queue_fails_on_a_server(): void
     {
         $this->app['env'] = 'production';

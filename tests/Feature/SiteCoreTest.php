@@ -43,4 +43,15 @@ class SiteCoreTest extends TestCase
         $this->applyIn('testing');
         $this->assertSame('', config('core-web.client.client_id'));
     }
+
+    public function test_an_override_replaces_the_committed_core_only_as_a_pair(): void
+    {
+        $this->applyIn('staging', ['base_url' => 'https://staging-core.example']);
+        $this->assertSame('https://staging-core.example', config('core-web.client.base_url'));
+        $this->assertSame('', config('core-web.client.client_id'));
+
+        $this->applyIn('staging', ['client_id' => 'staging-client']);
+        $this->assertSame('', config('core-web.client.base_url'));
+        $this->assertSame('staging-client', config('core-web.client.client_id'));
+    }
 }
