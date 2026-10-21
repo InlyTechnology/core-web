@@ -63,6 +63,14 @@ class DoctorCommand extends Command
             return;
         }
 
+        $url = (string) config('core-web.client.base_url');
+
+        if ($this->laravel->environment('local') && $url !== '' && ! self::isLocalHost($url)) {
+            $this->failure("Core client: CORE_URL points this local checkout at {$url}. Remove it: production data, the CP sign-in and forms come through the live site (content:login); CORE_URL locally names a local backoffice only");
+
+            return;
+        }
+
         $missing = array_keys(array_filter([
             'CORE_URL' => config('core-web.client.base_url'),
             'CORE_CLIENT_ID' => config('core-web.client.client_id'),
@@ -77,7 +85,7 @@ class DoctorCommand extends Command
 
         // A local machine may run without a Core: its data comes from core:pull and content:pull.
         if ($this->laravel->environment('local') && blank(config('core-web.client.base_url'))) {
-            $this->warning('Core client: no CORE_URL here; snapshots come from `core:pull`, and the CP needs a local Core or cms_sign_in.local_password_sign_in');
+            $this->warning('Core client: no CORE_URL here; production data, the CP sign-in and forms come through the live site (content:login, content:pull, core:pull)');
 
             return;
         }
@@ -163,5 +171,15 @@ class DoctorCommand extends Command
     {
         $this->anyFailed = true;
         $this->line("<error>fail</error> {$message}");
+    }
+
+    /** A Core on this machine (a Herd `.test` site, localhost), the only kind a local checkout may name. */
+    private static function isLocalHost(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1', '[::1]'], true)
+            || str_ends_with($host, '.test')
+            || str_ends_with($host, '.localhost');
     }
 }

@@ -94,8 +94,9 @@ shares with the backoffice under the backoffice's own names:
 
 | Env | Config key | Meaning |
 |---|---|---|
-| `CORE_URL` | `client.base_url` | The Core install's URL |
-| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client |
+| — | `core.url` / `core.client_id` | Committed, not env: the Core this site belongs to and its app client id. Fill `client.base_url` / `client.client_id` on every server where the env below is unset; never where `APP_ENV` is `local` or `testing` |
+| `CORE_URL` | `client.base_url` | Override only: a Core other than the committed one (a staging site paired with a staging Core, a local backoffice). A local checkout never points it at a remote Core: the live site stands in for Core there (`content:login`), and `core-web:doctor` fails on one |
+| `CORE_CLIENT_ID` / `CORE_CLIENT_SECRET` | `client.client_id` / `client.client_secret` | The site's Passport client_credentials client: the id overrides `core.client_id` with `CORE_URL`, the secret is always env |
 | `CORE_CA_BUNDLE` | `client.ca_bundle` | Local only: a CA bundle for Core's self-signed certificate |
 | `WEBSITE_SYNC_SECRET` | `ping.secret` | The HMAC secret a Core still on the shared secret signs pings with (the backoffice's `WEBSITE_SYNC_SECRET`). A ping sealed with Core's own key (purpose `website.objects`, audience `CORE_CLIENT_ID`) needs none, so blank it once Core seals every ping. **Empty rejects every shared-secret ping**; there is no `APP_KEY` fallback |
 | `CORE_CONTENT_ENVIRONMENT` | `content.environment` | The environment a draft or publish must be sealed for, when the site runs in another `APP_ENV` than its Core (a live site on `APP_ENV=staging` paired with production Core sets `production`). Empty is `app()->environment()` |

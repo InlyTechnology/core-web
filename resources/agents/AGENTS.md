@@ -16,11 +16,15 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   needing something core-web almost does: propose the change to core-web.
 - **Read `CHANGELOG.md`'s upgrade notes** for every version between the one the site had and the one it moves
   to, and apply each.
-- **Env is secrets and what differs per environment** (`CORE_URL`, `CORE_CLIENT_ID`, `CORE_CLIENT_SECRET`,
-  `CORE_MEDIA_KEY`/`_SECRET`; the README's env table has the rest, such as `CORE_CMS_SITE` and
-  `CORE_CONTENT_CONNECTOR_ID` for a staging site paired with production Core). A value that is the same
-  everywhere (the live site's `content_sync.remote_url`, the bucket, the CDN) is committed in
+- **Env is secrets and what differs per environment** (`CORE_CLIENT_SECRET`, `CORE_MEDIA_KEY`/`_SECRET`; the
+  README's env table has the rest, such as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site
+  paired with production Core). A value that is the same everywhere (the site's Core in `core.url` /
+  `core.client_id`, the live site's `content_sync.remote_url`, the bucket, the CDN) is committed in
   `config/core-web.php`.
+- **`CORE_URL` / `CORE_CLIENT_ID` are overrides, not setup.** A server leaves them unset and gets the committed
+  `core`; only an environment paired with another Core (a staging Core) sets them. **A local checkout never
+  points `CORE_URL` at a remote Core**: production data, the CP sign-in and forms come through the live site on
+  `content:login`; `CORE_URL` locally names a local backoffice only. `core-web:doctor` fails on a remote one.
 - **`php artisan core-web:doctor`** checks what the switched-on features need from the environment: the Core
   client, a real queue, the schedule. Run it after changing features or env, and on every server before launch.
 

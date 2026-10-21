@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **The site's Core is committed, not env**: `core.url` and `core.client_id`
+  in `config/core-web.php` name the Core a site belongs to and fill
+  `client.base_url` / `client.client_id` on every server where `CORE_URL` /
+  `CORE_CLIENT_ID` are unset (never where `APP_ENV` is `local` or `testing`).
+  `CORE_URL` and `CORE_CLIENT_ID` become overrides for an environment paired
+  with another Core. `core-web:doctor` fails a local checkout whose
+  `CORE_URL` names a remote Core. See README → Configuration.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

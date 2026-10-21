@@ -53,6 +53,24 @@ class DoctorCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_a_local_machine_pointed_at_a_remote_core_fails(): void
+    {
+        $this->app['env'] = 'local';
+        config(['core-web.client.base_url' => 'https://core.example']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Core client: CORE_URL points this local checkout at https://core.example. Remove it')
+            ->assertFailed();
+    }
+
+    public function test_a_local_machine_may_name_a_local_backoffice(): void
+    {
+        $this->app['env'] = 'local';
+        config(['core-web.client.base_url' => 'https://backoffice.test']);
+
+        $this->artisan('core-web:doctor')->expectsOutputToContain('ok   Core client: https://backoffice.test');
+    }
+
     public function test_a_sync_queue_fails_on_a_server(): void
     {
         $this->app['env'] = 'production';
