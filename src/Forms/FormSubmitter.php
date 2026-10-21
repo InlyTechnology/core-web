@@ -8,6 +8,9 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
+use Inly\CoreWeb\ContentSync\RemoteSite;
+use Inly\CoreWeb\ContentSync\RemoteSiteError;
 use JsonException;
 use RuntimeException;
 
@@ -34,16 +37,20 @@ final class FormSubmitter
     {
         $this->errors = [];
 
-        if (! $this->core->configured()) {
-            Log::error('core-web forms: submission not sent, Core is not configured', ['form' => $uuid]);
-
-            return SubmissionResult::UNAVAILABLE;
-        }
-
         try {
             $body = json_encode((object) $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             Log::error('core-web forms: submission not sent, its values do not encode', ['form' => $uuid]);
+
+            return SubmissionResult::UNAVAILABLE;
+        }
+
+        if (! $this->core->configured() && FormRelay::relaysSubmissions()) {
+            return $this->relay($uuid, $body, $files);
+        }
+
+        if (! $this->core->configured()) {
+            Log::error('core-web forms: submission not sent, Core is not configured', ['form' => $uuid]);
 
             return SubmissionResult::UNAVAILABLE;
         }
@@ -69,6 +76,58 @@ final class FormSubmitter
     public function errors(): array
     {
         return $this->errors;
+    }
+
+    /**
+     * A local checkout's entry, sent on by the live site on its own client token (FormRelayController::entry).
+     *
+     * @param  array<string, list<UploadedFile>>  $files
+     */
+    private function relay(string $uuid, string $body, array $files): SubmissionResult
+    {
+        $site = RemoteSite::fromStorage();
+
+        if ($site === null) {
+            return SubmissionResult::UNAVAILABLE;
+        }
+
+        $request = RemoteSite::anonymous($site->url())
+            ->withToken($site->token())
+            ->timeout((int) config('core-web.forms.timeouts.submit', 20) + 10);
+        $url = $site->url().RemoteSite::endpoint('forms/'.rawurlencode($uuid).'/entries');
+
+        try {
+            if (array_filter($files) === []) {
+                $response = $request->post($url, ['payload' => json_decode($body, true)]);
+            } else {
+                $request->attach('payload', $body, 'payload.json', ['Content-Type' => 'application/json']);
+
+                foreach ($files as $field => $list) {
+                    foreach (array_values($list) as $i => $file) {
+                        $request->attach($field.'[]', (string) $file->get(), self::fileName($file, $i), ['Content-Type' => (string) $file->getMimeType()]);
+                    }
+                }
+
+                $response = $request->post($url);
+            }
+        } catch (ConnectionException|RemoteSiteError $e) {
+            Log::warning('core-web forms: the live site could not be reached to relay a submission', ['form' => $uuid, 'error' => $e::class]);
+
+            return SubmissionResult::UNAVAILABLE;
+        }
+
+        if ($response->status() === 401 && $response->json('error') === AuthenticateSyncToken::REFUSED) {
+            RemoteSite::forget();
+        }
+
+        $result = SubmissionResult::tryFrom((string) $response->json('result')) ?? SubmissionResult::UNAVAILABLE;
+        $this->errors = array_map('strval', array_filter((array) $response->json('errors', []), fn (mixed $message, mixed $field) => is_string($field) && is_scalar($message), ARRAY_FILTER_USE_BOTH));
+
+        if ($result === SubmissionResult::UNAVAILABLE) {
+            Log::warning('core-web forms: the live site did not relay a submission', ['form' => $uuid, 'status' => $response->status()]);
+        }
+
+        return $result;
     }
 
     /** @param  array<string, list<UploadedFile>>  $files */

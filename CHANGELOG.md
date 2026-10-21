@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Core forms on a local checkout**: without a `CORE_URL`, a local checkout
+  signed in with `content:login` sends its Core forms through the live site:
+  `CoreForms::embedBaseUrl()` gives Core's embed the local relay, and
+  `CoreForm` entries are sent on by the live site with its client token. The
+  live site relays only the forms in its own form list. Entries are real, and
+  `<x-core-web::forms.relay-notice />` says so. Both sides need the release.
+  See README → Forms → Forms on a local checkout.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,
