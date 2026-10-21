@@ -61,7 +61,7 @@ class DraftWriter
     ) {}
 
     /**
-     * @param  array{collection: string, entry_id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, base_hash?: ?string}  $request
+     * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, base_hash?: ?string}  $request
      * @return array<string, mixed>
      *
      * @throws DraftRefused|ValidationException
@@ -121,7 +121,7 @@ class DraftWriter
         $fields = (array) $request['fields'];
 
         if ($entry === null) {
-            return $this->create($collection, $site, $fields, $by, $this->blueprint($collection, $request['blueprint'] ?? null), $parent);
+            return $this->create($collection, $site, $fields, $by, $this->blueprint($collection, $request['blueprint'] ?? null), $parent, $this->newId($request['id'] ?? null));
         }
 
         if (filled($request['parent_id'] ?? null) || filled($request['blueprint'] ?? null)) {
@@ -263,8 +263,30 @@ class DraftWriter
         ];
     }
 
+    /**
+     * The id a new entry is asked to keep (a push keeps the checkout's, so what refers to it there still does); null for a fresh one.
+     *
+     * @throws ValidationException
+     */
+    private function newId(mixed $id): ?string
+    {
+        if (blank($id)) {
+            return null;
+        }
+
+        if (! is_string($id) || preg_match('/^[A-Za-z0-9_-]{1,64}$/', $id) !== 1) {
+            throw ValidationException::withMessages(['id' => 'A new entry\'s id is letters, digits, dashes and underscores.']);
+        }
+
+        if (Entry::find($id) !== null) {
+            throw ValidationException::withMessages(['id' => "An entry `{$id}` exists already."]);
+        }
+
+        return $id;
+    }
+
     /** @return array<string, mixed> */
-    private function create(CollectionContract $collection, string $site, array $fields, DraftAuthor $by, Blueprint $blueprint, ?EntryContract $parent): array
+    private function create(CollectionContract $collection, string $site, array $fields, DraftAuthor $by, Blueprint $blueprint, ?EntryContract $parent, ?string $id = null): array
     {
         $normalised = $this->normaliser->normalise($blueprint, $collection->handle(), $site, Arr::except($fields, ['slug', 'date']), []);
         $values = $this->process($blueprint, $normalised['data'], $normalised, $collection, $site, null);
@@ -276,6 +298,10 @@ class DraftWriter
             ->slug($this->slug((string) ($fields['slug'] ?? $values['title'] ?? ''), $collection, $site, null))
             ->data(Arr::whereNotNull($values))
             ->published(false);
+
+        if ($id !== null) {
+            $entry->id($id);
+        }
 
         if ($collection->dated()) {
             $entry->date(self::onTheDay($blueprint, $this->date($fields['date'] ?? null) ?? Carbon::now()));

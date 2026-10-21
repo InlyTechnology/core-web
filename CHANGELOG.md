@@ -18,6 +18,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   bucket disk onto core-web's, and that local uploads never reach
   production. README → Media gains "Moving a site's own bucket disk onto
   these".
+- **Content push**: `content:push` sends a checkout's changed entries,
+  globals and nav trees to the live site as drafts and proposals, never live,
+  with the local media files they name. A file changed on the site since the
+  pull is refused unless `--force`; the push is all-or-nothing unless
+  `--partial`. Needs the new **Push content** permission. `content.lock`
+  gains `bases` (written by `content:pull`), `pushed` and `drafts`. Docs: README →
+  Content push.
 
 ## v0.21.0
 

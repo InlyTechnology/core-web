@@ -195,6 +195,18 @@ final class RemoteSite
         return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => $request->post($endpoint, $data));
     }
 
+    /**
+     * POSTs a file as multipart form data, beside the fields given.
+     *
+     * @param  array<string, string>  $data
+     *
+     * @throws RemoteLoginNeeded|RemoteSiteError
+     */
+    public function upload(string $path, array $data, string $filename, string $bytes): Response
+    {
+        return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => $request->attach('file', $bytes, $filename)->post($endpoint, $data));
+    }
+
     /** Revokes this machine's token on the site and forgets it here; the site being unreachable still forgets it here. */
     public function logout(): bool
     {

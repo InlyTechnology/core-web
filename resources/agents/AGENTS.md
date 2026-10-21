@@ -39,6 +39,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - Snapshot sitemaps are listed in the robots view with `{{ core_sitemaps }}`.
 - **Locally, data comes from the live site, not from production Core**: `content:pull` (with `content_sync`)
   brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
+- **Local content changes reach the live site only through `content:push`**, as drafts and proposals an editor
+  publishes in the CP, with the local media files they name. Pull before pushing: a file changed on the site since
+  the pull is refused.
 
 ## CMS sign-in (`cms_sign_in`)
 
