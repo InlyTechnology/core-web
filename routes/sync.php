@@ -16,6 +16,7 @@ Route::prefix(trim((string) config('statamic.routes.action', '!'), '/').'/core-w
         Route::post('device', 'device')->middleware('throttle:'.SyncLimits::DEVICE)->name('device');
         Route::post('token', 'token')->name('token');
         Route::post('logout', 'logout')->middleware(AuthenticateSyncToken::ALIAS)->name('logout');
+        Route::get('me', 'me')->middleware(AuthenticateSyncToken::ALIAS)->name('me');
         Route::get('export', 'export')->middleware(AuthenticateSyncToken::ALIAS)->name('export');
         Route::get('snapshots/{type}', 'snapshot')->middleware(AuthenticateSyncToken::ALIAS)->where('type', '[A-Za-z0-9_.-]+')->name('snapshot');
     });

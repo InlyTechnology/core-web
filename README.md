@@ -1538,10 +1538,16 @@ keeps it on the site it was minted for.
 as `CORE_URL` with a client of its own, exactly as a live site does: the
 local Core must know the site under its `cms_sign_in.site` key
 (`CORE_CMS_SITE`, `production` when unset) and serve https (`CORE_CA_BUNDLE`
-for a self-signed certificate). Without one,
+for a self-signed certificate). Without one, a checkout with `content_sync`
+on signs in through the live site instead: after `php artisan content:login`,
+the CP login asks the live site who the machine's token belongs to (its sync
+API's `me`) and signs into a local account mirroring that one's super flag,
+roles and groups, stamped `core_web_live_user_id`. It asks on every sign-in,
+so a revoked machine or a changed grant lands at the next one, and the live
+site must run a core-web that answers `me`. Offline,
 `cms_sign_in.local_password_sign_in` set to `true` restores Statamic's own
-login, and only while `APP_ENV` is `local`; with neither, the CP login
-answers 503, naming both ways in when `APP_DEBUG` is on. Data from production comes
+login, and only while `APP_ENV` is `local`; with none of these, the CP login
+answers 503, naming the ways in when `APP_DEBUG` is on. Data from production comes
 through `content:login` and `content:pull` / `core:pull`, not through a
 connection to the production Core.
 

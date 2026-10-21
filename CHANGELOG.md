@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Local CP sign-in through the live site**: a local checkout without
+  `CORE_URL` signs its CP in after `php artisan content:login`, as a local
+  account mirroring the developer's live-site account (super flag, roles,
+  groups), re-checked with the live site on every sign-in. The live site
+  answers a new sync endpoint, `me`, so it needs this version first. See
+  README → CMS sign-in → Local development.
+
 ## v0.21.0
 
 - **Glide presets without a CDN**: `<x-core-img>` gives a local Asset (JPEG,

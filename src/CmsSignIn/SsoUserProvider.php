@@ -32,7 +32,11 @@ class SsoUserProvider extends UserProvider
             return $user;
         }
 
-        return $user instanceof UserContract && app(CmsUsers::class)->isProvisioned($user) ? $user : null;
+        if (! $user instanceof UserContract) {
+            return null;
+        }
+
+        return app(CmsUsers::class)->isProvisioned($user) || (LocalSignIn::applies() && LocalSignIn::isMirrored($user)) ? $user : null;
     }
 
     public function retrieveByCredentials(array $credentials)

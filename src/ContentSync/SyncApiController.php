@@ -63,6 +63,21 @@ class SyncApiController
         return new JsonResponse(['status' => 'revoked']);
     }
 
+    /** Who the token signs in as, so a local checkout can mirror the account in its own CP (LocalSignIn). */
+    public function me(): JsonResponse
+    {
+        $user = User::current();
+
+        return new JsonResponse([
+            'id' => (string) $user->id(),
+            'name' => (string) $user->name(),
+            'email' => (string) $user->email(),
+            'super' => $user->isSuper(),
+            'roles' => $user->explicitRoles()->keys()->values()->all(),
+            'groups' => $user->groups()->keys()->values()->all(),
+        ]);
+    }
+
     public function export(Request $request, ContentExport $export, AssetExport $assets): JsonResponse
     {
         $type = (string) $request->query('type');
