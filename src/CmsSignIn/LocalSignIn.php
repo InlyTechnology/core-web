@@ -35,22 +35,28 @@ final class LocalSignIn
     }
 
     /**
-     * Null when the address belongs to a local account mirrored from another
-     * live user, which is left alone. Roles and groups this checkout does not
+     * Null when the address belongs to a local account Core provisioned or
+     * one mirrored from another live user, which is left alone. Roles and groups this checkout does not
      * define are dropped, as a role map would drop them.
      *
      * @param  array{id: string, name: string, email: string, super: bool, roles: list<string>, groups: list<string>}  $person
      */
     public function provision(array $person): ?UserContract
     {
-        $existing = app(CmsUsers::class)->withEmail($person['email']);
+        $users = app(CmsUsers::class);
+        $existing = $users->withEmail($person['email']);
 
-        if ($existing->contains(fn (UserContract $user): bool => self::isMirrored($user) && (string) $user->get(self::MARKER) !== $person['id'])) {
+        // An account Core or another live user owns is never taken over, so pointing CORE_URL at a local Core later still signs in.
+        if ($existing->contains(fn (UserContract $user): bool => $users->isProvisioned($user) || (self::isMirrored($user) && (string) $user->get(self::MARKER) !== $person['id']))) {
             return null;
         }
 
-        $user = $existing->first() ?? User::make()->email($person['email']);
+        // By the live id first, so an address changed on the live site renames the account rather than adding a second.
+        $user = User::all()->first(fn (UserContract $user): bool => (string) $user->get(self::MARKER) === $person['id'])
+            ?? $existing->first()
+            ?? User::make();
 
+        $user->email($person['email']);
         $user->set('name', $person['name'] !== '' ? $person['name'] : $person['email']);
         $user->set(self::MARKER, $person['id']);
 
@@ -60,25 +66,12 @@ final class LocalSignIn
             $user->remove('super');
         }
 
-        self::assign($user, 'roles', array_filter($person['roles'], fn (string $handle) => Role::find($handle) !== null));
-        self::assign($user, 'groups', array_filter($person['groups'], fn (string $handle) => UserGroup::find($handle) !== null));
+        // Set, never removed: an Eloquent user keeps roles and groups in pivot tables, not columns.
+        $user->explicitRoles(array_values(array_unique(array_filter($person['roles'], fn (string $handle) => Role::find($handle) !== null))));
+        $user->groups(array_values(array_unique(array_filter($person['groups'], fn (string $handle) => UserGroup::find($handle) !== null))));
 
         $user->save();
 
         return $user;
-    }
-
-    /** @param  array<int, string>  $handles */
-    private static function assign(UserContract $user, string $key, array $handles): void
-    {
-        $handles = array_values(array_unique($handles));
-
-        if ($handles === []) {
-            $user->remove($key);
-
-            return;
-        }
-
-        $key === 'roles' ? $user->explicitRoles($handles) : $user->groups($handles);
     }
 }

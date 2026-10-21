@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\CmsSignIn;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Inly\CoreWeb\ContentSync\RemoteSite;
 use Statamic\Auth\UserProvider;
 use Statamic\Contracts\Auth\User as UserContract;
 
@@ -36,7 +37,7 @@ class SsoUserProvider extends UserProvider
             return null;
         }
 
-        return app(CmsUsers::class)->isProvisioned($user) || (LocalSignIn::applies() && LocalSignIn::isMirrored($user)) ? $user : null;
+        return app(CmsUsers::class)->isProvisioned($user) || (LocalSignIn::applies() && LocalSignIn::isMirrored($user) && RemoteSite::fromStorage() !== null) ? $user : null;
     }
 
     public function retrieveByCredentials(array $credentials)

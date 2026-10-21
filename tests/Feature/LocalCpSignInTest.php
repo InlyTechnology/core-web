@@ -89,15 +89,65 @@ class LocalCpSignInTest extends CmsSignInTestCase
         $this->assertFalse(User::all()->first()->isSuper());
     }
 
-    public function test_the_mirrored_account_stays_signed_in(): void
+    public function test_the_provider_admits_the_mirrored_account_while_the_machine_is_signed_in(): void
+    {
+        $this->live();
+        $this->get(route('core-web.local-sign-in'));
+        $id = User::all()->first()->id();
+        $provider = Auth::guard('web')->getProvider();
+
+        $this->assertSame($id, $provider->retrieveById($id)?->id());
+
+        RemoteSite::forget();
+
+        $this->assertNull($provider->retrieveById($id));
+    }
+
+    public function test_roles_and_groups_dropped_on_the_live_site_are_dropped_here(): void
     {
         $this->live();
         $this->get(route('core-web.local-sign-in'));
 
-        $response = $this->get($this->cp());
+        Auth::guard('web')->logout();
+        $this->live(['roles' => [], 'groups' => []]);
+        $this->get(route('core-web.local-sign-in'));
 
-        $this->assertStringNotContainsString('local-sign-in', (string) $response->headers->get('Location'));
-        $this->assertNotNull(Auth::guard('web')->user());
+        $this->assertSame([], User::all()->first()->explicitRoles()->keys()->all());
+        $this->assertSame([], User::all()->first()->groups()->keys()->all());
+    }
+
+    public function test_an_address_changed_on_the_live_site_renames_the_account(): void
+    {
+        $this->live();
+        $this->get(route('core-web.local-sign-in'));
+
+        Auth::guard('web')->logout();
+        $this->live(['email' => 'anna@example.com']);
+        $this->get(route('core-web.local-sign-in'));
+
+        $this->assertCount(1, User::all());
+        $this->assertSame('anna@example.com', User::all()->first()->email());
+    }
+
+    public function test_an_unstamped_local_account_with_the_address_is_adopted(): void
+    {
+        User::make()->email('ann@example.com')->save();
+        $this->live();
+
+        $this->get(route('core-web.local-sign-in'))->assertRedirect(cp_route('index'));
+
+        $this->assertCount(1, User::all());
+        $this->assertSame('live-1', User::all()->first()->get(LocalSignIn::MARKER));
+    }
+
+    public function test_an_account_core_provisioned_is_left_alone(): void
+    {
+        $this->provisioned('ann@example.com');
+        $this->live(['super' => true]);
+
+        $this->get(route('core-web.local-sign-in'))->assertForbidden();
+        $this->assertFalse(User::all()->first()->isSuper());
+        $this->assertNull(User::all()->first()->get(LocalSignIn::MARKER));
     }
 
     public function test_an_unsigned_machine_is_told_to_run_content_login(): void

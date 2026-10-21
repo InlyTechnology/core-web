@@ -29,7 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RedirectCpLoginToCore
 {
-    public const NO_CORE = 'The control panel signs in through Core: set CORE_URL to a Core, or on a local machine set core-web.content_sync.remote_url to the live site and run php artisan content:login (or enable core-web.cms_sign_in.local_password_sign_in).';
+    public const NO_CORE = 'The control panel signs in through Core: set CORE_URL to a Core, or with APP_ENV=local set core-web.content_sync.remote_url to the live site and run php artisan content:login (or enable core-web.cms_sign_in.local_password_sign_in).';
 
     public function handle(Request $request, Closure $next): Response
     {
