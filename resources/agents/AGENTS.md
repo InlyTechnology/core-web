@@ -90,6 +90,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **A form renders Core's embed**; a `CoreForm` (Livewire, needs `snapshots`) only when the form needs the
   site's own markup. It still posts to the Core form and reads Core's definition: never copy the field list into
   the site. The component appends any required field the view leaves out.
+- **An embed takes `CoreForms::embedBaseUrl()` as its Core address**, never `CORE_URL` read directly, so a local
+  checkout without a Core relays it through the live site; place `<x-core-web::forms.relay-notice />` beside it,
+  since a relayed entry is a real one.
 - **Chat and live reads go through the site**, never from the browser to Core: the site's client token reads more
   than any page should show, so each live read is a named `LiveRead` and there is no pass-through.
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a

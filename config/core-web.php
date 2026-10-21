@@ -412,11 +412,15 @@ return [
     | timeouts: seconds to connect to Core, to read a definition (from a pull,
     | never a render) and to send an entry, files included.
     |
+    | relay_max_upload_bytes: the files one entry may carry through the form
+    | relay of a local checkout (README → Forms on a local checkout).
+    |
     */
 
     'forms' => [
         'classes' => [],
         'submit_rate_limit' => 5,
+        'relay_max_upload_bytes' => 10 * 1024 * 1024,
         'timeouts' => [
             'connect' => 3,
             'definition' => 5,

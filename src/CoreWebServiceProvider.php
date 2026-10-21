@@ -327,6 +327,11 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadViews();
         $this->app->make(Router::class)->aliasMiddleware(AuthenticateSyncToken::ALIAS, AuthenticateSyncToken::class);
         $this->loadRoutesFrom(__DIR__.'/../routes/sync.php');
+
+        // A local checkout's Core forms, through the live site; never on a server.
+        if (self::enabled('forms') && $this->app->environment(['local', 'testing'])) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/forms-relay.php');
+        }
         $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class]);
         SyncLimits::register();
 

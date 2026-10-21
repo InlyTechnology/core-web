@@ -31,6 +31,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   groups), re-checked with the live site on every sign-in. The live site
   answers a new sync endpoint, `me`, so it needs this version first. See
   README → CMS sign-in → Local development.
+- **Core forms on a local checkout**: without a `CORE_URL`, a local checkout
+  signed in with `content:login` sends its Core forms through the live site:
+  `CoreForms::embedBaseUrl()` gives Core's embed the local relay, and
+  `CoreForm` entries are sent on by the live site with its client token. The
+  live site relays only the forms in its own form list. Entries are real, and
+  `<x-core-web::forms.relay-notice />` says so. Both sides need the release.
+  See README → Forms → Forms on a local checkout.
 
 ## v0.21.0
 

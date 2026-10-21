@@ -1,4 +1,5 @@
 <div>
+    <x-core-web::forms.relay-notice />
     <form wire:submit="submit" novalidate>
         @include($body)
         @unless ($coreForm->missingPlaced())

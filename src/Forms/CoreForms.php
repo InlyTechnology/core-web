@@ -191,6 +191,46 @@ final class CoreForms
         return $this->store->documents($this->snapshot)[$key] ?? null;
     }
 
+    /** @return list<string> the keys of the Core forms the site's form classes post to */
+    public static function renderedKeys(): array
+    {
+        return array_map(fn (string $class) => $class::coreForm(), self::classes());
+    }
+
+    /** @return array<string, mixed>|null the form's row, by its uuid */
+    public function formByUuid(string $uuid): ?array
+    {
+        foreach ($this->store->documents($this->snapshot) as $form) {
+            if (is_array($form) && is_string($form['uuid'] ?? null) && strcasecmp($form['uuid'], $uuid) === 0) {
+                return $form;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The address Core's embed loads from and posts to: the site's Core, or
+     * on a local checkout without one, the relay through the live site
+     * (FormRelay). Null when there is neither.
+     */
+    public static function embedBaseUrl(): ?string
+    {
+        $base = CoreClient::fromConfig()->baseUrl();
+
+        if ($base !== '') {
+            return $base;
+        }
+
+        return FormRelay::relaysEmbeds() ? FormRelay::url() : null;
+    }
+
+    /** Whether the embed goes through the live site here, so what it sends is a real entry. */
+    public static function isRelayed(): bool
+    {
+        return FormRelay::relaysEmbeds();
+    }
+
     /** A rendered form's definition, or null while Core has none for it (unknown, off, or not yet pulled). */
     public function definition(string $key): ?FormDefinition
     {
