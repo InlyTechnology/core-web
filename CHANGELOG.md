@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.24.0
 
 - **Glide images on Cloud work on every replica**: the `cloud` feature turns
   off Statamic's `true` and `hybrid` Glide caches, which keep renditions in
