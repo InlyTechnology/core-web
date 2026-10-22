@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Inly\CoreWeb\Content\CoreBlocksController;
 use Inly\CoreWeb\Content\CoreChecksController;
 use Inly\CoreWeb\Content\CoreDraftsController;
 use Inly\CoreWeb\Content\CoreProposalsController;
@@ -27,6 +28,11 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
         }
 
         if (CoreWebServiceProvider::enabled('drafts')) {
+            Route::controller(CoreBlocksController::class)->group(function (): void {
+                Route::get('blocks', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('blocks.index');
+                Route::get('blocks/{collection}/{handle}', 'show')->where(['collection' => '[a-z0-9_-]+', 'handle' => '[a-z0-9_]+'])->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('blocks.show');
+            });
+
             // A draft is published only by a call sealed for publishing.
             Route::controller(CoreDraftsController::class)->group(function (): void {
                 Route::post('drafts', 'store')->middleware(VerifyCoreEnvelope::ALIAS.':website.draft')->name('drafts.store');

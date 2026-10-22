@@ -1438,6 +1438,8 @@ under `content.prefix` (`api/core/v1`), each sealed with Core's key:
 
 | Route | Purpose |
 |---|---|
+| `GET blocks` (`?collection=` for one) | `website.read` |
+| `GET blocks/{collection}/{handle}` | `website.read` |
 | `POST drafts` (`dry_run` to validate only) | `website.draft` |
 | `GET drafts/{id}` | `website.draft` |
 | `POST drafts/{id}/publish` | `website.publish` |
@@ -1445,11 +1447,49 @@ under `content.prefix` (`api/core/v1`), each sealed with Core's key:
 A draft is the `DraftWriter` request above, written for the person the body
 names in `actor` (as a fix or a proposal, see below), marked `via: core-ai`
 with Core's request and approval ids. A new entry answers 201, an update or
-a dry run 200. A site whose drafts are built from a catalog Core reads (a
-block catalog) binds `Inly\CoreWeb\Drafts\DraftCatalog`: a draft naming an
-older `catalog_hash` is then refused (`catalog_changed`, with the current
-hash). A site whose drafts arrive in another shape than Statamic stores
-binds its own `DraftValueNormaliser`.
+a dry run 200. A site whose drafts arrive in another shape than Statamic
+stores binds its own `DraftValueNormaliser`.
+
+### Content schema
+
+`blocks` is what Core AI builds a draft from: for every collection in
+`drafts.collections`, its blueprints, their entry fields, and the blocks
+editors build pages from (the sets of each blueprint's top-level
+Replicators), each field with whether it is required, its options and
+default, when it applies and how its value is stored, plus how often each
+block is used and a few entries that use it. `blocks/{collection}/{handle}`
+is one block in full, its nested fields included. Both carry
+`catalog_hash`: a draft naming an older one is refused (`catalog_changed`,
+with the current hash), so the AI never builds on blocks that changed under
+it.
+
+`Inly\CoreWeb\Drafts\StatamicContentSchema` reads it all from the
+blueprints and fieldsets, so a new block is in it the moment its fieldset
+is. What a site decides:
+
+- **The block settings and the guide** (`drafts.schema`): the fieldset of
+  the section chrome every block imports, listed apart as each block's
+  `settings` (`block`), and the fieldset whose `guide_index`,
+  `article_blocks` and `page_blocks` say where the editor guide starts and
+  which blocks an article and a page are made of (`page_builder`).
+- **Words for the AI**, in the blueprints: `instructions` and
+  `ai_instructions` on a field, `ai_instructions` and `guide`
+  (`{path}#{anchor}` in the editor guide) in a block's own fieldset,
+  `ai_fillable: false` on a field the AI leaves to an editor, and
+  `draft_validate` for rules only a draft is held to.
+- **How a value is stored**, by fieldtype (`drafts.schema.value_formats`),
+  over core-web's own: a site's own fieldtype, or its own way of taking an
+  asset.
+- **A Dictionary's keys**: a Dictionary whose stored keys cannot be guessed
+  from its options implements `Inly\CoreWeb\Drafts\DescribesStoredValue`,
+  and its `storedValue()` (`format`, `example`, anything else such as a Core
+  `core_type`) is listed under the field.
+- **The slug and date rules**, in core-web::drafts (`schema_slug_rules`,
+  `schema_date_rules`), worded for the site's language in
+  `lang/vendor/core-web/en/drafts.php`.
+- **Anything else**: a subclass bound to `Inly\CoreWeb\Drafts\ContentSchema`,
+  such as one whose `status()` shows a published entry the site hides by its
+  own rules.
 
 ### Proposals
 

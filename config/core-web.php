@@ -389,6 +389,16 @@ return [
     | and a `path` on it. A host whose disk does not outlive a deploy names a
     | bucket.
     |
+    | schema: what Core reads at `blocks` to build a draft from
+    | (Inly\CoreWeb\Drafts\StatamicContentSchema): the blocks of each
+    | collection above (the sets of its blueprints' top-level Replicators)
+    | and its entry fields. `settings_fieldset` is the fieldset of the section
+    | chrome every block imports, listed apart as a block's settings (null
+    | for none); `guide_fieldset` holds `guide_index`, `article_blocks` and
+    | `page_blocks`; `value_formats` describes, by fieldtype, how a value is
+    | stored, over core-web's own descriptions (a site's own fieldtype, or
+    | its own way of taking an asset).
+    |
     | The sentences a refused draft answers with are translations
     | (core-web::drafts); a site words them for its editors in
     | lang/vendor/core-web/{locale}/drafts.php.
@@ -406,6 +416,11 @@ return [
         'proposals' => [
             'disk' => null,
             'path' => 'core-web/proposals',
+        ],
+        'schema' => [
+            'settings_fieldset' => 'block',
+            'guide_fieldset' => 'page_builder',
+            'value_formats' => [],
         ],
     ],
 
