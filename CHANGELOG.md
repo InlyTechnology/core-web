@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Docs**: README → Laravel Cloud lists the gotchas found launching the
+  first site: `league/flysystem-aws-s3-v3` is required before Cloud deploys
+  with a bucket, uuid foreign keys to users and sessions, the Statamic Solo
+  licence env, `APP_NAME`, the CORS the public bucket must answer behind
+  core-cdn, and the queue on Cloud. No code changes.
+
 ## v0.23.0
 
 - **Cloud sites can sleep**: on Laravel Cloud the `cloud` feature turns off
