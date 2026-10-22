@@ -103,6 +103,13 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a
   cached page).
 
+## Statamic helpers
+
+- **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with
+  `Links` (README → Statamic helpers), never a copy of them in the site; a site's short global helper only wraps one.
+- **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
+  handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
+
 ## Testing
 
 - Use `Inly\CoreWeb\Testing\FakesCore` for a fake Core and signed pings, and

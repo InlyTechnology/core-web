@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Statamic helpers**: `Inly\CoreWeb\Support\Values` (`unwrap`, `collect`,
+  `first`), `Assets` (`meta`, `mimeType`, `size`, outage-guarded) and `Links`
+  (`url`, `withSuffix`), for the field shapes every site normalises; the media
+  components read through them too. `Values::first()` fetches a query builder
+  before taking the first item, so it keeps the editor's manual order where a
+  site's own `firstAsset()` calling `->first()` on the builder did not. Docs:
+  README → Statamic helpers.
+
 ## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the
