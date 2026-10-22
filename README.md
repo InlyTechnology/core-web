@@ -1961,13 +1961,13 @@ task due every minute keeps it awake for good. Statamic schedules one: the
 job that tells the static cache and search that an entry dated in the past
 minute is now published. On Cloud the feature turns it off and schedules
 `core-web:scheduled-entries` on `cloud.scheduled_entries.schedule` (every 15
-minutes, Cloud's default wake-up interval). It covers every entry in a dated
+minutes, the wake-up interval these sites use). It covers every entry in a dated
 collection dated since its last run, at most `lookback_minutes` (a day)
 back, so nothing is skipped between runs. A scheduled entry is published
 from its date on either way; only its static-cache copy and search entry
 wait for the next run. Match the schedule to the site's wake-up interval,
 and turn on Cloud's scheduler. `core-web:deploy` warns on Cloud about any
-other task scheduled every minute.
+task scheduled more often than every 15 minutes.
 
 The feature also adds an `outpost` file cache store when the site has none:
 Statamic's licensing ping keeps its marker there, and Cloud's build runs

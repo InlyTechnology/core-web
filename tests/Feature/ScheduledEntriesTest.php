@@ -3,17 +3,22 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Carbon\Carbon;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Console\View\Components\Factory as Components;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Inly\CoreWeb\Cloud\CloudDefaults;
+use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Events\EntryScheduleReached;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 class ScheduledEntriesTest extends TestCase
 {
@@ -133,5 +138,28 @@ class ScheduledEntriesTest extends TestCase
         config(['statamic.system.handle_scheduled_entries' => true]);
 
         $this->assertFalse($scheduled());
+    }
+
+    public function test_deploy_names_tasks_that_would_keep_a_cloud_site_awake(): void
+    {
+        $schedule = $this->app->make(Schedule::class);
+        $schedule->command('inly:every-minute')->everyMinute();
+        $schedule->command('inly:every-five')->everyFiveMinutes();
+        $schedule->command('inly:hourly')->hourly();
+
+        $command = $this->app->make(DeployCommand::class);
+        $command->setLaravel($this->app);
+        $output = new BufferedOutput;
+        $style = new OutputStyle(new ArrayInput([]), $output);
+        (function () use ($style): void {
+            $this->components = new Components($style);
+            $this->warnAboutFrequentTasks();
+        })->call($command);
+
+        $warning = $output->fetch();
+        $this->assertStringContainsString('inly:every-minute', $warning);
+        $this->assertStringContainsString('inly:every-five', $warning);
+        $this->assertStringNotContainsString('inly:hourly', $warning);
+        $this->assertStringNotContainsString('core-web:scheduled-entries', $warning);
     }
 }

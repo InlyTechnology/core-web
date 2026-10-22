@@ -45,7 +45,7 @@ class ScheduledEntriesCommand extends Command
         return self::SUCCESS;
     }
 
-    /** Where the last run stopped, but never further back than the lookback: after a long gap a deploy has cleared the static cache anyway. */
+    /** Where the last run stopped, but never further back than the lookback, so a site woken after weeks does not walk every entry since. */
     private function since(CarbonInterface $until): CarbonInterface
     {
         $lookback = max(1, (int) config('core-web.cloud.scheduled_entries.lookback_minutes', 1440));

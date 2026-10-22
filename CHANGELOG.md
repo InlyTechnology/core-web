@@ -13,14 +13,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   site each minute, and schedules `core-web:scheduled-entries` every 15
   minutes instead. It covers every entry dated since its last run, so
   static-cached pages and search still update. `core-web:deploy` warns on
-  Cloud about other every-minute tasks. README → Laravel Cloud → Scheduled
+  Cloud about tasks due more often than every 15 minutes. README → Laravel Cloud → Scheduled
   entries and sleeping.
 
 ### Upgrade notes
 
 - **A scheduled entry's static-cache copy and search entry now update up to
   15 minutes late on Cloud.** Affects sites with `features.cloud` on Laravel
-  Cloud (`grep -n "'cloud' => true" config/core-web.php`). Statamic's
+  Cloud (`grep -n "'cloud' =>" config/core-web.php`, set to true or an env
+  var that is). A config published earlier needs no new keys. Statamic's
   every-minute job no longer runs there. If an entry must appear within the
   minute, set `cloud.scheduled_entries.schedule` to `* * * * *` (the site
   then never sleeps) or `STATAMIC_HANDLE_SCHEDULED_ENTRIES=true`. Verify

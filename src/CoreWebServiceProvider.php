@@ -254,7 +254,7 @@ class CoreWebServiceProvider extends ServiceProvider
                 $cron = config('core-web.cloud.scheduled_entries.schedule', '*/15 * * * *');
 
                 if (! config('statamic.system.handle_scheduled_entries') && is_string($cron) && $cron !== '') {
-                    $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping();
+                    $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping(10);
                 }
             });
         }
