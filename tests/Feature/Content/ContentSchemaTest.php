@@ -15,6 +15,8 @@ use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
+use Statamic\Facades\Taxonomy;
+use Statamic\Facades\Term;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /** What Core AI builds a draft from, read from the blueprints and fieldsets of the draftable collections. */
@@ -57,6 +59,11 @@ class ContentSchemaTest extends TestCase
         ])->save();
         Fieldset::make('page_builder')->setContents(['guide_index' => 'cms/blocks', 'article_blocks' => ['hero'], 'page_blocks' => ['hero', 'faq'], 'fields' => []])->save();
 
+        Taxonomy::make('tags')->sites(['default'])->save();
+        Taxonomy::make('regions')->sites(['default'])->save();
+        Term::make()->taxonomy('tags')->inDefaultLocale()->slug('news')->data(['title' => 'News'])->save();
+        Term::make()->taxonomy('regions')->inDefaultLocale()->slug('north')->data(['title' => 'North'])->save();
+
         Collection::make('pages')->sites(['default'])->routes('/{slug}')->save();
         Collection::make('products')->sites(['default'])->routes('/products/{slug}')->save();
         Blueprint::make('page')->setNamespace('collections.pages')->setContents(['tabs' => ['main' => ['sections' => [['display' => 'Content', 'fields' => [
@@ -69,10 +76,13 @@ class ContentSchemaTest extends TestCase
                     'hero' => ['display' => 'Hero', 'instructions' => 'The top of a page.', 'fields' => [['import' => 'block'], ['import' => 'hero']]],
                 ]],
                 'text' => ['display' => 'Text', 'sets' => [
-                    'faq' => ['display' => 'FAQ', 'fields' => [['import' => 'block'], ['handle' => 'items', 'field' => ['type' => 'grid', 'fields' => [
-                        ['handle' => 'question', 'field' => ['type' => 'text', 'validate' => ['required']]],
-                        ['handle' => 'nested', 'field' => ['type' => 'replicator', 'sets' => ['main' => ['sets' => ['note' => ['fields' => [['handle' => 'note', 'field' => ['type' => 'text']]]]]]]]],
-                    ]]]]],
+                    'faq' => ['display' => 'FAQ', 'fields' => [['import' => 'block'],
+                        ['handle' => 'tag', 'field' => ['type' => 'terms', 'taxonomies' => ['tags'], 'max_items' => 1]],
+                        ['handle' => 'places', 'field' => ['type' => 'terms', 'taxonomies' => ['tags', 'regions']]],
+                        ['handle' => 'items', 'field' => ['type' => 'grid', 'fields' => [
+                            ['handle' => 'question', 'field' => ['type' => 'text', 'validate' => ['required']]],
+                            ['handle' => 'nested', 'field' => ['type' => 'replicator', 'sets' => ['main' => ['sets' => ['note' => ['fields' => [['handle' => 'note', 'field' => ['type' => 'text']]]]]]]]],
+                        ]]]]],
                     'retired' => ['display' => 'Retired', 'hide' => true, 'fields' => [['handle' => 'x', 'field' => ['type' => 'text']]]],
                 ]],
             ]]],
@@ -163,6 +173,11 @@ class ContentSchemaTest extends TestCase
         $this->assertSame(['question', 'nested'], array_column($items['fields'], 'handle'));
         $this->assertSame('note', $items['fields'][1]['sets'][0]['handle']);
 
+        $this->assertSame('term slug; one value', self::field($faq['fields'], 'tag')['value']);
+        $this->assertSame([['taxonomy' => 'tags', 'slug' => 'news', 'title' => 'News']], self::field($faq['fields'], 'tag')['terms']);
+        $this->assertSame('array: `{taxonomy}::{term slug}` each', self::field($faq['fields'], 'places')['value'], 'a field of several taxonomies stores the taxonomy with the slug');
+        $this->assertSame(['north', 'news'], array_column(self::field($faq['fields'], 'places')['terms'], 'slug'));
+
         $this->assertNull(app(ContentSchema::class)->block('pages', 'retired'));
         $this->assertNull(app(ContentSchema::class)->block('products', 'hero'), 'a collection nobody drafts has no blocks');
     }
@@ -190,6 +205,12 @@ class ContentSchemaTest extends TestCase
             ['id' => 'd', 'type' => 'faq', 'items' => [['id' => 'r', 'question' => 'Q', 'nested' => [['id' => 'n', 'type' => 'note', 'note' => 'x']]]]],
         ]]);
         $this->page(['page_builder' => [['id' => 'e', 'type' => 'faq', 'enabled' => false]]]);
+        $this->page(['body' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Hi']]],
+            ['type' => 'set', 'attrs' => ['id' => 'q1', 'enabled' => true, 'values' => ['type' => 'quote', 'text' => 'x']]],
+            ['type' => 'set', 'attrs' => ['id' => 'q2', 'enabled' => false, 'values' => ['type' => 'quote', 'text' => 'y']]],
+        ]]);
+        $this->page(['body' => [['type' => 'set', 'attrs' => ['id' => 'q3', 'enabled' => false, 'values' => ['type' => 'quote', 'text' => 'z']]]]]);
 
         $pages = app(ContentSchema::class)->describe('pages')['collections'][0];
         $usage = array_column($pages['blocks'], 'usage', 'handle');
@@ -201,6 +222,10 @@ class ContentSchemaTest extends TestCase
 
         $faq = app(ContentSchema::class)->block('pages', 'faq')['data'];
         $this->assertSame(1, $faq['usage']['entries']);
+
+        $counted = (new \ReflectionMethod(StatamicContentSchema::class, 'usage'))->invoke(app(ContentSchema::class), 'pages');
+        $this->assertSame(1, $counted['quote']['entries'], 'a Bard set counts, a disabled one does not');
+        $this->assertSame(1, $counted['note']['entries'], 'a set nested in a grid row counts');
     }
 
     public function test_the_hash_moves_with_the_blueprints_and_not_with_content(): void

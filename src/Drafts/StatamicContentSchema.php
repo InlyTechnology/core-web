@@ -79,6 +79,9 @@ class StatamicContentSchema implements ContentSchema
     /** @var array<string, array<string, array<string, mixed>>> */
     private array $usage = [];
 
+    /** @var array<string, list<array{taxonomy: string, slug: string, title: string}>> by taxonomy, read once however many fields use it */
+    private array $termsOf = [];
+
     /** @var array{guide_index: array{path: string, anchor: ?string}|null, article_blocks: list<string>, page_blocks: list<string>}|null */
     private ?array $guide = null;
 
@@ -395,7 +398,7 @@ class StatamicContentSchema implements ContentSchema
             $type === 'dictionary' => ['dictionary' => self::dictionary($config)],
             $type === 'assets' => ['assets' => self::assets($config, $validate)],
             $type === 'entries' => ['collections' => $config['collections'] ?? null],
-            $type === 'terms' => ['terms' => self::terms($config)],
+            $type === 'terms' => ['terms' => $this->terms($config)],
             default => [],
         };
 
@@ -495,12 +498,12 @@ class StatamicContentSchema implements ContentSchema
      * @param  array<string, mixed>  $config
      * @return list<array{taxonomy: string, slug: string, title: string}>|null
      */
-    private static function terms(array $config): ?array
+    private function terms(array $config): ?array
     {
         $terms = collect((array) ($config['taxonomies'] ?? []))
-            ->map(fn (string $handle) => Taxonomy::find($handle))
-            ->filter()
-            ->flatMap(fn ($taxonomy) => $taxonomy->queryTerms()->get()->map(fn ($term) => ['taxonomy' => $taxonomy->handle(), 'slug' => $term->slug(), 'title' => (string) $term->title()]))
+            ->flatMap(fn (string $handle) => $this->termsOf[$handle] ??= Taxonomy::find($handle)?->queryTerms()->get()
+                ->map(fn ($term) => ['taxonomy' => $handle, 'slug' => $term->slug(), 'title' => (string) $term->title()])
+                ->all() ?? [])
             ->unique(fn (array $term) => $term['taxonomy'].'/'.$term['slug'])
             ->sortBy(fn (array $term) => $term['taxonomy'].'/'.$term['slug'])
             ->values()
@@ -566,6 +569,10 @@ class StatamicContentSchema implements ContentSchema
 
         if ($format === null) {
             return null;
+        }
+
+        if ($type === 'terms' && count((array) $field->get('taxonomies', [])) > 1) {
+            $format = '`{taxonomy}::{term slug}`';
         }
 
         $single = match ($type) {
@@ -679,16 +686,23 @@ class StatamicContentSchema implements ContentSchema
 
             $fieldtype = $field->fieldtype();
 
-            match (true) {
-                $fieldtype instanceof Bard => self::countSets($fieldtype, array_map(
+            if ($fieldtype instanceof Bard) {
+                $sets = array_map(
                     fn ($node) => is_array($node) && ($node['type'] ?? null) === 'set' ? [...(array) ($node['attrs']['values'] ?? []), 'enabled' => $node['attrs']['enabled'] ?? true] : null,
                     $value,
-                ), $blocks),
-                $fieldtype instanceof Replicator => self::countSets($fieldtype, $value, $blocks),
-                $fieldtype instanceof Grid => array_map(fn ($row) => is_array($row) ? self::countIn($fieldtype->fields(), $row, $blocks) : null, $value),
-                $fieldtype instanceof Group => self::countIn($fieldtype->fields(), $value, $blocks),
-                default => null,
-            };
+                );
+                self::countSets($fieldtype, $sets, $blocks);
+            } elseif ($fieldtype instanceof Replicator) {
+                self::countSets($fieldtype, $value, $blocks);
+            } elseif ($fieldtype instanceof Grid) {
+                foreach ($value as $row) {
+                    if (is_array($row)) {
+                        self::countIn($fieldtype->fields(), $row, $blocks);
+                    }
+                }
+            } elseif ($fieldtype instanceof Group) {
+                self::countIn($fieldtype->fields(), $value, $blocks);
+            }
         }
     }
 

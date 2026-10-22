@@ -91,8 +91,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Core AI's drafts are core-web's endpoints** (`drafts` + `content`): a site never keeps its own drafts controller
   or writer. What is site-specific goes in bindings: `DraftValueNormaliser` for its field shapes.
 - **What Core AI builds a draft from is read from the blueprints** (`blocks`, `StatamicContentSchema`): never a
-  hand-written block list. Guide the AI in the blueprints (`instructions`, `ai_instructions`, `guide`,
-  `ai_fillable: false`), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
+  hand-written block list. Guide the AI in the blueprints (`instructions`, `ai_instructions`, `guide`; `ai_fillable`
+  and `draft_validate` only inform it unless the site's normaliser enforces them), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
   `DescribesStoredValue`; a `ContentSchema` subclass only for what none of these can say.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 

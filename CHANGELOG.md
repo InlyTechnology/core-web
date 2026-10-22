@@ -22,18 +22,21 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ### Upgrade notes
 
-- **A site's own `blocks` endpoints.** What breaks: a site serving its own
-  block catalog at `api/core/v1/blocks` now shares those routes with
-  core-web's, and which answers depends on load order. Find it:
-  `grep -rn "blocks" routes/ | grep -i core` and any class Core's
-  `catalog_hash` is checked against. Migrate: delete the routes, controller
-  and catalog class; set `drafts.schema` (`settings_fieldset`,
-  `guide_fieldset`, `value_formats`) to what the catalog hardcoded,
-  implement `DescribesStoredValue` on Dictionaries whose keys the catalog
-  described, and bind a `StatamicContentSchema` subclass to `ContentSchema`
-  for anything else (an entry `status()` of its own). Verify: `GET
-  api/core/v1/blocks` answers the same blocks and fields as before (the hash
-  changes once).
+- **A site's own `blocks` endpoints and `DraftCatalog`.** What breaks: a
+  site's own block catalog at `api/core/v1/blocks` shadows core-web's (app
+  routes load after a package's), a class implementing `DraftCatalog` no
+  longer loads (the interface is gone), and every draft naming the site's
+  own `catalog_hash` is refused (`catalog_changed`), since drafts are now
+  checked against core-web's schema. Find it: `grep -rn DraftCatalog app/`
+  and `grep -rn "blocks" routes/`. Migrate: delete the routes, controller,
+  catalog class and its binding; set `drafts.schema` (`settings_fieldset`,
+  `guide_fieldset`, `value_formats`, e.g. the site's own `assets` format) to
+  what the catalog hardcoded, implement `DescribesStoredValue` on
+  Dictionaries whose keys the catalog described, and bind a
+  `StatamicContentSchema` subclass to `ContentSchema` for anything else (an
+  entry `status()` of its own). Verify: `GET api/core/v1/blocks` answers the
+  same blocks and fields as before (the hash changes once), and a draft
+  with its `catalog_hash` is taken.
 
 ## v0.22.0
 

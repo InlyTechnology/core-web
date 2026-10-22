@@ -30,7 +30,7 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
         if (CoreWebServiceProvider::enabled('drafts')) {
             Route::controller(CoreBlocksController::class)->group(function (): void {
                 Route::get('blocks', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('blocks.index');
-                Route::get('blocks/{collection}/{handle}', 'show')->where(['collection' => '[a-z0-9_-]+', 'handle' => '[a-z0-9_]+'])->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('blocks.show');
+                Route::get('blocks/{collection}/{handle}', 'show')->where(['collection' => '[A-Za-z0-9_-]+', 'handle' => '[A-Za-z0-9_-]+'])->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('blocks.show');
             });
 
             // A draft is published only by a call sealed for publishing.

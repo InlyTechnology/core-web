@@ -1473,10 +1473,12 @@ is. What a site decides:
   `article_blocks` and `page_blocks` say where the editor guide starts and
   which blocks an article and a page are made of (`page_builder`).
 - **Words for the AI**, in the blueprints: `instructions` and
-  `ai_instructions` on a field, `ai_instructions` and `guide`
-  (`{path}#{anchor}` in the editor guide) in a block's own fieldset,
-  `ai_fillable: false` on a field the AI leaves to an editor, and
-  `draft_validate` for rules only a draft is held to.
+  `ai_instructions` on a field, and `ai_instructions` and `guide`
+  (`{path}#{anchor}` in the editor guide) in the one fieldset a block
+  imports beside the settings. `ai_fillable: false` (a field the AI leaves
+  to an editor) and `draft_validate` (rules only a draft is held to) are
+  listed too, but only tell the AI: a site whose drafts must hold to them
+  enforces them in its `DraftValueNormaliser`.
 - **How a value is stored**, by fieldtype (`drafts.schema.value_formats`),
   over core-web's own: a site's own fieldtype, or its own way of taking an
   asset.
