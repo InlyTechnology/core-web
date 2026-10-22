@@ -666,8 +666,11 @@ return [
     | `acl` false leaves out `visibility: public` for a bucket without
     | per-object ACLs, such as R2, which rejects it; the bucket itself is then
     | public. Without a key, the bucket Laravel Cloud attaches is used
-    | (`cloud`, which Cloud sets), without ACLs, and with `url` taken from
-    | here when set. Without either the disks are the local folders below. A failing
+    | (`cloud`, which Cloud sets; the one on disk `cloud_disk`, the public
+    | bucket Core Cloud attaches to a website, else the first), without ACLs, and with
+    | `url` taken from here when set, else `cdn_url` (the CDN Core Cloud puts
+    | in front of that public bucket, used only when it was found by name),
+    | else the bucket's own. Without either the disks are the local folders below. A failing
     | read is bounded: 3 seconds to connect and two attempts, since rendering
     | an asset can read the bucket.
     |
@@ -708,6 +711,8 @@ return [
             'acl' => true,
             'cache_control' => 'public, max-age=2592000',
             'cloud' => env('LARAVEL_CLOUD_DISK_CONFIG', ''),
+            'cloud_disk' => env('CORE_PUBLIC_DISK', 'media'),
+            'cdn_url' => env('CORE_CDN_BASE_URL', ''),
         ],
         'disks' => [
             'assets' => 'assets',
@@ -748,10 +753,21 @@ return [
     |
     | detected: null asks Cloud's LARAVEL_CLOUD; true or false forces it.
     |
+    | scheduled_entries: Statamic's own job runs every minute, which keeps a
+    | Cloud site from ever sleeping, so on Cloud it is off and
+    | `core-web:scheduled-entries` runs on `schedule` instead (Cloud's
+    | scheduler wake-up interval), covering every entry dated since its last
+    | run, at most `lookback_minutes` back. An empty `schedule` runs nothing.
+    |
     */
 
     'cloud' => [
         'deploy' => [],
         'detected' => null,
+        'scheduled_entries' => [
+            'schedule' => '*/15 * * * *',
+            'lookback_minutes' => 1440,
+            'first_run_minutes' => 15,
+        ],
     ],
 ];

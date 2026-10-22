@@ -2,10 +2,16 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
+use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
+use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 
@@ -103,6 +109,65 @@ class CloudTest extends TestCase
     {
         $this->artisan('content:import')
             ->expectsOutputToContain('Missing tables: entries')
+            ->assertFailed();
+    }
+
+    public function test_import_names_the_uuid_and_jsonb_columns_the_stock_migrations_make(): void
+    {
+        $postgres = fn (string $table): array => match ($table) {
+            'entries' => [['name' => 'id', 'type_name' => 'uuid'], ['name' => 'origin_id', 'type_name' => 'uuid'], ['name' => 'slug', 'type_name' => 'varchar'], ['name' => 'data', 'type_name' => 'jsonb']],
+            'trees' => [['name' => 'tree', 'type_name' => 'json'], ['name' => 'settings', 'type_name' => 'JSONB']],
+            'revisions' => [['name' => 'key', 'type_name' => 'uuid']],
+            default => [['name' => 'data', 'type_name' => 'json']],
+        };
+
+        $this->assertSame(['entries.id (uuid)', 'entries.origin_id (uuid)', 'entries.data (jsonb)', 'trees.settings (jsonb)'], ImportContentCommand::wrongColumns($postgres));
+    }
+
+    public function test_core_webs_copies_of_the_drivers_migrations_cover_every_content_table_without_uuid_or_jsonb(): void
+    {
+        $files = ServiceProvider::pathsToPublish(CoreWebServiceProvider::class, 'core-web-cloud-migrations');
+        $source = implode("\n", array_map('file_get_contents', array_keys($files)));
+
+        $this->assertNotEmpty($files);
+        $this->assertDoesNotMatchRegularExpression('/->(uuid|jsonb)\(/', $source);
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            $this->assertStringContainsString("prefix('{$table}')", $source);
+        }
+
+        foreach ($files as $from => $to) {
+            $this->assertSame(basename($from), basename($to), 'published under the driver\'s own name');
+        }
+    }
+
+    public function test_core_webs_copies_differ_from_the_drivers_only_in_ids_and_json(): void
+    {
+        $driver = dirname((new ReflectionClass(EloquentDriver::class))->getFileName(), 2).'/database/migrations';
+
+        foreach (array_keys(ServiceProvider::pathsToPublish(CoreWebServiceProvider::class, 'core-web-cloud-migrations')) as $file) {
+            $name = basename($file);
+            $original = file_exists("{$driver}/{$name}") ? "{$driver}/{$name}" : "{$driver}/entries/{$name}";
+            $expected = str_replace(['->jsonb(', "->uuid('id')", "->uuid('origin_id')"], ['->json(', "->string('id')", "->string('origin_id')"], file_get_contents($original));
+
+            $this->assertSame($expected, preg_replace('/^ *\/\/.*\n/m', '', file_get_contents($file)), $name);
+        }
+    }
+
+    public function test_import_refuses_before_writing_when_an_entry_id_is_not_a_string(): void
+    {
+        config(['statamic.eloquent-driver.entries.driver' => 'eloquent']);
+        $schema = Schema::getFacadeRoot();
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            $schema->create($table, function (Blueprint $blueprint) use ($table): void {
+                $table === 'entries' ? $blueprint->id() : $blueprint->string('id');
+                $blueprint->json('data')->nullable();
+            });
+        }
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('entries.id (integer)')
             ->assertFailed();
     }
 

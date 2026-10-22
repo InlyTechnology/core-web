@@ -6,6 +6,56 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Cloud sites can sleep**: on Laravel Cloud the `cloud` feature turns off
+  Statamic's every-minute scheduled-entries job, which woke a hibernating
+  site each minute, and schedules `core-web:scheduled-entries` every 15
+  minutes instead. It covers every entry dated since its last run, so
+  static-cached pages and search still update. `core-web:deploy` warns on
+  Cloud about tasks due more often than every 15 minutes. README → Laravel Cloud → Scheduled
+  entries and sleeping.
+- **Cloud media on Core Cloud's buckets and CDN**: with two buckets attached,
+  the asset disks use the public one on disk `media`
+  (`media.bucket.cloud_disk`, or `CORE_PUBLIC_DISK`), not just the first. With no `media.bucket.url` committed, files are served
+  through `CORE_CDN_BASE_URL` (set by Core Cloud's CDN integration) before
+  the bucket's own URL, so images are transformed with nothing committed.
+  README → Media → On Laravel Cloud.
+- **Cloud content tables that fit content/**: `--tag=core-web-cloud-migrations`
+  publishes the eloquent driver's content migrations with string entry ids
+  and json columns. With the stock ones, `content:import` failed on Postgres
+  (an id such as `home` is not a uuid), and jsonb re-sorted every entry's
+  keys. The import now checks the columns first and names any it cannot
+  fill. README → Laravel Cloud.
+
+### Upgrade notes
+
+- **`content:import` refuses content tables with jsonb or non-string entry
+  ids.** Affects Cloud sites that published the eloquent driver's own
+  migrations: `grep -ln "jsonb(\|uuid('id')" database/migrations`, or run
+  `content:import`, which names the columns. Publish core-web's copies over
+  them (`php artisan vendor:publish --tag=core-web-cloud-migrations
+  --force`), delete a driver `create_entries_table.php` if there is one, and
+  rebuild the tables on a database no editor has used (`migrate:fresh`). A
+  database editors already use keeps its tables until its data is moved
+  over. Verify: `content:import` gets past its column check.
+- **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud
+  sites with no `media.bucket.url` whose environment has `CORE_CDN_BASE_URL`
+  and a bucket on disk `media` (`grep -n "'url' =>" config/core-web.php` under
+  `bucket`). Their files were served from the bucket's own URL and are now
+  served through the CDN, transformed. Nothing to migrate; to keep the
+  bucket's URL, commit `'cdn_url' => ''` under `media.bucket`. Verify with
+  `php artisan media:check` and an image's `src` on a page.
+- **A scheduled entry's static-cache copy and search entry now update up to
+  15 minutes late on Cloud.** Affects sites with `features.cloud` on Laravel
+  Cloud (`grep -n "'cloud' =>" config/core-web.php`, set to true or an env
+  var that is). A config published earlier needs no new keys. Statamic's
+  every-minute job no longer runs there. If an entry must appear within the
+  minute, set `cloud.scheduled_entries.schedule` to `* * * * *` (the site
+  then never sleeps) or `STATAMIC_HANDLE_SCHEDULED_ENTRIES=true`. Verify
+  with `php artisan schedule:list`: `core-web:scheduled-entries` is listed
+  and Statamic's `HandleEntrySchedule` is not.
+
 ## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the

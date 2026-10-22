@@ -24,6 +24,8 @@ final class CloudDefaults
         // Every Cloud site keeps revisions (stored with the content); a collection still opts in with `revisions: true`, and they need Pro.
         'statamic.revisions.enabled' => ['STATAMIC_REVISIONS_ENABLED', true],
         'statamic.editions.pro' => ['STATAMIC_PRO_ENABLED', true],
+        // Statamic's every-minute job would wake a sleeping site each minute; core-web:scheduled-entries covers it on Cloud's wake-up interval.
+        'statamic.system.handle_scheduled_entries' => ['STATAMIC_HANDLE_SCHEDULED_ENTRIES', false],
         'cache.default' => ['CACHE_STORE', 'database'],
         'session.driver' => ['SESSION_DRIVER', 'database'],
         'app.maintenance.driver' => ['APP_MAINTENANCE_DRIVER', 'cache'],

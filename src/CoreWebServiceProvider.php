@@ -22,6 +22,7 @@ use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
@@ -184,6 +185,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
+        // Under the driver's own names, so --force replaces copies the site published from the driver.
+        $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();
@@ -245,7 +248,17 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, DeployCommand::class]);
+            $this->commands([ImportContentCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+
+            // Only where Statamic's own every-minute job is off, which the Cloud defaults do, so an entry is never handled twice.
+            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                // A config published before this key existed has none, so the default lives here too.
+                $cron = config('core-web.cloud.scheduled_entries.schedule', '*/15 * * * *');
+
+                if (! config('statamic.system.handle_scheduled_entries') && is_string($cron) && $cron !== '') {
+                    $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping(10);
+                }
+            });
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {

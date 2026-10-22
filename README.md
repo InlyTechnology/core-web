@@ -105,6 +105,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
 | `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_PUBLIC_DISK` | `media.bucket.cloud_disk` | The Cloud disk the asset disks use on Laravel Cloud, when not `media` (the public bucket Core Cloud attaches to a website; see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_CDN_BASE_URL` | `media.bucket.cdn_url` | Set by Core Cloud's CDN integration: the CDN in front of the Cloud bucket, the files' URL when the site commits no `media.bucket.url` (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 `config/core-web.php`:
@@ -1211,14 +1213,20 @@ from their `.env` and run `content:pull --only=assets`.
 ### On Laravel Cloud
 
 With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
-the environment: the first entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` that
-is not a scoped disk gives the key, secret, bucket, endpoint and region. A
-key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
-them whatever config says. The files' URL is the committed `media.bucket.url`
-(the CDN's, so the components transform them), or the bucket's own URL when
-the site commits none, which serves files untransformed. A committed CDN
-URL must have this Cloud bucket as its origin, or new uploads land in one
-bucket while their URLs point at another.
+the environment: the entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` whose disk
+is `media.bucket.cloud_disk` (`CORE_PUBLIC_DISK` when set, else `media`, the
+public bucket Core Cloud attaches to a website), else the first that is not a
+scoped disk, gives the key, secret, bucket, endpoint and region. Core Cloud
+attaches a private bucket beside it for form uploads, so the name keeps the
+asset disks off that one whatever order Cloud lists them in. A key in config still wins. Cloud's
+buckets are R2, so `acl` is `false` for them whatever config says. The files'
+URL is the committed `media.bucket.url`, else `CORE_CDN_BASE_URL`, which Core
+Cloud's CDN integration sets to the CDN in front of the public bucket (used
+only when the bucket was found by name, so it is that bucket), else the
+bucket's own URL, which serves files untransformed. The first two are CDN
+URLs, so the components transform the files. A committed CDN URL must have this Cloud
+bucket as its origin, or new uploads land in one bucket while their URLs
+point at another.
 
 Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
 Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
@@ -1915,6 +1923,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
+| Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
 
 An env var the environment sets keeps its own value, including one Cloud
 itself injects when a resource is attached (a cache cluster sets
@@ -1927,7 +1936,16 @@ The site does its half once:
 - `composer require statamic/eloquent-driver`, publish its config
   (`--tag=statamic-eloquent-config`) with every `driver` left on `file`
   (the feature switches the content parts) and `UuidEntryModel` for
-  entries, and publish its migrations.
+  entries. For the tables, publish core-web's copies of the driver's
+  migrations (`--tag=core-web-cloud-migrations`) instead of the driver's own.
+  The stock ones make entry ids uuid, which a Statamic id such as `home`
+  fails on in Postgres, and content columns jsonb, which re-sorts keys.
+  `content:import` checks the columns first and names any it cannot fill.
+  A site that already published the driver's copies publishes with `--force`
+  to replace them, deletes any driver entries migration under another name
+  (`create_entries_table.php`), and rebuilds those tables (`migrate:fresh` on
+  a database no editor has used yet): these are create migrations, so they
+  never change a table that already exists.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
   Statamic's eloquent users write.
@@ -1952,6 +1970,21 @@ The site does its half once:
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
+
+### Scheduled entries and sleeping
+
+Cloud's scheduler wakes a hibernating site for each task that is due, so a
+task due every minute keeps it awake for good. Statamic schedules one: the
+job that tells the static cache and search that an entry dated in the past
+minute is now published. On Cloud the feature turns it off and schedules
+`core-web:scheduled-entries` on `cloud.scheduled_entries.schedule` (every 15
+minutes, the wake-up interval these sites use). It covers every entry in a dated
+collection dated since its last run, at most `lookback_minutes` (a day)
+back, so nothing is skipped between runs. A scheduled entry is published
+from its date on either way; only its static-cache copy and search entry
+wait for the next run. Match the schedule to the site's wake-up interval,
+and turn on Cloud's scheduler. `core-web:deploy` warns on Cloud about any
+task scheduled more often than every 15 minutes.
 
 The feature also adds an `outpost` file cache store when the site has none:
 Statamic's licensing ping keeps its marker there, and Cloud's build runs
