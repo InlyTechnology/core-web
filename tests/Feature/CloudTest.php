@@ -76,17 +76,27 @@ class CloudTest extends TestCase
         $this->assertTrue(config('statamic.editions.pro'));
         $this->assertFalse(config('statamic.stache.watcher'));
         $this->assertSame('file', config('cache.stores.outpost.driver'), 'the build runs artisan before the cache table exists');
-        $this->assertSame('database', config('cache.stores.glide.driver'), 'hybrid Glide URLs resolve on every replica');
         $this->assertTrue(CloudDefaults::contentInDatabase());
     }
 
-    public function test_a_glide_store_the_site_defines_is_kept(): void
+    public function test_glide_caches_kept_in_one_container_are_turned_off(): void
     {
-        config(['cache.stores.glide' => ['driver' => 'redis']]);
+        foreach (['hybrid', true] as $mode) {
+            config(['statamic.assets.image_manipulation.cache' => $mode]);
+
+            CloudDefaults::apply($this->app);
+
+            $this->assertFalse(config('statamic.assets.image_manipulation.cache'), 'a rendition in one container\'s public/img is missing on the next');
+        }
+    }
+
+    public function test_a_glide_cache_on_a_disk_of_its_own_is_kept(): void
+    {
+        config(['statamic.assets.image_manipulation.cache' => 'glide']);
 
         CloudDefaults::apply($this->app);
 
-        $this->assertSame('redis', config('cache.stores.glide.driver'));
+        $this->assertSame('glide', config('statamic.assets.image_manipulation.cache'));
     }
 
     public function test_definitions_stay_files_from_git(): void

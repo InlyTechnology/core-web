@@ -8,12 +8,23 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
-- **Glide images on Cloud resolve on every replica**: the `cloud` feature puts
-  Statamic's `glide` cache store, through which hybrid Glide URLs (`/img/...`)
-  find their source, on the database store unless the site defines one. With
-  the default file store, a page cached in the database named images that
-  another replica, or the same one after a deploy, answered with a 404.
+- **Glide images on Cloud work on every replica**: the `cloud` feature turns
+  off Statamic's `true` and `hybrid` Glide caches, which keep renditions in
+  one container's `public/img` and their keys in a store. On another replica,
+  or after a deploy, a cached page's `/img/` URLs answered 404 and the CP's
+  thumbnails 500. Uncached, each URL carries its signed source and every
+  container renders its own copies. A cache on a disk of its own is kept.
   README → Laravel Cloud.
+
+### Upgrade notes
+
+- **Glide renders through PHP on Cloud.** A Cloud site with
+  `image_manipulation.cache` set to `true` or `hybrid` now serves Glide
+  images uncached. Find it with `grep -n "'cache' =>" config/statamic/assets.php`.
+  Nothing to migrate. Image URLs change from `/img/containers/...` to
+  `/img/asset/...?s=`, so clear the static cache once after the deploy
+  (`core-web:deploy` does). Verify by opening a page and a CP asset
+  thumbnail on Cloud.
 
 ## v0.23.1
 

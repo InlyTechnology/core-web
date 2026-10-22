@@ -71,13 +71,11 @@ final class CloudDefaults
             $config->set('cache.stores.outpost', ['driver' => 'file', 'path' => storage_path('framework/cache/outpost')]);
         }
 
-        // Statamic's hybrid Glide URLs (/img/...) find their source through the `glide` store, a file store by default.
-        // A page cached in the database names images any replica, after any deploy, must resolve, so it is shared too.
-        if (! $config->has('cache.stores.glide')) {
-            $config->set('cache.stores.glide', ['driver' => 'database'] + array_intersect_key(
-                (array) $config->get('cache.stores.database', []),
-                array_flip(['connection', 'table']),
-            ));
+        // Glide's `true` and `hybrid` caches keep renditions in one container's public/img and their keys in a store: on
+        // another replica or after a deploy those point at files that container lacks (a 404 on /img/, a 500 on CP
+        // thumbnails). Uncached, every URL carries its signed source and each container renders its own copies.
+        if (in_array($config->get('statamic.assets.image_manipulation.cache'), [true, 'hybrid'], true)) {
+            $config->set('statamic.assets.image_manipulation.cache', false);
         }
 
         // The driver's models come from the site's published config/statamic/eloquent-driver.php; without it there is nothing to switch.
