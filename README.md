@@ -2023,9 +2023,13 @@ tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work
 included, so it is for a first deploy or a rebuild only; form submissions,
 revisions and tokens exist only in the database and are kept. Run it whole:
-an asset without its meta row renders no image. It does not move CP users:
-on an SSO site Core creates each account on its first sign-in, and
-otherwise `statamic:eloquent:import-users` does.
+an asset without its meta row renders no image. Last, with users on the
+eloquent repository, it imports `users/` (`statamic:eloquent:import-users`)
+while the users table is empty. A table that holds an account, or a site
+with `cms_sign_in` on (Core makes each account at its first sign-in and
+will not adopt one it did not make), keeps `users/` out, and `--fresh`
+never empties the table. A users import that fails only warns: the
+content is in, so run `statamic:eloquent:import-users` by hand.
 
 The order is the point. The driver's own `import-collections` saves the
 trees before the entries exist, and saving a tree drops every id the
@@ -2034,6 +2038,16 @@ first, then trees, then the rest, with URIs and order recomputed last. Each
 import also runs in its own process: in one process the entry import leaves
 the still-empty database trees cached, and the tree import would save those
 instead of the files.
+
+Entry URIs and order are recomputed after the rows, one collection per
+process (up to an hour each), so a large site's set neither runs out of
+memory nor stops without a word. If one fails or runs out of time, the
+rows are in: the command names the
+`php artisan core-web:entry-order <collection>` runs that finish it.
+
+With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
+every site: while their feature (`media`, `checks`) is off they say so and
+succeed, so one first-deploy list fits every site.
 
 ### Deploy commands
 

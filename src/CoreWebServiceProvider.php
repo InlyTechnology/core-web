@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Application as Artisan;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -21,6 +22,8 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
+use Inly\CoreWeb\Cloud\EntryOrderCommand;
+use Inly\CoreWeb\Cloud\FeatureOffCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
 use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
@@ -254,7 +257,16 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+            $this->commands([ImportContentCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+
+            if ($this->app->runningInConsole()) {
+                $standIns = array_filter(['media:sync' => 'media', 'media:check' => 'media', 'content:check' => 'checks'], fn (string $feature): bool => ! self::enabled($feature));
+                Artisan::starting(function (Artisan $artisan) use ($standIns): void {
+                    foreach ($standIns as $name => $feature) {
+                        $artisan->add(new FeatureOffCommand($name, $feature));
+                    }
+                });
+            }
 
             if (self::enabled('media') && CloudDefaults::onCloud() && MediaDisks::defines('favicons')) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/cloud-favicons.php');

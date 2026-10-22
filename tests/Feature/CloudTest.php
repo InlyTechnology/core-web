@@ -262,4 +262,48 @@ class CloudTest extends TestCase
 
         $this->artisan('content:import')->assertFailed();
     }
+
+    public function test_import_takes_users_files_only_into_an_empty_eloquent_users_table(): void
+    {
+        $directory = sys_get_temp_dir().'/core-web-users-'.uniqid();
+        mkdir($directory);
+        config(['statamic.stache.stores.users.directory' => $directory, 'statamic.users.repository' => 'eloquent']);
+        Schema::create('users', function (Blueprint $blueprint): void {
+            $blueprint->uuid('id');
+            $blueprint->string('email');
+        });
+        $command = app(ImportContentCommand::class);
+
+        try {
+            $this->assertSame('', $command->usersSkipReason(), 'a site with no users/ files has nothing to import');
+
+            file_put_contents($directory.'/editor@example.com.yaml', "name: Editor\n");
+            $this->assertNull($command->usersSkipReason());
+
+            Schema::getConnection()->table('users')->insert(['id' => 'a', 'email' => 'sso@example.com']);
+            $this->assertStringContainsString('already holds accounts', $command->usersSkipReason());
+
+            Schema::getConnection()->table('users')->delete();
+            config(['core-web.features.cms_sign_in' => true]);
+            $this->assertStringContainsString('Core sign-in is on', $command->usersSkipReason());
+
+            config(['statamic.users.repository' => 'file']);
+            $this->assertSame('', $command->usersSkipReason(), 'file users stay files');
+        } finally {
+            array_map('unlink', glob($directory.'/*'));
+            rmdir($directory);
+        }
+    }
+
+    public function test_the_first_boot_commands_of_a_feature_that_is_off_succeed_and_say_so(): void
+    {
+        $this->artisan('content:check')->expectsOutputToContain('checks feature is off')->assertSuccessful();
+        $this->artisan('media:sync push --force --no-interaction')->expectsOutputToContain('media feature is off')->assertSuccessful();
+        $this->artisan('media:check')->expectsOutputToContain('media feature is off')->assertSuccessful();
+    }
+
+    public function test_entry_order_refuses_an_unknown_collection(): void
+    {
+        $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
+    }
 }
