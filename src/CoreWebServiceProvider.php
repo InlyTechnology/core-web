@@ -131,6 +131,12 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
+
+                // A cached config already holds the moved disks; a local one left in it was the build's choice.
+                if (self::enabled('cloud') && CloudDefaults::onCloud() && ! $this->app->configurationIsCached()) {
+                    CloudDefaults::movePeakDisksToBucket($this->app['config']);
+                }
+
                 MediaDisks::define($this->app);
             }
         };
@@ -251,6 +257,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('cloud')) {
             $this->commands([ImportContentCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+
+            if (self::enabled('media') && CloudDefaults::onCloud() && MediaDisks::defines('favicons')) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/cloud-favicons.php');
+            }
 
             // Only where Statamic's own every-minute job is off, which the Cloud defaults do, so an entry is never handled twice.
             $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

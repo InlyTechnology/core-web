@@ -1180,8 +1180,10 @@ block keeps the package's defaults for what it leaves out, one group deep
 ],
 ```
 
-Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
-`social_images`). For R2, set `endpoint` to the account's R2 endpoint and
+Peak's `favicons` and `social_images` containers keep their handles but
+write through their disks, so they can be media disks too: list them and
+remove their `local` definitions from `config/filesystems.php`. On Laravel
+Cloud the `cloud` feature does that for them. For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
 
 ### Moving a site's own bucket disk onto these
@@ -1953,6 +1955,8 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
+| Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
+| Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
