@@ -1237,6 +1237,9 @@ environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
   (`assets`, `files`): Cloud registers its disk before core-web, so a clash
   leaves Cloud's plain disk in place of core-web's, and `media:check` reports
   it as the app's own.
+- The public bucket answers CORS itself, since core-cdn redirects every
+  untransformed file to it: allowed origins `*`, for `GET` and `HEAD`.
+  `media:check` reports a bucket that does not.
 - The first deploy copies the git-tracked images into the bucket with
   `php artisan media:sync push --force`, on the Cloud credentials like any
   other key.
@@ -1948,7 +1951,9 @@ The site does its half once:
   never change a table that already exists.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
-  Statamic's eloquent users write.
+  Statamic's eloquent users write. Every column pointing at a user follows
+  (`foreignUuid('user_id')` on `sessions`, and in the tables
+  `php please auth:migration` writes), or Postgres refuses the foreign key.
 - Give the `users` table a column for every key the site stores on a user
   (an SSO site's `core_user_id`, and `core_web_live_user_id` where a local
   checkout signs in through the live site, for instance): eloquent users write each
@@ -1960,6 +1965,13 @@ The site does its half once:
 - Asset files: the disk does not outlive a deploy either, so uploads need a
   bucket. Attach one in Cloud and turn on `features.media`, whose disks read
   it from `LARAVEL_CLOUD_DISK_CONFIG` (see [On Laravel Cloud](#on-laravel-cloud)).
+  Require `league/flysystem-aws-s3-v3` before attaching it: Cloud refuses to
+  deploy an app with a bucket and without that package.
+- A Statamic Solo licence sets `STATAMIC_PRO_ENABLED=false` and
+  `STATAMIC_REVISIONS_ENABLED=false` on the environment, since the feature
+  turns both on, and keeps `revisions: false` on its collections.
+- Cloud fills `APP_NAME` with the application's slug, which Statamic shows
+  above the CP login; set it to the site's name.
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
