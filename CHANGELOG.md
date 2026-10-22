@@ -6,6 +6,49 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Glide images on Cloud work on every replica**: the `cloud` feature turns
+  off Statamic's `true` and `hybrid` Glide caches, which keep renditions in
+  one container's `public/img` and their keys in a store. On another replica,
+  or after a deploy, a cached page's `/img/` URLs failed (404, or 400 with
+  `true`) and the CP's thumbnails answered 500. Uncached, each URL carries its
+  source (signed, with `secure` on) and every container renders its own
+  copies, so each image goes through PHP and is rendered again after a
+  deploy. Presets are no longer made at upload there either. A cache on a
+  disk of its own is kept.
+  README → Laravel Cloud.
+- **Favicons and social images on the bucket on Cloud**: with `media` on, the
+  `cloud` feature turns Peak's `local` `favicons` and `social_images` disks
+  into media disks on the bucket. On Cloud's disk, Peak Tools' generated icon
+  set and Peak SEO's generated social images were gone at the next deploy and
+  seen by one replica only. Peak's `/favicons/...` links redirect to the
+  bucket. README → Laravel Cloud.
+
+### Upgrade notes
+
+- **Glide renders through PHP on Cloud.** A Cloud site with
+  `image_manipulation.cache` set to `true` or `hybrid` now serves Glide
+  images uncached. Find it with `grep -n "'cache' =>" config/statamic/assets.php`.
+  Nothing to migrate. Image URLs change from `/img/containers/...` to
+  `/img/asset/...?s=`, so clear the static cache once after the deploy
+  (`core-web:deploy` does). Verify by opening a page and a CP asset
+  thumbnail on Cloud.
+- **Peak's favicons and social images move to the bucket on Cloud.** A Cloud
+  site with `media` on whose `config/filesystems.php` defines `favicons` or
+  `social_images` with the `local` driver now serves them from the bucket,
+  in folders of the same name. Find it with
+  `grep -n "'favicons'\|'social_images'" config/filesystems.php`. Run
+  `php artisan media:sync push --force` once after the deploy so files in
+  git reach the bucket (an icon set Peak Tools generated on Cloud was lost
+  already: generate it again from the CP), and set `allow_uploads: true`
+  back on those containers if it was turned off for Cloud. A site that already
+  lists them in `media.disks` keeps its folders and needs nothing. A site that
+  committed icons to `public/favicons` removes them from git after the push:
+  Cloud serves files in `public/` before the redirect to the bucket. Verify with
+  `php artisan media:check --disk=favicons` (and `--disk=social_images`),
+  and that a page's favicon link answers a redirect to the bucket.
+
 ## v0.23.1
 
 - **Docs**: README → Laravel Cloud lists the gotchas found launching the

@@ -57,7 +57,7 @@ class DeployCommand extends Command
             ->keys();
 
         if ($local->isNotEmpty()) {
-            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there.');
+            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there, and keep search result pages out of the static cache: one container\'s index would be cached for everyone.');
         }
     }
 
