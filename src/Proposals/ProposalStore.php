@@ -67,6 +67,15 @@ class ProposalStore
             ->all();
     }
 
+    /** @return list<Proposal> newest decision first */
+    public function decided(): array
+    {
+        return $this->in(false)
+            ->sortByDesc(fn (Proposal $proposal) => ($proposal->decidedAt ?? $proposal->createdAt)->getTimestamp())
+            ->values()
+            ->all();
+    }
+
     public function openFor(string $target): ?Proposal
     {
         return collect($this->open())->first(fn (Proposal $proposal) => $proposal->target === $target);

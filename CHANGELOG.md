@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Undo an applied proposal**: applying a proposal records the value it
+  replaced, and an editor undoes it from the proposal or the Proposals
+  page's *Recently applied* list until the target changes again. Gives
+  navigations, page trees, globals and terms one step back, on Laravel
+  Cloud too. See README → Proposals.
+
 ## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the

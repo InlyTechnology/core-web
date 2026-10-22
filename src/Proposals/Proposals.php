@@ -95,10 +95,70 @@ class Proposals
             throw DraftRefused::baseChanged(self::base($target));
         }
 
+        $replaced = $target->current();
         $target->apply($proposal->value, $user);
-        $this->store->save($proposal->decide(Proposal::APPLIED, (string) $user->id()));
+        $this->store->save($proposal->applied($replaced, self::base($target), (string) $user->id()));
 
         return $proposal;
+    }
+
+    /**
+     * Puts back the value an applied proposal replaced, when the target still
+     * holds what applying it left: content without revisions gets one step back.
+     *
+     * @throws DraftRefused
+     */
+    public function undo(string $id, UserContract $user): Proposal
+    {
+        $proposal = $this->store->find($id);
+        $target = $proposal ? $this->target($proposal) : null;
+
+        abort_if($proposal === null || $target === null, 404);
+
+        if ($proposal->status !== Proposal::APPLIED || $proposal->replaced === null || $proposal->appliedAs === null) {
+            throw new DraftRefused('not_undoable', __('core-web::drafts.not_undoable'));
+        }
+
+        if (! $target->mayEdit($user)) {
+            throw DraftRefused::notPermitted((string) ($user->name() ?: $user->email()));
+        }
+
+        if (! hash_equals(self::base($target), $proposal->appliedAs)) {
+            throw new DraftRefused('changed_since_applied', __('core-web::drafts.changed_since_applied'));
+        }
+
+        try {
+            $value = $target->validate($proposal->replaced);
+        } catch (ValidationException $e) {
+            throw new DraftRefused('not_restorable', __('core-web::drafts.not_restorable', ['reason' => collect($e->errors())->flatten()->first()]));
+        }
+
+        $target->apply($value, $user);
+        $this->store->save($proposal->undone((string) $user->id()));
+
+        return $proposal;
+    }
+
+    /** Whether undo() would put the replaced value back now (permission aside). */
+    public function undoable(Proposal $proposal): bool
+    {
+        $target = $proposal->status === Proposal::APPLIED && $proposal->replaced !== null && $proposal->appliedAs !== null ? $this->target($proposal) : null;
+
+        return $target !== null && hash_equals(self::base($target), $proposal->appliedAs);
+    }
+
+    /**
+     * The applied proposals that can still be undone, newest first.
+     *
+     * @return list<Proposal>
+     */
+    public function undoableApplied(int $limit = 20): array
+    {
+        return collect($this->store->decided())
+            ->filter(fn (Proposal $proposal) => $this->undoable($proposal))
+            ->take($limit)
+            ->values()
+            ->all();
     }
 
     /** @throws DraftRefused */
@@ -143,6 +203,9 @@ class Proposals
             'created_at' => $proposal->createdAt->utc()->toIso8601String(),
             'decided_by' => DraftPerson::of($proposal->decidedBy ? User::find($proposal->decidedBy) : null),
             'decided_at' => $proposal->decidedAt?->utc()->toIso8601String(),
+            'undoable' => $this->undoable($proposal),
+            'undone_by' => DraftPerson::of($proposal->undoneBy ? User::find($proposal->undoneBy) : null),
+            'undone_at' => $proposal->undoneAt?->utc()->toIso8601String(),
             'cp_url' => cp_route('core-web.proposals.show', $proposal->id),
         ];
     }

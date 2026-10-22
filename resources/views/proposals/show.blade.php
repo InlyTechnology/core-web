@@ -15,6 +15,11 @@
                     <ui-button type="submit" variant="primary" text="{{ __('Apply') }}"></ui-button>
                 </form>
             @endunless
+        @elseif ($proposal['undoable'])
+            <form method="POST" action="{{ cp_route('core-web.proposals.undo', $proposal['id']) }}" class="inline">
+                @csrf
+                <ui-button type="submit" text="{{ __('Undo') }}"></ui-button>
+            </form>
         @endif
     </ui-header>
 
@@ -31,6 +36,9 @@
             @endif
             @if ($proposal['status'] !== 'open')
                 <ui-badge text="{{ __(ucfirst($proposal['status'])) }}"></ui-badge>
+                @if ($proposal['status'] === 'applied' && ! $proposal['undoable'])
+                    <ui-description>{{ __('This can no longer be undone here: it changed again after it was applied, or it was applied before undo existed.') }}</ui-description>
+                @endif
             @elseif ($proposal['stale'])
                 <ui-description>{{ __('This changed after the proposal was made, so it can no longer be applied. Discard it and ask for a new one.') }}</ui-description>
             @endif
@@ -42,7 +50,7 @@
             <thead>
                 <tr>
                     <th class="text-start">{{ __('Where') }}</th>
-                    <th class="text-start">{{ __('Now') }}</th>
+                    <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
                     <th class="text-start">{{ __('Proposed') }}</th>
                 </tr>
             </thead>

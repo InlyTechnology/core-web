@@ -40,4 +40,35 @@
             </table>
         </ui-card-panel>
     @endif
+
+    @if ($applied !== [])
+        <ui-card-panel heading="{{ __('Recently applied') }}" class="mt-6">
+            <ui-description class="mb-2">{{ __('Navigations, page trees, globals and terms keep no revisions, so each applied proposal can be undone here until the same thing changes again.') }}</ui-description>
+            <table class="data-table w-full">
+                <thead>
+                    <tr>
+                        <th class="text-start">{{ __('Change to') }}</th>
+                        <th class="text-start">{{ __('Applied by') }}</th>
+                        <th class="text-start">{{ __('Applied') }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($applied as $proposal)
+                        <tr>
+                            <td><a href="{{ $proposal['cp_url'] }}" v-pre>{{ $proposal['label'] }}</a></td>
+                            <td v-pre>{{ $proposal['decided_by']['name'] ?? $proposal['decided_by']['email'] ?? '' }}</td>
+                            <td class="text-sm text-gray-600 dark:text-gray-400" v-pre>{{ $proposal['decided_at'] }}</td>
+                            <td class="text-end">
+                                <form method="POST" action="{{ cp_route('core-web.proposals.undo', $proposal['id']) }}" class="inline">
+                                    @csrf
+                                    <ui-button size="sm" type="submit" text="{{ __('Undo') }}"></ui-button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </ui-card-panel>
+    @endif
 @endsection
