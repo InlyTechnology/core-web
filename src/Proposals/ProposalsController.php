@@ -21,7 +21,7 @@ class ProposalsController
 
         $applied = collect($proposals->undoableApplied())
             ->filter(fn (Proposal $proposal) => $proposals->target($proposal)?->mayEdit($user))
-            ->map(fn (Proposal $proposal) => $proposals->describe($proposal))
+            ->map(fn (Proposal $proposal) => $proposals->describe($proposal, undoable: true))
             ->values()
             ->all();
 
@@ -38,6 +38,7 @@ class ProposalsController
         return view('core-web::proposals.show', [
             'proposal' => $proposals->describe($proposal),
             'changes' => $proposals->changes($target, $proposal->open() ? $target->current() : ($proposal->replaced ?? []), $proposal->value),
+            'before' => $proposal->open() || $proposal->replaced !== null,
             'targetUrl' => $target->cpUrl(),
             'title' => __('Proposal'),
         ]);

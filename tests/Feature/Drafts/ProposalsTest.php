@@ -418,25 +418,52 @@ class ProposalsTest extends TestCase
         $this->assertSame('/about/team', Entry::find($this->pages['team'])->url());
     }
 
-    public function test_an_undo_is_checked_as_a_save_would_be(): void
+    public function test_an_undo_restores_what_the_cp_saved_even_where_a_proposal_could_not(): void
     {
-        $target = GlobalTarget::make('settings', 'default');
-        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '456', 'email' => 'hej@example.com'], Proposals::base($target));
+        Nav::find('main')->in('default')->tree([['entry' => $this->pages['about']], ['url' => 'kontakt', 'title' => 'Typed in the CP']])->save();
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['about']]], Proposals::base($target));
         $editor = $this->user('eva@example.com');
         $this->proposals()->apply($result['id'], $editor);
+
+        $this->proposals()->undo($result['id'], $editor);
+
+        $this->assertSame('kontakt', Nav::find('main')->in('default')->tree()[1]['url']);
+    }
+
+    public function test_an_undo_brings_back_values_the_blueprint_hides(): void
+    {
         Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
-            ['handle' => 'phone', 'field' => ['type' => 'text', 'validate' => ['required']]],
-            ['handle' => 'email', 'field' => ['type' => 'text', 'validate' => ['required', 'email']]],
+            ['handle' => 'phone', 'field' => ['type' => 'text']],
+            ['handle' => 'show', 'field' => ['type' => 'toggle']],
+            ['handle' => 'note', 'field' => ['type' => 'text', 'if' => ['show' => 'equals true']]],
         ]])->save();
         Blink::flush();
+        GlobalSet::find('settings')->in('default')->data(['phone' => '1', 'show' => false, 'note' => 'kept hidden'])->save();
+        $target = GlobalTarget::make('settings', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '2', 'show' => false], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
 
-        try {
-            $this->proposals()->undo($result['id'], $editor);
-            $this->fail('A value the blueprint now refuses was restored.');
-        } catch (DraftRefused $refused) {
-            $this->assertSame('not_restorable', $refused->error);
-        }
+        $this->proposals()->undo($result['id'], $editor);
 
+        $this->assertSame('kept hidden', GlobalSet::find('settings')->in('default')->get('note'));
+        $this->assertSame('1', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_only_the_last_proposal_applied_to_a_target_is_listed(): void
+    {
+        $target = GlobalTarget::make('settings', 'default');
+        $editor = $this->user('eva@example.com');
+        $first = $this->proposals()->propose($this->author(), $target, ['phone' => '456'], Proposals::base($target));
+        $this->proposals()->apply($first['id'], $editor);
+        $second = $this->proposals()->propose($this->author(), $target, ['phone' => '789'], Proposals::base($target));
+        $this->proposals()->apply($second['id'], $editor);
+
+        $this->assertSame([$second['id']], array_map(fn (Proposal $proposal) => $proposal->id, $this->proposals()->undoableApplied()));
+
+        $this->proposals()->undo($second['id'], $editor);
+        $this->assertSame([], $this->proposals()->undoableApplied());
         $this->assertSame('456', GlobalSet::find('settings')->in('default')->get('phone'));
     }
 

@@ -1454,8 +1454,8 @@ app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($targ
   undone (`Proposals::undo()`, or **Undo** on the proposal and under
   *Recently applied* on the Proposals page) for as long as the target still
   holds what applying left: any later change, in the CP or by another
-  proposal, ends it, and so does a value the blueprint no longer accepts.
-  Undoing needs the same permission as applying. This is one step back for
+  proposal, ends it. The earlier value is restored exactly as it was
+  stored, values the blueprint hides included. Undoing needs the same permission as applying. This is one step back for
   content without revisions, on any host (on Laravel Cloud, where git
   keeps no history of content, it is the only one); a proposal applied
   before this existed recorded nothing to undo to. The Proposals page stays

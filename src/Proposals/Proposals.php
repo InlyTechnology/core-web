@@ -127,13 +127,8 @@ class Proposals
             throw new DraftRefused('changed_since_applied', __('core-web::drafts.changed_since_applied'));
         }
 
-        try {
-            $value = $target->validate($proposal->replaced);
-        } catch (ValidationException $e) {
-            throw new DraftRefused('not_restorable', __('core-web::drafts.not_restorable', ['reason' => collect($e->errors())->flatten()->first()]));
-        }
-
-        $target->apply($value, $user);
+        // The target's own stored value, not a source's input: validating it again would refuse what the CP itself saved.
+        $target->apply($proposal->replaced, $user);
         $this->store->save($proposal->undone((string) $user->id()));
 
         return $proposal;
@@ -154,7 +149,7 @@ class Proposals
      */
     public function undoableApplied(int $limit = 20): array
     {
-        return collect($this->store->decided())
+        return collect($this->store->latestApplied())
             ->filter(fn (Proposal $proposal) => $this->undoable($proposal))
             ->take($limit)
             ->values()
@@ -187,7 +182,7 @@ class Proposals
      *
      * @return array<string, mixed>
      */
-    public function describe(Proposal $proposal): array
+    public function describe(Proposal $proposal, ?bool $undoable = null): array
     {
         $target = $this->target($proposal);
 
@@ -203,7 +198,7 @@ class Proposals
             'created_at' => $proposal->createdAt->utc()->toIso8601String(),
             'decided_by' => DraftPerson::of($proposal->decidedBy ? User::find($proposal->decidedBy) : null),
             'decided_at' => $proposal->decidedAt?->utc()->toIso8601String(),
-            'undoable' => $this->undoable($proposal),
+            'undoable' => $undoable ?? $this->undoable($proposal),
             'undone_by' => DraftPerson::of($proposal->undoneBy ? User::find($proposal->undoneBy) : null),
             'undone_at' => $proposal->undoneAt?->utc()->toIso8601String(),
             'cp_url' => cp_route('core-web.proposals.show', $proposal->id),

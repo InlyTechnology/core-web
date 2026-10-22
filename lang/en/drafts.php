@@ -18,7 +18,6 @@ return [
     'decided' => 'This proposal is already :status.',
     'not_undoable' => 'Only an applied proposal that recorded the value it replaced can be undone.',
     'changed_since_applied' => 'This changed again after the proposal was applied, so undoing it would lose that change. Change it in the CP instead.',
-    'not_restorable' => 'The value before the proposal can no longer be saved as it was: :reason Change it in the CP instead.',
     'held_proposal' => 'This already has an open proposal by :who, made :when. It is not replaced: ask them to apply or discard it in the CP, then try again.',
     'not_fixable' => 'The :check check has no fix for this; an editor changes it in the CP.',
     'nothing_to_fix' => 'Nothing here can be fixed automatically any more.',

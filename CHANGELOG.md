@@ -12,7 +12,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   replaced, and an editor undoes it from the proposal or the Proposals
   page's *Recently applied* list until the target changes again. Gives
   navigations, page trees, globals and terms one step back, on Laravel
-  Cloud too. See README → Proposals.
+  Cloud too. Only the last proposal applied to a target is undone. The
+  Statamic connector API's proposal shape gains `undoable`, `undone_by`,
+  `undone_at` and the status `undone`. See README → Proposals.
 
 ## v0.22.0
 

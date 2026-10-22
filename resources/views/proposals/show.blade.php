@@ -50,7 +50,9 @@
             <thead>
                 <tr>
                     <th class="text-start">{{ __('Where') }}</th>
-                    <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
+                    @if ($before)
+                        <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
+                    @endif
                     <th class="text-start">{{ __('Proposed') }}</th>
                 </tr>
             </thead>
@@ -58,7 +60,9 @@
                 @foreach ($changes as $where => $change)
                     <tr>
                         <td class="font-mono text-xs" v-pre>{{ $where }}</td>
-                        <td><pre class="whitespace-pre-wrap text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</pre></td>
+                        @if ($before)
+                            <td><pre class="whitespace-pre-wrap text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</pre></td>
+                        @endif
                         <td><pre class="whitespace-pre-wrap text-xs text-green-700 dark:text-green-400" v-pre>{{ $change['to'] ?? '' }}</pre></td>
                     </tr>
                 @endforeach

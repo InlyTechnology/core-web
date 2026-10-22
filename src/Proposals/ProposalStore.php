@@ -47,6 +47,29 @@ class ProposalStore
         if (! $proposal->open()) {
             $this->disk->delete($this->file($proposal->id, true));
         }
+
+        $index = $this->appliedIndex();
+
+        if ($proposal->status === Proposal::APPLIED) {
+            $this->writeAppliedIndex([...$index, $proposal->target => $proposal->id]);
+        } elseif (($index[$proposal->target] ?? null) === $proposal->id) {
+            unset($index[$proposal->target]);
+            $this->writeAppliedIndex($index);
+        }
+    }
+
+    /** @return array<string, string> target => the id of the proposal applied to it last */
+    private function appliedIndex(): array
+    {
+        $file = $this->path.'/applied.json';
+
+        return $this->disk->exists($file) ? array_filter((array) json_decode((string) $this->disk->get($file), true), 'is_string') : [];
+    }
+
+    /** @param  array<string, string>  $index */
+    private function writeAppliedIndex(array $index): void
+    {
+        $this->disk->put($this->path.'/applied.json', json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
 
     /** @return list<Proposal> newest first */
@@ -67,10 +90,17 @@ class ProposalStore
             ->all();
     }
 
-    /** @return list<Proposal> newest decision first */
-    public function decided(): array
+    /**
+     * The proposal applied last to each target, newest first: the only one an undo can still reach, kept in a
+     * small index so the Proposals page never reads the whole decided history.
+     *
+     * @return list<Proposal>
+     */
+    public function latestApplied(): array
     {
-        return $this->in(false)
+        return collect($this->appliedIndex())
+            ->map(fn (string $id) => $this->find($id))
+            ->filter(fn (?Proposal $proposal) => $proposal?->status === Proposal::APPLIED)
             ->sortByDesc(fn (Proposal $proposal) => ($proposal->decidedAt ?? $proposal->createdAt)->getTimestamp())
             ->values()
             ->all();
