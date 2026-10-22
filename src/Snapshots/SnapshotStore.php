@@ -67,7 +67,7 @@ final class SnapshotStore
 
         // The `snapshots` store is only added while the feature is on; say so instead of Laravel's bare "not defined".
         if ($store === 'snapshots' && ! config()->has('cache.stores.snapshots')) {
-            throw new LogicException('Core snapshots are switched off: set core-web.features.snapshots to true (inly/core-web README, Features).');
+            throw new LogicException('Core snapshots are switched off: set core-web.features.snapshots to true (inly/core-web docs/features.md).');
         }
 
         return Cache::store($store);

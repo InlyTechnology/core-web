@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
 use Statamic\Facades\Collection;
 
 /**
- * Loads content/ into an empty database for an environment on the eloquent content driver; why the order and the separate processes matter is in the README's Laravel Cloud section.
+ * Loads content/ into an empty database for an environment on the eloquent content driver; why the order and the separate processes matter is in docs/laravel-cloud.md.
  */
 class ImportContentCommand extends Command
 {

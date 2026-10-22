@@ -2,8 +2,8 @@
 
 This file ships with `inly/core-web` and changes with each release. A site imports it from its own
 `CLAUDE.md` (`@vendor/inly/core-web/resources/agents/AGENTS.md`), so `composer update inly/core-web` brings the
-rules that match the code. The API reference is the package README (`vendor/inly/core-web/README.md`);
-read its section for a feature before wiring it. What the site itself decided (which features, which Core
+rules that match the code. The API reference is the package docs (`vendor/inly/core-web/docs/`, one page per feature);
+read a feature's page before wiring it. What the site itself decided (which features, which Core
 types, which Core each environment pairs with) is in the site's own `CLAUDE.md` and `inly.yaml`.
 
 ## The package
@@ -17,7 +17,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Read `CHANGELOG.md`'s upgrade notes** for every version between the one the site had and the one it moves
   to, and apply each.
 - **Env is secrets and what differs per environment** (`CORE_CLIENT_SECRET`, `CORE_MEDIA_KEY`/`_SECRET`; the
-  README's env table has the rest, such as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site
+  env table in `docs/configuration.md` has the rest, such as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site
   paired with production Core). A value that is the same everywhere (the site's Core in `core.url` /
   `core.client_id`, the live site's `content_sync.remote_url`, the bucket, the CDN) is committed in
   `config/core-web.php`.
@@ -58,7 +58,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Locally**, the CP signs in through a local Core (`CORE_URL`); without one, through the live site on the
   machine's `content:login`, as a local account mirroring the live one's roles. Offline,
   `cms_sign_in.local_password_sign_in` restores Statamic's own login, only while `APP_ENV` is `local`.
-- A site moving off its own SSO code removes that code in the same change (README → CMS sign-in).
+- A site moving off its own SSO code removes that code in the same change (`docs/cms-sign-in.md`).
 
 ## Media (`media`)
 

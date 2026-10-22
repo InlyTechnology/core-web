@@ -57,7 +57,7 @@ trait SignsInToRemoteSite
      */
     protected function refusedFreshLogin(): void
     {
-        $this->error(RemoteSite::configuredUrl().' refused even the login just made: either it runs on more than one server and keeps its tokens per server (set content_sync.tokens.driver to database there, README, Content pull), or a proxy or the web server strips the Authorization header before it reaches the site.');
+        $this->error(RemoteSite::configuredUrl().' refused even the login just made: either it runs on more than one server and keeps its tokens per server (set content_sync.tokens.driver to database there, docs/content-pull.md), or a proxy or the web server strips the Authorization header before it reaches the site.');
     }
 
     private function signInToRemoteSite(): ?RemoteSite

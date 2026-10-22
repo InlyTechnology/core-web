@@ -50,7 +50,7 @@ class CoreWebRulesTest extends TestCase
 
         return [
             array_values(array_map(fn (string $disk) => "disk '{$disk}' (config/filesystems.php or a service provider)", $own)),
-            "With core-web's media feature on, remove these disks from the site's own config: core-web defines them (README, Media, \"The disks\").",
+            "With core-web's media feature on, remove these disks from the site's own config: core-web defines them (docs/media.md, \"The disks\").",
         ];
     }
 }
