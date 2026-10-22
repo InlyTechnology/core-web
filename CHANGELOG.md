@@ -43,7 +43,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   git reach the bucket (an icon set Peak Tools generated on Cloud was lost
   already: generate it again from the CP), and set `allow_uploads: true`
   back on those containers if it was turned off for Cloud. A site that already
-  lists them in `media.disks` keeps its folders and needs nothing. Verify with
+  lists them in `media.disks` keeps its folders and needs nothing. A site that
+  committed icons to `public/favicons` removes them from git after the push:
+  Cloud serves files in `public/` before the redirect to the bucket. Verify with
   `php artisan media:check --disk=favicons` (and `--disk=social_images`),
   and that a page's favicon link answers a redirect to the bucket.
 
