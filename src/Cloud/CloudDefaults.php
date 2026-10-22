@@ -41,6 +41,9 @@ final class CloudDefaults
         'terms', 'assets', 'form_submissions', 'revisions', 'tokens',
     ];
 
+    /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
+    public const PEAK_DISKS = ['favicons', 'social_images'];
+
     /** Whether this process runs on Laravel Cloud (core-web.cloud.detected forces an answer, for tests). */
     public static function onCloud(): bool
     {
@@ -95,6 +98,28 @@ final class CloudDefaults
         }
 
         self::set($config, 'statamic.users.repository', 'STATAMIC_USERS_REPOSITORY', 'eloquent');
+    }
+
+    /**
+     * Peak's local disks become media disks on the bucket, before MediaDisks defines the disks: a file written to Cloud's
+     * disk is gone at the next deploy and seen by one replica only. A disk the site points elsewhere is left alone.
+     */
+    public static function movePeakDisksToBucket(Repository $config): void
+    {
+        $disks = (array) $config->get('filesystems.disks', []);
+        $media = (array) $config->get('core-web.media.disks', []);
+
+        foreach (self::PEAK_DISKS as $disk) {
+            if (($disks[$disk]['driver'] ?? null) !== 'local') {
+                continue;
+            }
+
+            unset($disks[$disk]);
+            $media[$disk] ??= $disk;
+        }
+
+        $config->set('filesystems.disks', $disks);
+        $config->set('core-web.media.disks', $media);
     }
 
     /** Whether content and users live in the database, as nothing on Cloud's disk outlives a deploy. */

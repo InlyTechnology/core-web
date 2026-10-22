@@ -17,6 +17,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   copies, so each image goes through PHP and is rendered again after a
   deploy. A cache on a disk of its own is kept.
   README → Laravel Cloud.
+- **Favicons and social images on the bucket on Cloud**: with `media` on, the
+  `cloud` feature turns Peak's `local` `favicons` and `social_images` disks
+  into media disks on the bucket. On Cloud's disk, Peak Tools' generated icon
+  set and Peak SEO's generated social images were gone at the next deploy and
+  seen by one replica only. README → Laravel Cloud.
 
 ### Upgrade notes
 
@@ -27,6 +32,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `/img/asset/...?s=`, so clear the static cache once after the deploy
   (`core-web:deploy` does). Verify by opening a page and a CP asset
   thumbnail on Cloud.
+- **Peak's favicons and social images move to the bucket on Cloud.** A Cloud
+  site with `media` on whose `config/filesystems.php` defines `favicons` or
+  `social_images` with the `local` driver now serves them from the bucket,
+  in folders of the same name. Find it with
+  `grep -n "'favicons'\|'social_images'" config/filesystems.php`. Run
+  `php artisan media:sync push --force` once after the deploy so files in
+  git reach the bucket (an icon set Peak Tools generated on Cloud was lost
+  already: generate it again from the CP), and set `allow_uploads: true`
+  back on those containers if it was turned off for Cloud. Verify with
+  `php artisan media:check favicons` and the favicon links on a page.
 
 ## v0.23.1
 

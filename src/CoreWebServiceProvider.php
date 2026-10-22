@@ -129,6 +129,11 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
+
+                if (self::enabled('cloud') && CloudDefaults::onCloud()) {
+                    CloudDefaults::movePeakDisksToBucket($this->app['config']);
+                }
+
                 MediaDisks::define($this->app);
             }
         };
