@@ -22,6 +22,7 @@ use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
@@ -245,7 +246,17 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, DeployCommand::class]);
+            $this->commands([ImportContentCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+
+            // Only where Statamic's own every-minute job is off, which the Cloud defaults do, so an entry is never handled twice.
+            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                // A config published before this key existed has none, so the default lives here too.
+                $cron = config('core-web.cloud.scheduled_entries.schedule', '*/15 * * * *');
+
+                if (! config('statamic.system.handle_scheduled_entries') && is_string($cron) && $cron !== '') {
+                    $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping();
+                }
+            });
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {

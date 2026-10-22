@@ -1915,6 +1915,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
+| Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
 
 An env var the environment sets keeps its own value, including one Cloud
 itself injects when a resource is attached (a cache cluster sets
@@ -1952,6 +1953,21 @@ The site does its half once:
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
+
+### Scheduled entries and sleeping
+
+Cloud's scheduler wakes a hibernating site for each task that is due, so a
+task due every minute keeps it awake for good. Statamic schedules one: the
+job that tells the static cache and search that an entry dated in the past
+minute is now published. On Cloud the feature turns it off and schedules
+`core-web:scheduled-entries` on `cloud.scheduled_entries.schedule` (every 15
+minutes, Cloud's default wake-up interval). It covers every entry in a dated
+collection dated since its last run, at most `lookback_minutes` (a day)
+back, so nothing is skipped between runs. A scheduled entry is published
+from its date on either way; only its static-cache copy and search entry
+wait for the next run. Match the schedule to the site's wake-up interval,
+and turn on Cloud's scheduler. `core-web:deploy` warns on Cloud about any
+other task scheduled every minute.
 
 The feature also adds an `outpost` file cache store when the site has none:
 Statamic's licensing ping keeps its marker there, and Cloud's build runs

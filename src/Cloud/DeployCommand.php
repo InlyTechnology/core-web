@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
@@ -25,6 +27,7 @@ class DeployCommand extends Command
 
         if (CloudDefaults::onCloud()) {
             $this->warnAboutLocalSearch();
+            $this->warnAboutEveryMinuteTasks();
         }
 
         foreach ($this->steps() as [$command, $arguments, $required]) {
@@ -55,6 +58,18 @@ class DeployCommand extends Command
 
         if ($local->isNotEmpty()) {
             $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there.');
+        }
+    }
+
+    /** Cloud's scheduler wakes a hibernating site for each due task, so one due every minute keeps it awake for good. */
+    private function warnAboutEveryMinuteTasks(): void
+    {
+        $everyMinute = collect($this->laravel->make(Schedule::class)->events())
+            ->filter(fn (Event $event): bool => $event->expression === '* * * * *')
+            ->map(fn (Event $event): string => $event->description ?: (string) $event->command);
+
+        if ($everyMinute->isNotEmpty()) {
+            $this->components->warn('Scheduled every minute, which keeps the site from sleeping on Cloud: '.$everyMinute->implode(', ').'.');
         }
     }
 

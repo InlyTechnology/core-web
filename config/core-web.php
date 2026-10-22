@@ -748,10 +748,21 @@ return [
     |
     | detected: null asks Cloud's LARAVEL_CLOUD; true or false forces it.
     |
+    | scheduled_entries: Statamic's own job runs every minute, which keeps a
+    | Cloud site from ever sleeping, so on Cloud it is off and
+    | `core-web:scheduled-entries` runs on `schedule` instead (Cloud's
+    | scheduler wake-up interval), covering every entry dated since its last
+    | run, at most `lookback_minutes` back. An empty `schedule` runs nothing.
+    |
     */
 
     'cloud' => [
         'deploy' => [],
         'detected' => null,
+        'scheduled_entries' => [
+            'schedule' => '*/15 * * * *',
+            'lookback_minutes' => 1440,
+            'first_run_minutes' => 15,
+        ],
     ],
 ];

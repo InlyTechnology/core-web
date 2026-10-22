@@ -6,6 +6,27 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Cloud sites can sleep**: on Laravel Cloud the `cloud` feature turns off
+  Statamic's every-minute scheduled-entries job, which woke a hibernating
+  site each minute, and schedules `core-web:scheduled-entries` every 15
+  minutes instead. It covers every entry dated since its last run, so
+  static-cached pages and search still update. `core-web:deploy` warns on
+  Cloud about other every-minute tasks. README → Laravel Cloud → Scheduled
+  entries and sleeping.
+
+### Upgrade notes
+
+- **A scheduled entry's static-cache copy and search entry now update up to
+  15 minutes late on Cloud.** Affects sites with `features.cloud` on Laravel
+  Cloud (`grep -n "'cloud' => true" config/core-web.php`). Statamic's
+  every-minute job no longer runs there. If an entry must appear within the
+  minute, set `cloud.scheduled_entries.schedule` to `* * * * *` (the site
+  then never sleeps) or `STATAMIC_HANDLE_SCHEDULED_ENTRIES=true`. Verify
+  with `php artisan schedule:list`: `core-web:scheduled-entries` is listed
+  and Statamic's `HandleEntrySchedule` is not.
+
 ## v0.22.0
 
 - **Progress while pulling**: `content:login` says it is waiting for the
