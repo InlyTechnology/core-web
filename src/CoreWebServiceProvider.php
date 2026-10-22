@@ -185,6 +185,8 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
+        // Under the driver's own names, so it never adds a second copy of a table the site already published; content:import checks the columns either way.
+        $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();

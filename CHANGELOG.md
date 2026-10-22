@@ -22,6 +22,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   the bucket's own URL, so images are transformed with nothing committed.
   README → Media → On Laravel Cloud.
 
+- **Cloud content tables that fit content/**: `--tag=core-web-cloud-migrations`
+  publishes the eloquent driver's content migrations with string entry ids
+  and json columns. With the stock ones, `content:import` failed on Postgres
+  (an id such as `home` is not a uuid, and jsonb re-sorts keys). The import
+  now checks the columns first and names any it cannot fill. README →
+  Laravel Cloud.
+
 ### Upgrade notes
 
 - **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud

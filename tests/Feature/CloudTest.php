@@ -3,7 +3,10 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
+use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
 use Statamic\Eloquent\Entries\UuidEntryModel;
@@ -104,6 +107,34 @@ class CloudTest extends TestCase
         $this->artisan('content:import')
             ->expectsOutputToContain('Missing tables: entries')
             ->assertFailed();
+    }
+
+    public function test_import_names_the_uuid_and_jsonb_columns_the_stock_migrations_make(): void
+    {
+        $postgres = fn (string $table): array => match ($table) {
+            'entries' => [['name' => 'id', 'type_name' => 'uuid'], ['name' => 'origin_id', 'type_name' => 'uuid'], ['name' => 'slug', 'type_name' => 'varchar'], ['name' => 'data', 'type_name' => 'jsonb']],
+            'trees' => [['name' => 'tree', 'type_name' => 'json'], ['name' => 'settings', 'type_name' => 'JSONB']],
+            default => [['name' => 'data', 'type_name' => 'json']],
+        };
+
+        $this->assertSame(['entries.id (uuid)', 'entries.origin_id (uuid)', 'entries.data (jsonb)', 'trees.settings (jsonb)'], ImportContentCommand::wrongColumns($postgres));
+    }
+
+    public function test_cores_copies_of_the_drivers_migrations_cover_every_content_table_without_uuid_or_jsonb(): void
+    {
+        $files = ServiceProvider::pathsToPublish(CoreWebServiceProvider::class, 'core-web-cloud-migrations');
+        $source = implode("\n", array_map('file_get_contents', array_keys($files)));
+
+        $this->assertNotEmpty($files);
+        $this->assertDoesNotMatchRegularExpression('/->(uuid|jsonb)\(/', $source);
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            $this->assertStringContainsString("prefix('{$table}')", $source);
+        }
+
+        foreach ($files as $from => $to) {
+            $this->assertSame(basename($from), basename($to), 'published under the driver\'s own name');
+        }
     }
 
     public function test_off_cloud_nothing_changes(): void

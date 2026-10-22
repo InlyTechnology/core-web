@@ -26,6 +26,18 @@ class ImportContentCommand extends Command
         'assets_meta', 'form_submissions', 'revisions', 'tokens',
     ];
 
+    /** @var array<string, array<string, 'string'|'json'>> */
+    private const COLUMNS = [
+        'entries' => ['id' => 'string', 'origin_id' => 'string', 'data' => 'json'],
+        'trees' => ['tree' => 'json', 'settings' => 'json'],
+        'global_set_variables' => ['data' => 'json'],
+        'taxonomy_terms' => ['data' => 'json'],
+        'assets_meta' => ['meta' => 'json'],
+        'form_submissions' => ['data' => 'json'],
+        'revisions' => ['attributes' => 'json'],
+        'tokens' => ['data' => 'json'],
+    ];
+
     /** What --fresh empties: content/ holds all of it again. Submissions, revisions and tokens exist only in the database. */
     private const FRESH_TABLES = [
         'entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta',
@@ -46,6 +58,14 @@ class ImportContentCommand extends Command
 
         if ($missing !== []) {
             $this->error('Missing tables: '.implode(', ', $missing).'. Publish the eloquent driver\'s migrations and run migrate first.');
+
+            return self::FAILURE;
+        }
+
+        $wrong = self::wrongColumns(fn (string $table): array => $db->getSchemaBuilder()->getColumns($prefix.$table));
+
+        if ($wrong !== []) {
+            $this->error('Columns the import cannot fill as content/ has it: '.implode(', ', $wrong).'. Entry ids are strings (the home page\'s is `home`) and content is json, not jsonb, which re-sorts keys. Publish core-web\'s copies of the driver\'s migrations (--tag=core-web-cloud-migrations) in place of the driver\'s, on a new database.');
 
             return self::FAILURE;
         }
@@ -105,6 +125,30 @@ class ImportContentCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The content columns the eloquent driver's stock migrations make uuid or jsonb, as `table.column (type)`.
+     *
+     * @param  callable(string): list<array{name: string, type_name: string}>  $columns  a table's columns, as Schema::getColumns() gives them
+     * @return list<string>
+     */
+    public static function wrongColumns(callable $columns): array
+    {
+        $wrong = [];
+
+        foreach (self::COLUMNS as $table => $expected) {
+            foreach ($columns($table) as $column) {
+                $type = strtolower((string) $column['type_name']);
+                $want = $expected[$column['name']] ?? null;
+
+                if (($want === 'string' && $type === 'uuid') || ($want === 'json' && $type === 'jsonb')) {
+                    $wrong[] = "{$table}.{$column['name']} ({$type})";
+                }
+            }
+        }
+
+        return $wrong;
     }
 
     private function step(string $label, array $command): bool

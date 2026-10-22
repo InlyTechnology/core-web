@@ -1936,7 +1936,13 @@ The site does its half once:
 - `composer require statamic/eloquent-driver`, publish its config
   (`--tag=statamic-eloquent-config`) with every `driver` left on `file`
   (the feature switches the content parts) and `UuidEntryModel` for
-  entries, and publish its migrations.
+  entries. For the tables, publish core-web's copies of the driver's
+  migrations (`--tag=core-web-cloud-migrations`) instead of the driver's own.
+  The stock ones make entry ids uuid, which a Statamic id such as `home`
+  fails on in Postgres, and content columns jsonb, which re-sorts keys.
+  `content:import` checks the columns first and names any it cannot fill.
+  Run them on a new database: these are create migrations, so a database
+  made with the driver's copies is dropped and made again.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
   Statamic's eloquent users write.
