@@ -21,7 +21,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `cloud` feature turns Peak's `local` `favicons` and `social_images` disks
   into media disks on the bucket. On Cloud's disk, Peak Tools' generated icon
   set and Peak SEO's generated social images were gone at the next deploy and
-  seen by one replica only. README → Laravel Cloud.
+  seen by one replica only. Peak's `/favicons/...` links redirect to the
+  bucket. README → Laravel Cloud.
 
 ### Upgrade notes
 
@@ -41,7 +42,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   git reach the bucket (an icon set Peak Tools generated on Cloud was lost
   already: generate it again from the CP), and set `allow_uploads: true`
   back on those containers if it was turned off for Cloud. Verify with
-  `php artisan media:check favicons` and the favicon links on a page.
+  `php artisan media:check --disk=favicons` (and `--disk=social_images`),
+  and that a page's favicon link answers a redirect to the bucket.
 
 ## v0.23.1
 

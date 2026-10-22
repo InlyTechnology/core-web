@@ -60,4 +60,23 @@ class CloudMediaTest extends TestCase
         $this->assertSame('icons', config('core-web.media.disks.favicons'));
         $this->assertNull(config('filesystems.disks.favicons'));
     }
+
+    public function test_peaks_favicon_links_redirect_to_the_bucket(): void
+    {
+        // The package has no S3 client installed; a local disk with the bucket's URL stands in for it.
+        config(['app.maintenance.driver' => 'file', 'filesystems.disks.favicons' => ['driver' => 'local', 'root' => sys_get_temp_dir(), 'url' => 'https://fls-site.laravel.cloud/favicons']]);
+
+        $this->get('/favicons/default/favicon.ico')->assertRedirect('https://fls-site.laravel.cloud/favicons/default/favicon.ico');
+        $this->get('/favicons/../.env')->assertNotFound();
+    }
+
+    public function test_a_cached_config_keeps_its_disks(): void
+    {
+        $this->app->instance('config_loaded_from_cache', true);
+        config(['filesystems.disks.favicons' => ['driver' => 'local', 'root' => '/x']]);
+
+        (fn () => $this->fireAppCallbacks($this->bootingCallbacks))->call($this->app);
+
+        $this->assertSame('local', config('filesystems.disks.favicons.driver'));
+    }
 }
