@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Glide images on Cloud resolve on every replica**: the `cloud` feature puts
+  Statamic's `glide` cache store, through which hybrid Glide URLs (`/img/...`)
+  find their source, on the database store unless the site defines one. With
+  the default file store, a page cached in the database named images that
+  another replica, or the same one after a deploy, answered with a 404.
+  README → Laravel Cloud.
+
 ## v0.23.1
 
 - **Docs**: README → Laravel Cloud lists the gotchas found launching the

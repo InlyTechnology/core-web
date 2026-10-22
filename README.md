@@ -1924,6 +1924,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
+| Glide's URL-to-source map (`cache.stores.glide`), which hybrid Glide URLs (`/img/...`) resolve through | the `database` store, unless the site defines a `glide` store | none |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |

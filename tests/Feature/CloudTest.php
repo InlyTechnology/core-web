@@ -76,7 +76,17 @@ class CloudTest extends TestCase
         $this->assertTrue(config('statamic.editions.pro'));
         $this->assertFalse(config('statamic.stache.watcher'));
         $this->assertSame('file', config('cache.stores.outpost.driver'), 'the build runs artisan before the cache table exists');
+        $this->assertSame('database', config('cache.stores.glide.driver'), 'hybrid Glide URLs resolve on every replica');
         $this->assertTrue(CloudDefaults::contentInDatabase());
+    }
+
+    public function test_a_glide_store_the_site_defines_is_kept(): void
+    {
+        config(['cache.stores.glide' => ['driver' => 'redis']]);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('redis', config('cache.stores.glide.driver'));
     }
 
     public function test_definitions_stay_files_from_git(): void
