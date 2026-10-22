@@ -1951,9 +1951,10 @@ The site does its half once:
   never change a table that already exists.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
-  Statamic's eloquent users write. Every column pointing at a user follows
-  (`foreignUuid('user_id')` on `sessions`, and in the tables
-  `php please auth:migration` writes), or Postgres refuses the foreign key.
+  Statamic's eloquent users write. Every `user_id` column follows as
+  `foreignUuid`: on `sessions`, or the first sign-in fails writing a uuid
+  into a bigint, and in the tables `php please auth:migration` writes, or
+  Postgres refuses their foreign keys.
 - Give the `users` table a column for every key the site stores on a user
   (an SSO site's `core_user_id`, and `core_web_live_user_id` where a local
   checkout signs in through the live site, for instance): eloquent users write each
@@ -1972,6 +1973,9 @@ The site does its half once:
   turns both on, and keeps `revisions: false` on its collections.
 - Cloud fills `APP_NAME` with the application's slug, which Statamic shows
   above the CP login; set it to the site's name.
+- The feature leaves the queue alone. With no worker and no Cloud queue
+  attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail, the
+  snapshot and sign-in jobs) never runs.
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
