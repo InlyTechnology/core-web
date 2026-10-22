@@ -16,8 +16,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   Cloud about tasks due more often than every 15 minutes. README → Laravel Cloud → Scheduled
   entries and sleeping.
 - **Cloud media on Core Cloud's buckets and CDN**: with two buckets attached,
-  the asset disks use the public one, on the disk Core Cloud names in
-  `CORE_PUBLIC_DISK` (`media.bucket.cloud_disk`), not just the first. With no `media.bucket.url` committed, files are served
+  the asset disks use the public one on disk `media`
+  (`media.bucket.cloud_disk`, or `CORE_PUBLIC_DISK`), not just the first. With no `media.bucket.url` committed, files are served
   through `CORE_CDN_BASE_URL` (set by Core Cloud's CDN integration) before
   the bucket's own URL, so images are transformed with nothing committed.
   README → Media → On Laravel Cloud.
@@ -26,7 +26,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud
   sites with no `media.bucket.url` whose environment has `CORE_CDN_BASE_URL`
-  and `CORE_PUBLIC_DISK` (`grep -n "'url' =>" config/core-web.php` under
+  and a bucket on disk `media` (`grep -n "'url' =>" config/core-web.php` under
   `bucket`). Their files were served from the bucket's own URL and are now
   served through the CDN, transformed. Nothing to migrate; to keep the
   bucket's URL, commit `'cdn_url' => ''` under `media.bucket`. Verify with

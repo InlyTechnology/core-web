@@ -138,12 +138,12 @@ class MediaDisksTest extends TestCase
     public function test_core_clouds_public_bucket_wins_over_its_private_default_and_is_served_through_its_cdn(): void
     {
         $private = ['disk' => 'private', 'access_key_id' => 'private-key', 'access_key_secret' => 'private-secret', 'bucket' => 'fls-private', 'url' => ''];
-        $public = ['disk' => 'public', 'access_key_id' => 'cloud-key', 'access_key_secret' => 'cloud-secret', 'bucket' => 'fls-site', 'url' => 'https://fls-site.laravel.cloud'];
+        $public = ['disk' => 'media', 'access_key_id' => 'cloud-key', 'access_key_secret' => 'cloud-secret', 'bucket' => 'fls-site', 'url' => 'https://fls-site.laravel.cloud'];
         $attached = fn (array ...$disks): array => [
             'core-web.media.bucket.url' => '',
             'core-web.media.bucket.cdn_url' => 'https://cdn.inlycore.com/site/storage/',
             'core-web.media.bucket.cloud' => json_encode($disks),
-            'core-web.media.bucket.cloud_disk' => 'public',
+            'core-web.media.bucket.cloud_disk' => 'media',
         ];
 
         $disk = $this->define('production', $attached($private, $public));
@@ -157,18 +157,18 @@ class MediaDisksTest extends TestCase
 
     public function test_a_committed_url_wins_over_core_clouds_cdn(): void
     {
-        $this->assertSame('https://cdn.inlycore.com/client/site', $this->define('production', [...$this->cloud(['disk' => 'public']), 'core-web.media.bucket.cdn_url' => 'https://cdn.inlycore.com/site/storage'])['url']);
+        $this->assertSame('https://cdn.inlycore.com/client/site', $this->define('production', [...$this->cloud(), 'core-web.media.bucket.cdn_url' => 'https://cdn.inlycore.com/site/storage'])['url']);
     }
 
     public function test_a_config_published_without_the_new_keys_reads_core_clouds_env_vars(): void
     {
         $_ENV['CORE_CDN_BASE_URL'] = 'https://cdn.inlycore.com/site/storage';
-        $_ENV['CORE_PUBLIC_DISK'] = 'media';
+        $_ENV['CORE_PUBLIC_DISK'] = 'site-media';
 
         try {
             config(['core-web.media.bucket' => array_diff_key(config('core-web.media.bucket'), ['cdn_url' => true, 'cloud_disk' => true])]);
 
-            $this->assertSame('https://cdn.inlycore.com/site/storage', $this->define('production', [...$this->cloud(), 'core-web.media.bucket.url' => ''])['url']);
+            $this->assertSame('https://cdn.inlycore.com/site/storage', $this->define('production', [...$this->cloud(['disk' => 'site-media']), 'core-web.media.bucket.url' => ''])['url']);
         } finally {
             unset($_ENV['CORE_CDN_BASE_URL'], $_ENV['CORE_PUBLIC_DISK']);
         }

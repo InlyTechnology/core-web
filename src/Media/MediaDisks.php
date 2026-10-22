@@ -231,7 +231,7 @@ final class MediaDisks
     {
         $disks = json_decode((string) config('core-web.media.bucket.cloud', ''), true);
         // A config published before this key existed has none, so the env var is read here too.
-        $name = (string) (config('core-web.media.bucket.cloud_disk') ?: Env::get('CORE_PUBLIC_DISK', 'public'));
+        $name = (string) (config('core-web.media.bucket.cloud_disk') ?: Env::get('CORE_PUBLIC_DISK', 'media'));
         $first = null;
 
         foreach (is_array($disks) ? $disks : [] as $disk) {

@@ -105,7 +105,7 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
 | `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
-| `CORE_PUBLIC_DISK` | `media.bucket.cloud_disk` | Set by Core Cloud: the disk its public bucket is attached as, the one the asset disks use on Laravel Cloud (see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_PUBLIC_DISK` | `media.bucket.cloud_disk` | The Cloud disk the asset disks use on Laravel Cloud, when not `media` (the public bucket Core Cloud attaches to a website; see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_CDN_BASE_URL` | `media.bucket.cdn_url` | Set by Core Cloud's CDN integration: the CDN in front of the Cloud bucket, the files' URL when the site commits no `media.bucket.url` (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
@@ -1214,11 +1214,11 @@ from their `.env` and run `content:pull --only=assets`.
 
 With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
 the environment: the entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` whose disk
-is `media.bucket.cloud_disk` (`CORE_PUBLIC_DISK`, which Core Cloud sets to its
-public bucket's disk; `public` when unset), else the first that is not a
+is `media.bucket.cloud_disk` (`CORE_PUBLIC_DISK` when set, else `media`, the
+public bucket Core Cloud attaches to a website), else the first that is not a
 scoped disk, gives the key, secret, bucket, endpoint and region. Core Cloud
-attaches a private bucket beside the public one, as Cloud's default disk, so
-the name keeps the asset disks off it. A key in config still wins. Cloud's
+attaches a private bucket beside it for form uploads, so the name keeps the
+asset disks off that one whatever order Cloud lists them in. A key in config still wins. Cloud's
 buckets are R2, so `acl` is `false` for them whatever config says. The files'
 URL is the committed `media.bucket.url`, else `CORE_CDN_BASE_URL`, which Core
 Cloud's CDN integration sets to the CDN in front of the public bucket (used

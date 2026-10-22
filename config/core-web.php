@@ -666,8 +666,8 @@ return [
     | `acl` false leaves out `visibility: public` for a bucket without
     | per-object ACLs, such as R2, which rejects it; the bucket itself is then
     | public. Without a key, the bucket Laravel Cloud attaches is used
-    | (`cloud`, which Cloud sets; the one on disk `cloud_disk`, which Core
-    | Cloud names in CORE_PUBLIC_DISK, else the first), without ACLs, and with
+    | (`cloud`, which Cloud sets; the one on disk `cloud_disk`, the public
+    | bucket Core Cloud attaches to a website, else the first), without ACLs, and with
     | `url` taken from here when set, else `cdn_url` (the CDN Core Cloud puts
     | in front of that public bucket, used only when it was found by name),
     | else the bucket's own. Without either the disks are the local folders below. A failing
@@ -711,7 +711,7 @@ return [
             'acl' => true,
             'cache_control' => 'public, max-age=2592000',
             'cloud' => env('LARAVEL_CLOUD_DISK_CONFIG', ''),
-            'cloud_disk' => env('CORE_PUBLIC_DISK', 'public'),
+            'cloud_disk' => env('CORE_PUBLIC_DISK', 'media'),
             'cdn_url' => env('CORE_CDN_BASE_URL', ''),
         ],
         'disks' => [
