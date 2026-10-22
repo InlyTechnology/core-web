@@ -11,9 +11,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Glide images on Cloud work on every replica**: the `cloud` feature turns
   off Statamic's `true` and `hybrid` Glide caches, which keep renditions in
   one container's `public/img` and their keys in a store. On another replica,
-  or after a deploy, a cached page's `/img/` URLs answered 404 and the CP's
-  thumbnails 500. Uncached, each URL carries its signed source and every
-  container renders its own copies. A cache on a disk of its own is kept.
+  or after a deploy, a cached page's `/img/` URLs failed (404, or 400 with
+  `true`) and the CP's thumbnails answered 500. Uncached, each URL carries its
+  source (signed, with `secure` on) and every container renders its own
+  copies, so each image goes through PHP and is rendered again after a
+  deploy. A cache on a disk of its own is kept.
   README → Laravel Cloud.
 
 ### Upgrade notes

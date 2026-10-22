@@ -73,7 +73,9 @@ final class CloudDefaults
 
         // Glide's `true` and `hybrid` caches keep renditions in one container's public/img and their keys in a store: on
         // another replica or after a deploy those point at files that container lacks (a 404 on /img/, a 500 on CP
-        // thumbnails). Uncached, every URL carries its signed source and each container renders its own copies.
+        // thumbnails). Uncached, every URL carries its signed source and each container renders its own copies, keyed in
+        // its own file `glide` store (a shared one would point at copies another container holds). Glide's routes depend
+        // on the mode, so routes are cached where Cloud is detected, as its build is.
         if (in_array($config->get('statamic.assets.image_manipulation.cache'), [true, 'hybrid'], true)) {
             $config->set('statamic.assets.image_manipulation.cache', false);
         }
