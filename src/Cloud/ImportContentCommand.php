@@ -26,6 +26,9 @@ class ImportContentCommand extends Command
         'assets_meta', 'form_submissions', 'revisions', 'tokens',
     ];
 
+    /** Schema::getColumns() type names a Statamic id fits in, on Postgres, MySQL and SQLite. */
+    private const STRING_TYPES = ['varchar', 'character varying', 'text', 'bpchar', 'char', 'character', 'nvarchar', 'longtext', 'mediumtext', 'tinytext'];
+
     /** @var array<string, array<string, 'string'|'json'>> */
     private const COLUMNS = [
         'entries' => ['id' => 'string', 'origin_id' => 'string', 'data' => 'json'],
@@ -57,7 +60,7 @@ class ImportContentCommand extends Command
         $missing = array_values(array_filter(self::TABLES, fn (string $table): bool => ! $db->getSchemaBuilder()->hasTable($prefix.$table)));
 
         if ($missing !== []) {
-            $this->error('Missing tables: '.implode(', ', $missing).'. Publish the eloquent driver\'s migrations and run migrate first.');
+            $this->error('Missing tables: '.implode(', ', $missing).'. Publish core-web\'s copies of the eloquent driver\'s migrations (--tag=core-web-cloud-migrations) and run migrate first.');
 
             return self::FAILURE;
         }
@@ -65,7 +68,7 @@ class ImportContentCommand extends Command
         $wrong = self::wrongColumns(fn (string $table): array => $db->getSchemaBuilder()->getColumns($prefix.$table));
 
         if ($wrong !== []) {
-            $this->error('Columns the import cannot fill as content/ has it: '.implode(', ', $wrong).'. Entry ids are strings (the home page\'s is `home`) and content is json, not jsonb, which re-sorts keys. Publish core-web\'s copies of the driver\'s migrations (--tag=core-web-cloud-migrations) in place of the driver\'s, on a new database.');
+            $this->error('Columns the import cannot fill as content/ has it: '.implode(', ', $wrong).'. Entry ids are strings (the home page\'s is `home`) and content is json, not jsonb, which re-sorts keys. Publish core-web\'s copies of the driver\'s migrations over the driver\'s (--tag=core-web-cloud-migrations --force) and rebuild these tables: they are create migrations.');
 
             return self::FAILURE;
         }
@@ -128,7 +131,7 @@ class ImportContentCommand extends Command
     }
 
     /**
-     * The content columns the eloquent driver's stock migrations make uuid or jsonb, as `table.column (type)`.
+     * The content columns whose type would break the import or reorder content: an entry id that is not a string (the driver's stock migrations make uuid or bigint), or jsonb. As `table.column (type)`.
      *
      * @param  callable(string): list<array{name: string, type_name: string}>  $columns  a table's columns, as Schema::getColumns() gives them
      * @return list<string>
@@ -142,7 +145,7 @@ class ImportContentCommand extends Command
                 $type = strtolower((string) $column['type_name']);
                 $want = $expected[$column['name']] ?? null;
 
-                if (($want === 'string' && $type === 'uuid') || ($want === 'json' && $type === 'jsonb')) {
+                if (($want === 'string' && ! in_array($type, self::STRING_TYPES, true)) || ($want === 'json' && $type === 'jsonb')) {
                     $wrong[] = "{$table}.{$column['name']} ({$type})";
                 }
             }

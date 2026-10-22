@@ -8,8 +8,7 @@ return new class extends Migration
 {
     public function up()
     {
-        // The eloquent driver's own copy, with string ids (the home page's id is `home`) and json, not jsonb, which
-        // re-sorts keys and so changes every file an export back to content/ writes.
+        // String ids, as the home page's is `home`; json, as jsonb re-sorts the keys an export back to content/ writes.
         Schema::create($this->prefix('entries'), function (Blueprint $table) {
             $table->string('id');
             $table->string('site')->index();

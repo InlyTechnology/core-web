@@ -1941,8 +1941,11 @@ The site does its half once:
   The stock ones make entry ids uuid, which a Statamic id such as `home`
   fails on in Postgres, and content columns jsonb, which re-sorts keys.
   `content:import` checks the columns first and names any it cannot fill.
-  Run them on a new database: these are create migrations, so a database
-  made with the driver's copies is dropped and made again.
+  A site that already published the driver's copies publishes with `--force`
+  to replace them, deletes any driver entries migration under another name
+  (`create_entries_table.php`), and rebuilds those tables (`migrate:fresh` on
+  a database no editor has used yet): these are create migrations, so they
+  never change a table that already exists.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
   Statamic's eloquent users write.

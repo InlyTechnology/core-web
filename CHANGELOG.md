@@ -21,16 +21,24 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   through `CORE_CDN_BASE_URL` (set by Core Cloud's CDN integration) before
   the bucket's own URL, so images are transformed with nothing committed.
   README → Media → On Laravel Cloud.
-
 - **Cloud content tables that fit content/**: `--tag=core-web-cloud-migrations`
   publishes the eloquent driver's content migrations with string entry ids
   and json columns. With the stock ones, `content:import` failed on Postgres
-  (an id such as `home` is not a uuid, and jsonb re-sorts keys). The import
-  now checks the columns first and names any it cannot fill. README →
-  Laravel Cloud.
+  (an id such as `home` is not a uuid), and jsonb re-sorted every entry's
+  keys. The import now checks the columns first and names any it cannot
+  fill. README → Laravel Cloud.
 
 ### Upgrade notes
 
+- **`content:import` refuses content tables with jsonb or non-string entry
+  ids.** Affects Cloud sites that published the eloquent driver's own
+  migrations: `grep -ln "jsonb(\|uuid('id')" database/migrations`, or run
+  `content:import`, which names the columns. Publish core-web's copies over
+  them (`php artisan vendor:publish --tag=core-web-cloud-migrations
+  --force`), delete a driver `create_entries_table.php` if there is one, and
+  rebuild the tables on a database no editor has used (`migrate:fresh`). A
+  database editors already use keeps its tables until its data is moved
+  over. Verify: `content:import` gets past its column check.
 - **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud
   sites with no `media.bucket.url` whose environment has `CORE_CDN_BASE_URL`
   and a bucket on disk `media` (`grep -n "'url' =>" config/core-web.php` under
