@@ -15,9 +15,22 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   static-cached pages and search still update. `core-web:deploy` warns on
   Cloud about tasks due more often than every 15 minutes. README → Laravel Cloud → Scheduled
   entries and sleeping.
+- **Cloud media on Core Cloud's buckets and CDN**: with two buckets attached,
+  the asset disks use the public one, on the disk Core Cloud names in
+  `CORE_PUBLIC_DISK` (`media.bucket.cloud_disk`), not just the first. With no `media.bucket.url` committed, files are served
+  through `CORE_CDN_BASE_URL` (set by Core Cloud's CDN integration) before
+  the bucket's own URL, so images are transformed with nothing committed.
+  README → Media → On Laravel Cloud.
 
 ### Upgrade notes
 
+- **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud
+  sites with no `media.bucket.url` whose environment has `CORE_CDN_BASE_URL`
+  and `CORE_PUBLIC_DISK` (`grep -n "'url' =>" config/core-web.php` under
+  `bucket`). Their files were served from the bucket's own URL and are now
+  served through the CDN, transformed. Nothing to migrate; to keep the
+  bucket's URL, commit `'cdn_url' => ''` under `media.bucket`. Verify with
+  `php artisan media:check` and an image's `src` on a page.
 - **A scheduled entry's static-cache copy and search entry now update up to
   15 minutes late on Cloud.** Affects sites with `features.cloud` on Laravel
   Cloud (`grep -n "'cloud' =>" config/core-web.php`, set to true or an env
