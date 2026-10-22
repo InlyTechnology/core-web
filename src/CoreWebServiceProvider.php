@@ -49,6 +49,7 @@ use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
@@ -117,6 +118,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
             SiteCore::apply($this->app);
+            MailSender::apply($this->app);
 
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();

@@ -27,6 +27,7 @@ What the package gives a site:
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
+| Mail sender | `Inly\CoreWeb\Mail\MailSender` | The From address built as `local_part@domain` from committed config, each part overridable by env |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
@@ -1909,6 +1910,34 @@ and the message "Pushed by <name> from <machine>". A push never sets or clears a
 `author`. The command runs only
 where `APP_ENV` is `local`.
 
+## Mail sender
+
+Every site sends from `<local part>@<domain>` on the agency transactional
+domain, with the site's Resend key restricted to that domain. So the site
+commits only its local part in its `config/core-web.php`, and core-web
+builds `mail.from.address`. It is always on and needs no feature switch:
+
+```php
+'mail' => [
+    'from' => [
+        'local_part' => env('MAIL_FROM_LOCAL_PART', 'acme'),
+    ],
+],
+```
+
+| Config | Default | Env var that overrides it |
+|---|---|---|
+| `core-web.mail.from.local_part` | none: without one, `mail.from` is left alone | `MAIL_FROM_LOCAL_PART` |
+| `core-web.mail.from.domain` | `transactional.inly.dev` | `MAIL_FROM_DOMAIN` |
+
+core-web fills the address only while `mail.from.address` is unset or
+Laravel's stock `hello@example.com`, so `MAIL_FROM_ADDRESS`, or an address
+the site's `config/mail.php` commits, still wins. A site's `mail` block keeps
+the package's domain when it sets only the local part. Change the domain only
+together with the key: Resend refuses a From address on a domain the key is
+not restricted to. The sender's name stays Laravel's `MAIL_FROM_NAME`, which
+defaults to `APP_NAME`.
+
 ## Laravel Cloud
 
 Laravel Cloud resets the disk on every deploy, so what editors write cannot
@@ -1973,6 +2002,8 @@ The site does its half once:
   turns both on, and keeps `revisions: false` on its collections.
 - Cloud fills `APP_NAME` with the application's slug, which Statamic shows
   above the CP login; set it to the site's name.
+- Mail: commit the site's `mail.from.local_part` ([Mail sender](#mail-sender))
+  rather than a `MAIL_FROM_ADDRESS` per environment.
 - The feature leaves the queue alone. With no worker and no Cloud queue
   attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail, the
   snapshot and sign-in jobs) never runs.

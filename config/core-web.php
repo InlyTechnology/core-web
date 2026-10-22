@@ -91,6 +91,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Mail sender
+    |--------------------------------------------------------------------------
+    |
+    | The From address is `local_part@domain`, committed: a site sets only its
+    | local part (`acme`, `no-reply`), and the domain is the agency's
+    | transactional domain, whose Resend key the site sends with. It fills
+    | mail.from.address while that is unset or Laravel's `hello@example.com`;
+    | MAIL_FROM_ADDRESS still wins. No local part leaves mail.from alone.
+    |
+    */
+
+    'mail' => [
+        'from' => [
+            'local_part' => env('MAIL_FROM_LOCAL_PART'),
+            'domain' => env('MAIL_FROM_DOMAIN', 'transactional.inly.dev'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | This site's Core
     |--------------------------------------------------------------------------
     |

@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Mail sender**: core-web builds `mail.from.address` as
+  `<local part>@<domain>` from `core-web.mail.from`, so a site commits its
+  local part (`acme`) instead of a whole address per environment. The
+  domain defaults to `transactional.inly.dev`; `MAIL_FROM_LOCAL_PART` and
+  `MAIL_FROM_DOMAIN` override each part, and `MAIL_FROM_ADDRESS` or a
+  committed address still wins. Without a local part nothing changes.
+  README → Mail sender.
+
 ## v0.23.1
 
 - **Docs**: README → Laravel Cloud lists the gotchas found launching the
