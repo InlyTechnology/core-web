@@ -15,7 +15,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `true`) and the CP's thumbnails answered 500. Uncached, each URL carries its
   source (signed, with `secure` on) and every container renders its own
   copies, so each image goes through PHP and is rendered again after a
-  deploy. A cache on a disk of its own is kept.
+  deploy. Presets are no longer made at upload there either. A cache on a
+  disk of its own is kept.
   README → Laravel Cloud.
 - **Favicons and social images on the bucket on Cloud**: with `media` on, the
   `cloud` feature turns Peak's `local` `favicons` and `social_images` disks
@@ -41,7 +42,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `php artisan media:sync push --force` once after the deploy so files in
   git reach the bucket (an icon set Peak Tools generated on Cloud was lost
   already: generate it again from the CP), and set `allow_uploads: true`
-  back on those containers if it was turned off for Cloud. Verify with
+  back on those containers if it was turned off for Cloud. A site that already
+  lists them in `media.disks` keeps its folders and needs nothing. Verify with
   `php artisan media:check --disk=favicons` (and `--disk=social_images`),
   and that a page's favicon link answers a redirect to the bucket.
 

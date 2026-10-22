@@ -87,6 +87,7 @@ class CloudTest extends TestCase
             CloudDefaults::apply($this->app);
 
             $this->assertFalse(config('statamic.assets.image_manipulation.cache'), 'a rendition in one container\'s public/img is missing on the next');
+            $this->assertFalse(config('statamic.assets.image_manipulation.generate_presets_on_upload'));
         }
     }
 

@@ -81,6 +81,8 @@ final class CloudDefaults
         // on the mode, so routes are cached where Cloud is detected, as its build is.
         if (in_array($config->get('statamic.assets.image_manipulation.cache'), [true, 'hybrid'], true)) {
             $config->set('statamic.assets.image_manipulation.cache', false);
+            // Presets made at upload would render inside the request into a disk the next deploy drops.
+            $config->set('statamic.assets.image_manipulation.generate_presets_on_upload', false);
         }
 
         // The driver's models come from the site's published config/statamic/eloquent-driver.php; without it there is nothing to switch.
