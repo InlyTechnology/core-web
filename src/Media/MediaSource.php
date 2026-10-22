@@ -2,7 +2,6 @@
 
 namespace Inly\CoreWeb\Media;
 
-use Illuminate\Support\Arr;
 use Inly\CoreWeb\Support\Assets;
 use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Assets\Asset;
@@ -90,7 +89,7 @@ final class MediaSource
             kind: $kind,
             alt: (string) Assets::meta($asset, 'alt', ''),
             focus: self::focus(Assets::meta($asset, 'focus')),
-            mimeType: $kind === self::VIDEO ? self::guard(fn () => Arr::get($asset->meta(), 'mime_type')) : null,
+            mimeType: $kind === self::VIDEO ? Assets::mimeType($asset) : null,
             asset: $asset,
         );
     }

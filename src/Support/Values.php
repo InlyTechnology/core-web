@@ -46,7 +46,7 @@ final class Values
             return collect($value)->map(fn (mixed $item) => self::unwrap($item))->filter()->values();
         }
 
-        return collect(blank($value) ? [] : [$value]);
+        return collect([$value])->filter()->values();
     }
 
     /** The first item of any relation shape, in the editor's order, or null. */

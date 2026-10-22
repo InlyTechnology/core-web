@@ -2019,7 +2019,8 @@ never global functions; a site that wants a short name wraps one in its own
 All live in `Inly\CoreWeb\Support`. Where Statamic has its own way, use it
 instead: `Statamic::tag('mount_url:news')` or `Collection::find('news')->url()`
 for a collection's URL, `$asset?->url()` for an asset's, and a global by its
-handle in a view (`$configuration->field`, already augmented).
+handle in a view the cascade renders (`$configuration->field`, already
+augmented; not inside a component or Livewire).
 
 ## Checking a site's setup
 

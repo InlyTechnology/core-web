@@ -5,13 +5,7 @@ namespace Inly\CoreWeb\Support;
 use Statamic\Contracts\Assets\Asset;
 use Throwable;
 
-/**
- * An asset's meta read without letting a storage outage take the page down:
- * on a meta cache miss Statamic copies the file out of the bucket to measure
- * it, outside the disk's `throw => false`, so a bare `->get()` turns a bucket
- * 503 into a 500 for the whole page. Everything read this way is cosmetic, so
- * a failure is reported and the page keeps rendering.
- */
+/** Asset meta that a storage outage cannot turn into a 500: a meta cache miss copies the file out of the bucket. */
 final class Assets
 {
     /** A meta key (`alt`, `focus` …) of an asset or of any field shape holding one, or the fallback. */

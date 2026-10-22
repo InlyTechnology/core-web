@@ -54,6 +54,8 @@ class SupportHelpersTest extends TestCase
         $this->assertSame([], Values::collect([])->all());
         $this->assertSame(['id' => 'x'], Values::first(['id' => 'x']), 'one record as an array is one item, not a list');
         $this->assertSame('https://example.com/a.jpg', Values::first('https://example.com/a.jpg'));
+        $this->assertNull(Values::first(false));
+        $this->assertSame('https://example.com/b.jpg', Values::first(['', 'https://example.com/b.jpg']), 'an empty slot is skipped');
     }
 
     public function test_first_keeps_the_editors_order_of_an_ordered_query(): void
@@ -78,6 +80,10 @@ class SupportHelpersTest extends TestCase
         $this->assertNull(Links::url(null));
         $this->assertNull(Links::url(new ArrayableLink(null)));
         $this->assertSame('/a', Links::withSuffix('/a', new Value('  ')));
+        $this->assertSame('/a', Links::withSuffix('/a', '?'));
+        $this->assertSame('/a#x', Links::withSuffix('/a#top', '#x'));
+        $this->assertSame('/a?filter=x#s', Links::withSuffix('/a#top', 'filter=x#s'));
+        $this->assertStringStartsWith('http', Links::url(new Value(new ArrayableLink($a, ['select_across_sites' => true]))), 'a cross-site link stays absolute');
     }
 
     public function test_asset_meta_never_takes_the_page_down(): void
