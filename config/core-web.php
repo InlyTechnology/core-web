@@ -800,10 +800,15 @@ return [
     | scheduler wake-up interval), covering every entry dated since its last
     | run, at most `lookback_minutes` back. An empty `schedule` runs nothing.
     |
+    | uploads_disk: the private bucket Cloud attaches, where Livewire's
+    | temporary uploads wait (as `livewire-tmp`, Livewire's `directory`
+    | under it) when the site chose no disk.
+    |
     */
 
     'cloud' => [
         'deploy' => [],
+        'uploads_disk' => 'private',
         'detected' => null,
         'scheduled_entries' => [
             'schedule' => '*/15 * * * *',

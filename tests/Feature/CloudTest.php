@@ -75,8 +75,74 @@ class CloudTest extends TestCase
         $this->assertTrue(config('statamic.revisions.enabled'));
         $this->assertTrue(config('statamic.editions.pro'));
         $this->assertFalse(config('statamic.stache.watcher'));
+        $this->assertSame('file', config('statamic.stache.cache_store'));
         $this->assertSame('file', config('cache.stores.outpost.driver'), 'the build runs artisan before the cache table exists');
         $this->assertTrue(CloudDefaults::contentInDatabase());
+    }
+
+    public function test_a_file_static_cache_store_gives_way_to_the_shared_default(): void
+    {
+        config(['cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static']]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(config('cache.stores.static_cache'));
+        $this->assertNotNull(config('cache.stores.file'), 'only the static cache store goes');
+
+        config(['cache.stores.static_cache' => ['driver' => 'redis']]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('redis', config('cache.stores.static_cache.driver'), 'a shared store the site chose is kept');
+    }
+
+    public function test_a_built_site_keeps_its_static_cache_on_the_database_store_per_build(): void
+    {
+        $this->setEnv('CACHE_STORE', 'database');
+        $manifest = public_path('core-web-test-build/manifest.json');
+        @mkdir(dirname($manifest), 0777, true);
+        file_put_contents($manifest, '{}');
+
+        try {
+            config(['cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static']]);
+            CloudDefaults::apply($this->app);
+            $first = config('cache.stores.static_cache');
+
+            $this->assertSame('database', $first['driver']);
+            $this->assertStringContainsString('static_', $first['prefix']);
+
+            file_put_contents($manifest, '{"app.css":{}}');
+            clearstatcache();
+            CloudDefaults::apply($this->app);
+
+            $this->assertNotSame($first['prefix'], config('cache.stores.static_cache.prefix'), 'a new build starts an empty static cache');
+        } finally {
+            @unlink($manifest);
+            @rmdir(dirname($manifest));
+        }
+    }
+
+    public function test_livewire_uploads_wait_in_the_private_bucket(): void
+    {
+        $private = ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'fls-private', 'endpoint' => 'https://abc.r2.cloudflarestorage.com'];
+        config(['filesystems.disks.private' => $private, 'livewire.temporary_file_upload.disk' => null]);
+
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+
+        $this->assertSame(CloudDefaults::UPLOADS_DISK, config('livewire.temporary_file_upload.disk'));
+        $this->assertSame(CloudDefaults::UPLOADS_DRIVER, config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.driver'), 'an `s3` driver makes Livewire upload one file at a time');
+        $this->assertSame('fls-private', config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.bucket'));
+        // The package has no S3 client installed, so the driver is checked as registered rather than built.
+        $this->assertArrayHasKey(CloudDefaults::UPLOADS_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
+    }
+
+    public function test_livewire_uploads_keep_a_disk_the_site_chose_or_wait_without_a_private_bucket(): void
+    {
+        config(['filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'], 'livewire.temporary_file_upload.disk' => 'own']);
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+        $this->assertSame('own', config('livewire.temporary_file_upload.disk'));
+
+        config(['filesystems.disks.private' => null, 'livewire.temporary_file_upload.disk' => null]);
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+        $this->assertNull(config('livewire.temporary_file_upload.disk'));
     }
 
     public function test_a_solo_site_has_revisions_off_with_pro(): void

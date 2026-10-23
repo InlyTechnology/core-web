@@ -1098,7 +1098,8 @@ coreMedia() // before Alpine.start()
 Each disk in `media.disks` is defined unless the app's
 `config/filesystems.php` has one by that name, so **remove the site's own
 `assets` disk** (Statamic's skeleton ships one) and any other it lists there;
-`media:check` says when the app's definition is the one in use. The bucket
+`media:check` says when the app's definition is the one in use (on Laravel
+Cloud a `local` one is moved to the bucket instead). The bucket
 needs `composer require league/flysystem-aws-s3-v3`.
 
 | Where | With `CORE_MEDIA_KEY` | Without |
@@ -1186,7 +1187,8 @@ block keeps the package's defaults for what it leaves out, one group deep
 Peak's `favicons` and `social_images` containers keep their handles but
 write through their disks, so they can be media disks too: list them and
 remove their `local` definitions from `config/filesystems.php`. On Laravel
-Cloud the `cloud` feature does that for them. For R2, set `endpoint` to the account's R2 endpoint and
+Cloud the `cloud` feature does that for them, and for any `local` disk in
+`media.disks`. For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
 
 ### Moving a site's own bucket disk onto these
@@ -2037,6 +2039,10 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
 | Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
+| The Stache's cache store (`statamic.stache.cache_store`), also over a store the site's `config/statamic/stache.php` names | `file`: the Stache is built from git, the same in every container, and on the database store every read would be a query. Each container builds its own on its first request, so add `php artisan statamic:stache:warm` to Cloud's build commands to ship it warm | `STATAMIC_STACHE_CACHE_STORE` |
+| The static cache's store (`static_cache`), when the site has none or one on the `file` driver (Statamic's skeleton ships one) | the database store under a prefix per build (from the Vite manifests), so every replica shares one copy and a page cached by the old release while a deploy runs is never served by the new one. Clearing it (the deploy, the CP's Cache utility) empties the whole cache table. On another default store it is removed and the pages sit in that store | none; a store of another driver is kept |
+| A media disk (`media.disks`) the site defines `local`, such as Statamic's skeleton `assets` disk or a Files container kept local for another host (with `features.media`) | a media disk on the bucket, like Peak's | none |
+| Livewire's temporary uploads (`livewire.temporary_file_upload.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | a `livewire-tmp` disk on the private bucket, under a driver of its own (on an `s3` disk Livewire refuses a `multiple` field and never cleans up), so Livewire deletes uploads older than a day itself | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
 
