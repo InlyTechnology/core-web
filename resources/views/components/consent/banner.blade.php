@@ -19,6 +19,7 @@
 {{-- The same markup for every visitor, so it is safe in a cached page; core-consent.js shows it. --}}
 <div class="core-consent" data-core-consent @if ($style = \Inly\CoreWeb\Consent\Consent::brandingStyle()) style="{{ $style }}" @endif>
     <section class="core-consent__banner" data-consent-banner role="region" aria-labelledby="core-consent-title" hidden>
+        <div class="core-consent__panel">
         <div class="core-consent__head">
             @if (! empty($branding['logo']))
                 <img class="core-consent__logo" src="{{ $branding['logo'] }}" alt="">
@@ -37,6 +38,7 @@
             <button type="button" class="core-consent__button" data-consent-accept-all>{{ __('Accept all') }}</button>
         </div>
         @include('core-web::components.consent.mark')
+        </div>
     </section>
 
     @if (in_array($button, ['bottom-left', 'bottom-right'], true))
@@ -46,12 +48,14 @@
     @endif
 
     <dialog class="core-consent__dialog" data-consent-dialog aria-labelledby="core-consent-settings-title">
-        <form method="dialog" class="core-consent__form">
-            <div class="core-consent__head">
+        <form method="dialog" class="core-consent__form core-consent__panel">
+            <div class="core-consent__header">
                 <h2 class="core-consent__title" id="core-consent-settings-title">{{ __('Cookie settings') }}</h2>
-                <button type="button" class="core-consent__close" data-consent-close aria-label="{{ __('Close') }}">&times;</button>
+                <p class="core-consent__text">{{ __('Choose which cookies we may use. Necessary cookies are always on.') }}</p>
+                <button type="button" class="core-consent__close" data-consent-close aria-label="{{ __('Close') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
-            <p class="core-consent__text">{{ __('Choose which cookies we may use. Necessary cookies are always on.') }}</p>
 
             @foreach ($categories as $category => $vendors)
                 <div class="core-consent__category">

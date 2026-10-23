@@ -89,7 +89,7 @@ class ConsentTest extends TestCase
         $this->assertMatchesRegularExpression('/value="necessary"\s+checked disabled/', $html);
         $this->assertStringContainsString('value="marketing"', $html);
         $this->assertStringNotContainsString('value="preferences"', $html, 'a category no vendor uses is not asked for');
-        $this->assertStringContainsString('Consent by Inly Core', $html);
+        $this->assertStringContainsString('Core Consent', $html);
     }
 
     public function test_a_corner_button_reopens_the_settings_where_configured(): void
@@ -111,7 +111,7 @@ class ConsentTest extends TestCase
 
         $this->assertStringContainsString('style="--core-consent-accent: #c00"', $html, 'a value that would break out of the declaration is dropped');
         $this->assertStringContainsString('src="/logo.svg"', $html);
-        $this->assertStringNotContainsString('Consent by Inly Core', $html);
+        $this->assertStringNotContainsString('Core Consent', $html);
     }
 
     public function test_held_back_scripts_and_embeds_render_inert(): void

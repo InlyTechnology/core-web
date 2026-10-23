@@ -2162,7 +2162,7 @@ overrides any setting for one site (its vendors, branding, `policy_url`,
 ### Branding
 
 The banner is Inly Core's: Paper, Ink and Core blue, Geist where the site
-loads it, and a "Consent by Inly Core" line. `consent.branding` overrides
+loads it, and a "Core Consent" line. `consent.branding` overrides
 `accent`, `accent_foreground`, `background`, `foreground`, `font`, `logo` and
 `show_mark`; the CSS custom properties (`--core-consent-accent`, ...) can be
 set in the site's own CSS too.

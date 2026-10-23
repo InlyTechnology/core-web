@@ -819,7 +819,7 @@ return [
     | branding: the banner wears Inly Core's look. A site overrides any of
     | it: `accent` and `accent_foreground` (colours), `background`,
     | `foreground`, `font` (a CSS font-family), `logo` (an image URL shown
-    | beside the title) and `show_mark` (the "Consent by Inly Core" line).
+    | beside the title) and `show_mark` (the "Core Consent" line).
     |
     | button: once the visitor has chosen, a small round button in a corner
     | reopens the settings, as the law asks withdrawing to be as easy as

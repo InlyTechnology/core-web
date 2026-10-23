@@ -11,9 +11,24 @@
  */
 const settings = () => window.coreConsent || {}
 
+// A sandboxed frame (an embedded preview) refuses cookies: read none and drop writes.
+const cookies = () => {
+    try {
+        return document.cookie
+    } catch {
+        return ''
+    }
+}
+
+const setCookie = (value) => {
+    try {
+        document.cookie = value
+    } catch {}
+}
+
 const readChoice = () => {
     const { cookie, version, renewAfterDays } = settings()
-    const match = document.cookie.match(new RegExp(`(?:^|; )${cookie}=([^;]*)`))
+    const match = cookies().match(new RegExp(`(?:^|; )${cookie}=([^;]*)`))
     if (!match) return null
 
     try {
@@ -37,11 +52,11 @@ const uuid = () =>
 const writeChoice = (choice) => {
     const { cookie, renewAfterDays } = settings()
     const secure = location.protocol === 'https:' ? '; Secure' : ''
-    document.cookie = `${cookie}=${encodeURIComponent(JSON.stringify(choice))}; Max-Age=${renewAfterDays * 86400}; Path=/; SameSite=Lax${secure}`
+    setCookie(`${cookie}=${encodeURIComponent(JSON.stringify(choice))}; Max-Age=${renewAfterDays * 86400}; Path=/; SameSite=Lax${secure}`)
 }
 
 const deleteCookies = (names) => {
-    const existing = document.cookie.split('; ').map((pair) => pair.split('=')[0])
+    const existing = cookies().split('; ').map((pair) => pair.split('=')[0])
     const host = location.hostname
     const domains = ['', host, `.${host}`, `.${host.split('.').slice(-2).join('.')}`]
 
@@ -50,7 +65,7 @@ const deleteCookies = (names) => {
         if (!matches) continue
 
         for (const domain of domains) {
-            document.cookie = `${name}=; Max-Age=0; Path=/${domain ? `; Domain=${domain}` : ''}`
+            setCookie(`${name}=; Max-Age=0; Path=/${domain ? `; Domain=${domain}` : ''}`)
         }
     }
 }
