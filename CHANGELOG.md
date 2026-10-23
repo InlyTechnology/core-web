@@ -15,6 +15,211 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   Cloud too. Only the last proposal applied to a target is undone. The
   Statamic connector API's proposal shape gains `undoable`, `undone_by`,
   `undone_at` and the status `undone`. See README → Proposals.
+- **`content:import` finishes asset meta on large media libraries**: asset
+  meta is imported one container per process (up to an hour each) through
+  the hidden `core-web:asset-meta <container>`, which skips assets already
+  in the database. Before, all of it ran in one ten-minute step, which a
+  large bucket outlasted (each asset is a read of its `.meta`), and a run
+  again started over. A failure or a timeout names the containers left and
+  the commands that finish the import. README → Laravel Cloud.
+
+## v0.27.0
+
+- **CMS sign-in works with users in the database**: the hand-off back from
+  Core failed with `Call to undefined method
+  Statamic\Auth\Eloquent\User::passwordHash()` on a site whose users are on
+  the eloquent repository (the `cloud` feature's default), so nobody could
+  sign in to the CP there. The account's password is now cleared on either
+  repository, and taking super or every mapped role from an account writes
+  `false` and an empty role list there instead of a null column.
+
+## v0.26.0
+
+- **Core AI's drafts through core-web**: with `drafts` and `content` on,
+  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
+  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
+  `DraftWriter`, so a site drops its own drafts controller and writer. See
+  README → Drafts → Core AI's drafts.
+- **Content schema**: with `drafts` and `content` on, core-web also serves
+  `GET blocks` and `GET blocks/{collection}/{handle}`, what Core AI builds a
+  draft from, read from the blueprints of `drafts.collections`
+  (`StatamicContentSchema`, configured in `drafts.schema`), and refuses a
+  draft naming an older `catalog_hash`. Docs: README → Drafts → Content
+  schema.
+- **Statamic helpers**: `Inly\CoreWeb\Support\Values` (`unwrap`, `collect`,
+  `first`), `Assets` (`meta`, `mimeType`, `size`, outage-guarded) and `Links`
+  (`url`, `withSuffix`), for the field shapes every site normalises; the media
+  components read through them too. `Values::first()` fetches a query builder
+  before taking the first item, so it keeps the editor's manual order where a
+  site's own `firstAsset()` calling `->first()` on the builder did not. Docs:
+  README → Statamic helpers.
+
+### Upgrade notes
+
+- **A site's own `blocks` endpoints and `DraftCatalog`.** What breaks: a
+  site's own block catalog at `api/core/v1/blocks` shadows core-web's (app
+  routes load after a package's), a class implementing `DraftCatalog` no
+  longer loads (the interface is gone), and every draft naming the site's
+  own `catalog_hash` is refused (`catalog_changed`), since drafts are now
+  checked against core-web's schema. Find it: `grep -rn DraftCatalog app/`
+  and `grep -rn "blocks" routes/`. Migrate: delete the routes, controller,
+  catalog class and its binding; set `drafts.schema` (`settings_fieldset`,
+  `guide_fieldset`, `value_formats`, e.g. the site's own `assets` format) to
+  what the catalog hardcoded, implement `DescribesStoredValue` on
+  Dictionaries whose keys the catalog described, and bind a
+  `StatamicContentSchema` subclass to `ContentSchema` for anything else (an
+  entry `status()` of its own). Verify: `GET api/core/v1/blocks` answers the
+  same blocks and fields as before (the hash changes once), and a draft
+  with its `catalog_hash` is taken.
+
+## v0.25.0
+
+- **`content:import` imports CP users**: with users on the eloquent
+  repository (the `cloud` feature's default), it runs
+  `statamic:eloquent:import-users` last when `users/` holds accounts and the
+  users table is empty, so a site without Core sign-in can sign in after its
+  first deploy. A table that already holds accounts, or a site with
+  `cms_sign_in` on, is left alone; a failed users import only warns.
+  README → Laravel Cloud.
+- **`content:import` finishes on large sites**: entry URIs and order are
+  recomputed per collection in their own process, and a failure or a
+  timeout names the
+  collections left and the `core-web:entry-order` command that finishes
+  them. Before, a large site's last step could be killed without a message.
+  README → Laravel Cloud.
+- **`content:import` leaves nothing on the queue**: each step runs through
+  the hidden `core-web:import-step`, which runs it with the `sync` queue and
+  with search indexing off. Before, Cloud's cached config ignored the
+  `QUEUE_CONNECTION=sync` handed to each step, so saving the trees queued one
+  entry-order job per entry, and search updates queued too, waiting on a
+  queue a site may have no worker for. When an index's driver outlives the
+  container (anything but `local` and `null`), the indexes are rebuilt once
+  at the end; a `local` index builds itself on its first search. README → Laravel
+  Cloud.
+- **Feature commands on every Cloud site**: with `cloud` on, `media:sync`,
+  `media:check` and `content:check` succeed with a "feature is off" note
+  where their feature is off, so a fixed first-deploy list (core-cloud's)
+  runs on every site. README → Laravel Cloud.
+
+- **Mail sender**: core-web builds `mail.from.address` as
+  `<local part>@<domain>` from `core-web.mail.from`, so a site commits its
+  local part (`acme`) instead of a whole address per environment. The
+  domain defaults to `transactional.inly.dev`; `MAIL_FROM_LOCAL_PART` and
+  `MAIL_FROM_DOMAIN` override each part, and `MAIL_FROM_ADDRESS` or a
+  committed address still wins. Without a local part nothing changes.
+  README → Mail sender.
+
+- **Cookie consent**: an opt-in `consent` feature, a light consent tool in
+  place of Cookiebot for sites that need no certified CMP. The banner,
+  settings dialog and cookie declaration in Inly Core's look (overridable),
+  scripts and embeds held back per category, Google Consent Mode v2 with
+  Tag Manager held back until statistics or marketing consent by default, and a consent
+  log in the site's database. A corner button reopens the settings once the
+  visitor has chosen (`consent.button`). Editors set the banner's title,
+  text and cookie page on a global (`consent.global`, the `core-web::consent`
+  fieldset), and a site with only necessary cookies shows no banner.
+  README → Cookie consent.
+
+## v0.24.0
+
+- **Glide images on Cloud work on every replica**: the `cloud` feature turns
+  off Statamic's `true` and `hybrid` Glide caches, which keep renditions in
+  one container's `public/img` and their keys in a store. On another replica,
+  or after a deploy, a cached page's `/img/` URLs failed (404, or 400 with
+  `true`) and the CP's thumbnails answered 500. Uncached, each URL carries its
+  source (signed, with `secure` on) and every container renders its own
+  copies, so each image goes through PHP and is rendered again after a
+  deploy. Presets are no longer made at upload there either. A cache on a
+  disk of its own is kept.
+  README → Laravel Cloud.
+- **Favicons and social images on the bucket on Cloud**: with `media` on, the
+  `cloud` feature turns Peak's `local` `favicons` and `social_images` disks
+  into media disks on the bucket. On Cloud's disk, Peak Tools' generated icon
+  set and Peak SEO's generated social images were gone at the next deploy and
+  seen by one replica only. Peak's `/favicons/...` links redirect to the
+  bucket. README → Laravel Cloud.
+
+### Upgrade notes
+
+- **Glide renders through PHP on Cloud.** A Cloud site with
+  `image_manipulation.cache` set to `true` or `hybrid` now serves Glide
+  images uncached. Find it with `grep -n "'cache' =>" config/statamic/assets.php`.
+  Nothing to migrate. Image URLs change from `/img/containers/...` to
+  `/img/asset/...?s=`, so clear the static cache once after the deploy
+  (`core-web:deploy` does). Verify by opening a page and a CP asset
+  thumbnail on Cloud.
+- **Peak's favicons and social images move to the bucket on Cloud.** A Cloud
+  site with `media` on whose `config/filesystems.php` defines `favicons` or
+  `social_images` with the `local` driver now serves them from the bucket,
+  in folders of the same name. Find it with
+  `grep -n "'favicons'\|'social_images'" config/filesystems.php`. Run
+  `php artisan media:sync push --force` once after the deploy so files in
+  git reach the bucket (an icon set Peak Tools generated on Cloud was lost
+  already: generate it again from the CP), and set `allow_uploads: true`
+  back on those containers if it was turned off for Cloud. A site that already
+  lists them in `media.disks` keeps its folders and needs nothing. A site that
+  committed icons to `public/favicons` removes them from git after the push:
+  Cloud serves files in `public/` before the redirect to the bucket. Verify with
+  `php artisan media:check --disk=favicons` (and `--disk=social_images`),
+  and that a page's favicon link answers a redirect to the bucket.
+
+## v0.23.1
+
+- **Docs**: README → Laravel Cloud lists the gotchas found launching the
+  first site: `league/flysystem-aws-s3-v3` is required before Cloud deploys
+  with a bucket, uuid foreign keys to users and sessions, the Statamic Solo
+  licence env, `APP_NAME`, the CORS the public bucket must answer behind
+  core-cdn, and the queue on Cloud. No code changes.
+
+## v0.23.0
+
+- **Cloud sites can sleep**: on Laravel Cloud the `cloud` feature turns off
+  Statamic's every-minute scheduled-entries job, which woke a hibernating
+  site each minute, and schedules `core-web:scheduled-entries` every 15
+  minutes instead. It covers every entry dated since its last run, so
+  static-cached pages and search still update. `core-web:deploy` warns on
+  Cloud about tasks due more often than every 15 minutes. README → Laravel Cloud → Scheduled
+  entries and sleeping.
+- **Cloud media on Core Cloud's buckets and CDN**: with two buckets attached,
+  the asset disks use the public one on disk `media`
+  (`media.bucket.cloud_disk`, or `CORE_PUBLIC_DISK`), not just the first. With no `media.bucket.url` committed, files are served
+  through `CORE_CDN_BASE_URL` (set by Core Cloud's CDN integration) before
+  the bucket's own URL, so images are transformed with nothing committed.
+  README → Media → On Laravel Cloud.
+- **Cloud content tables that fit content/**: `--tag=core-web-cloud-migrations`
+  publishes the eloquent driver's content migrations with string entry ids
+  and json columns. With the stock ones, `content:import` failed on Postgres
+  (an id such as `home` is not a uuid), and jsonb re-sorted every entry's
+  keys. The import now checks the columns first and names any it cannot
+  fill. README → Laravel Cloud.
+
+### Upgrade notes
+
+- **`content:import` refuses content tables with jsonb or non-string entry
+  ids.** Affects Cloud sites that published the eloquent driver's own
+  migrations: `grep -ln "jsonb(\|uuid('id')" database/migrations`, or run
+  `content:import`, which names the columns. Publish core-web's copies over
+  them (`php artisan vendor:publish --tag=core-web-cloud-migrations
+  --force`), delete a driver `create_entries_table.php` if there is one, and
+  rebuild the tables on a database no editor has used (`migrate:fresh`). A
+  database editors already use keeps its tables until its data is moved
+  over. Verify: `content:import` gets past its column check.
+- **Images on a Core Cloud site switch to CDN URLs.** Affects Laravel Cloud
+  sites with no `media.bucket.url` whose environment has `CORE_CDN_BASE_URL`
+  and a bucket on disk `media` (`grep -n "'url' =>" config/core-web.php` under
+  `bucket`). Their files were served from the bucket's own URL and are now
+  served through the CDN, transformed. Nothing to migrate; to keep the
+  bucket's URL, commit `'cdn_url' => ''` under `media.bucket`. Verify with
+  `php artisan media:check` and an image's `src` on a page.
+- **A scheduled entry's static-cache copy and search entry now update up to
+  15 minutes late on Cloud.** Affects sites with `features.cloud` on Laravel
+  Cloud (`grep -n "'cloud' =>" config/core-web.php`, set to true or an env
+  var that is). A config published earlier needs no new keys. Statamic's
+  every-minute job no longer runs there. If an entry must appear within the
+  minute, set `cloud.scheduled_entries.schedule` to `* * * * *` (the site
+  then never sleeps) or `STATAMIC_HANDLE_SCHEDULED_ENTRIES=true`. Verify
+  with `php artisan schedule:list`: `core-web:scheduled-entries` is listed
+  and Statamic's `HandleEntrySchedule` is not.
 
 ## v0.22.0
 

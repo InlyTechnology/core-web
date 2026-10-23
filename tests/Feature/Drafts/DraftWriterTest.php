@@ -17,7 +17,6 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class DraftWriterTest extends TestCase
 {
@@ -290,7 +289,8 @@ class DraftWriterTest extends TestCase
         $note = Entry::make()->collection('notes')->locale('default')->slug('n')->data(['title' => 'N'])->published(false);
         $note->save();
 
-        $this->expectException(HttpException::class);
+        $this->expectException(DraftRefused::class);
+        $this->expectExceptionMessage('The site has no such entry to draft.');
 
         $this->writer()->publish($this->author(), $note->id());
     }

@@ -88,6 +88,12 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   written as the person's own CP account.
 - **Links to the site's own pages are entry references**, never typed URLs; `content:check own-url-links` finds
   the ones that are not; fixing a finding writes the draft.
+- **Core AI's drafts are core-web's endpoints** (`drafts` + `content`): a site never keeps its own drafts controller
+  or writer. What is site-specific goes in bindings: `DraftValueNormaliser` for its field shapes.
+- **What Core AI builds a draft from is read from the blueprints** (`blocks`, `StatamicContentSchema`): never a
+  hand-written block list. Guide the AI in the blueprints (`instructions`, `ai_instructions`, `guide`; `ai_fillable`
+  and `draft_validate` only inform it unless the site's normaliser enforces them), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
+  `DescribesStoredValue`; a `ContentSchema` subclass only for what none of these can say.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 
 ## Forms, chat and live reads
@@ -102,6 +108,22 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   than any page should show, so each live read is a named `LiveRead` and there is no pass-through.
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a
   cached page).
+
+## Cookie consent (`consent`)
+
+- **Every script that sets an optional cookie is held back** with `@consentScript('<category>')` or
+  `type="text/plain" data-consent`, and every embed that does sits in `<x-core-web::consent.gate>`. Google Tag
+  Manager renders through `<x-core-web::consent.google-tag-manager>`, never through Peak SEO's tracker setting.
+- **A new vendor is declared in the same change**: its key (or its own definition) in `consent.vendors`, and
+  `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
+- A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
+
+## Statamic helpers
+
+- **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with
+  `Links` (README → Statamic helpers), never a copy of them in the site; a site's short global helper only wraps one.
+- **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
+  handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
 
 ## Testing
 

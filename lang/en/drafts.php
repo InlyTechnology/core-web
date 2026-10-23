@@ -29,4 +29,10 @@ return [
     'no_cms_user' => ':name has no account in the site\'s CMS.',
     'core_ai_draft' => 'Drafted by Core AI for :name',
     'core_ai_proposal' => 'Proposed by Core AI for :name',
+    'core_ai_publish' => 'Published by Core AI for :name',
+    'no_draft' => 'The site has no such entry to draft.',
+    'catalog_changed' => 'What a draft may be built from changed since you read it: read the blocks again and redo the draft.',
+    'no_block' => 'The collection has no such block.',
+    'schema_slug_rules' => 'Made from the title in the site\'s language, lowercase with hyphens; it is the last part of the URL (`route`), so it must be unique in the collection on its site.',
+    'schema_date_rules' => 'The publish date. A date in the future keeps the entry hidden until that day (`date_behavior.future`).',
 ];
