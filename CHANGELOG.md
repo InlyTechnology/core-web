@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.31.0
 
 - **`content:push --publish`**: on a live site with
   `content_sync.push_publish` on (off by default), a push publishes its
