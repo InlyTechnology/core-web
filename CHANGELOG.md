@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.29.1
 
 - **Cloud's env vars survive a cached config**: with `cloud` on, a config
   cached on Laravel Cloud kept the values the build resolved only until the
