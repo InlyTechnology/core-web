@@ -17,8 +17,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Rate limits group IPv6 by /64**: the named per-address limits (chat
   turns, the consent log, CMS sign-in, content sync, forms) count an IPv6
   client by its /64, the block one subscriber is given, and an IPv4-mapped
-  address as
-  the IPv4 client.
+  address as the IPv4 client.
 - **Shared-secret pings open once**: a ping signed with
   `WEBSITE_SYNC_SECRET` needs a nonce, is refused when its nonce was seen
   before, and may expire at most an hour (plus a minute of skew) out. Pings
