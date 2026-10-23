@@ -60,7 +60,7 @@
             @foreach ($categories as $category => $vendors)
                 <div class="core-consent__category">
                     <label class="core-consent__toggle">
-                        <input type="checkbox" name="consent-category" value="{{ $category }}" @if ($category === 'necessary') checked disabled @endif>
+                        <input type="checkbox" role="switch" name="consent-category" value="{{ $category }}" @if ($category === 'necessary') checked disabled @endif>
                         <span class="core-consent__category-title">{{ $titles[$category] }}</span>
                     </label>
                     <p class="core-consent__category-text">{{ $descriptions[$category] }}</p>

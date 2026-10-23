@@ -260,12 +260,57 @@
     gap: 10px;
     font-weight: 500;
     font-size: 0.9375rem;
+    justify-content: space-between;
+    cursor: pointer;
 }
 
+/* Core's switch: a track that fills with the accent when on, its thumb sliding across. */
 .core-consent__toggle input {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--core-consent-accent);
+    order: 2;
+    position: relative;
+    flex-shrink: 0;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--core-consent-foreground) 12%, var(--core-consent-background));
+    appearance: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.core-consent__toggle input::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--core-consent-background);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+    transition: transform 0.15s ease;
+}
+
+.core-consent__toggle input:checked {
+    background: var(--core-consent-accent);
+}
+
+.core-consent__toggle input:checked::before {
+    transform: translateX(20px);
+}
+
+.core-consent__toggle input:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .core-consent__toggle input,
+    .core-consent__toggle input::before {
+        transition: none;
+    }
 }
 
 .core-consent__details {
