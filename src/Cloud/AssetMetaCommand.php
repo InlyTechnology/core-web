@@ -56,8 +56,10 @@ class AssetMetaCommand extends Command
                 continue;
             }
 
-            EloquentAsset::makeModelFromContract($asset)?->save();
-            $imported++;
+            // An asset without an extension has no row to write.
+            if (EloquentAsset::makeModelFromContract($asset)?->save()) {
+                $imported++;
+            }
         }
 
         $this->line("{$container->handle()}: {$imported} imported, {$done->count()} already in.");
