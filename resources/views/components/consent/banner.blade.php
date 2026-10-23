@@ -84,6 +84,12 @@
                 </div>
             @endforeach
 
+            <details class="core-consent__details core-consent__id" data-consent-id-line hidden>
+                <summary>{{ __('Show consent details') }}</summary>
+                <p>{{ __('Consent date:') }} <span data-consent-date></span></p>
+                <p>{{ __('Your consent id:') }} <code data-consent-id></code></p>
+            </details>
+
             <div class="core-consent__actions">
                 <button type="button" class="core-consent__button core-consent__button--outline" data-consent-save>{{ __('Save choices') }}</button>
                 <button type="button" class="core-consent__button" data-consent-reject-all>{{ __('Reject all') }}</button>

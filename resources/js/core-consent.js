@@ -150,6 +150,8 @@ const showStatus = (choice) => {
         line.hidden = !choice
         const id = line.querySelector('[data-consent-id]')
         if (id) id.textContent = choice?.id ?? ''
+        const date = line.querySelector('[data-consent-date]')
+        if (date) date.textContent = choice ? new Date(choice.t * 1000).toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''
     }
 }
 

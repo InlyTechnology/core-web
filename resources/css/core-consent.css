@@ -357,6 +357,10 @@
     color: var(--core-consent-muted);
 }
 
+.core-consent__id p {
+    margin: 6px 0 0;
+}
+
 .core-consent__id[hidden] {
     display: none;
 }

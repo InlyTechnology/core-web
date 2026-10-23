@@ -72,5 +72,7 @@
     "Tells visitors apart to count visits.": "Skiljer besökare åt för att räkna besök.",
     "Tells when the browser restarted.": "Märker när webbläsaren startats om.",
     "Ties form submissions to a visitor.": "Knyter formulärinskick till en besökare.",
-    "Tracks visits for HubSpot's marketing analytics.": "Följer besök för HubSpots marknadsanalys."
+    "Tracks visits for HubSpot's marketing analytics.": "Följer besök för HubSpots marknadsanalys.",
+    "Show consent details": "Visa detaljer om samtycket",
+    "Consent date:": "Samtyckesdatum:"
 }
