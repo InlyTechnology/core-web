@@ -54,23 +54,32 @@ const deleteCookies = (names) => {
     }
 }
 
-const granted = (choice, categories) => categories.split(/\s+/).filter(Boolean).every((category) => choice?.c.includes(category))
+// data-consent-match="any" runs an element on any one of its categories (Tag Manager, which serves several).
+const granted = (choice, categories, match = 'all') => {
+    const list = categories.split(/\s+/).filter(Boolean)
+    const has = (category) => choice?.c.includes(category)
 
-const runScript = (held) => {
+    return match === 'any' ? list.some(has) : list.every(has)
+}
+
+const fresh = (held) => {
     const script = document.createElement('script')
     for (const { name, value } of held.attributes) {
-        if (name === 'type' || name === 'data-consent' || name === 'data-src') continue
+        if (name === 'type' || name.startsWith('data-consent') || name === 'data-src') continue
         script.setAttribute(name, value)
     }
     if (held.dataset.consentType) script.type = held.dataset.consentType
     if (held.dataset.src) script.src = held.dataset.src
     else script.text = held.text
-    held.replaceWith(script)
+
+    return script
 }
+
+const runScript = (held) => held.replaceWith(fresh(held))
 
 const release = (choice, root = document) => {
     for (const held of root.querySelectorAll('script[type="text/plain"][data-consent]')) {
-        if (granted(choice, held.dataset.consent)) runScript(held)
+        if (granted(choice, held.dataset.consent, held.dataset.consentMatch)) runScript(held)
     }
 
     for (const gate of root.querySelectorAll('[data-consent-gate]')) {
@@ -79,11 +88,11 @@ const release = (choice, root = document) => {
         const template = gate.querySelector(':scope > template')
         if (!template) continue
         const content = template.content.cloneNode(true)
+        // Swapped before they reach the page, so each runs once and in order, as written.
+        for (const script of content.querySelectorAll('script:not([type="text/plain"])')) script.replaceWith(fresh(script))
         gate.querySelector(':scope > [data-consent-placeholder]')?.remove()
         template.remove()
         gate.append(content)
-        // Scripts cloned from a template never run on their own.
-        for (const script of gate.querySelectorAll('script:not([type="text/plain"])')) runScript(script)
         release(choice, gate)
     }
 }
@@ -131,8 +140,10 @@ const showStatus = (choice) => {
 let current = null
 const listeners = []
 
+const OPTIONAL = ['preferences', 'statistics', 'marketing']
+
 const choose = (categories, action) => {
-    const optional = settings().categories || []
+    const optional = OPTIONAL
     const next = {
         id: current?.id ?? uuid(),
         v: settings().version,
@@ -152,8 +163,10 @@ const choose = (categories, action) => {
     window.dispatchEvent(new CustomEvent('core-consent:change', { detail: { categories: next.c } }))
     for (const listener of listeners) listener(next.c)
 
+    // Also after a re-ask, when an earlier choice's cookies may still be there.
+    deleteCookies(OPTIONAL.filter((category) => !next.c.includes(category)).flatMap((category) => settings().cookies?.[category] ?? []))
+
     if (withdrawn.length > 0) {
-        deleteCookies(withdrawn.flatMap((category) => settings().cookies?.[category] ?? []))
         location.reload()
 
         return
@@ -205,9 +218,9 @@ export default function coreConsent() {
     }
 
     // Livewire swaps markup in after load; release what its morph added.
-    document.addEventListener('livewire:init', () => {
-        window.Livewire.hook('morphed', ({ el }) => current && release(current, el))
-    })
+    const hookLivewire = () => window.Livewire.hook('morphed', ({ el }) => current && release(current, el))
+    if (window.Livewire) hookLivewire()
+    else document.addEventListener('livewire:init', hookLivewire)
 
     window.CoreConsent = {
         open: openDialog,

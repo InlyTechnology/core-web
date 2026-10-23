@@ -2115,22 +2115,26 @@ it.
 
 - **Google Tag Manager**: render it through the component, not through Peak
   SEO's tracker setting. In `basic` mode (the default) the container waits
-  for statistics consent; `advanced` loads it at once and lets Google's tags
+  until statistics or marketing is granted, and its tags read Consent Mode
+  for which; `advanced` loads it at once and lets Google's tags
   send cookieless pings under Consent Mode. Tags in the container that need
   marketing consent read Consent Mode's `ad_*` signals, and a
   `consent_update` event is pushed to the dataLayer on every choice.
 - **Any other script**: `@consentScript('marketing') ... @endconsentScript`,
   or `<script type="text/plain" data-consent="marketing" data-src="https://js.hs-scripts.com/123.js" async></script>`
   for an external one. `data-consent` takes several categories, space
-  separated, all of which must be granted.
+  separated, all of which must be granted (`data-consent-match="any"` for
+  any one of them).
 - **An embed** (a HubSpot form, a booking frame, a video):
   `<x-core-web::consent.gate category="marketing">...</x-core-web::consent.gate>`
   shows a placeholder with *Accept marketing cookies* until it is granted.
+  Declare the embed's vendor too, so the category is in the banner.
 - **The declaration**: `<x-core-web::consent.declaration />` on the cookie
   page, a table per category read from the same list, with the visitor's
   current choice and a button to change it.
 
-A category taken back deletes its cookies and reloads the page, since a
+Every choice deletes the cookies of the categories it does not grant, and a
+category taken back reloads the page, since a
 script that ran cannot be stopped. `window.CoreConsent` has `open()`,
 `has(category)`, `categories()` and `onChange(fn)`, and a
 `core-consent:change` event fires on `window`.

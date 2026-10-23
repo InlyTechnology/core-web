@@ -803,7 +803,7 @@ return [
     | A component's `policy-url` attribute wins (a per-site pin).
     |
     | google: Consent Mode v2 defaults, all denied until the visitor grants.
-    | `mode` basic holds Google's tags back until statistics is granted;
+    | `mode` basic holds Google's tags back until statistics or marketing is granted;
     | advanced loads them at once and lets them send cookieless pings.
     |
     | log: proof of consent, one row per choice in the site's own database,

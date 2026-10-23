@@ -112,9 +112,9 @@ class ConsentTest extends TestCase
         $this->assertStringContainsString('data-consent-grant="marketing"', $html);
     }
 
-    public function test_tag_manager_waits_for_statistics_in_basic_mode_and_loads_at_once_in_advanced(): void
+    public function test_tag_manager_waits_for_statistics_or_marketing_in_basic_mode_and_loads_at_once_in_advanced(): void
     {
-        $this->assertStringContainsString('<script type="text/plain" data-consent="statistics">', Blade::render('<x-core-web::consent.google-tag-manager id="GTM-ABC" />'));
+        $this->assertStringContainsString('<script type="text/plain" data-consent="statistics marketing" data-consent-match="any">', Blade::render('<x-core-web::consent.google-tag-manager id="GTM-ABC" />'));
 
         config(['core-web.consent.google.mode' => 'advanced']);
         $html = Blade::render('<x-core-web::consent.google-tag-manager id="GTM-ABC" />');

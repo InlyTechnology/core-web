@@ -12,7 +12,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   place of Cookiebot for sites that need no certified CMP. The banner,
   settings dialog and cookie declaration in Inly Core's look (overridable),
   scripts and embeds held back per category, Google Consent Mode v2 with
-  Tag Manager held back until statistics consent by default, and a consent
+  Tag Manager held back until statistics or marketing consent by default, and a consent
   log in the site's database. README → Cookie consent.
 
 ## v0.24.0
