@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Media;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Filesystem\LocalFilesystemAdapter;
+use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\CoreWebServiceProvider;
@@ -196,23 +197,56 @@ final class MediaDisks
             'bucket' => (string) ($cloud['bucket'] ?? ''),
             'endpoint' => (string) ($cloud['endpoint'] ?? ''),
             'region' => ($cloud['region'] ?? '') ?: 'auto',
-            'url' => filled($bucket['url'] ?? null) ? $bucket['url'] : (string) ($cloud['url'] ?? ''),
+            'url' => self::cloudUrl($bucket, $cloud),
             'acl' => false,
         ]);
     }
 
-    /** @return array<string, mixed>|null The first of Cloud's attached buckets that is not a scoped disk (whose `scoped_disk` names its parent). */
+    /**
+     * The files' base URL on a Cloud bucket: the committed one, else the CDN Core Cloud puts in front of its public
+     * bucket when that is the bucket in use, else the bucket's own, which serves files untransformed.
+     *
+     * @param  array<string, mixed>  $bucket
+     * @param  array<string, mixed>  $cloud
+     */
+    private static function cloudUrl(array $bucket, array $cloud): string
+    {
+        if (filled($bucket['url'] ?? null)) {
+            return (string) $bucket['url'];
+        }
+
+        // A config published before this key existed has none, so the env var is read here too.
+        $cdn = array_key_exists('cdn_url', $bucket) ? $bucket['cdn_url'] : Env::get('CORE_CDN_BASE_URL');
+
+        return filled($cdn) && ($cloud['named'] ?? false) ? (string) $cdn : (string) ($cloud['url'] ?? '');
+    }
+
+    /**
+     * Cloud's attached bucket on the public disk (`named` true), else the first that is not a scoped disk (whose
+     * `scoped_disk` names its parent): a site with a private bucket beside its public one must not pick the private.
+     *
+     * @return array<string, mixed>|null
+     */
     private static function cloudDisk(): ?array
     {
         $disks = json_decode((string) config('core-web.media.bucket.cloud', ''), true);
+        // A config published before this key existed has none, so the env var is read here too.
+        $name = (string) (config('core-web.media.bucket.cloud_disk') ?: Env::get('CORE_PUBLIC_DISK', 'media'));
+        $first = null;
 
         foreach (is_array($disks) ? $disks : [] as $disk) {
-            if (is_array($disk) && empty($disk['scoped_disk']) && filled($disk['access_key_id'] ?? null)) {
-                return $disk;
+            if (! is_array($disk) || ! empty($disk['scoped_disk']) || blank($disk['access_key_id'] ?? null)) {
+                continue;
             }
+
+            if (($disk['disk'] ?? null) === $name) {
+                return [...$disk, 'named' => true];
+            }
+
+            $first ??= $disk;
         }
 
-        return null;
+        return $first;
     }
 
     /**

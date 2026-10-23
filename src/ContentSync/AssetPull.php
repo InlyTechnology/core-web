@@ -44,7 +44,7 @@ class AssetPull
 
         [$pull, $skipped] = $containers->partition(fn (Container $container) => MediaDisks::isRemoteIndexed((string) $container->diskHandle()));
 
-        // A disk the app defines itself (favicons, social images) stays local on purpose, so only core-web's own are worth naming.
+        // A disk the app defines itself stays local on purpose, so only core-web's own are worth naming.
         $skipped = $skipped->filter(fn (Container $container) => $handle !== null || MediaDisks::defines((string) $container->diskHandle()));
 
         return ['pull' => $pull->values()->all(), 'skipped' => $skipped->map(fn (Container $container) => $container->handle())->values()->all()];

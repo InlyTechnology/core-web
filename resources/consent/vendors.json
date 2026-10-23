@@ -1,0 +1,175 @@
+{
+    "google_analytics": {
+        "name": "Google Analytics",
+        "category": "statistics",
+        "policy_url": "https://policies.google.com/privacy",
+        "cookies": [
+            {
+                "name": "_ga",
+                "purpose": "Tells visitors apart to count visits.",
+                "days": 730
+            },
+            {
+                "name": "_ga_*",
+                "purpose": "Keeps the state of a visit.",
+                "days": 730
+            }
+        ]
+    },
+    "google_ads": {
+        "name": "Google Ads",
+        "category": "marketing",
+        "policy_url": "https://policies.google.com/privacy",
+        "cookies": [
+            {
+                "name": "_gcl_au",
+                "purpose": "Measures which ads lead to visits and conversions.",
+                "days": 90
+            }
+        ]
+    },
+    "meta_pixel": {
+        "name": "Meta Pixel",
+        "category": "marketing",
+        "policy_url": "https://www.facebook.com/privacy/policy/",
+        "cookies": [
+            {
+                "name": "_fbp",
+                "purpose": "Measures and targets ads on Facebook and Instagram.",
+                "days": 90
+            },
+            {
+                "name": "_fbc",
+                "purpose": "Remembers the ad a visitor came from.",
+                "days": 90
+            }
+        ]
+    },
+    "linkedin_insight": {
+        "name": "LinkedIn Insight Tag",
+        "category": "marketing",
+        "policy_url": "https://www.linkedin.com/legal/privacy-policy",
+        "cookies": [
+            {
+                "name": "li_sugr",
+                "purpose": "Matches visitors to LinkedIn members for ad measurement.",
+                "days": 90
+            },
+            {
+                "name": "bcookie",
+                "purpose": "Identifies the browser for LinkedIn ads.",
+                "days": 365
+            },
+            {
+                "name": "lidc",
+                "purpose": "Routes requests to LinkedIn's servers.",
+                "days": 1
+            },
+            {
+                "name": "UserMatchHistory",
+                "purpose": "Syncs LinkedIn ad identifiers.",
+                "days": 30
+            },
+            {
+                "name": "AnalyticsSyncHistory",
+                "purpose": "Records when identifiers were last synced.",
+                "days": 30
+            }
+        ]
+    },
+    "hubspot": {
+        "name": "HubSpot",
+        "category": "marketing",
+        "policy_url": "https://legal.hubspot.com/privacy-policy",
+        "cookies": [
+            {
+                "name": "__hstc",
+                "purpose": "Tracks visits for HubSpot's marketing analytics.",
+                "days": 180
+            },
+            {
+                "name": "hubspotutk",
+                "purpose": "Ties form submissions to a visitor.",
+                "days": 180
+            },
+            {
+                "name": "__hssc",
+                "purpose": "Counts page views in a visit.",
+                "minutes": 30
+            },
+            {
+                "name": "__hssrc",
+                "purpose": "Tells when the browser restarted.",
+                "days": null
+            },
+            {
+                "name": "messagesUtk",
+                "purpose": "Remembers chat conversations.",
+                "days": 180
+            }
+        ]
+    },
+    "hotjar": {
+        "name": "Hotjar",
+        "category": "statistics",
+        "policy_url": "https://www.hotjar.com/legal/policies/privacy/",
+        "cookies": [
+            {
+                "name": "_hjSessionUser_*",
+                "purpose": "Tells visitors apart to analyse how the site is used.",
+                "days": 365
+            },
+            {
+                "name": "_hjSession_*",
+                "purpose": "Keeps the state of a visit.",
+                "minutes": 30
+            }
+        ]
+    },
+    "microsoft_clarity": {
+        "name": "Microsoft Clarity",
+        "category": "statistics",
+        "policy_url": "https://privacy.microsoft.com/privacystatement",
+        "cookies": [
+            {
+                "name": "_clck",
+                "purpose": "Tells visitors apart to analyse how the site is used.",
+                "days": 365
+            },
+            {
+                "name": "_clsk",
+                "purpose": "Joins the page views of a visit.",
+                "days": 1
+            }
+        ]
+    },
+    "youtube": {
+        "name": "YouTube",
+        "category": "marketing",
+        "policy_url": "https://policies.google.com/privacy",
+        "cookies": [
+            {
+                "name": "YSC",
+                "purpose": "Counts views of embedded videos.",
+                "days": null
+            },
+            {
+                "name": "VISITOR_INFO1_LIVE",
+                "purpose": "Estimates bandwidth and personalises videos.",
+                "days": 180
+            }
+        ]
+    },
+    "vimeo": {
+        "name": "Vimeo",
+        "category": "statistics",
+        "policy_url": "https://vimeo.com/privacy",
+        "cookies": [
+            {
+                "name": "vuid",
+                "purpose": "Counts views of embedded videos.",
+                "days": 730
+            }
+        ]
+    }
+}

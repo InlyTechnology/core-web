@@ -72,6 +72,11 @@ return [
     | cloud: on Laravel Cloud, the config a site needs there (`cloud`), with
     | `content:import` and `core-web:deploy` everywhere.
     |
+    | consent: the site's own cookie consent (`consent`): the banner and
+    | preference centre, the cookie declaration, scripts and embeds held back
+    | until their category is granted, Google Consent Mode v2, the consent
+    | log route and `consent:prune` with its schedule.
+    |
     */
 
     'features' => [
@@ -87,6 +92,27 @@ return [
         'content_sync' => false,
         'media' => false,
         'cloud' => false,
+        'consent' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Mail sender
+    |--------------------------------------------------------------------------
+    |
+    | The From address is `local_part@domain`, committed: a site sets only its
+    | local part (`acme`, `no-reply`), and the domain is the agency's
+    | transactional domain, whose Resend key the site sends with. It fills
+    | mail.from.address while that is unset or Laravel's `hello@example.com`;
+    | MAIL_FROM_ADDRESS still wins. No local part leaves mail.from alone.
+    |
+    */
+
+    'mail' => [
+        'from' => [
+            'local_part' => env('MAIL_FROM_LOCAL_PART'),
+            'domain' => env('MAIL_FROM_DOMAIN', 'transactional.inly.dev'),
+        ],
     ],
 
     /*
@@ -666,8 +692,11 @@ return [
     | `acl` false leaves out `visibility: public` for a bucket without
     | per-object ACLs, such as R2, which rejects it; the bucket itself is then
     | public. Without a key, the bucket Laravel Cloud attaches is used
-    | (`cloud`, which Cloud sets), without ACLs, and with `url` taken from
-    | here when set. Without either the disks are the local folders below. A failing
+    | (`cloud`, which Cloud sets; the one on disk `cloud_disk`, the public
+    | bucket Core Cloud attaches to a website, else the first), without ACLs, and with
+    | `url` taken from here when set, else `cdn_url` (the CDN Core Cloud puts
+    | in front of that public bucket, used only when it was found by name),
+    | else the bucket's own. Without either the disks are the local folders below. A failing
     | read is bounded: 3 seconds to connect and two attempts, since rendering
     | an asset can read the bucket.
     |
@@ -708,6 +737,8 @@ return [
             'acl' => true,
             'cache_control' => 'public, max-age=2592000',
             'cloud' => env('LARAVEL_CLOUD_DISK_CONFIG', ''),
+            'cloud_disk' => env('CORE_PUBLIC_DISK', 'media'),
+            'cdn_url' => env('CORE_CDN_BASE_URL', ''),
         ],
         'disks' => [
             'assets' => 'assets',
@@ -748,10 +779,108 @@ return [
     |
     | detected: null asks Cloud's LARAVEL_CLOUD; true or false forces it.
     |
+    | scheduled_entries: Statamic's own job runs every minute, which keeps a
+    | Cloud site from ever sleeping, so on Cloud it is off and
+    | `core-web:scheduled-entries` runs on `schedule` instead (Cloud's
+    | scheduler wake-up interval), covering every entry dated since its last
+    | run, at most `lookback_minutes` back. An empty `schedule` runs nothing.
+    |
     */
 
     'cloud' => [
         'deploy' => [],
         'detected' => null,
+        'scheduled_entries' => [
+            'schedule' => '*/15 * * * *',
+            'lookback_minutes' => 1440,
+            'first_run_minutes' => 15,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cookie consent
+    |--------------------------------------------------------------------------
+    |
+    | The site's own cookie banner, a light consent tool for a site that needs
+    | no certified CMP (IAB TCF). Everything here is the same in every
+    | environment, so it is committed; nothing is read from env.
+    |
+    | vendors: what the site loads that sets cookies, as keys of the catalogue
+    | in Inly\CoreWeb\Consent\ConsentVendors (google_analytics, hubspot, ...)
+    | or as a definition of its own: ['booking' => ['name' => 'Booking',
+    | 'category' => 'marketing', 'cookies' => [['name' => 'bk_id', 'purpose'
+    | => '...', 'days' => 30]]]]. A catalogue key with an array merges over
+    | the catalogue's entry. The site's session and CSRF cookies and the
+    | consent cookie itself are always declared as necessary.
+    |
+    | policy_version: raise it when the site adds a vendor or changes what it
+    | asks for, and every visitor is asked again.
+    |
+    | renew_after_days: a choice older than this is asked for again.
+    |
+    | policy_url: the site's cookie or privacy page, linked from the banner.
+    | A component's `policy-url` attribute wins (a per-site pin).
+    |
+    | global: a global set whose blueprint imports `core-web::consent`, so
+    | editors set the banner's title, text and cookie page in the CP, per
+    | site. A field left empty keeps the default text, or `policy_url`.
+    |
+    | google: Consent Mode v2 defaults, all denied until the visitor grants.
+    | `mode` basic holds Google's tags back until statistics or marketing is granted;
+    | advanced loads them at once and lets them send cookieless pings.
+    |
+    | log: proof of consent, one row per choice in the site's own database,
+    | with a random consent id and no IP address or user. Publish the
+    | migration (--tag=core-web-consent-migration). Rows older than
+    | `retention_days` are deleted by `consent:prune` on `prune_schedule`.
+    |
+    | sites: per-site overrides on a multisite install, keyed by site handle,
+    | holding any key above but `log` and `cookie`: ['trucks' => ['vendors'
+    | => [...], 'branding' => ['accent' => '#c00']]]. Each domain asks on its
+    | own, since a cookie belongs to one domain, and its log rows name it.
+    |
+    | branding: the banner wears Inly Core's look. A site overrides any of
+    | it: `accent` and `accent_foreground` (colours), `background`,
+    | `foreground`, `font` (a CSS font-family), `logo` (an image URL shown
+    | beside the title) and `show_mark` (the "Core Consent" line).
+    |
+    | button: once the visitor has chosen, a small round button in a corner
+    | reopens the settings, as the law asks withdrawing to be as easy as
+    | giving: `bottom-left`, `bottom-right`, or false for none (the site then
+    | links <x-core-web::consent.settings-link> itself, as in its footer).
+    |
+    */
+
+    'consent' => [
+        'vendors' => [],
+        'sites' => [],
+        'policy_version' => 1,
+        'renew_after_days' => 365,
+        'policy_url' => null,
+        'global' => null,
+        'cookie' => 'core_consent',
+        'google' => [
+            'consent_mode' => true,
+            'mode' => 'basic',
+        ],
+        'log' => [
+            'enabled' => true,
+            'connection' => null,
+            'table' => 'core_web_consents',
+            'retention_days' => 1825,
+            'prune_schedule' => '17 3 * * *',
+            'rate_limit' => 30,
+        ],
+        'branding' => [
+            'accent' => null,
+            'accent_foreground' => null,
+            'background' => null,
+            'foreground' => null,
+            'font' => null,
+            'logo' => null,
+            'show_mark' => true,
+        ],
+        'button' => 'bottom-left',
     ],
 ];

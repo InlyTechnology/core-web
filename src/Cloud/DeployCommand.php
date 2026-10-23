@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
@@ -25,6 +27,7 @@ class DeployCommand extends Command
 
         if (CloudDefaults::onCloud()) {
             $this->warnAboutLocalSearch();
+            $this->warnAboutFrequentTasks();
         }
 
         foreach ($this->steps() as [$command, $arguments, $required]) {
@@ -54,7 +57,19 @@ class DeployCommand extends Command
             ->keys();
 
         if ($local->isNotEmpty()) {
-            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there.');
+            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there, and keep search result pages out of the static cache: one container\'s index would be cached for everyone.');
+        }
+    }
+
+    /** Cloud's scheduler wakes a hibernating site for each due task, so one due every few minutes keeps it awake for good. */
+    private function warnAboutFrequentTasks(): void
+    {
+        $frequent = collect($this->laravel->make(Schedule::class)->events())
+            ->filter(fn (Event $event): bool => preg_match('#^\*(/([0-9]|1[0-4]))?$#', explode(' ', $event->expression)[0]) === 1)
+            ->map(fn (Event $event): string => $event->getSummaryForDisplay());
+
+        if ($frequent->isNotEmpty()) {
+            $this->components->warn('Scheduled more often than every 15 minutes, which keeps the site from sleeping on Cloud: '.$frequent->implode(', ').'.');
         }
     }
 
