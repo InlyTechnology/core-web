@@ -21,6 +21,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   collections left and the `core-web:entry-order` command that finishes
   them. Before, a large site's last step could be killed without a message.
   README → Laravel Cloud.
+- **`content:import` leaves nothing on the queue**: each step runs through
+  the hidden `core-web:import-step`, which runs it with the `sync` queue and
+  with search indexing off. Before, Cloud's cached config ignored the
+  `QUEUE_CONNECTION=sync` handed to each step, so saving the trees queued one
+  entry-order job per entry, and search updates queued too, waiting on a
+  queue a site may have no worker for. When an index's driver outlives the
+  container (anything but `local` and `null`), the indexes are rebuilt once
+  at the end; a `local` index builds itself on its first search. README → Laravel
+  Cloud.
 - **Feature commands on every Cloud site**: with `cloud` on, `media:sync`,
   `media:check` and `content:check` succeed with a "feature is off" note
   where their feature is off, so a fixed first-deploy list (core-cloud's)
