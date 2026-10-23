@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **CMS sign-in works with users in the database**: the hand-off back from
+  Core failed with `Call to undefined method
+  Statamic\Auth\Eloquent\User::passwordHash()` on a site whose users are on
+  the eloquent repository (the `cloud` feature's default), so nobody could
+  sign in to the CP there. The account's password is now cleared on either
+  repository, and taking super or every mapped role from an account writes
+  `false` and an empty role list there instead of a null column.
+
 ## v0.25.0
 
 - **`content:import` imports CP users**: with users on the eloquent

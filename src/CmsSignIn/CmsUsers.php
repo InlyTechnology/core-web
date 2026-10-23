@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\CmsSignIn;
 
 use Illuminate\Support\Collection;
 use Inly\CoreWeb\Drafts\DraftPerson;
+use Statamic\Auth\Eloquent\User as EloquentUser;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Role;
 use Statamic\Facades\User;
@@ -69,15 +70,39 @@ class CmsUsers
             $user->makeSuper();
             $this->setRoles($user, $kept);
         } else {
-            $user->remove('super');
+            self::removeSuper($user);
             $this->setRoles($user, [...$kept, ...$roles]);
         }
 
-        $user->passwordHash(null);
+        self::clearPassword($user);
 
         $user->save();
 
         return $user;
+    }
+
+    /** An eloquent user's `super` is a column that holds no null. */
+    public static function removeSuper(UserContract $user): void
+    {
+        if ($user instanceof EloquentUser) {
+            $user->model()->super = false;
+
+            return;
+        }
+
+        $user->remove('super');
+    }
+
+    /** File users clear the hash through passwordHash(); an eloquent user has none, and its password() would hash the null. */
+    public static function clearPassword(UserContract $user): void
+    {
+        if ($user instanceof EloquentUser) {
+            $user->model()->password = null;
+
+            return;
+        }
+
+        $user->passwordHash(null);
     }
 
     /** Strips what Core granted from the account bound to this Core user, never one that merely shares the address. */
@@ -97,7 +122,7 @@ class CmsUsers
         }
 
         if ($this->isProvisioned($user)) {
-            $user->remove('super');
+            self::removeSuper($user);
         }
 
         $this->setRoles($user, $this->handAssignedRoles($user));
@@ -114,7 +139,7 @@ class CmsUsers
             return;
         }
 
-        $user->remove('super');
+        self::removeSuper($user);
         $user->save();
     }
 
@@ -211,7 +236,8 @@ class CmsUsers
     /** @param  list<string>  $roles */
     private function setRoles(UserContract $user, array $roles): void
     {
-        if ($roles === []) {
+        // An eloquent user keeps its roles in a pivot table, so a removed `roles` key would be written as a column.
+        if ($roles === [] && ! $user instanceof EloquentUser) {
             $user->remove('roles');
 
             return;
