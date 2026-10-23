@@ -307,6 +307,11 @@ class CloudTest extends TestCase
         $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
     }
 
+    public function test_asset_meta_refuses_an_unknown_container(): void
+    {
+        $this->artisan('core-web:asset-meta', ['container' => 'nope'])->assertFailed();
+    }
+
     public function test_an_import_step_runs_its_command_without_queueing_or_indexing(): void
     {
         config(['queue.default' => 'database', 'statamic.search.indexes' => ['default' => ['driver' => 'local', 'searchables' => 'all']]]);

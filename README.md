@@ -2143,6 +2143,14 @@ memory nor stops without a word. If one fails or runs out of time, the
 rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
+Asset meta is imported the same way, one container per process (up to an
+hour each, since each asset is a read of its `.meta` from the bucket), by
+`php artisan core-web:asset-meta <container>`. It skips assets already in
+the database, so after a timeout the same command picks up where it
+stopped; the import names the containers left. `--skip-asset-meta` leaves
+asset meta out of `content:import` entirely, for a library imported by
+hand.
+
 Nothing is left on the queue. Each step runs through the hidden
 `core-web:import-step`, with the `sync` queue (Cloud caches config at build,
 so an environment variable handed to the step would not reach it) and
