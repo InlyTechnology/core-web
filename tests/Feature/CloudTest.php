@@ -79,6 +79,20 @@ class CloudTest extends TestCase
         $this->assertTrue(CloudDefaults::contentInDatabase());
     }
 
+    public function test_a_solo_site_has_revisions_off_with_pro(): void
+    {
+        $this->setEnv('STATAMIC_PRO_ENABLED', 'false');
+        CloudDefaults::apply($this->app);
+
+        $this->assertFalse(config('statamic.editions.pro'));
+        $this->assertFalse(config('statamic.revisions.enabled'));
+
+        $this->setEnv('STATAMIC_REVISIONS_ENABLED', 'true');
+        CloudDefaults::apply($this->app);
+
+        $this->assertTrue(config('statamic.revisions.enabled'), 'an env that names revisions keeps its value');
+    }
+
     public function test_glide_caches_kept_in_one_container_are_turned_off(): void
     {
         foreach (['hybrid', true] as $mode) {

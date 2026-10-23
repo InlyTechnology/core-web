@@ -6,6 +6,12 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Solo sites on Cloud need one env var**: with `cloud` on,
+  `STATAMIC_PRO_ENABLED=false` turns revisions off too, since they need Pro.
+  `STATAMIC_REVISIONS_ENABLED` still wins when set. README → Laravel Cloud.
+
 ## v0.28.0
 
 - **Undo an applied proposal**: applying a proposal records the value it

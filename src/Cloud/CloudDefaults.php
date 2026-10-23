@@ -68,6 +68,11 @@ final class CloudDefaults
             self::set($config, $key, $env, $value);
         }
 
+        // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
+        if (Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
+            $config->set('statamic.revisions.enabled', false);
+        }
+
         // Statamic's licensing ping keeps its marker in an `outpost` store when one exists. The build runs artisan
         // before any migration made the cache table, so on the database store every build command would fail.
         if (! $config->has('cache.stores.outpost')) {
