@@ -35,6 +35,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   where their feature is off, so a fixed first-deploy list (core-cloud's)
   runs on every site. README → Laravel Cloud.
 
+- **Mail sender**: core-web builds `mail.from.address` as
+  `<local part>@<domain>` from `core-web.mail.from`, so a site commits its
+  local part (`acme`) instead of a whole address per environment. The
+  domain defaults to `transactional.inly.dev`; `MAIL_FROM_LOCAL_PART` and
+  `MAIL_FROM_DOMAIN` override each part, and `MAIL_FROM_ADDRESS` or a
+  committed address still wins. Without a local part nothing changes.
+  README → Mail sender.
+
 - **Cookie consent**: an opt-in `consent` feature, a light consent tool in
   place of Cookiebot for sites that need no certified CMP. The banner,
   settings dialog and cookie declaration in Inly Core's look (overridable),
