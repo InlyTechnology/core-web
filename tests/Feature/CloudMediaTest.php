@@ -29,7 +29,7 @@ class CloudMediaTest extends TestCase
         $app['config']->set('filesystems.disks.favicons', ['driver' => 'local', 'root' => public_path('favicons')]);
         $app['config']->set('filesystems.disks.social_images', ['driver' => 'local', 'root' => public_path('social_images')]);
         // A site that keeps its Files container local for another host.
-        $app['config']->set('core-web.media.disks.files', 'files');
+        $app['config']->set('core-web.media.disks', ['assets' => 'assets', 'files' => 'files']);
         $app['config']->set('filesystems.disks.files', ['driver' => 'local', 'root' => public_path('files')]);
     }
 
