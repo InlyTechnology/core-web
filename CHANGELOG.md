@@ -8,12 +8,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
-- **Core AI's drafts through core-web**: with `drafts` and `content` on,
-  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
-  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
-  `DraftWriter`, so a site drops its own drafts controller and writer. A site
-  with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
-  check. See README → Drafts → Core AI's drafts.
+- **Undo an applied proposal**: applying a proposal records the value it
+  replaced, and an editor undoes it from the proposal or the Proposals
+  page's *Recently applied* list until the target changes again. Gives
+  navigations, page trees, globals and terms one step back, on Laravel
+  Cloud too. Only the last proposal applied to a target is undone. The
+  Statamic connector API's proposal shape gains `undoable`, `undone_by`,
+  `undone_at` and the status `undone`. See README → Proposals.
+- **`content:import` finishes asset meta on large media libraries**: asset
+  meta is imported one container per process (up to an hour each) through
+  the hidden `core-web:asset-meta <container>`, which skips assets already
+  in the database. Before, all of it ran in one ten-minute step, which a
+  large bucket outlasted (each asset is a read of its `.meta`), and a run
+  again started over. A failure or a timeout names the containers left and
+  the commands that finish the import. README → Laravel Cloud.
 - **Rate limits group IPv6 by /64**: the named per-address limits (chat
   turns, the consent log, CMS sign-in, content sync, forms) count an IPv6
   client by its /64, the block one subscriber is given, and an IPv4-mapped
@@ -44,6 +52,55 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `sign()`, or freeze time to within an hour of a fixed vector. A sender of
   shared-secret pings must send a 32-hex nonce and expire within the hour,
   or move to pings sealed with Core's key. Verify: the tests pass.
+
+## v0.27.0
+
+- **CMS sign-in works with users in the database**: the hand-off back from
+  Core failed with `Call to undefined method
+  Statamic\Auth\Eloquent\User::passwordHash()` on a site whose users are on
+  the eloquent repository (the `cloud` feature's default), so nobody could
+  sign in to the CP there. The account's password is now cleared on either
+  repository, and taking super or every mapped role from an account writes
+  `false` and an empty role list there instead of a null column.
+
+## v0.26.0
+
+- **Core AI's drafts through core-web**: with `drafts` and `content` on,
+  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
+  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
+  `DraftWriter`, so a site drops its own drafts controller and writer. See
+  README → Drafts → Core AI's drafts.
+- **Content schema**: with `drafts` and `content` on, core-web also serves
+  `GET blocks` and `GET blocks/{collection}/{handle}`, what Core AI builds a
+  draft from, read from the blueprints of `drafts.collections`
+  (`StatamicContentSchema`, configured in `drafts.schema`), and refuses a
+  draft naming an older `catalog_hash`. Docs: README → Drafts → Content
+  schema.
+- **Statamic helpers**: `Inly\CoreWeb\Support\Values` (`unwrap`, `collect`,
+  `first`), `Assets` (`meta`, `mimeType`, `size`, outage-guarded) and `Links`
+  (`url`, `withSuffix`), for the field shapes every site normalises; the media
+  components read through them too. `Values::first()` fetches a query builder
+  before taking the first item, so it keeps the editor's manual order where a
+  site's own `firstAsset()` calling `->first()` on the builder did not. Docs:
+  README → Statamic helpers.
+
+### Upgrade notes
+
+- **A site's own `blocks` endpoints and `DraftCatalog`.** What breaks: a
+  site's own block catalog at `api/core/v1/blocks` shadows core-web's (app
+  routes load after a package's), a class implementing `DraftCatalog` no
+  longer loads (the interface is gone), and every draft naming the site's
+  own `catalog_hash` is refused (`catalog_changed`), since drafts are now
+  checked against core-web's schema. Find it: `grep -rn DraftCatalog app/`
+  and `grep -rn "blocks" routes/`. Migrate: delete the routes, controller,
+  catalog class and its binding; set `drafts.schema` (`settings_fieldset`,
+  `guide_fieldset`, `value_formats`, e.g. the site's own `assets` format) to
+  what the catalog hardcoded, implement `DescribesStoredValue` on
+  Dictionaries whose keys the catalog described, and bind a
+  `StatamicContentSchema` subclass to `ContentSchema` for anything else (an
+  entry `status()` of its own). Verify: `GET api/core/v1/blocks` answers the
+  same blocks and fields as before (the hash changes once), and a draft
+  with its `catalog_hash` is taken.
 
 ## v0.25.0
 

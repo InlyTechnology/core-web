@@ -20,9 +20,13 @@ final class Proposal
 
     public const REPLACED = 'replaced';
 
+    public const UNDONE = 'undone';
+
     /**
      * @param  array<mixed>  $value
      * @param  array<string, string>  $provenance
+     * @param  array<mixed>|null  $replaced  the target's value before the proposal was applied, for undoing it
+     * @param  string|null  $appliedAs  the fingerprint of the target's value right after it was applied
      */
     public function __construct(
         public readonly string $id,
@@ -36,6 +40,10 @@ final class Proposal
         public string $status = self::OPEN,
         public ?string $decidedBy = null,
         public ?CarbonImmutable $decidedAt = null,
+        public ?array $replaced = null,
+        public ?string $appliedAs = null,
+        public ?string $undoneBy = null,
+        public ?CarbonImmutable $undoneAt = null,
     ) {}
 
     public function open(): bool
@@ -48,6 +56,24 @@ final class Proposal
         $this->status = $status;
         $this->decidedBy = $userId;
         $this->decidedAt = CarbonImmutable::instance(Carbon::now());
+
+        return $this;
+    }
+
+    /** @param  array<mixed>  $replaced */
+    public function applied(array $replaced, string $appliedAs, string $userId): self
+    {
+        $this->replaced = $replaced;
+        $this->appliedAs = $appliedAs;
+
+        return $this->decide(self::APPLIED, $userId);
+    }
+
+    public function undone(string $userId): self
+    {
+        $this->status = self::UNDONE;
+        $this->undoneBy = $userId;
+        $this->undoneAt = CarbonImmutable::instance(Carbon::now());
 
         return $this;
     }
@@ -67,6 +93,10 @@ final class Proposal
             'status' => $this->status,
             'decided_by' => $this->decidedBy,
             'decided_at' => $this->decidedAt?->toIso8601String(),
+            'replaced' => $this->replaced,
+            'applied_as' => $this->appliedAs,
+            'undone_by' => $this->undoneBy,
+            'undone_at' => $this->undoneAt?->toIso8601String(),
         ];
     }
 
@@ -85,6 +115,10 @@ final class Proposal
             (string) ($row['status'] ?? self::OPEN),
             isset($row['decided_by']) ? (string) $row['decided_by'] : null,
             isset($row['decided_at']) ? CarbonImmutable::parse((string) $row['decided_at']) : null,
+            is_array($row['replaced'] ?? null) ? $row['replaced'] : null,
+            isset($row['applied_as']) ? (string) $row['applied_as'] : null,
+            isset($row['undone_by']) ? (string) $row['undone_by'] : null,
+            isset($row['undone_at']) ? CarbonImmutable::parse((string) $row['undone_at']) : null,
         );
     }
 }

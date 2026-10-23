@@ -4,7 +4,7 @@ namespace Inly\CoreWeb\Content;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Inly\CoreWeb\Drafts\DraftCatalog;
+use Inly\CoreWeb\Drafts\ContentSchema;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Drafts\DraftWriter;
 
@@ -16,7 +16,7 @@ use Inly\CoreWeb\Drafts\DraftWriter;
  */
 class CoreDraftsController
 {
-    public function store(Request $request, DraftWriter $writer): JsonResponse
+    public function store(Request $request, DraftWriter $writer, ContentSchema $schema): JsonResponse
     {
         $request->validate([
             'collection' => ['required', 'string', 'max:64'],
@@ -31,7 +31,7 @@ class CoreDraftsController
             ...CoreAiAuthor::rules(),
         ]);
 
-        $this->assertCatalog($request->input('catalog_hash'));
+        $this->assertSchema($schema, $request->input('catalog_hash'));
 
         $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'base_hash']));
 
@@ -56,13 +56,13 @@ class CoreDraftsController
         return response()->json(['data' => $writer->publish(fn () => CoreAiAuthor::from($request, 'publish'), $id)]);
     }
 
-    private function assertCatalog(mixed $hash): void
+    private function assertSchema(ContentSchema $schema, mixed $hash): void
     {
-        if (blank($hash) || ! app()->bound(DraftCatalog::class)) {
+        if (blank($hash)) {
             return;
         }
 
-        $current = app(DraftCatalog::class)->hash();
+        $current = $schema->hash();
 
         if (! hash_equals($current, (string) $hash)) {
             throw DraftRefused::catalogChanged($current);

@@ -3,7 +3,7 @@
 namespace Inly\CoreWeb\Tests\Feature\Content;
 
 use Illuminate\Support\Facades\File;
-use Inly\CoreWeb\Drafts\DraftCatalog;
+use Inly\CoreWeb\Drafts\ContentSchema;
 use Inly\CoreWeb\Drafts\DraftPerson;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Testing\FakesCore;
@@ -129,23 +129,17 @@ class CoreDraftsApiTest extends TestCase
             ->assertJsonPath('error', 'revisions_off');
     }
 
-    public function test_a_draft_against_an_older_catalog_is_refused_where_the_site_has_one(): void
+    public function test_a_draft_against_an_older_schema_is_refused(): void
     {
-        $body = ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => 'old', 'dry_run' => true, ...$this->actor()];
+        $current = app(ContentSchema::class)->hash();
 
-        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', $body)->assertOk()->assertJsonPath('data.dry_run', true);
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => $current, 'dry_run' => true, ...$this->actor()])
+            ->assertOk()
+            ->assertJsonPath('data.dry_run', true);
 
-        $this->app->instance(DraftCatalog::class, new class implements DraftCatalog
-        {
-            public function hash(): string
-            {
-                return 'new';
-            }
-        });
-
-        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', $body)
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => 'old', 'dry_run' => true, ...$this->actor()])
             ->assertConflict()
             ->assertJsonPath('error', 'catalog_changed')
-            ->assertJsonPath('catalog_hash', 'new');
+            ->assertJsonPath('catalog_hash', $current);
     }
 }

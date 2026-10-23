@@ -9,6 +9,7 @@ use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 
 /**
@@ -19,7 +20,7 @@ class ImportContentCommand extends Command
     protected $signature = 'content:import
         {--fresh : Empty the content tables first (form submissions, revisions and tokens are kept)}
         {--force : Skip the --fresh confirmation}
-        {--skip-asset-meta : Leave asset meta alone; images resolve to nothing until statamic:eloquent:import-assets --only-assets has run}';
+        {--skip-asset-meta : Leave asset meta alone; images resolve to nothing until core-web:asset-meta has run for each container}';
 
     protected $description = 'Load content/ into an empty database (eloquent content driver)';
 
@@ -98,17 +99,24 @@ class ImportContentCommand extends Command
             'nav trees' => ['statamic:eloquent:import-navs', '--only-nav-trees', '--force'],
             'global variables' => ['statamic:eloquent:import-globals', '--only-global-variables', '--force'],
             'terms' => ['statamic:eloquent:import-taxonomies', '--only-terms', '--force'],
-            'asset meta' => ['statamic:eloquent:import-assets', '--only-assets', '--force'],
             'form submissions' => ['statamic:eloquent:import-forms', '--only-form-submissions', '--force'],
         ];
-
-        if ($this->option('skip-asset-meta')) {
-            unset($steps['asset meta']);
-        }
 
         foreach ($steps as $label => $command) {
             if (! $this->step($label, $command)) {
                 return self::FAILURE;
+            }
+        }
+
+        if (! $this->option('skip-asset-meta')) {
+            $containers = AssetContainer::all()->map->handle()->values()->all();
+
+            foreach ($containers as $i => $handle) {
+                if (! $this->step("asset meta: {$handle}", ['core-web:asset-meta', $handle], timeout: 3600)) {
+                    $this->line('The other rows are in. To finish, run `php artisan core-web:asset-meta <container>` for '.implode(', ', array_slice($containers, $i)).' (a run again skips what is already in), then `php artisan core-web:entry-order <collection>` for '.Collection::handles()->implode(', ').', then statamic:static:clear and cache:clear.');
+
+                    return self::FAILURE;
+                }
             }
         }
 

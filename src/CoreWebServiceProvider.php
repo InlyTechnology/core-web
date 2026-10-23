@@ -20,6 +20,7 @@ use Inly\CoreWeb\Checks\ContentCheckCommand;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Client\SiteCore;
+use Inly\CoreWeb\Cloud\AssetMetaCommand;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\EntryOrderCommand;
@@ -48,10 +49,12 @@ use Inly\CoreWeb\ContentSync\LocalContent;
 use Inly\CoreWeb\ContentSync\SyncLimits;
 use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
+use Inly\CoreWeb\Drafts\ContentSchema;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftValueNormaliser;
 use Inly\CoreWeb\Drafts\FieldsHash;
 use Inly\CoreWeb\Drafts\KeepDraftProvenance;
+use Inly\CoreWeb\Drafts\StatamicContentSchema;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
@@ -172,6 +175,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(ContentChecks::class, fn () => ContentChecks::fromConfig());
         $this->app->bindIf(CoreUsers::class);
         $this->app->bindIf(DraftBase::class, FieldsHash::class);
+        $this->app->bindIf(ContentSchema::class, StatamicContentSchema::class);
         $this->app->bind(SyncTokens::class, fn () => SyncTokens::fromConfig());
         $this->app->bind(DeviceAuthorizations::class, fn () => DeviceAuthorizations::fromConfig());
         $this->app->bindIf(LocalContent::class, fn () => LocalContent::fromApp());
@@ -290,7 +294,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, ImportStepCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+            $this->commands([ImportContentCommand::class, ImportStepCommand::class, AssetMetaCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
 
             if ($this->app->runningInConsole()) {
                 $standIns = array_filter(['media:sync' => 'media', 'media:check' => 'media', 'content:check' => 'checks'], fn (string $feature): bool => ! self::enabled($feature));

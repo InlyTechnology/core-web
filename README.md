@@ -1455,6 +1455,8 @@ under `content.prefix` (`api/core/v1`), each sealed with Core's key:
 
 | Route | Purpose |
 |---|---|
+| `GET blocks` (`?collection=` for one) | `website.read` |
+| `GET blocks/{collection}/{handle}` | `website.read` |
 | `POST drafts` (`dry_run` to validate only) | `website.draft` |
 | `GET drafts/{id}` | `website.draft` |
 | `POST drafts/{id}/publish` | `website.publish` |
@@ -1462,11 +1464,51 @@ under `content.prefix` (`api/core/v1`), each sealed with Core's key:
 A draft is the `DraftWriter` request above, written for the person the body
 names in `actor` (as a fix or a proposal, see below), marked `via: core-ai`
 with Core's request and approval ids. A new entry answers 201, an update or
-a dry run 200. A site whose drafts are built from a catalog Core reads (a
-block catalog) binds `Inly\CoreWeb\Drafts\DraftCatalog`: a draft naming an
-older `catalog_hash` is then refused (`catalog_changed`, with the current
-hash). A site whose drafts arrive in another shape than Statamic stores
-binds its own `DraftValueNormaliser`.
+a dry run 200. A site whose drafts arrive in another shape than Statamic
+stores binds its own `DraftValueNormaliser`.
+
+### Content schema
+
+`blocks` is what Core AI builds a draft from: for every collection in
+`drafts.collections`, its blueprints, their entry fields, and the blocks
+editors build pages from (the sets of each blueprint's top-level
+Replicators), each field with whether it is required, its options and
+default, when it applies and how its value is stored, plus how often each
+block is used and a few entries that use it. `blocks/{collection}/{handle}`
+is one block in full, its nested fields included. Both carry
+`catalog_hash`: a draft naming an older one is refused (`catalog_changed`,
+with the current hash), so the AI never builds on blocks that changed under
+it.
+
+`Inly\CoreWeb\Drafts\StatamicContentSchema` reads it all from the
+blueprints and fieldsets, so a new block is in it the moment its fieldset
+is. What a site decides:
+
+- **The block settings and the guide** (`drafts.schema`): the fieldset of
+  the section chrome every block imports, listed apart as each block's
+  `settings` (`block`), and the fieldset whose `guide_index`,
+  `article_blocks` and `page_blocks` say where the editor guide starts and
+  which blocks an article and a page are made of (`page_builder`).
+- **Words for the AI**, in the blueprints: `instructions` and
+  `ai_instructions` on a field, and `ai_instructions` and `guide`
+  (`{path}#{anchor}` in the editor guide) in the one fieldset a block
+  imports beside the settings. `ai_fillable: false` (a field the AI leaves
+  to an editor) and `draft_validate` (rules only a draft is held to) are
+  listed too, but only tell the AI: a site whose drafts must hold to them
+  enforces them in its `DraftValueNormaliser`.
+- **How a value is stored**, by fieldtype (`drafts.schema.value_formats`),
+  over core-web's own: a site's own fieldtype, or its own way of taking an
+  asset.
+- **A Dictionary's keys**: a Dictionary whose stored keys cannot be guessed
+  from its options implements `Inly\CoreWeb\Drafts\DescribesStoredValue`,
+  and its `storedValue()` (`format`, `example`, anything else such as a Core
+  `core_type`) is listed under the field.
+- **The slug and date rules**, in core-web::drafts (`schema_slug_rules`,
+  `schema_date_rules`), worded for the site's language in
+  `lang/vendor/core-web/en/drafts.php`.
+- **Anything else**: a subclass bound to `Inly\CoreWeb\Drafts\ContentSchema`,
+  such as one whose `status()` shows a published entry the site hides by its
+  own rules.
 
 ### Proposals
 
@@ -1490,6 +1532,17 @@ app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($targ
   else's is refused until it is decided.
 - Values are validated as the CP validates a save; a page tree proposal
   moves pages and never drops one.
+- **Undo.** Applying records the value the proposal replaced, so it can be
+  undone (`Proposals::undo()`, or **Undo** on the proposal and under
+  *Recently applied* on the Proposals page) for as long as the target still
+  holds what applying left: any later change, in the CP or by another
+  proposal, ends it. The earlier value is restored exactly as it was
+  stored, values the blueprint hides included. Undoing needs the same permission as applying. This is one step back for
+  content without revisions, on any host (on Laravel Cloud, where git
+  keeps no history of content, it is the only one); a proposal applied
+  before this existed recorded nothing to undo to. The Proposals page stays
+  at `core-web/proposals` under the CP (`/admin/core-web/proposals`) even
+  when its nav entry is hidden.
 
 Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
 whose disk does not outlive a deploy names a bucket.
@@ -2102,6 +2155,14 @@ memory nor stops without a word. If one fails or runs out of time, the
 rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
+Asset meta is imported the same way, one container per process (up to an
+hour each, since each asset is a read of its `.meta` from the bucket), by
+`php artisan core-web:asset-meta <container>`. It skips assets already in
+the database, so after a timeout the same command picks up where it
+stopped; the import names the containers left. `--skip-asset-meta` leaves
+asset meta out of `content:import` entirely, for a library imported by
+hand.
+
 Nothing is left on the queue. Each step runs through the hidden
 `core-web:import-step`, with the `sync` queue (Cloud caches config at build,
 so an environment variable handed to the step would not reach it) and
@@ -2280,6 +2341,29 @@ can quote it), the site, the action, the categories and the policy version. No I
 address, user agent or user. `consent:prune` deletes rows older than
 `log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
 no log sets `log.enabled` to false.
+
+## Statamic helpers
+
+Always loaded, whatever features are on: the field-shape plumbing every site
+needs where Statamic has no single call for it. They are namespaced classes,
+never global functions; a site that wants a short name wraps one in its own
+`app/helpers.php`.
+
+| Call | What it does |
+|---|---|
+| `Values::unwrap($v)` | A `Value` or `ArrayableString` (a link field's `ArrayableLink` is one), however nested, down to what it holds. |
+| `Values::collect($v)` | Any relation shape (a `Value`, `Collection`, query builder, list, single object, null) as a flat `Collection`, empty slots dropped. A query builder is fetched with `get()`, so an ordered one keeps the editor's manual order. |
+| `Values::first($v)` | Its first item, in that order, or null. A URL string passes through. |
+| `Assets::meta($asset, $key, $fallback)` | A meta key (`alt`, `focus`) of an asset or any field shape holding one, reporting and falling back instead of throwing: a meta cache miss copies the file out of the bucket, so a bare `->get()` turns a storage outage into a 500. |
+| `Assets::mimeType($asset)` / `Assets::size($asset)` | The same guard; null when unknown. |
+| `Links::url($v, $suffix)` | Any link shape (a `link` field, the Entry or Asset it unwraps to, a URL string) as a URL, with an editor's `?query` or `#anchor` suffix applied. |
+| `Links::withSuffix($url, $suffix)` | Only the suffix: `filter=x`, `?filter=x` and `&filter=x` join the query string, `#section` sets the fragment. |
+
+All live in `Inly\CoreWeb\Support`. Where Statamic has its own way, use it
+instead: `Statamic::tag('mount_url:news')` or `Collection::find('news')->url()`
+for a collection's URL, `$asset?->url()` for an asset's, and a global by its
+handle in a view the cascade renders (`$configuration->field`, already
+augmented; not inside a component or Livewire).
 
 ## Checking a site's setup
 
