@@ -2,10 +2,16 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
+use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
+use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 
@@ -69,8 +75,134 @@ class CloudTest extends TestCase
         $this->assertTrue(config('statamic.revisions.enabled'));
         $this->assertTrue(config('statamic.editions.pro'));
         $this->assertFalse(config('statamic.stache.watcher'));
+        $this->assertSame('file', config('statamic.stache.cache_store'));
         $this->assertSame('file', config('cache.stores.outpost.driver'), 'the build runs artisan before the cache table exists');
         $this->assertTrue(CloudDefaults::contentInDatabase());
+    }
+
+    public function test_a_file_static_cache_store_gives_way_to_the_shared_default(): void
+    {
+        config(['cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static']]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(config('cache.stores.static_cache'));
+        $this->assertNotNull(config('cache.stores.file'), 'only the static cache store goes');
+
+        config(['cache.stores.static_cache' => ['driver' => 'redis']]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('redis', config('cache.stores.static_cache.driver'), 'a shared store the site chose is kept');
+    }
+
+    public function test_a_built_site_keeps_its_static_cache_on_the_database_store_per_build(): void
+    {
+        $this->setEnv('CACHE_STORE', 'database');
+        $manifest = public_path('core-web-test-build/manifest.json');
+        @mkdir(dirname($manifest), 0777, true);
+        file_put_contents($manifest, '{}');
+
+        try {
+            config(['cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static']]);
+            CloudDefaults::apply($this->app);
+            $first = config('cache.stores.static_cache');
+
+            $this->assertSame('database', $first['driver']);
+            $this->assertStringContainsString('static_', $first['prefix']);
+
+            file_put_contents($manifest, '{"app.css":{}}');
+            clearstatcache();
+            CloudDefaults::apply($this->app);
+
+            $this->assertNotSame($first['prefix'], config('cache.stores.static_cache.prefix'), 'a new build starts an empty static cache');
+        } finally {
+            @unlink($manifest);
+            @rmdir(dirname($manifest));
+        }
+    }
+
+    public function test_livewire_uploads_wait_in_the_private_bucket(): void
+    {
+        $private = ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'fls-private', 'endpoint' => 'https://abc.r2.cloudflarestorage.com'];
+        config(['filesystems.disks.private' => $private, 'livewire.temporary_file_upload.disk' => null]);
+
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+
+        $this->assertSame(CloudDefaults::UPLOADS_DISK, config('livewire.temporary_file_upload.disk'));
+        $this->assertSame(CloudDefaults::UPLOADS_DRIVER, config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.driver'), 'an `s3` driver makes Livewire upload one file at a time');
+        $this->assertSame('fls-private', config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.bucket'));
+        // The package has no S3 client installed, so the driver is checked as registered rather than built.
+        $this->assertArrayHasKey(CloudDefaults::UPLOADS_DRIVER, (fn () => $this->customCreators)->call(app('filesystem')));
+    }
+
+    public function test_livewire_uploads_keep_a_disk_the_site_chose_or_wait_without_a_private_bucket(): void
+    {
+        config(['filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'], 'livewire.temporary_file_upload.disk' => 'own']);
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+        $this->assertSame('own', config('livewire.temporary_file_upload.disk'));
+
+        config(['filesystems.disks.private' => null, 'livewire.temporary_file_upload.disk' => null]);
+        CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+        $this->assertNull(config('livewire.temporary_file_upload.disk'));
+    }
+
+    public function test_a_solo_site_has_revisions_off_with_pro(): void
+    {
+        $this->setEnv('STATAMIC_PRO_ENABLED', 'false');
+        CloudDefaults::apply($this->app);
+
+        $this->assertFalse(config('statamic.editions.pro'));
+        $this->assertFalse(config('statamic.revisions.enabled'));
+
+        $this->setEnv('STATAMIC_REVISIONS_ENABLED', 'true');
+        CloudDefaults::apply($this->app);
+
+        $this->assertTrue(config('statamic.revisions.enabled'), 'an env that names revisions keeps its value');
+    }
+
+    public function test_a_config_cached_on_cloud_keeps_the_values_resolved_when_it_was_cached(): void
+    {
+        $this->setEnv('STATAMIC_PRO_ENABLED', 'false');
+        CloudDefaults::apply($this->app);
+
+        // A request reads the cached config without .env, so the env var is gone.
+        $this->setEnv('STATAMIC_PRO_ENABLED', null);
+        $this->app->instance('config_loaded_from_cache', true);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertFalse(config('statamic.editions.pro'));
+        $this->assertFalse(config('statamic.revisions.enabled'));
+    }
+
+    public function test_a_config_cached_elsewhere_reads_the_env_again(): void
+    {
+        config(['statamic.editions.pro' => false, 'core-web.cloud.resolved' => null]);
+        $this->app->instance('config_loaded_from_cache', true);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertTrue(config('statamic.editions.pro'));
+    }
+
+    public function test_glide_caches_kept_in_one_container_are_turned_off(): void
+    {
+        foreach (['hybrid', true] as $mode) {
+            config(['statamic.assets.image_manipulation.cache' => $mode]);
+
+            CloudDefaults::apply($this->app);
+
+            $this->assertFalse(config('statamic.assets.image_manipulation.cache'), 'a rendition in one container\'s public/img is missing on the next');
+            $this->assertFalse(config('statamic.assets.image_manipulation.generate_presets_on_upload'));
+        }
+    }
+
+    public function test_a_glide_cache_on_a_disk_of_its_own_is_kept(): void
+    {
+        config(['statamic.assets.image_manipulation.cache' => 'glide']);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('glide', config('statamic.assets.image_manipulation.cache'));
     }
 
     public function test_definitions_stay_files_from_git(): void
@@ -103,6 +235,65 @@ class CloudTest extends TestCase
     {
         $this->artisan('content:import')
             ->expectsOutputToContain('Missing tables: entries')
+            ->assertFailed();
+    }
+
+    public function test_import_names_the_uuid_and_jsonb_columns_the_stock_migrations_make(): void
+    {
+        $postgres = fn (string $table): array => match ($table) {
+            'entries' => [['name' => 'id', 'type_name' => 'uuid'], ['name' => 'origin_id', 'type_name' => 'uuid'], ['name' => 'slug', 'type_name' => 'varchar'], ['name' => 'data', 'type_name' => 'jsonb']],
+            'trees' => [['name' => 'tree', 'type_name' => 'json'], ['name' => 'settings', 'type_name' => 'JSONB']],
+            'revisions' => [['name' => 'key', 'type_name' => 'uuid']],
+            default => [['name' => 'data', 'type_name' => 'json']],
+        };
+
+        $this->assertSame(['entries.id (uuid)', 'entries.origin_id (uuid)', 'entries.data (jsonb)', 'trees.settings (jsonb)'], ImportContentCommand::wrongColumns($postgres));
+    }
+
+    public function test_core_webs_copies_of_the_drivers_migrations_cover_every_content_table_without_uuid_or_jsonb(): void
+    {
+        $files = ServiceProvider::pathsToPublish(CoreWebServiceProvider::class, 'core-web-cloud-migrations');
+        $source = implode("\n", array_map('file_get_contents', array_keys($files)));
+
+        $this->assertNotEmpty($files);
+        $this->assertDoesNotMatchRegularExpression('/->(uuid|jsonb)\(/', $source);
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            $this->assertStringContainsString("prefix('{$table}')", $source);
+        }
+
+        foreach ($files as $from => $to) {
+            $this->assertSame(basename($from), basename($to), 'published under the driver\'s own name');
+        }
+    }
+
+    public function test_core_webs_copies_differ_from_the_drivers_only_in_ids_and_json(): void
+    {
+        $driver = dirname((new ReflectionClass(EloquentDriver::class))->getFileName(), 2).'/database/migrations';
+
+        foreach (array_keys(ServiceProvider::pathsToPublish(CoreWebServiceProvider::class, 'core-web-cloud-migrations')) as $file) {
+            $name = basename($file);
+            $original = file_exists("{$driver}/{$name}") ? "{$driver}/{$name}" : "{$driver}/entries/{$name}";
+            $expected = str_replace(['->jsonb(', "->uuid('id')", "->uuid('origin_id')"], ['->json(', "->string('id')", "->string('origin_id')"], file_get_contents($original));
+
+            $this->assertSame($expected, preg_replace('/^ *\/\/.*\n/m', '', file_get_contents($file)), $name);
+        }
+    }
+
+    public function test_import_refuses_before_writing_when_an_entry_id_is_not_a_string(): void
+    {
+        config(['statamic.eloquent-driver.entries.driver' => 'eloquent']);
+        $schema = Schema::getFacadeRoot();
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            $schema->create($table, function (Blueprint $blueprint) use ($table): void {
+                $table === 'entries' ? $blueprint->id() : $blueprint->string('id');
+                $blueprint->json('data')->nullable();
+            });
+        }
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('entries.id (integer)')
             ->assertFailed();
     }
 
@@ -175,5 +366,108 @@ class CloudTest extends TestCase
         config(['statamic.eloquent-driver.entries.driver' => 'file']);
 
         $this->artisan('content:import')->assertFailed();
+    }
+
+    public function test_import_takes_users_files_only_into_an_empty_eloquent_users_table(): void
+    {
+        $directory = sys_get_temp_dir().'/core-web-users-'.uniqid();
+        mkdir($directory);
+        config(['statamic.stache.stores.users.directory' => $directory, 'statamic.users.repository' => 'eloquent']);
+        Schema::create('users', function (Blueprint $blueprint): void {
+            $blueprint->uuid('id');
+            $blueprint->string('email');
+        });
+        $command = app(ImportContentCommand::class);
+
+        try {
+            $this->assertSame('', $command->usersSkipReason(), 'a site with no users/ files has nothing to import');
+
+            file_put_contents($directory.'/editor@example.com.yaml', "name: Editor\n");
+            $this->assertNull($command->usersSkipReason());
+
+            Schema::getConnection()->table('users')->insert(['id' => 'a', 'email' => 'sso@example.com']);
+            $this->assertStringContainsString('already holds accounts', $command->usersSkipReason());
+
+            Schema::getConnection()->table('users')->delete();
+            config(['core-web.features.cms_sign_in' => true]);
+            $this->assertStringContainsString('Core sign-in is on', $command->usersSkipReason());
+
+            config(['statamic.users.repository' => 'file']);
+            $this->assertSame('', $command->usersSkipReason(), 'file users stay files');
+        } finally {
+            array_map('unlink', glob($directory.'/*'));
+            rmdir($directory);
+        }
+    }
+
+    public function test_the_first_boot_commands_of_a_feature_that_is_off_succeed_and_say_so(): void
+    {
+        $this->artisan('content:check')->expectsOutputToContain('checks feature is off')->assertSuccessful();
+        $this->artisan('media:sync push --force --no-interaction')->expectsOutputToContain('media feature is off')->assertSuccessful();
+        $this->artisan('media:check')->expectsOutputToContain('media feature is off')->assertSuccessful();
+    }
+
+    public function test_entry_order_refuses_an_unknown_collection(): void
+    {
+        $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
+    }
+
+    public function test_asset_meta_refuses_an_unknown_container(): void
+    {
+        $this->artisan('core-web:asset-meta', ['container' => 'nope'])->assertFailed();
+    }
+
+    public function test_an_import_step_runs_its_command_without_queueing_or_indexing(): void
+    {
+        config(['queue.default' => 'database', 'statamic.search.indexes' => ['default' => ['driver' => 'local', 'searchables' => 'all']]]);
+        config(['statamic.search.queue_connection' => 'database', 'statamic.eloquent-driver.collections.update_entry_parent_connection' => 'database']);
+        $seen = [];
+        Artisan::command('core-web-test:probe {--flag}', function () use (&$seen) {
+            $seen = [
+                config('queue.default'),
+                config('statamic.search.queue_connection'),
+                config('statamic.eloquent-driver.collections.update_entry_order_connection'),
+                config('statamic.eloquent-driver.collections.update_entry_parent_connection'),
+                config('statamic.search.indexes'),
+                $this->option('flag'),
+            ];
+        });
+
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe --flag --no-interaction'])->assertSuccessful();
+        $this->assertSame(['sync', 'sync', 'sync', 'sync', ['cp' => ['driver' => 'null']], true], $seen);
+
+        config(['statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe', '--with-search' => true])->assertSuccessful();
+        $this->assertSame('sync', $seen[0]);
+        $this->assertSame(['default' => ['driver' => 'local']], $seen[4]);
+        $this->assertFalse($seen[5]);
+    }
+
+    public function test_an_import_step_passes_on_the_exit_code(): void
+    {
+        Artisan::command('core-web-test:fail', fn () => 3);
+
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:fail'])->assertExitCode(3);
+    }
+
+    public function test_every_import_step_goes_through_import_step(): void
+    {
+        $process = ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']);
+
+        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 2));
+        $this->assertContains('--with-search', ImportContentCommand::stepProcess(['statamic:search:update', '--all'], search: true));
+        $this->assertSame("core-web:entry-order 'a b' --no-interaction", ImportContentCommand::stepProcess(['core-web:entry-order', 'a b'])[3]);
+    }
+
+    public function test_only_indexes_that_outlive_the_container_are_rebuilt_after_an_import(): void
+    {
+        config(['statamic.search.indexes' => [
+            'default' => ['driver' => 'local'],
+            'products' => ['driver' => 'algolia'],
+            'off' => ['driver' => 'null'],
+            'implicit' => [],
+        ]]);
+
+        $this->assertSame(['products'], ImportContentCommand::lastingSearchIndexes());
     }
 }

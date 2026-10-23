@@ -2,8 +2,8 @@
 
 This file ships with `inly/core-web` and changes with each release. A site imports it from its own
 `CLAUDE.md` (`@vendor/inly/core-web/resources/agents/AGENTS.md`), so `composer update inly/core-web` brings the
-rules that match the code. The API reference is the package README (`vendor/inly/core-web/README.md`);
-read its section for a feature before wiring it. What the site itself decided (which features, which Core
+rules that match the code. The API reference is the package docs (`vendor/inly/core-web/docs/`, one page per feature);
+read a feature's page before wiring it. What the site itself decided (which features, which Core
 types, which Core each environment pairs with) is in the site's own `CLAUDE.md` and `inly.yaml`.
 
 ## The package
@@ -17,7 +17,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Read `CHANGELOG.md`'s upgrade notes** for every version between the one the site had and the one it moves
   to, and apply each.
 - **Env is secrets and what differs per environment** (`CORE_CLIENT_SECRET`, `CORE_MEDIA_KEY`/`_SECRET`; the
-  README's env table has the rest, such as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site
+  env table in `docs/configuration.md` has the rest, such as `CORE_CMS_SITE` and `CORE_CONTENT_CONNECTOR_ID` for a staging site
   paired with production Core). A value that is the same everywhere (the site's Core in `core.url` /
   `core.client_id`, the live site's `content_sync.remote_url`, the bucket, the CDN) is committed in
   `config/core-web.php`.
@@ -77,7 +77,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Locally**, the CP signs in through a local Core (`CORE_URL`); without one, through the live site on the
   machine's `content:login`, as a local account mirroring the live one's roles. Offline,
   `cms_sign_in.local_password_sign_in` restores Statamic's own login, only while `APP_ENV` is `local`.
-- A site moving off its own SSO code removes that code in the same change (README → CMS sign-in).
+- A site moving off its own SSO code removes that code in the same change (`docs/cms-sign-in.md`).
 
 ## Media (`media`)
 
@@ -107,6 +107,12 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   written as the person's own CP account.
 - **Links to the site's own pages are entry references**, never typed URLs; `content:check own-url-links` finds
   the ones that are not; fixing a finding writes the draft.
+- **Core AI's drafts are core-web's endpoints** (`drafts` + `content`): a site never keeps its own drafts controller
+  or writer. What is site-specific goes in bindings: `DraftValueNormaliser` for its field shapes.
+- **What Core AI builds a draft from is read from the blueprints** (`blocks`, `StatamicContentSchema`): never a
+  hand-written block list. Guide the AI in the blueprints (`instructions`, `ai_instructions`, `guide`; `ai_fillable`
+  and `draft_validate` only inform it unless the site's normaliser enforces them), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
+  `DescribesStoredValue`; a `ContentSchema` subclass only for what none of these can say.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 
 ## Forms, chat and live reads
@@ -121,6 +127,22 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   than any page should show, so each live read is a named `LiveRead` and there is no pass-through.
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a
   cached page).
+
+## Cookie consent (`consent`)
+
+- **Every script that sets an optional cookie is held back** with `@consentScript('<category>')` or
+  `type="text/plain" data-consent`, and every embed that does sits in `<x-core-web::consent.gate>`. Google Tag
+  Manager renders through `<x-core-web::consent.google-tag-manager>`, never through Peak SEO's tracker setting.
+- **A new vendor is declared in the same change**: its key (or its own definition) in `consent.vendors`, and
+  `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
+- A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
+
+## Statamic helpers
+
+- **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with
+  `Links` (`docs/statamic-helpers.md`), never a copy of them in the site; a site's short global helper only wraps one.
+- **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
+  handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
 
 ## Testing
 

@@ -75,6 +75,17 @@ class LocalCpSignInTest extends CmsSignInTestCase
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer cws_'.str_repeat('a', 48)));
     }
 
+    public function test_it_signs_in_only_from_this_machine(): void
+    {
+        $this->live();
+
+        $this->get(route('core-web.local-sign-in'), ['X-Forwarded-For' => '203.0.113.7'])->assertForbidden();
+        $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.20'])->get(route('core-web.local-sign-in'))->assertForbidden();
+
+        $this->assertGuest('web');
+        Http::assertNothingSent();
+    }
+
     public function test_a_super_user_stays_super_and_a_demotion_lands_at_the_next_sign_in(): void
     {
         $this->live(['super' => true, 'roles' => []]);

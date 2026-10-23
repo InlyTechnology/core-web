@@ -2,11 +2,9 @@
 
 namespace Inly\CoreWeb\Media;
 
-use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
+use Inly\CoreWeb\Support\Assets;
+use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Assets\Asset;
-use Statamic\Contracts\Query\Builder;
-use Statamic\Fields\Value;
 use Throwable;
 
 /**
@@ -38,7 +36,7 @@ final class MediaSource
 
     public static function from(mixed $value): ?self
     {
-        $value = self::unwrap($value);
+        $value = Values::first($value);
 
         return match (true) {
             $value instanceof self => $value,
@@ -71,28 +69,6 @@ final class MediaSource
         return $this->focus ? "{$this->focus[0]}% {$this->focus[1]}%" : null;
     }
 
-    private static function unwrap(mixed $value): mixed
-    {
-        if ($value instanceof Value) {
-            $value = $value->value();
-        }
-
-        if ($value instanceof Builder) {
-            $value = $value->get();
-        }
-
-        if ($value instanceof Collection) {
-            return $value->first();
-        }
-
-        // A list of files (an assets field read raw, Core's media array) gives its first.
-        if (is_array($value) && array_is_list($value)) {
-            return self::unwrap($value[0] ?? null);
-        }
-
-        return $value;
-    }
-
     private static function fromAsset(Asset $asset): ?self
     {
         $url = self::guard(fn () => $asset->url());
@@ -111,9 +87,9 @@ final class MediaSource
         return new self(
             url: MediaDisks::layerUrl($asset) ?? $url,
             kind: $kind,
-            alt: (string) self::meta($asset, 'alt', ''),
-            focus: self::focus(self::meta($asset, 'focus')),
-            mimeType: $kind === self::VIDEO ? self::guard(fn () => Arr::get($asset->meta(), 'mime_type')) : null,
+            alt: (string) Assets::meta($asset, 'alt', ''),
+            focus: self::focus(Assets::meta($asset, 'focus')),
+            mimeType: $kind === self::VIDEO ? Assets::mimeType($asset) : null,
             asset: $asset,
         );
     }
@@ -180,16 +156,6 @@ final class MediaSource
     private static function int(mixed $value): ?int
     {
         return is_numeric($value) && (int) $value > 0 ? (int) $value : null;
-    }
-
-    /**
-     * An Asset's meta, never an exception: on a cache miss Statamic copies the
-     * file out of the bucket to measure it, outside the disk's `throw => false`,
-     * so a storage outage would otherwise 500 the page over a cosmetic value.
-     */
-    private static function meta(Asset $asset, string $key, mixed $fallback = null): mixed
-    {
-        return self::guard(fn () => $asset->get($key)) ?? $fallback;
     }
 
     private static function guard(callable $read): mixed

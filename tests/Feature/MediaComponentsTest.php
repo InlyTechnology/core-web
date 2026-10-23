@@ -6,11 +6,13 @@ use Exception;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\MediaSource;
 use Inly\CoreWeb\Tests\TestCase;
 use RuntimeException;
 use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Image;
+use Statamic\Fields\Value;
 use Statamic\Tags\Tags;
 
 class MediaComponentsTest extends TestCase
@@ -56,6 +58,17 @@ class MediaComponentsTest extends TestCase
         $html = Blade::render('<x-core-img :src="$file" placeholder="none" style="object-position: top" alt="" />', ['file' => $file]);
         $this->assertStringContainsString('style="object-position: top;"', $html);
         $this->assertStringContainsString('alt=""', $html);
+    }
+
+    public function test_every_field_shape_of_one_image_renders_it(): void
+    {
+        $file = ['original_url' => self::CDN.'/a.jpg', 'altText' => 'From Core'];
+        $source = MediaSource::from($file);
+
+        foreach ([[$file], ['', $file], collect([$file]), new Value([$file]), new Value(collect([$file])), $source] as $shape) {
+            $this->assertSame(self::CDN.'/a.jpg', MediaSource::from($shape)?->url);
+            $this->assertSame('From Core', MediaSource::from($shape)?->alt);
+        }
     }
 
     public function test_nothing_renders_without_a_source(): void

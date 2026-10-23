@@ -9,6 +9,7 @@ use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Proposals\Proposal;
 use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Proposals\ProposalTargets;
 use Inly\CoreWeb\Proposals\Targets\CollectionTreeTarget;
 use Inly\CoreWeb\Proposals\Targets\GlobalTarget;
@@ -16,6 +17,7 @@ use Inly\CoreWeb\Proposals\Targets\NavTarget;
 use Inly\CoreWeb\Proposals\Targets\TermTarget;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
@@ -354,5 +356,156 @@ class ProposalsTest extends TestCase
 
         $this->assertSame(Proposal::DISCARDED, $this->proposals()->find($result['id'])->status);
         $this->assertSame($this->pages['about'], Nav::find('main')->in('default')->tree()[0]['entry']);
+    }
+
+    public function test_an_applied_proposal_is_undone_to_the_value_it_replaced(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $before = array_map(fn (array $item) => array_diff_key($item, ['id' => true]), $target->current());
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['team']]], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
+
+        $this->assertTrue($this->proposals()->describe($this->proposals()->find($result['id']))['undoable']);
+
+        $undone = $this->proposals()->undo($result['id'], $editor);
+
+        $this->assertSame(Proposal::UNDONE, $undone->status);
+        $this->assertSame((string) $editor->id(), $this->proposals()->find($result['id'])->undoneBy);
+        $this->assertSame($before, array_map(fn (array $item) => array_diff_key($item, ['id' => true]), NavTarget::make('main', 'default')->current()));
+
+        try {
+            $this->proposals()->undo($result['id'], $editor);
+            $this->fail('A proposal was undone twice.');
+        } catch (DraftRefused $refused) {
+            $this->assertSame('not_undoable', $refused->error);
+        }
+    }
+
+    public function test_an_undo_never_overwrites_a_later_change(): void
+    {
+        $target = GlobalTarget::make('settings', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '456'], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
+        GlobalSet::find('settings')->in('default')->set('phone', '789')->save();
+
+        $this->assertFalse($this->proposals()->undoable($this->proposals()->find($result['id'])));
+
+        try {
+            $this->proposals()->undo($result['id'], $editor);
+            $this->fail('An undo overwrote a later change.');
+        } catch (DraftRefused $refused) {
+            $this->assertSame('changed_since_applied', $refused->error);
+        }
+
+        $this->assertSame('789', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_an_undo_puts_a_page_tree_back(): void
+    {
+        $target = CollectionTreeTarget::make('pages', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [
+            ['entry' => $this->pages['home']],
+            ['entry' => $this->pages['about']],
+            ['entry' => $this->pages['contact'], 'children' => [['entry' => $this->pages['team']]]],
+        ], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
+
+        $this->proposals()->undo($result['id'], $editor);
+
+        $this->assertSame('/about/team', Entry::find($this->pages['team'])->url());
+    }
+
+    public function test_an_undo_restores_what_the_cp_saved_even_where_a_proposal_could_not(): void
+    {
+        Nav::find('main')->in('default')->tree([['entry' => $this->pages['about']], ['url' => 'kontakt', 'title' => 'Typed in the CP']])->save();
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['about']]], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
+
+        $this->proposals()->undo($result['id'], $editor);
+
+        $this->assertSame('kontakt', Nav::find('main')->in('default')->tree()[1]['url']);
+    }
+
+    public function test_an_undo_brings_back_values_the_blueprint_hides(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'phone', 'field' => ['type' => 'text']],
+            ['handle' => 'show', 'field' => ['type' => 'toggle']],
+            ['handle' => 'note', 'field' => ['type' => 'text', 'if' => ['show' => 'equals true']]],
+        ]])->save();
+        Blink::flush();
+        GlobalSet::find('settings')->in('default')->data(['phone' => '1', 'show' => false, 'note' => 'kept hidden'])->save();
+        $target = GlobalTarget::make('settings', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '2', 'show' => false], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->proposals()->apply($result['id'], $editor);
+
+        $this->proposals()->undo($result['id'], $editor);
+
+        $this->assertSame('kept hidden', GlobalSet::find('settings')->in('default')->get('note'));
+        $this->assertSame('1', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_only_the_last_proposal_applied_to_a_target_is_listed(): void
+    {
+        $target = GlobalTarget::make('settings', 'default');
+        $editor = $this->user('eva@example.com');
+        $first = $this->proposals()->propose($this->author(), $target, ['phone' => '456'], Proposals::base($target));
+        $this->proposals()->apply($first['id'], $editor);
+        $second = $this->proposals()->propose($this->author(), $target, ['phone' => '789'], Proposals::base($target));
+        $this->proposals()->apply($second['id'], $editor);
+
+        $this->assertSame([$second['id']], array_map(fn (Proposal $proposal) => $proposal->id, $this->proposals()->undoableApplied()));
+
+        $this->proposals()->undo($second['id'], $editor);
+        $this->assertSame([], $this->proposals()->undoableApplied());
+        $this->assertSame('456', GlobalSet::find('settings')->in('default')->get('phone'));
+    }
+
+    public function test_only_someone_who_may_edit_the_target_undoes(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['team']]], Proposals::base($target));
+        $this->proposals()->apply($result['id'], $this->user('eva@example.com'));
+
+        try {
+            $this->proposals()->undo($result['id'], $this->user('viewer@example.com', super: false));
+            $this->fail('Someone who may not edit the nav undid a proposal.');
+        } catch (DraftRefused $refused) {
+            $this->assertSame('not_permitted', $refused->error);
+        }
+
+        $this->assertSame($this->pages['team'], Nav::find('main')->in('default')->tree()[0]['entry']);
+    }
+
+    public function test_a_proposal_applied_before_undo_existed_is_not_undoable(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['team']]], Proposals::base($target));
+        $proposal = $this->proposals()->find($result['id']);
+        app(ProposalStore::class)->save($proposal->decide(Proposal::APPLIED, 'someone'));
+
+        $this->assertFalse($this->proposals()->undoable($this->proposals()->find($result['id'])));
+    }
+
+    public function test_an_editor_undoes_an_applied_proposal_in_the_cp(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['entry' => $this->pages['team']]], Proposals::base($target));
+        $editor = $this->user('eva@example.com');
+        $this->actingAs($editor)->post(cp_route('core-web.proposals.apply', $result['id']));
+
+        $this->actingAs($editor)->get(cp_route('core-web.proposals.index'))->assertOk()->assertSee('Recently applied')->assertSee(cp_route('core-web.proposals.undo', $result['id']));
+        $this->actingAs($editor)->get(cp_route('core-web.proposals.show', $result['id']))->assertOk()->assertSee('Undo')->assertSee('Before');
+
+        $this->actingAs($editor)->post(cp_route('core-web.proposals.undo', $result['id']))->assertRedirect(cp_route('core-web.proposals.index'));
+
+        $this->assertSame($this->pages['about'], Nav::find('main')->in('default')->tree()[0]['entry']);
+        $this->actingAs($editor)->get(cp_route('core-web.proposals.index'))->assertDontSee('Recently applied');
     }
 }
