@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Undo an applied proposal**: applying a proposal records the value it
+  replaced, and an editor undoes it from the proposal or the Proposals
+  page's *Recently applied* list until the target changes again. Gives
+  navigations, page trees, globals and terms one step back, on Laravel
+  Cloud too. Only the last proposal applied to a target is undone. The
+  Statamic connector API's proposal shape gains `undoable`, `undone_by`,
+  `undone_at` and the status `undone`. See README → Proposals.
 - **`content:import` finishes asset meta on large media libraries**: asset
   meta is imported one container per process (up to an hour each) through
   the hidden `core-web:asset-meta <container>`, which skips assets already

@@ -8,5 +8,6 @@ Route::prefix('core-web/proposals')->name('core-web.proposals.')->controller(Pro
     Route::get('/', 'index')->name('index');
     Route::get('{id}', 'show')->where('id', '[0-9a-f-]{36}')->name('show');
     Route::post('{id}/apply', 'apply')->where('id', '[0-9a-f-]{36}')->name('apply');
+    Route::post('{id}/undo', 'undo')->where('id', '[0-9a-f-]{36}')->name('undo');
     Route::post('{id}/discard', 'discard')->where('id', '[0-9a-f-]{36}')->name('discard');
 });

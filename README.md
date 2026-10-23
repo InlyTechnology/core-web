@@ -1531,6 +1531,17 @@ app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($targ
   else's is refused until it is decided.
 - Values are validated as the CP validates a save; a page tree proposal
   moves pages and never drops one.
+- **Undo.** Applying records the value the proposal replaced, so it can be
+  undone (`Proposals::undo()`, or **Undo** on the proposal and under
+  *Recently applied* on the Proposals page) for as long as the target still
+  holds what applying left: any later change, in the CP or by another
+  proposal, ends it. The earlier value is restored exactly as it was
+  stored, values the blueprint hides included. Undoing needs the same permission as applying. This is one step back for
+  content without revisions, on any host (on Laravel Cloud, where git
+  keeps no history of content, it is the only one); a proposal applied
+  before this existed recorded nothing to undo to. The Proposals page stays
+  at `core-web/proposals` under the CP (`/admin/core-web/proposals`) even
+  when its nav entry is hidden.
 
 Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
 whose disk does not outlive a deploy names a bucket.

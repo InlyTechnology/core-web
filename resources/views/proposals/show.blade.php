@@ -15,6 +15,11 @@
                     <ui-button type="submit" variant="primary" text="{{ __('Apply') }}"></ui-button>
                 </form>
             @endunless
+        @elseif ($proposal['undoable'])
+            <form method="POST" action="{{ cp_route('core-web.proposals.undo', $proposal['id']) }}" class="inline">
+                @csrf
+                <ui-button type="submit" text="{{ __('Undo') }}"></ui-button>
+            </form>
         @endif
     </ui-header>
 
@@ -31,6 +36,9 @@
             @endif
             @if ($proposal['status'] !== 'open')
                 <ui-badge text="{{ __(ucfirst($proposal['status'])) }}"></ui-badge>
+                @if ($proposal['status'] === 'applied' && ! $proposal['undoable'])
+                    <ui-description>{{ __('This can no longer be undone here: it changed again after it was applied, or it was applied before undo existed.') }}</ui-description>
+                @endif
             @elseif ($proposal['stale'])
                 <ui-description>{{ __('This changed after the proposal was made, so it can no longer be applied. Discard it and ask for a new one.') }}</ui-description>
             @endif
@@ -42,7 +50,9 @@
             <thead>
                 <tr>
                     <th class="text-start">{{ __('Where') }}</th>
-                    <th class="text-start">{{ __('Now') }}</th>
+                    @if ($before)
+                        <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
+                    @endif
                     <th class="text-start">{{ __('Proposed') }}</th>
                 </tr>
             </thead>
@@ -50,7 +60,9 @@
                 @foreach ($changes as $where => $change)
                     <tr>
                         <td class="font-mono text-xs" v-pre>{{ $where }}</td>
-                        <td><pre class="whitespace-pre-wrap text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</pre></td>
+                        @if ($before)
+                            <td><pre class="whitespace-pre-wrap text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</pre></td>
+                        @endif
                         <td><pre class="whitespace-pre-wrap text-xs text-green-700 dark:text-green-400" v-pre>{{ $change['to'] ?? '' }}</pre></td>
                     </tr>
                 @endforeach
