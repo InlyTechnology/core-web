@@ -35,6 +35,9 @@ final class CloudDefaults
         'core-web.content_sync.tokens.driver' => ['CORE_SYNC_TOKENS_DRIVER', 'database'],
     ];
 
+    /** Whether the config was cached after these defaults were resolved, so they are kept as cached. */
+    private static bool $resolved = false;
+
     /** What editors write, which the eloquent driver moves to the database; blueprints, collections and the rest stay files from git. */
     public const CONTENT = [
         'entries', 'collection_trees', 'navigation_trees', 'global_set_variables',
@@ -64,14 +67,20 @@ final class CloudDefaults
 
         $config = $app['config'];
 
+        // A config cached on Cloud was resolved here with the build's env, which a request may not see: Cloud's env is in
+        // .env, and Laravel skips .env once the config is cached, so reading it again would put back every default.
+        self::$resolved = $app->configurationIsCached() && $config->get('core-web.cloud.resolved') === true;
+
         foreach (self::DEFAULTS as $key => [$env, $value]) {
             self::set($config, $key, $env, $value);
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
-        if (Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
+        if (! self::$resolved && Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
             $config->set('statamic.revisions.enabled', false);
         }
+
+        $config->set('core-web.cloud.resolved', true);
 
         // Statamic's licensing ping keeps its marker in an `outpost` store when one exists. The build runs artisan
         // before any migration made the cache table, so on the database store every build command would fail.
@@ -138,6 +147,10 @@ final class CloudDefaults
 
     private static function set(Repository $config, string $key, string $env, mixed $value): void
     {
+        if (self::$resolved) {
+            return;
+        }
+
         // The env value itself, not a skip: the published configs hardcode these keys rather than read the env var.
         $config->set($key, Env::get($env, $value));
     }
