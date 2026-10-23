@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.29.0
 
 - **Solo sites on Cloud need one env var**: with `cloud` on,
   `STATAMIC_PRO_ENABLED=false` turns revisions off too, since they need Pro.
