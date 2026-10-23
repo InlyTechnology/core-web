@@ -306,4 +306,47 @@ class CloudTest extends TestCase
     {
         $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
     }
+
+    public function test_an_import_step_runs_its_command_without_queueing_or_indexing(): void
+    {
+        config(['queue.default' => 'database', 'statamic.search.indexes' => ['default' => ['driver' => 'local', 'searchables' => 'all']]]);
+        $seen = [];
+        Artisan::command('core-web-test:probe', function () use (&$seen) {
+            $seen = [config('queue.default'), config('statamic.eloquent-driver.collections.update_entry_order_connection'), config('statamic.search.indexes')];
+        });
+
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe'])->assertSuccessful();
+        $this->assertSame(['sync', 'sync', []], $seen);
+
+        config(['statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe', '--with-search' => true])->assertSuccessful();
+        $this->assertSame(['default' => ['driver' => 'local']], $seen[2]);
+    }
+
+    public function test_an_import_step_passes_on_the_exit_code(): void
+    {
+        Artisan::command('core-web-test:fail', fn () => 3);
+
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:fail'])->assertExitCode(3);
+    }
+
+    public function test_every_import_step_goes_through_import_step(): void
+    {
+        $process = ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']);
+
+        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 2));
+        $this->assertContains('--with-search', ImportContentCommand::stepProcess(['statamic:search:update', '--all'], search: true));
+    }
+
+    public function test_only_indexes_that_outlive_the_container_are_rebuilt_after_an_import(): void
+    {
+        config(['statamic.search.indexes' => [
+            'default' => ['driver' => 'local'],
+            'products' => ['driver' => 'algolia'],
+            'off' => ['driver' => 'null'],
+            'implicit' => [],
+        ]]);
+
+        $this->assertSame(['products'], ImportContentCommand::lastingSearchIndexes());
+    }
 }

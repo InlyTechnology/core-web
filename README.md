@@ -2045,6 +2045,15 @@ memory nor stops without a word. If one fails or runs out of time, the
 rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
+Nothing is left on the queue. Each step runs through the hidden
+`core-web:import-step`, with the `sync` queue (Cloud caches config at build,
+so an environment variable handed to the step would not reach it) and
+without search indexing, which would otherwise update the indexes once per
+saved entry. A search index whose driver keeps it off the container (any
+but `local` and `null`) is rebuilt once at the end with
+`statamic:search:update --all`; a `local` index is a file on one container's
+disk and builds itself on its first search.
+
 With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and
 succeed, so one first-deploy list fits every site.

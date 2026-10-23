@@ -123,6 +123,7 @@ class ImportContentCommand extends Command
         }
 
         $this->importUsers();
+        $this->updateSearchIndexes();
 
         // Rows were written without events: nothing invalidated the pages that show them.
         $this->callSilently('statamic:static:clear');
@@ -207,6 +208,31 @@ class ImportContentCommand extends Command
         }
     }
 
+    /**
+     * The search indexes the import kept out of every step, for the drivers whose index outlives the container: a `local` index is a file on one container's disk, which builds itself on its first search.
+     *
+     * @return list<string>
+     */
+    public static function lastingSearchIndexes(): array
+    {
+        return collect(config('statamic.search.indexes', []))
+            ->reject(fn (array $index): bool => in_array($index['driver'] ?? 'local', ['local', 'null'], true))
+            ->keys()
+            ->all();
+    }
+
+    /** Never fatal, like the users import: the content is in. */
+    private function updateSearchIndexes(): void
+    {
+        if (self::lastingSearchIndexes() === []) {
+            return;
+        }
+
+        if (! $this->step('search indexes', ['statamic:search:update', '--all'], search: true)) {
+            $this->warn('  The search indexes were not rebuilt. Fix what the output above names, then run php artisan statamic:search:update --all.');
+        }
+    }
+
     /** The table the CP guard's user model writes to, which is where the import puts the rows. */
     private function usersTable(): ?Builder
     {
@@ -224,12 +250,26 @@ class ImportContentCommand extends Command
             : null;
     }
 
-    private function step(string $label, array $command, int $timeout = 600, bool $quiet = true): bool
+    /**
+     * The process that runs one step, through core-web:import-step so it queues nothing.
+     *
+     * @param  list<string>  $command
+     * @return list<string>
+     */
+    public static function stepProcess(array $command, bool $search = false): array
+    {
+        return [
+            PHP_BINARY, base_path('artisan'), 'core-web:import-step', implode(' ', [...$command, '--no-interaction']),
+            ...($search ? ['--with-search'] : []), '--no-interaction',
+        ];
+    }
+
+    private function step(string $label, array $command, int $timeout = 600, bool $quiet = true, bool $search = false): bool
     {
         $result = null;
-        $this->components->task($label, function () use ($command, $timeout, &$result) {
+        $this->components->task($label, function () use ($command, $timeout, $search, &$result) {
             try {
-                $result = Process::env(['QUEUE_CONNECTION' => 'sync'])->timeout($timeout)->run([PHP_BINARY, base_path('artisan'), ...$command, '--no-interaction']);
+                $result = Process::timeout($timeout)->run(self::stepProcess($command, $search));
             } catch (ProcessTimedOutException $e) {
                 $result = $e->result;
             }

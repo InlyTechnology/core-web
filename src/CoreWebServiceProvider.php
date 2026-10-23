@@ -24,6 +24,7 @@ use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
 use Inly\CoreWeb\Cloud\EntryOrderCommand;
 use Inly\CoreWeb\Cloud\FeatureOffCommand;
+use Inly\CoreWeb\Cloud\ImportStepCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
 use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
@@ -257,7 +258,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+            $this->commands([ImportContentCommand::class, ImportStepCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
 
             if ($this->app->runningInConsole()) {
                 $standIns = array_filter(['media:sync' => 'media', 'media:check' => 'media', 'content:check' => 'checks'], fn (string $feature): bool => ! self::enabled($feature));
