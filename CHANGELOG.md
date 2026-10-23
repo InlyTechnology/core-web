@@ -8,29 +8,26 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
-- **Cloud sites keep one static cache across replicas**: with `cloud` on, a
-  `static_cache` cache store on the `file` driver is removed on Cloud, so
-  cached pages and nocache regions sit in the shared default store. Before, a
-  save cleared one replica's copy and the others kept serving the old page.
+- **Cloud sites keep one static cache across replicas**: with `cloud` on, the
+  static cache moves off a `file` store onto the shared database store, under
+  a prefix per build so a deploy never serves a page the old release cached.
+  Before, a save cleared one replica's copy and the others kept serving the
+  old page. Clearing it empties the cache table. README → Laravel Cloud.
 - **Form uploads on Cloud wait in the private bucket**: Livewire's temporary
   uploads (CoreForm file fields, a site's own) go to a `livewire-tmp` disk on
-  the private bucket Cloud attaches, with several files per upload. Give that
-  bucket a lifecycle rule deleting `livewire-tmp/` after a day.
+  the private bucket Cloud attaches, with several files per upload, and
+  Livewire still deletes them after a day.
 - **The Stache uses the `file` store on Cloud**, and a media disk a site keeps
-  `local` for another host is moved to the bucket there, as Peak's are.
-  README → Laravel Cloud.
+  `local` is moved to the bucket there, as Peak's are. README → Laravel Cloud.
 
 ### Upgrade notes
 
-- **Livewire's temporary uploads on Cloud are no longer cleaned up by
-  Livewire.** On a Cloud site with a private bucket attached as `private`,
-  temporary uploads move to `livewire-tmp/` in that bucket and Livewire's own
-  cleanup is off, so without a lifecycle rule they stay. Find: a Cloud site
-  whose `LARAVEL_CLOUD_DISK_CONFIG` names a `private` disk. Migrate: give
-  that bucket a lifecycle rule deleting `livewire-tmp/` after 1 day, and
-  drop any app code that set `livewire.temporary_file_upload.disk` to the
-  same thing. Verify: `php artisan tinker --execute="dump(config('livewire.temporary_file_upload'))"`
-  on Cloud shows the disk `livewire-tmp` and `cleanup` false.
+- **Old form uploads may sit in the public bucket.** On Cloud, a site whose
+  default disk was the public `media` bucket kept Livewire's temporary
+  uploads (form photos, documents) under `livewire-tmp/` there, and Livewire
+  never cleans an `s3` disk. Find: list `livewire-tmp/` in the Cloud site's
+  `media` bucket. Migrate: delete that folder; new uploads go to the private
+  bucket. Verify: the folder is gone and a form upload still submits.
 
 ## v0.29.1
 

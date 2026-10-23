@@ -140,6 +140,7 @@ class CoreWebServiceProvider extends ServiceProvider
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
             }
+
             MailSender::apply($this->app);
 
             if (self::enabled('snapshots')) {

@@ -801,7 +801,8 @@ return [
     | run, at most `lookback_minutes` back. An empty `schedule` runs nothing.
     |
     | uploads_disk: the private bucket Cloud attaches, where Livewire's
-    | temporary uploads wait (as `livewire-tmp`) when the site chose no disk.
+    | temporary uploads wait (as `livewire-tmp`, Livewire's `directory`
+    | under it) when the site chose no disk.
     |
     */
 

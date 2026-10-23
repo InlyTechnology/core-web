@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Cloud;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Env;
+use Livewire\Livewire;
 use LogicException;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 
@@ -46,8 +47,14 @@ final class CloudDefaults
     /** The disk name Livewire's temporary uploads get on Cloud, on the private bucket. */
     public const UPLOADS_DISK = 'livewire-tmp';
 
-    /** The driver of that disk: S3 under a name of its own, since on an `s3` disk Livewire uploads one file at a time through a signed URL. */
+    /**
+     * The driver of that disk: S3 under a name of its own, since on an `s3` disk Livewire (3.6 to 4.4) refuses a
+     * `multiple` field and skips its own cleanup of waiting uploads.
+     */
     public const UPLOADS_DRIVER = 'core-web-bucket';
+
+    /** Marks the static cache store this class wrote, so it is written again for each build. */
+    private const STATIC_CACHE_MARKER = 'core_web_release';
 
     /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
     public const PEAK_DISKS = ['favicons', 'social_images'];
@@ -96,10 +103,8 @@ final class CloudDefaults
         }
 
         // Statamic keeps the static cache's pages and nocache regions in this store when it exists. A file store is each
-        // container's own, so a save would clear only one replica's copy; without it they share the default store.
-        if ($config->get('cache.stores.static_cache.driver') === 'file') {
-            $config->set('cache.stores', array_diff_key((array) $config->get('cache.stores'), ['static_cache' => true]));
-        }
+        // container's own, so a save would clear only one replica's copy; on the shared database store they are one copy.
+        self::shareStaticCache($config);
 
         // Glide's `true` and `hybrid` caches keep renditions in one container's public/img and their keys in a store: on
         // another replica or after a deploy those point at files that container lacks (a 404 on /img/, a 500 on CP
@@ -157,13 +162,56 @@ final class CloudDefaults
     }
 
     /**
+     * The static cache on the shared database store, under a prefix per build: the deploy clears it while the old
+     * release still serves, and a page cached then would point new containers at assets their build does not have.
+     */
+    private static function shareStaticCache(Repository $config): void
+    {
+        $store = $config->get('cache.stores.static_cache');
+
+        if (is_array($store) && ($store['driver'] ?? null) !== 'file' && ! ($store[self::STATIC_CACHE_MARKER] ?? false)) {
+            return;
+        }
+
+        $default = $config->get('cache.stores.'.$config->get('cache.default'));
+        $release = self::release();
+
+        if (! is_array($default) || ($default['driver'] ?? null) !== 'database' || $release === null) {
+            $config->set('cache.stores', array_diff_key((array) $config->get('cache.stores'), ['static_cache' => true]));
+
+            return;
+        }
+
+        $config->set('cache.stores.static_cache', [
+            ...$default,
+            'prefix' => ($default['prefix'] ?? $config->get('cache.prefix')).'static_'.$release.'_',
+            self::STATIC_CACHE_MARKER => true,
+        ]);
+    }
+
+    /** The build this container runs, from its Vite manifests: the same in every container of one deploy. */
+    private static function release(): ?string
+    {
+        $manifests = glob(public_path('*/manifest.json')) ?: [];
+
+        if ($manifests === []) {
+            return null;
+        }
+
+        return substr(md5(implode('|', array_map(fn (string $file): string => $file.':'.filesize($file).':'.filemtime($file), $manifests))), 0, 12);
+    }
+
+    /**
      * Livewire's temporary uploads wait in the private bucket: an upload lands on one replica and the submit that reads
-     * it on another, and without a disk of their own they go to the default disk, on Cloud the public bucket. Livewire's
-     * cleanup lists every waiting upload on each new one, so it is off; the bucket's lifecycle rule deletes them. Run
-     * once every provider has registered, as Livewire merges its config shallowly. A disk the site chose is kept.
+     * it on another, and without a disk of their own they go to the default disk, on Cloud the public bucket. Run once
+     * every provider has registered, as Livewire merges its config shallowly. A disk the site chose is kept.
      */
     public static function keepUploadsInPrivateBucket(Repository $config): void
     {
+        if (! class_exists(Livewire::class)) {
+            return;
+        }
+
         $private = $config->get('filesystems.disks.'.$config->get('core-web.cloud.uploads_disk', 'private'));
         $chosen = $config->get('livewire.temporary_file_upload.disk');
 
@@ -173,7 +221,6 @@ final class CloudDefaults
 
         $config->set('filesystems.disks.'.self::UPLOADS_DISK, [...$private, 'driver' => self::UPLOADS_DRIVER]);
         $config->set('livewire.temporary_file_upload.disk', self::UPLOADS_DISK);
-        $config->set('livewire.temporary_file_upload.cleanup', false);
     }
 
     /** Whether content and users live in the database, as nothing on Cloud's disk outlives a deploy. */

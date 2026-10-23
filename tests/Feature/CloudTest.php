@@ -94,6 +94,32 @@ class CloudTest extends TestCase
         $this->assertSame('redis', config('cache.stores.static_cache.driver'), 'a shared store the site chose is kept');
     }
 
+    public function test_a_built_site_keeps_its_static_cache_on_the_database_store_per_build(): void
+    {
+        $this->setEnv('CACHE_STORE', 'database');
+        $manifest = public_path('core-web-test-build/manifest.json');
+        @mkdir(dirname($manifest), 0777, true);
+        file_put_contents($manifest, '{}');
+
+        try {
+            config(['cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static']]);
+            CloudDefaults::apply($this->app);
+            $first = config('cache.stores.static_cache');
+
+            $this->assertSame('database', $first['driver']);
+            $this->assertStringContainsString('static_', $first['prefix']);
+
+            file_put_contents($manifest, '{"app.css":{}}');
+            clearstatcache();
+            CloudDefaults::apply($this->app);
+
+            $this->assertNotSame($first['prefix'], config('cache.stores.static_cache.prefix'), 'a new build starts an empty static cache');
+        } finally {
+            @unlink($manifest);
+            @rmdir(dirname($manifest));
+        }
+    }
+
     public function test_livewire_uploads_wait_in_the_private_bucket(): void
     {
         $private = ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'fls-private', 'endpoint' => 'https://abc.r2.cloudflarestorage.com'];
@@ -102,7 +128,6 @@ class CloudTest extends TestCase
         CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
 
         $this->assertSame(CloudDefaults::UPLOADS_DISK, config('livewire.temporary_file_upload.disk'));
-        $this->assertFalse(config('livewire.temporary_file_upload.cleanup'));
         $this->assertSame(CloudDefaults::UPLOADS_DRIVER, config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.driver'), 'an `s3` driver makes Livewire upload one file at a time');
         $this->assertSame('fls-private', config('filesystems.disks.'.CloudDefaults::UPLOADS_DISK.'.bucket'));
         // The package has no S3 client installed, so the driver is checked as registered rather than built.
