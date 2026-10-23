@@ -3,15 +3,18 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Closure;
+use Illuminate\Foundation\Auth\User as AuthUser;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
 use Inly\CoreWeb\CmsSignIn\CmsHandoff;
+use Inly\CoreWeb\CmsSignIn\CmsUsers;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Testing\CoreEnvelopeSealer;
 use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\CmsSignInTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Statamic\Auth\Eloquent\User as EloquentUser;
 use Statamic\Facades\User;
 
 /**
@@ -127,6 +130,20 @@ class CmsSignInTest extends CmsSignInTestCase
         $this->get($this->handoff())->assertRedirect(cp_route('index'));
 
         $this->assertNull(User::findByEmail(self::EMAIL)->password());
+    }
+
+    public function test_an_eloquent_account_loses_its_password_and_super_flag_as_columns_allow(): void
+    {
+        $model = new AuthUser;
+        $model->password = 'hash';
+        $model->super = true;
+        $user = (new EloquentUser)->model($model);
+
+        CmsUsers::clearPassword($user);
+        CmsUsers::removeSuper($user);
+
+        $this->assertNull($model->password);
+        $this->assertFalse($model->super, 'the super column holds no null');
     }
 
     /** @return array<string, array{string}> */

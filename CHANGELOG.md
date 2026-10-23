@@ -15,6 +15,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   large bucket outlasted (each asset is a read of its `.meta`), and a run
   again started over. A failure or a timeout names the containers left and
   the commands that finish the import. README → Laravel Cloud.
+- **CMS sign-in works with users in the database**: the hand-off back from
+  Core failed with `Call to undefined method
+  Statamic\Auth\Eloquent\User::passwordHash()` on a site whose users are on
+  the eloquent repository (the `cloud` feature's default), so nobody could
+  sign in to the CP there. The account's password is now cleared on either
+  repository, and taking super or every mapped role from an account writes
+  `false` and an empty role list there instead of a null column.
 
 ## v0.26.0
 
