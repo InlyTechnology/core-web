@@ -13,7 +13,7 @@ return [
     'restate' => 'Your working copy also changes: :fields. A draft is rebuilt from the live entry and the fields you send, so restate those (read the current draft first) or they are lost.',
     'base_changed' => 'The entry changed after you read it: read it again and redo the draft from what it holds now.',
     'base_required' => 'An update names the hash of the entry it was written against; read the entry first.',
-    'revisions_off' => 'Revisions are off on this site (STATAMIC_REVISIONS_ENABLED); a draft needs them. Without them a draft would change a published entry live and carry no record of who wrote it.',
+    'revisions_off' => 'Revisions are off on this site (STATAMIC_REVISIONS_ENABLED, or Statamic Solo); a draft needs them. Without them a draft would change a published entry live and carry no record of who wrote it.',
     'unchanged' => 'The proposal changes nothing: the value is already as proposed.',
     'decided' => 'This proposal is already :status.',
     'not_undoable' => 'Only an applied proposal that recorded the value it replaced can be undone.',
