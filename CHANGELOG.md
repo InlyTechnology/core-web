@@ -14,14 +14,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `DraftWriter`, so a site drops its own drafts controller and writer. A site
   with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
   check. See README → Drafts → Core AI's drafts.
-- **Rate limits group IPv6 by /64**: every per-address limit (chat, the
-  consent log, CMS sign-in, content sync, forms) counts an IPv6 client by
-  its /64, the block one subscriber is given, and an IPv4-mapped address as
+- **Rate limits group IPv6 by /64**: the named per-address limits (chat
+  turns, the consent log, CMS sign-in, content sync, forms) count an IPv6
+  client by its /64, the block one subscriber is given, and an IPv4-mapped
+  address as
   the IPv4 client.
 - **Shared-secret pings open once**: a ping signed with
   `WEBSITE_SYNC_SECRET` needs a nonce, is refused when its nonce was seen
-  before, and may expire at most an hour out. Pings sealed with Core's key
-  were already single-use.
+  before, and may expire at most an hour (plus a minute of skew) out. Pings
+  sealed with Core's key were already single-use. README → Ping contract.
 - **Local sign-in only from the machine itself**: the local CP sign-in
   through the live site answers only a loopback peer with no proxy headers,
   as the local form relay does; a share, tunnel or another device gets a
@@ -29,13 +30,21 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ### Upgrade notes
 
-- **Local sign-in from a container**: a checkout served from Docker (Sail),
-  where requests reach PHP from the container's gateway rather than
-  127.0.0.1, can no longer use the local CP sign-in. Find it: the sign-in
+- **Local sign-in behind Docker or a proxy**: a checkout served from Docker
+  (Sail, DDEV, Lando) or behind any local reverse proxy that adds
+  `X-Forwarded-*` or `Via`, where requests do not reach PHP from 127.0.0.1
+  directly, can no longer use the local CP sign-in. Find it: the sign-in
   answers "signs in as your live account only from this machine". Migrate:
   serve the checkout on the host (`php artisan serve`, Herd), or set
   `core-web.cms_sign_in.local_password_sign_in` to `true` and sign in with a
   local password. Verify: `/cp` signs in.
+- **Shared-secret pings in a site's own tests**: a test that posts the same
+  `FakesCore::signedPing()` envelope twice, or signs one with a fixed or
+  far-off `expires_at`, now gets a 403. Find it: ping tests failing with 403.
+  Migrate: sign each ping fresh and leave `expires_at` and `nonce` to
+  `sign()`, or freeze time to within an hour of a fixed vector. A sender of
+  shared-secret pings must send a 32-hex nonce and expire within the hour,
+  or move to pings sealed with Core's key. Verify: the tests pass.
 
 ## v0.25.0
 
