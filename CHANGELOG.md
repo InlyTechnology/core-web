@@ -12,7 +12,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   cached on Laravel Cloud kept the values the build resolved only until the
   first request, which read the env again without `.env` and put every
   default back (a Solo site showed Statamic Pro's trial alert). The values
-  resolved when the config was cached are now kept.
+  resolved when the config was cached are now kept, from the next deploy.
 
 ## v0.29.0
 

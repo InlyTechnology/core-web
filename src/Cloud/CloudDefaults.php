@@ -11,7 +11,7 @@ use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 /**
  * The config a Statamic site needs on Laravel Cloud, whose disk every deploy resets,
  * set at register so a cached config cannot hold the local values. An env var the
- * environment sets keeps its own value.
+ * environment sets keeps its own value, and a config cached here keeps what it resolved.
  */
 final class CloudDefaults
 {
@@ -34,9 +34,6 @@ final class CloudDefaults
         // A token file is gone at the next deploy and seen by one replica only.
         'core-web.content_sync.tokens.driver' => ['CORE_SYNC_TOKENS_DRIVER', 'database'],
     ];
-
-    /** Whether the config was cached after these defaults were resolved, so they are kept as cached. */
-    private static bool $resolved = false;
 
     /** What editors write, which the eloquent driver moves to the database; blueprints, collections and the rest stay files from git. */
     public const CONTENT = [
@@ -67,16 +64,18 @@ final class CloudDefaults
 
         $config = $app['config'];
 
-        // A config cached on Cloud was resolved here with the build's env, which a request may not see: Cloud's env is in
+        // A config cached on Cloud was resolved here with the build's env, which a request does not see: Cloud's env is in
         // .env, and Laravel skips .env once the config is cached, so reading it again would put back every default.
-        self::$resolved = $app->configurationIsCached() && $config->get('core-web.cloud.resolved') === true;
+        $resolved = $app->configurationIsCached() && $config->get('core-web.cloud.resolved') === true;
 
-        foreach (self::DEFAULTS as $key => [$env, $value]) {
-            self::set($config, $key, $env, $value);
+        if (! $resolved) {
+            foreach (self::DEFAULTS as $key => [$env, $value]) {
+                self::set($config, $key, $env, $value);
+            }
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
-        if (! self::$resolved && Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
+        if (! $resolved && Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
             $config->set('statamic.revisions.enabled', false);
         }
 
@@ -107,6 +106,10 @@ final class CloudDefaults
         // The driver binds its repositories in register(); set after, the site would keep reading the reset disk.
         if ($app->providerIsLoaded(EloquentDriver::class)) {
             throw new LogicException('core-web.features.cloud: statamic/eloquent-driver registered before core-web, so its repositories ignore the Cloud defaults. Register Inly\CoreWeb\CoreWebServiceProvider first.');
+        }
+
+        if ($resolved) {
+            return;
         }
 
         foreach (self::CONTENT as $part) {
@@ -147,10 +150,6 @@ final class CloudDefaults
 
     private static function set(Repository $config, string $key, string $env, mixed $value): void
     {
-        if (self::$resolved) {
-            return;
-        }
-
         // The env value itself, not a skip: the published configs hardcode these keys rather than read the env var.
         $config->set($key, Env::get($env, $value));
     }

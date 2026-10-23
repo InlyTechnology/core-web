@@ -108,6 +108,16 @@ class CloudTest extends TestCase
         $this->assertFalse(config('statamic.revisions.enabled'));
     }
 
+    public function test_a_config_cached_elsewhere_reads_the_env_again(): void
+    {
+        config(['statamic.editions.pro' => false, 'core-web.cloud.resolved' => null]);
+        $this->app->instance('config_loaded_from_cache', true);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertTrue(config('statamic.editions.pro'));
+    }
+
     public function test_glide_caches_kept_in_one_container_are_turned_off(): void
     {
         foreach (['hybrid', true] as $mode) {
