@@ -42,7 +42,8 @@ final class Values
             return $value->map(fn (mixed $item) => self::unwrap($item))->filter()->values();
         }
 
-        if (is_array($value) && array_is_list($value)) {
+        // Statamic drops invalid picks from a multi-value field and keeps the keys, so a list can have gaps.
+        if (is_array($value) && array_filter(array_keys($value), 'is_string') === []) {
             return collect($value)->map(fn (mixed $item) => self::unwrap($item))->filter()->values();
         }
 

@@ -52,6 +52,8 @@ class SupportHelpersTest extends TestCase
         $this->assertSame([$a], Values::collect($a)->all());
         $this->assertSame([], Values::collect(new Value(null))->all());
         $this->assertSame([], Values::collect([])->all());
+        $this->assertSame([$a, $b], Values::collect([0 => $a, 2 => $b])->all(), 'a list with an invalid pick dropped is still a list');
+        $this->assertSame($a, Values::first([1 => $a, 3 => $b]));
         $this->assertSame(['id' => 'x'], Values::first(['id' => 'x']), 'one record as an array is one item, not a list');
         $this->assertSame('https://example.com/a.jpg', Values::first('https://example.com/a.jpg'));
         $this->assertNull(Values::first(false));

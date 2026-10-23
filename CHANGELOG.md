@@ -19,6 +19,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   Livewire still deletes them after a day.
 - **The Stache uses the `file` store on Cloud**, and a media disk a site keeps
   `local` is moved to the bucket there, as Peak's are. README → Laravel Cloud.
+- **A multi-pick with an invalid pick collects every valid one**:
+  Statamic drops an invalid pick from a multi-value field (a dictionary's raw
+  array of keys) and keeps the others' keys, so `[0 => …, 2 => …]`.
+  `Values::collect()` and `Values::first()` took that gapped list for one
+  record and returned it as a single item; they now read an array with only
+  integer keys as a list.
 
 ### Upgrade notes
 
