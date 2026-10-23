@@ -14,6 +14,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **The cookie settings dialog opens centred**: on a site whose CSS reset
   zeroes margins (Tailwind's preflight) it opened in the top-left corner.
   The page behind it no longer scrolls while it is open.
+- **The consent id moved from the settings dialog to the declaration**: a
+  visitor reads it on the cookie page (`<x-core-web::consent.declaration />`),
+  under their current choice.
 
 ## v0.28.0
 

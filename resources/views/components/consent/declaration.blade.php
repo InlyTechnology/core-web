@@ -12,6 +12,7 @@
         {{ __('Your current choice:') }} <span data-consent-status data-none="{{ __('none yet') }}" data-labels='@json(array_map('strval', $titles))'>{{ __('none yet') }}</span>
         <button type="button" class="core-consent__button core-consent__button--outline" data-consent-open>{{ __('Change cookie settings') }}</button>
     </p>
+    <p class="core-consent__id" data-consent-id-line hidden>{{ __('Your consent id:') }} <code data-consent-id></code></p>
     @foreach (\Inly\CoreWeb\Consent\ConsentVendors::byCategory() as $category => $vendors)
         <h3>{{ $titles[$category] }}</h3>
         <table>
