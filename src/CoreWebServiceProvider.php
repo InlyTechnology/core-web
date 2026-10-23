@@ -22,6 +22,7 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
+use Inly\CoreWeb\Cloud\AssetMetaCommand;
 use Inly\CoreWeb\Cloud\EntryOrderCommand;
 use Inly\CoreWeb\Cloud\FeatureOffCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
@@ -289,7 +290,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, ImportStepCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+            $this->commands([ImportContentCommand::class, ImportStepCommand::class, AssetMetaCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
 
             if ($this->app->runningInConsole()) {
                 $standIns = array_filter(['media:sync' => 'media', 'media:check' => 'media', 'content:check' => 'checks'], fn (string $feature): bool => ! self::enabled($feature));
