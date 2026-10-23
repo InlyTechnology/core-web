@@ -10,10 +10,17 @@ use Inly\CoreWeb\Consent\Consent;
 use Inly\CoreWeb\Consent\ConsentVendors;
 use Inly\CoreWeb\Tests\TestCase;
 use InvalidArgumentException;
+use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
+use Statamic\Facades\Fieldset;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class ConsentTest extends TestCase
 {
+    use PreventsSavingStacheItemsToDisk;
+
     protected array $features = ['consent'];
 
     protected function defineEnvironment($app): void
@@ -90,6 +97,61 @@ class ConsentTest extends TestCase
         $this->assertStringContainsString('value="marketing"', $html);
         $this->assertStringNotContainsString('value="preferences"', $html, 'a category no vendor uses is not asked for');
         $this->assertStringContainsString('Core Consent', $html);
+    }
+
+    public function test_a_site_with_only_necessary_cookies_shows_no_banner(): void
+    {
+        config(['core-web.consent.vendors' => []]);
+
+        $this->assertFalse(Consent::asks());
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.banner />')));
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.settings-link />')));
+        $this->assertStringContainsString('core_consent', Blade::render('<x-core-web::consent.declaration />'));
+    }
+
+    public function test_editors_set_the_banner_s_title_text_and_cookie_page_on_a_global(): void
+    {
+        Collection::make('pages')->routes('/{slug}')->save();
+        Entry::make()->id('cookies')->collection('pages')->locale('default')->slug('kakor')->data(['title' => 'Kakor'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->save();
+        $set->in('default')->data(['consent_title' => 'Kakor här', 'consent_text' => 'Vi frågar först.', 'consent_policy_page' => ['cookies']])->save();
+        config(['core-web.consent.global' => 'configuration', 'core-web.consent.policy_url' => '/fallback']);
+
+        $html = Blade::render('<x-core-web::consent.banner />');
+
+        $this->assertStringContainsString('Kakor här', $html);
+        $this->assertStringContainsString('Vi frågar först.', $html);
+        $this->assertStringContainsString('href="/kakor"', $html);
+        $this->assertStringContainsString('href="/override"', Blade::render('<x-core-web::consent.banner policy-url="/override" />'));
+        $this->assertSame(['consent_title', 'consent_text', 'consent_policy_page'], Fieldset::find('core-web::consent')->fields()->all()->keys()->all());
+    }
+
+    public function test_a_cookie_page_missing_on_the_current_site_falls_back_to_policy_url(): void
+    {
+        Site::setSites(['default' => ['name' => 'Svenska', 'url' => '/', 'locale' => 'sv'], 'en' => ['name' => 'English', 'url' => '/en/', 'locale' => 'en']]);
+        Collection::make('pages')->routes('/{slug}')->sites(['default', 'en'])->save();
+        Entry::make()->id('cookies')->collection('pages')->locale('default')->slug('kakor')->data(['title' => 'Kakor'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->sites(['default' => null, 'en' => 'default'])->save();
+        $set->in('default')->data(['consent_policy_page' => 'cookies'])->save();
+        config(['core-web.consent.global' => 'configuration', 'core-web.consent.policy_url' => '/en/cookies']);
+        Site::setCurrent('en');
+
+        $this->assertStringContainsString('href="/en/cookies"', Blade::render('<x-core-web::consent.banner />'));
+    }
+
+    public function test_an_empty_global_keeps_the_default_texts_and_policy_url(): void
+    {
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->save();
+        $set->in('default')->data(['consent_title' => ' '])->save();
+        config(['core-web.consent.global' => 'configuration', 'core-web.consent.policy_url' => '/cookies']);
+
+        $html = Blade::render('<x-core-web::consent.banner />');
+
+        $this->assertStringContainsString('We use cookies', $html);
+        $this->assertStringContainsString('href="/cookies"', $html);
     }
 
     public function test_a_corner_button_reopens_the_settings_where_configured(): void

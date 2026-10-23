@@ -2065,7 +2065,7 @@ each choice. It wears Inly Core's look unless the site overrides it.
 
 What stays in the site: which vendors it loads, its cookie page and its
 texts (the strings are `__()` keys, so the site's `lang/*.json` rewords
-them). It has no scanner: a vendor added to the site is added to
+them, and editors can set the banner's own in the CP, below). It has no scanner: a vendor added to the site is added to
 `consent.vendors` in the same change, and `policy_version` raised.
 
 ```php
@@ -2083,8 +2083,27 @@ A vendor is a key of the catalogue in `resources/consent/vendors.json`
 (Google Analytics and Ads, Meta Pixel, LinkedIn, HubSpot, Hotjar, Clarity,
 YouTube, Vimeo), or a definition of the site's own:
 `'booking' => ['name' => 'Booking', 'category' => 'marketing', 'cookies' => [['name' => 'bk_id', 'purpose' => 'Keeps the booking.', 'days' => 30]]]`.
-A category no vendor uses is not asked for. The site's session, CSRF and
-consent cookies are always declared as necessary.
+A category no vendor uses is not asked for, and a site with only necessary
+cookies shows no banner and no settings link at all, so Tag Manager and held
+scripts need their vendors declared or they never load. The site's session, CSRF
+and consent cookies are always declared as necessary.
+
+### Editing the banner in the CP
+
+`consent.global` names a global set (the site's Configuration global, say)
+whose blueprint imports the `core-web::consent` fieldset:
+
+```yaml
+# resources/blueprints/globals/configuration.yaml
+- import: core-web::consent
+```
+
+Editors then set the banner's title, its text and the cookie page (picked as
+an entry, so it follows a slug change) per site. A field left empty keeps
+the default text, or `policy_url`; a non-empty `policy-url` attribute on the
+component still wins. A page with no version on the current site is not
+linked there. Saving the global must flush the cached pages, as the `all`
+invalidation rule (or `SiteScopedInvalidator`) does.
 
 ### The page
 

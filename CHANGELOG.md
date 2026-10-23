@@ -14,7 +14,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   scripts and embeds held back per category, Google Consent Mode v2 with
   Tag Manager held back until statistics or marketing consent by default, and a consent
   log in the site's database. A corner button reopens the settings once the
-  visitor has chosen (`consent.button`). README → Cookie consent.
+  visitor has chosen (`consent.button`). Editors set the banner's title,
+  text and cookie page on a global (`consent.global`, the `core-web::consent`
+  fieldset), and a site with only necessary cookies shows no banner.
+  README → Cookie consent.
 
 ## v0.24.0
 

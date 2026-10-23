@@ -2,6 +2,8 @@
 
 namespace Inly\CoreWeb\Consent;
 
+use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 
 /** What the banner, the declaration and the script in the page's head share. */
@@ -72,6 +74,36 @@ class Consent
             ->filter(fn (mixed $value): bool => is_string($value) && $value !== '' && preg_match('/[;{}<>"\\\\]/', $value) !== 1)
             ->map(fn (string $value, string $property): string => "{$property}: {$value}")
             ->implode('; ');
+    }
+
+    /** Whether the site asks for anything: with only necessary cookies there is no choice to make, so no banner. */
+    public static function asks(): bool
+    {
+        return array_diff(array_keys(ConsentVendors::byCategory()), ['necessary']) !== [];
+    }
+
+    /**
+     * The banner's title, text and cookie page as an editor set them on the global set `consent.global` names
+     * (the fields of the `core-web::consent` fieldset), each null where nothing is set.
+     *
+     * @return array{title: string|null, text: string|null, policy_url: string|null}
+     */
+    public static function editorial(): array
+    {
+        $handle = config('core-web.consent.global');
+        $site = Site::current()->handle();
+        $variables = is_string($handle) && $handle !== '' ? GlobalSet::find($handle)?->in($site) : null;
+        $text = fn (string $key): ?string => is_string($value = $variables?->value($key)) && trim($value) !== '' ? trim($value) : null;
+        $page = $variables?->value('consent_policy_page');
+        $id = is_array($page) ? ($page[0] ?? null) : $page;
+        $entry = is_string($id) && $id !== '' ? Entry::find($id) : null;
+        $entry = $entry?->in($site);
+
+        return [
+            'title' => $text('consent_title'),
+            'text' => $text('consent_text'),
+            'policy_url' => $entry?->status() === 'published' ? $entry->url() : null,
+        ];
     }
 
     /** Inly Core's mark, inline so the banner loads nothing more. */

@@ -73,6 +73,7 @@ use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
@@ -298,6 +299,9 @@ class CoreWebServiceProvider extends ServiceProvider
                 }
             });
         }
+
+        // Registered whatever the features, so a blueprint importing it still opens with consent switched off.
+        Fieldset::addNamespace('core-web', __DIR__.'/../resources/fieldsets');
 
         if (self::enabled('consent')) {
             $this->bootConsent();

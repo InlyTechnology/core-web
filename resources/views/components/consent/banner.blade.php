@@ -1,5 +1,8 @@
-@props(['policyUrl' => \Inly\CoreWeb\Consent\Consent::setting('policy_url')])
+@props(['policyUrl' => null])
+@if (\Inly\CoreWeb\Consent\Consent::asks())
 @php
+    $editorial = \Inly\CoreWeb\Consent\Consent::editorial();
+    $policyUrl ??= $editorial['policy_url'] ?? \Inly\CoreWeb\Consent\Consent::setting('policy_url');
     $categories = \Inly\CoreWeb\Consent\ConsentVendors::byCategory();
     $button = \Inly\CoreWeb\Consent\Consent::setting('button', 'bottom-left');
     $branding = (array) \Inly\CoreWeb\Consent\Consent::setting('branding', []);
@@ -24,10 +27,10 @@
             @if (! empty($branding['logo']))
                 <img class="core-consent__logo" src="{{ $branding['logo'] }}" alt="">
             @endif
-            <h2 class="core-consent__title" id="core-consent-title">{{ __('We use cookies') }}</h2>
+            <h2 class="core-consent__title" id="core-consent-title">{{ $editorial['title'] ?? __('We use cookies') }}</h2>
         </div>
         <p class="core-consent__text">
-            {{ __('We use cookies to make the site work, and with your consent to understand how it is used and to show relevant marketing. You choose which, and can change your mind at any time.') }}
+            {{ $editorial['text'] ?? __('We use cookies to make the site work, and with your consent to understand how it is used and to show relevant marketing. You choose which, and can change your mind at any time.') }}
             @if ($policyUrl)
                 <a class="core-consent__link" href="{{ $policyUrl }}">{{ __('Read more about cookies') }}</a>
             @endif
@@ -92,3 +95,4 @@
         </form>
     </dialog>
 </div>
+@endif

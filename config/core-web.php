@@ -802,6 +802,10 @@ return [
     | policy_url: the site's cookie or privacy page, linked from the banner.
     | A component's `policy-url` attribute wins (a per-site pin).
     |
+    | global: a global set whose blueprint imports `core-web::consent`, so
+    | editors set the banner's title, text and cookie page in the CP, per
+    | site. A field left empty keeps the default text, or `policy_url`.
+    |
     | google: Consent Mode v2 defaults, all denied until the visitor grants.
     | `mode` basic holds Google's tags back until statistics or marketing is granted;
     | advanced loads them at once and lets them send cookieless pings.
@@ -834,6 +838,7 @@ return [
         'policy_version' => 1,
         'renew_after_days' => 365,
         'policy_url' => null,
+        'global' => null,
         'cookie' => 'core_consent',
         'google' => [
             'consent_mode' => true,
