@@ -26,6 +26,8 @@ use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
+use Inly\CoreWeb\Consent\Consent;
+use Inly\CoreWeb\Consent\PruneConsentsCommand;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -102,6 +104,7 @@ use Statamic\StaticCaching\Cacher;
  * the asset disks on the bucket.
  * The `cloud` feature runs the site on Laravel Cloud, its content in the
  * database, with `content:import` and `core-web:deploy`.
+ * The `consent` feature is the site's own cookie banner and consent log.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -125,6 +128,10 @@ class CoreWebServiceProvider extends ServiceProvider
             if (self::enabled('cms_sign_in')) {
                 $this->mergeCmsSignInDefaults();
                 $this->mergeSsoUserProvider();
+            }
+
+            if (self::enabled('consent')) {
+                $this->mergeGroupDefaults('consent', ['vendors', 'sites']);
             }
 
             if (self::enabled('media')) {
@@ -185,12 +192,33 @@ class CoreWebServiceProvider extends ServiceProvider
         config(['core-web.media' => array_replace($defaults, $media)]);
     }
 
+    /**
+     * The package's defaults under a site's top-level block, one group deep, so a block naming only some keys keeps
+     * the rest. The keys in $whole are the site's own lists, taken whole.
+     *
+     * @param  list<string>  $whole
+     */
+    private function mergeGroupDefaults(string $key, array $whole): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')[$key];
+        $site = (array) config("core-web.{$key}");
+
+        foreach ($defaults as $group => $default) {
+            if (! in_array($group, $whole, true) && is_array($default) && is_array($site[$group] ?? null)) {
+                $site[$group] = array_replace($default, $site[$group]);
+            }
+        }
+
+        config(["core-web.{$key}" => array_replace($defaults, $site)]);
+    }
+
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_23_000000_create_core_web_consents_table.php' => database_path('migrations/2026_10_23_000000_create_core_web_consents_table.php')], 'core-web-consent-migration');
         // Under the driver's own names, so --force replaces copies the site published from the driver.
         $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
@@ -269,6 +297,10 @@ class CoreWebServiceProvider extends ServiceProvider
                     $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping(10);
                 }
             });
+        }
+
+        if (self::enabled('consent')) {
+            $this->bootConsent();
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
@@ -465,6 +497,30 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));
+    }
+
+    private function bootConsent(): void
+    {
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+
+        Blade::directive('consentScript', fn (string $categories): string => '<script type="text/plain" data-consent="<?php echo e('.$categories.'); ?>">');
+        Blade::directive('endconsentScript', fn (): string => '</script>');
+
+        if (! Consent::logs()) {
+            return;
+        }
+
+        RateLimiter::for('core-web.consent', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.consent.log.rate_limit', 30)))
+            ->by('consent|'.sha1((string) $request->ip())));
+        $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
+        $this->commands([PruneConsentsCommand::class]);
+
+        if (is_string($cron = config('core-web.consent.log.prune_schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('consent:prune')
+                ->cron($cron)
+                ->withoutOverlapping());
+        }
     }
 
     private function bootForms(): void
