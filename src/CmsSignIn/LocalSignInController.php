@@ -8,18 +8,25 @@ use Illuminate\Support\Facades\Log;
 use Inly\CoreWeb\ContentSync\RemoteLoginNeeded;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\ContentSync\RemoteSiteError;
+use Inly\CoreWeb\Forms\RestrictToLoopback;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Signs a local CP in as the developer's live-site account (LocalSignIn),
  * asking the live site who the machine's token belongs to on every sign-in,
- * so a revoked machine or a changed grant lands at the next one.
+ * so a revoked machine or a changed grant lands at the next one. Only from
+ * the machine itself, as the local form relay (RestrictToLoopback).
  */
 class LocalSignInController
 {
     public function __invoke(Request $request, LocalSignIn $signIn): Response
     {
         abort_unless(LocalSignIn::applies(), 404);
+
+        // It signs in as the developer's live account, so a share, tunnel or LAN visitor gets no further.
+        if (! RestrictToLoopback::allows($request)) {
+            return self::explain(__('core-web::sync.local_sign_in_loopback'), 403);
+        }
 
         $remote = RemoteSite::fromStorage();
 

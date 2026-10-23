@@ -78,6 +78,23 @@ class PingSignatureTest extends TestCase
         $this->assertForbidden(fn () => (new PingSignature(self::SECRET))->verify(self::PAYLOAD, self::SIGNATURE));
     }
 
+    public function test_a_replayed_envelope_is_forbidden(): void
+    {
+        $signature = new PingSignature(self::SECRET);
+        $signature->verify(self::PAYLOAD, self::SIGNATURE);
+
+        $this->assertForbidden(fn () => $signature->verify(self::PAYLOAD, self::SIGNATURE));
+    }
+
+    public function test_an_envelope_without_a_nonce_or_with_a_far_expiry_is_forbidden(): void
+    {
+        $signature = new PingSignature(self::SECRET);
+        $signed = fn (array $data): array => array_values($signature->sign($data));
+
+        $this->assertForbidden(fn () => $signature->verify(...$signed([...self::DATA, 'nonce' => 'reused'])));
+        $this->assertForbidden(fn () => $signature->verify(...$signed([...self::DATA, 'expires_at' => now()->addSeconds(PingSignature::MAX_TTL_SECONDS + 1)->getTimestamp()])));
+    }
+
     public function test_a_payload_that_is_not_json_is_forbidden(): void
     {
         $signature = new PingSignature(self::SECRET);

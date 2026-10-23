@@ -3,15 +3,20 @@
 namespace Inly\CoreWeb\Ping;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The signed envelope Core sends to the ping endpoint:
  * `{ payload: base64(json), signature: hex hmac_sha256(payload, secret) }`
  * where json = `{ type, id, public_id?, action, expires_at, nonce }`. The
- * secret is core-web.ping.secret; an empty one rejects everything.
+ * secret is core-web.ping.secret; an empty one rejects everything. Each
+ * nonce opens once, within an expiry at most an hour out.
  */
 class PingSignature
 {
+    /** The furthest out an expiry may be, so a nonce is kept in the ledger for no longer. */
+    public const MAX_TTL_SECONDS = 3600;
+
     public function __construct(private ?string $secret = null) {}
 
     /**
@@ -28,7 +33,13 @@ class PingSignature
 
         $data = json_decode(base64_decode($payload, true) ?: '', true);
         abort_unless(is_array($data), 403);
-        abort_unless(Carbon::createFromTimestamp((int) ($data['expires_at'] ?? 0))->isFuture(), 403);
+        $expiresAt = (int) ($data['expires_at'] ?? 0);
+        $now = Carbon::now()->getTimestamp();
+        abort_unless($expiresAt > $now && $expiresAt <= $now + self::MAX_TTL_SECONDS, 403);
+        abort_unless(is_string($data['nonce'] ?? null) && preg_match('/^[0-9a-f]{32}$/D', $data['nonce']) === 1, 403);
+
+        // Spent last, so a refused ping spends none; a replay of a captured ping finds it taken.
+        abort_unless(Cache::store(config('core-web.content.store'))->add('core-web:ping-nonce:'.$data['nonce'], true, $expiresAt - $now), 403);
 
         return $data;
     }

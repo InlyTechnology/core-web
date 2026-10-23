@@ -14,6 +14,28 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `DraftWriter`, so a site drops its own drafts controller and writer. A site
   with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
   check. See README → Drafts → Core AI's drafts.
+- **Rate limits group IPv6 by /64**: every per-address limit (chat, the
+  consent log, CMS sign-in, content sync, forms) counts an IPv6 client by
+  its /64, the block one subscriber is given, and an IPv4-mapped address as
+  the IPv4 client.
+- **Shared-secret pings open once**: a ping signed with
+  `WEBSITE_SYNC_SECRET` needs a nonce, is refused when its nonce was seen
+  before, and may expire at most an hour out. Pings sealed with Core's key
+  were already single-use.
+- **Local sign-in only from the machine itself**: the local CP sign-in
+  through the live site answers only a loopback peer with no proxy headers,
+  as the local form relay does; a share, tunnel or another device gets a
+  plain-text 403.
+
+### Upgrade notes
+
+- **Local sign-in from a container**: a checkout served from Docker (Sail),
+  where requests reach PHP from the container's gateway rather than
+  127.0.0.1, can no longer use the local CP sign-in. Find it: the sign-in
+  answers "signs in as your live account only from this machine". Migrate:
+  serve the checkout on the host (`php artisan serve`, Herd), or set
+  `core-web.cms_sign_in.local_password_sign_in` to `true` and sign in with a
+  local password. Verify: `/cp` signs in.
 
 ## v0.25.0
 
