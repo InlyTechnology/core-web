@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Application as Artisan;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -21,10 +22,16 @@ use Inly\CoreWeb\Client\CoreClient;
 use Inly\CoreWeb\Client\SiteCore;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\DeployCommand;
+use Inly\CoreWeb\Cloud\EntryOrderCommand;
+use Inly\CoreWeb\Cloud\FeatureOffCommand;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
+use Inly\CoreWeb\Cloud\ImportStepCommand;
+use Inly\CoreWeb\Cloud\ScheduledEntriesCommand;
 use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
+use Inly\CoreWeb\Consent\Consent;
+use Inly\CoreWeb\Consent\PruneConsentsCommand;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -50,6 +57,7 @@ use Inly\CoreWeb\Drafts\StatamicContentSchema;
 use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
@@ -72,6 +80,7 @@ use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Statamic;
@@ -103,6 +112,7 @@ use Statamic\StaticCaching\Cacher;
  * the asset disks on the bucket.
  * The `cloud` feature runs the site on Laravel Cloud, its content in the
  * database, with `content:import` and `core-web:deploy`.
+ * The `consent` feature is the site's own cookie banner and consent log.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -118,6 +128,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
             SiteCore::apply($this->app);
+            MailSender::apply($this->app);
 
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
@@ -128,8 +139,18 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeSsoUserProvider();
             }
 
+            if (self::enabled('consent')) {
+                $this->mergeGroupDefaults('consent', ['vendors', 'sites']);
+            }
+
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
+
+                // A cached config already holds the moved disks; a local one left in it was the build's choice.
+                if (self::enabled('cloud') && CloudDefaults::onCloud() && ! $this->app->configurationIsCached()) {
+                    CloudDefaults::movePeakDisksToBucket($this->app['config']);
+                }
+
                 MediaDisks::define($this->app);
             }
         };
@@ -181,12 +202,35 @@ class CoreWebServiceProvider extends ServiceProvider
         config(['core-web.media' => array_replace($defaults, $media)]);
     }
 
+    /**
+     * The package's defaults under a site's top-level block, one group deep, so a block naming only some keys keeps
+     * the rest. The keys in $whole are the site's own lists, taken whole.
+     *
+     * @param  list<string>  $whole
+     */
+    private function mergeGroupDefaults(string $key, array $whole): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')[$key];
+        $site = (array) config("core-web.{$key}");
+
+        foreach ($defaults as $group => $default) {
+            if (! in_array($group, $whole, true) && is_array($default) && is_array($site[$group] ?? null)) {
+                $site[$group] = array_replace($default, $site[$group]);
+            }
+        }
+
+        config(["core-web.{$key}" => array_replace($defaults, $site)]);
+    }
+
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_23_000000_create_core_web_consents_table.php' => database_path('migrations/2026_10_23_000000_create_core_web_consents_table.php')], 'core-web-consent-migration');
+        // Under the driver's own names, so --force replaces copies the site published from the driver.
+        $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
         if (self::enabled('snapshots')) {
             $this->bootSnapshots();
@@ -248,7 +292,37 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         if (self::enabled('cloud')) {
-            $this->commands([ImportContentCommand::class, DeployCommand::class]);
+            $this->commands([ImportContentCommand::class, ImportStepCommand::class, EntryOrderCommand::class, DeployCommand::class, ScheduledEntriesCommand::class]);
+
+            if ($this->app->runningInConsole()) {
+                $standIns = array_filter(['media:sync' => 'media', 'media:check' => 'media', 'content:check' => 'checks'], fn (string $feature): bool => ! self::enabled($feature));
+                Artisan::starting(function (Artisan $artisan) use ($standIns): void {
+                    foreach ($standIns as $name => $feature) {
+                        $artisan->add(new FeatureOffCommand($name, $feature));
+                    }
+                });
+            }
+
+            if (self::enabled('media') && CloudDefaults::onCloud() && MediaDisks::defines('favicons')) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/cloud-favicons.php');
+            }
+
+            // Only where Statamic's own every-minute job is off, which the Cloud defaults do, so an entry is never handled twice.
+            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                // A config published before this key existed has none, so the default lives here too.
+                $cron = config('core-web.cloud.scheduled_entries.schedule', '*/15 * * * *');
+
+                if (! config('statamic.system.handle_scheduled_entries') && is_string($cron) && $cron !== '') {
+                    $schedule->command('core-web:scheduled-entries')->cron($cron)->withoutOverlapping(10);
+                }
+            });
+        }
+
+        // Registered whatever the features, so a blueprint importing it still opens with consent switched off.
+        Fieldset::addNamespace('core-web', __DIR__.'/../resources/fieldsets');
+
+        if (self::enabled('consent')) {
+            $this->bootConsent();
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
@@ -445,6 +519,30 @@ class CoreWebServiceProvider extends ServiceProvider
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
         EncryptCookies::except(array_map(ChatSession::cookieName(...), $agents));
+    }
+
+    private function bootConsent(): void
+    {
+        $this->loadViews();
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+
+        Blade::directive('consentScript', fn (string $categories): string => '<script type="text/plain" data-consent="<?php echo e('.$categories.'); ?>">');
+        Blade::directive('endconsentScript', fn (): string => '</script>');
+
+        if (! Consent::logs()) {
+            return;
+        }
+
+        RateLimiter::for('core-web.consent', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.consent.log.rate_limit', 30)))
+            ->by('consent|'.sha1((string) $request->ip())));
+        $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
+        $this->commands([PruneConsentsCommand::class]);
+
+        if (is_string($cron = config('core-web.consent.log.prune_schedule')) && $cron !== '') {
+            $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('consent:prune')
+                ->cron($cron)
+                ->withoutOverlapping());
+        }
     }
 
     private function bootForms(): void

@@ -109,6 +109,15 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a
   cached page).
 
+## Cookie consent (`consent`)
+
+- **Every script that sets an optional cookie is held back** with `@consentScript('<category>')` or
+  `type="text/plain" data-consent`, and every embed that does sits in `<x-core-web::consent.gate>`. Google Tag
+  Manager renders through `<x-core-web::consent.google-tag-manager>`, never through Peak SEO's tracker setting.
+- **A new vendor is declared in the same change**: its key (or its own definition) in `consent.vendors`, and
+  `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
+- A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
+
 ## Testing
 
 - Use `Inly\CoreWeb\Testing\FakesCore` for a fake Core and signed pings, and
