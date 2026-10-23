@@ -2337,7 +2337,7 @@ php artisan migrate
 
 Each choice posts to `/!/core-web/consent` (no session, rate limited per
 address by `log.rate_limit`, refused from another origin) and becomes one
-row: the visitor's random consent id (shown in the settings dialog, so they
+row: the visitor's random consent id (shown on the cookie declaration and under the dialog's consent details, so they
 can quote it), the site, the action, the categories and the policy version. No IP
 address, user agent or user. `consent:prune` deletes rows older than
 `log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
