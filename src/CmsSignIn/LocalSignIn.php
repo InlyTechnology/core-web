@@ -63,7 +63,7 @@ final class LocalSignIn
         if ($person['super']) {
             $user->makeSuper();
         } else {
-            $user->remove('super');
+            CmsUsers::removeSuper($user);
         }
 
         // Set, never removed: an Eloquent user keeps roles and groups in pivot tables, not columns.
