@@ -14,8 +14,7 @@ use Throwable;
 
 /**
  * The CMS access envelopes Core seals with its own key for this site's app
- * client, and the calls back to Core on that client's token (README → CMS
- * sign-in).
+ * client, and the calls back to Core on that client's token (docs/cms-sign-in.md).
  */
 class CmsHandoff
 {

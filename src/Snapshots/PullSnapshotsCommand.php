@@ -70,7 +70,7 @@ class PullSnapshotsCommand extends Command
     private function throughSite(SnapshotRegistry $registry, SnapshotStore $store, array $types): int
     {
         if (RemoteSite::configuredUrl() === '') {
-            $this->error('Nothing to pull from: set core-web.content_sync.remote_url to the live site, then run php artisan content:login (README, Pulling production data).');
+            $this->error('Nothing to pull from: set core-web.content_sync.remote_url to the live site, then run php artisan content:login (inly/core-web docs/pulling-production-data.md).');
 
             return self::FAILURE;
         }

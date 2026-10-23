@@ -8,17 +8,21 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## v0.30.0
 
+- **Docs in `docs/`**: the README keeps the overview and installation, and
+  each feature has its own page under `docs/` (shipped with the package, so a
+  site's agent reads `vendor/inly/core-web/docs/`). `resources/agents/AGENTS.md`
+  and error messages point at those pages.
 - **Cloud sites keep one static cache across replicas**: with `cloud` on, the
   static cache moves off a `file` store onto the shared database store, under
   a prefix per build so a deploy never serves a page the old release cached.
   Before, a save cleared one replica's copy and the others kept serving the
-  old page. Clearing it empties the cache table. README → Laravel Cloud.
+  old page. Clearing it empties the cache table. `docs/laravel-cloud.md`.
 - **Form uploads on Cloud wait in the private bucket**: Livewire's temporary
   uploads (CoreForm file fields, a site's own) go to a `livewire-tmp` disk on
   the private bucket Cloud attaches, with several files per upload, and
   Livewire still deletes them after a day.
 - **The Stache uses the `file` store on Cloud**, and a media disk a site keeps
-  `local` is moved to the bucket there, as Peak's are. README → Laravel Cloud.
+  `local` is moved to the bucket there, as Peak's are. `docs/laravel-cloud.md`.
 - **A multi-pick with an invalid pick collects every valid one**:
   Statamic drops an invalid pick from a multi-value field (a dictionary's raw
   array of keys) and keeps the others' keys, so `[0 => …, 2 => …]`.
