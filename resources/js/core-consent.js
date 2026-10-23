@@ -140,6 +140,17 @@ const log = (choice, action) => {
     }).catch(() => {})
 }
 
+// A layout may print an invalid lang (sv_SE), which toLocaleString refuses.
+const formatDate = (seconds) => {
+    const options = { dateStyle: 'medium', timeStyle: 'short' }
+    const date = new Date(seconds * 1000)
+    try {
+        return date.toLocaleString(document.documentElement.lang.replace('_', '-') || undefined, options)
+    } catch {
+        return date.toLocaleString(undefined, options)
+    }
+}
+
 const showStatus = (choice) => {
     for (const status of document.querySelectorAll('[data-consent-status]')) {
         const labels = JSON.parse(status.dataset.labels || '{}')
@@ -151,7 +162,7 @@ const showStatus = (choice) => {
         const id = line.querySelector('[data-consent-id]')
         if (id) id.textContent = choice?.id ?? ''
         const date = line.querySelector('[data-consent-date]')
-        if (date) date.textContent = choice ? new Date(choice.t * 1000).toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''
+        if (date) date.textContent = choice ? formatDate(choice.t) : ''
     }
 }
 

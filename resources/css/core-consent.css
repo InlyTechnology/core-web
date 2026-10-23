@@ -357,8 +357,17 @@
     color: var(--core-consent-muted);
 }
 
-.core-consent__id p {
+.core-consent__about {
+    margin-top: 16px;
+}
+
+.core-consent__about[hidden] {
+    display: none;
+}
+
+.core-consent__about p {
     margin: 6px 0 0;
+    color: var(--core-consent-muted);
 }
 
 .core-consent__id[hidden] {

@@ -84,7 +84,7 @@
                 </div>
             @endforeach
 
-            <details class="core-consent__details core-consent__id" data-consent-id-line hidden>
+            <details class="core-consent__details core-consent__about" data-consent-id-line hidden>
                 <summary>{{ __('Show consent details') }}</summary>
                 <p>{{ __('Consent date:') }} <span data-consent-date></span></p>
                 <p>{{ __('Your consent id:') }} <code data-consent-id></code></p>
