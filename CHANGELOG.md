@@ -8,6 +8,24 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **`content:import` imports CP users**: with users on the eloquent
+  repository (the `cloud` feature's default), it runs
+  `statamic:eloquent:import-users` last when `users/` holds accounts and the
+  users table is empty, so a site without Core sign-in can sign in after its
+  first deploy. A table that already holds accounts, or a site with
+  `cms_sign_in` on, is left alone; a failed users import only warns.
+  README → Laravel Cloud.
+- **`content:import` finishes on large sites**: entry URIs and order are
+  recomputed per collection in their own process, and a failure or a
+  timeout names the
+  collections left and the `core-web:entry-order` command that finishes
+  them. Before, a large site's last step could be killed without a message.
+  README → Laravel Cloud.
+- **Feature commands on every Cloud site**: with `cloud` on, `media:sync`,
+  `media:check` and `content:check` succeed with a "feature is off" note
+  where their feature is off, so a fixed first-deploy list (core-cloud's)
+  runs on every site. README → Laravel Cloud.
+
 - **Mail sender**: core-web builds `mail.from.address` as
   `<local part>@<domain>` from `core-web.mail.from`, so a site commits its
   local part (`acme`) instead of a whole address per environment. The

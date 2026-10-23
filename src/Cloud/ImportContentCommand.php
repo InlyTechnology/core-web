@@ -4,8 +4,11 @@ namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Connection;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Statamic\Facades\Collection;
 
 /**
@@ -109,15 +112,17 @@ class ImportContentCommand extends Command
             }
         }
 
-        // The driver hands entry ordering to a queued job; here it runs in-process, whatever queue the environment (or a cached config) names.
-        config(['queue.default' => 'sync', 'statamic.eloquent-driver.collections.update_entry_order_connection' => 'sync']);
+        $handles = Collection::handles()->values()->all();
 
-        $this->components->task('entry URIs and order', function () {
-            foreach (Collection::all() as $collection) {
-                $collection->updateEntryUris();
-                $collection->updateEntryOrder();
+        foreach ($handles as $i => $handle) {
+            if (! $this->step("entry URIs and order: {$handle}", ['core-web:entry-order', $handle], timeout: 3600)) {
+                $this->line('The rows are in. To finish, run `php artisan core-web:entry-order <collection>` for '.implode(', ', array_slice($handles, $i)).', then statamic:static:clear and cache:clear.');
+
+                return self::FAILURE;
             }
-        });
+        }
+
+        $this->importUsers();
 
         // Rows were written without events: nothing invalidated the pages that show them.
         $this->callSilently('statamic:static:clear');
@@ -154,19 +159,92 @@ class ImportContentCommand extends Command
         return $wrong;
     }
 
-    private function step(string $label, array $command): bool
+    /**
+     * Why users/ is not imported: '' when there is nothing to say (users stay files, or the site has none), null when it is imported.
+     */
+    public function usersSkipReason(): ?string
+    {
+        if (config('statamic.users.repository') !== 'eloquent') {
+            return '';
+        }
+
+        $directory = (string) config('statamic.stache.stores.users.directory', base_path('users'));
+
+        if ((glob(rtrim($directory, '/').'/*.yaml') ?: []) === []) {
+            return '';
+        }
+
+        // Core makes each account at its first sign-in, and refuses to adopt one it did not make.
+        if (CoreWebServiceProvider::enabled('cms_sign_in')) {
+            return 'Core sign-in is on: each account is made at its first sign-in, so users/ was not imported.';
+        }
+
+        $users = $this->usersTable();
+
+        if ($users === null) {
+            return 'the users table does not exist yet, so users/ was not imported. Run migrate, then statamic:eloquent:import-users.';
+        }
+
+        return $users->exists() ? 'the users table already holds accounts, so users/ was not imported.' : null;
+    }
+
+    /** Last and never fatal: content:import refuses to run again once entries are in, so a users failure must not stop it short of done. */
+    private function importUsers(): void
+    {
+        $reason = $this->usersSkipReason();
+
+        if ($reason !== null) {
+            if ($reason !== '') {
+                $this->line('  users: '.$reason);
+            }
+
+            return;
+        }
+
+        // The command exits 0 when it imported nothing (a model without HasUuids, say), so the table is what tells.
+        if (! $this->step('users', ['statamic:eloquent:import-users'], quiet: false) || ! $this->usersTable()?->exists()) {
+            $this->warn('  users/ was not imported. Fix what the output above names, then run php artisan statamic:eloquent:import-users.');
+        }
+    }
+
+    /** The table the CP guard's user model writes to, which is where the import puts the rows. */
+    private function usersTable(): ?Builder
+    {
+        $guard = config('statamic.users.guards.cp', 'web');
+        $class = config('auth.providers.'.config("auth.guards.{$guard}.provider").'.model');
+
+        if (! is_string($class) || ! class_exists($class)) {
+            return null;
+        }
+
+        $model = new $class;
+
+        return $model->getConnection()->getSchemaBuilder()->hasTable($model->getTable())
+            ? $model->getConnection()->table($model->getTable())
+            : null;
+    }
+
+    private function step(string $label, array $command, int $timeout = 600, bool $quiet = true): bool
     {
         $result = null;
-        $this->components->task($label, function () use ($command, &$result) {
-            $result = Process::env(['QUEUE_CONNECTION' => 'sync'])->timeout(600)->run([PHP_BINARY, base_path('artisan'), ...$command, '--no-interaction']);
+        $this->components->task($label, function () use ($command, $timeout, &$result) {
+            try {
+                $result = Process::env(['QUEUE_CONNECTION' => 'sync'])->timeout($timeout)->run([PHP_BINARY, base_path('artisan'), ...$command, '--no-interaction']);
+            } catch (ProcessTimedOutException $e) {
+                $result = $e->result;
+            }
 
             return $result->successful();
         });
 
+        if (! $quiet && $result->successful()) {
+            $this->line(trim($result->output()));
+        }
+
         // Both streams: the import commands draw their progress bars on stderr, so stderr alone
         // can be nothing but a bar while the exception went to stdout.
         if ($result->failed()) {
-            $this->error(sprintf('%s exited with code %d.', $command[0], $result->exitCode()));
+            $this->error(sprintf('%s %s.', $command[0], $result->exitCode() === null ? 'ran out of time' : 'exited with code '.$result->exitCode()));
             $this->line(trim($result->output()));
             $this->line(trim($result->errorOutput()));
         }
