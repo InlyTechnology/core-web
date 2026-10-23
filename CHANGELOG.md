@@ -11,9 +11,32 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Core AI's drafts through core-web**: with `drafts` and `content` on,
   core-web serves `POST drafts`, `GET drafts/{id}` and `POST
   drafts/{id}/publish` (Statamic connector API v1.1) on its shared
-  `DraftWriter`, so a site drops its own drafts controller and writer. A site
-  with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
-  check. See README → Drafts → Core AI's drafts.
+  `DraftWriter`, so a site drops its own drafts controller and writer. See
+  README → Drafts → Core AI's drafts.
+- **Content schema**: with `drafts` and `content` on, core-web also serves
+  `GET blocks` and `GET blocks/{collection}/{handle}`, what Core AI builds a
+  draft from, read from the blueprints of `drafts.collections`
+  (`StatamicContentSchema`, configured in `drafts.schema`), and refuses a
+  draft naming an older `catalog_hash`. Docs: README → Drafts → Content
+  schema.
+
+### Upgrade notes
+
+- **A site's own `blocks` endpoints and `DraftCatalog`.** What breaks: a
+  site's own block catalog at `api/core/v1/blocks` shadows core-web's (app
+  routes load after a package's), a class implementing `DraftCatalog` no
+  longer loads (the interface is gone), and every draft naming the site's
+  own `catalog_hash` is refused (`catalog_changed`), since drafts are now
+  checked against core-web's schema. Find it: `grep -rn DraftCatalog app/`
+  and `grep -rn "blocks" routes/`. Migrate: delete the routes, controller,
+  catalog class and its binding; set `drafts.schema` (`settings_fieldset`,
+  `guide_fieldset`, `value_formats`, e.g. the site's own `assets` format) to
+  what the catalog hardcoded, implement `DescribesStoredValue` on
+  Dictionaries whose keys the catalog described, and bind a
+  `StatamicContentSchema` subclass to `ContentSchema` for anything else (an
+  entry `status()` of its own). Verify: `GET api/core/v1/blocks` answers the
+  same blocks and fields as before (the hash changes once), and a draft
+  with its `catalog_hash` is taken.
 
 ## v0.25.0
 
