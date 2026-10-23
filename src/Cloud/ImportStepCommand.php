@@ -21,12 +21,15 @@ class ImportStepCommand extends Command
     {
         config([
             'queue.default' => 'sync',
+            'statamic.search.queue_connection' => 'sync',
             'statamic.eloquent-driver.collections.update_entry_order_connection' => 'sync',
+            'statamic.eloquent-driver.collections.update_entry_parent_connection' => 'sync',
         ]);
 
         // Every entry the steps save would otherwise update the indexes one by one; content:import builds them once at the end where they outlive the container.
+        // Statamic adds a local `cp` index when the config names none, so a null `cp` is what leaves them all alone.
         if (! $this->option('with-search')) {
-            config(['statamic.search.indexes' => []]);
+            config(['statamic.search.indexes' => ['cp' => ['driver' => 'null']]]);
         }
 
         return Artisan::call($this->argument('line'), [], $this->output);

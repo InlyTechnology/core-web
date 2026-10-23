@@ -209,7 +209,7 @@ class ImportContentCommand extends Command
     }
 
     /**
-     * The search indexes the import kept out of every step, for the drivers whose index outlives the container: a `local` index is a file on one container's disk, which builds itself on its first search.
+     * The search indexes whose driver outlives the container; when there is one, the import rebuilds every index once at the end. A `local` index is a file on one container's disk and builds itself on its first search.
      *
      * @return list<string>
      */
@@ -228,7 +228,7 @@ class ImportContentCommand extends Command
             return;
         }
 
-        if (! $this->step('search indexes', ['statamic:search:update', '--all'], search: true)) {
+        if (! $this->step('search indexes', ['statamic:search:update', '--all'], timeout: 3600, search: true)) {
             $this->warn('  The search indexes were not rebuilt. Fix what the output above names, then run php artisan statamic:search:update --all.');
         }
     }
@@ -259,7 +259,10 @@ class ImportContentCommand extends Command
     public static function stepProcess(array $command, bool $search = false): array
     {
         return [
-            PHP_BINARY, base_path('artisan'), 'core-web:import-step', implode(' ', [...$command, '--no-interaction']),
+            PHP_BINARY, base_path('artisan'), 'core-web:import-step', implode(' ', array_map(
+                fn (string $part): string => preg_match('/^[\w:=.-]+$/', $part) === 1 ? $part : escapeshellarg($part),
+                [...$command, '--no-interaction'],
+            )),
             ...($search ? ['--with-search'] : []), '--no-interaction',
         ];
     }

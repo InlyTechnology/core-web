@@ -2048,11 +2048,13 @@ rows are in: the command names the
 Nothing is left on the queue. Each step runs through the hidden
 `core-web:import-step`, with the `sync` queue (Cloud caches config at build,
 so an environment variable handed to the step would not reach it) and
-without search indexing, which would otherwise update the indexes once per
-saved entry. A search index whose driver keeps it off the container (any
-but `local` and `null`) is rebuilt once at the end with
-`statamic:search:update --all`; a `local` index is a file on one container's
-disk and builds itself on its first search.
+with search indexing off (the indexes, Statamic's `cp` one included, are
+swapped for a null index), which would otherwise update them once per saved
+entry. When an index's driver keeps it off the container (any but `local`
+and `null`), every index is rebuilt once at the end with
+`statamic:search:update --all`; a site with only `local` indexes skips it,
+since such an index is a file on one container's disk and builds itself on
+its first search.
 
 With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and
