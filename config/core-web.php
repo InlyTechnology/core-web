@@ -474,7 +474,7 @@ return [
     | never a render) and to send an entry, files included.
     |
     | relay_max_upload_bytes: the files one entry may carry through the form
-    | relay of a local checkout (README → Forms on a local checkout).
+    | relay of a local checkout (docs/forms.md, Forms on a local checkout).
     |
     */
 

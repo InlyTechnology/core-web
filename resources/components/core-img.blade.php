@@ -1,4 +1,4 @@
-{{-- A picture from a Statamic Asset, a URL, or a Core file; see "Media" in the README. --}}
+{{-- A picture from a Statamic Asset, a URL, or a Core file; see docs/media.md. --}}
 @props([
     'src' => null,
     'alt' => null,
