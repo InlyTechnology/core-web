@@ -93,7 +93,7 @@ class CmsUsers
         $user->remove('super');
     }
 
-    /** File users clear the hash through passwordHash(); an eloquent user has none, and its password() would hash the null. */
+    /** File users clear the hash through passwordHash(); an eloquent user has none, and its set('password') hashes whatever it is given. */
     public static function clearPassword(UserContract $user): void
     {
         if ($user instanceof EloquentUser) {
