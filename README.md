@@ -2037,7 +2037,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
 | Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
-| Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
+| Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
 
 An env var the environment sets keeps its own value, including one Cloud
@@ -2080,9 +2080,10 @@ The site does its half once:
   it from `LARAVEL_CLOUD_DISK_CONFIG` (see [On Laravel Cloud](#on-laravel-cloud)).
   Require `league/flysystem-aws-s3-v3` before attaching it: Cloud refuses to
   deploy an app with a bucket and without that package.
-- A Statamic Solo licence sets `STATAMIC_PRO_ENABLED=false` and
-  `STATAMIC_REVISIONS_ENABLED=false` on the environment, since the feature
-  turns both on, and keeps `revisions: false` on its collections.
+- A Statamic Solo licence sets `STATAMIC_PRO_ENABLED=false` on the
+  environment, since the feature turns Pro on, and keeps `revisions: false` on
+  its collections. Revisions need Pro, so they are off with it unless
+  `STATAMIC_REVISIONS_ENABLED` says otherwise.
 - Cloud fills `APP_NAME` with the application's slug, which Statamic shows
   above the CP login; set it to the site's name.
 - Mail: commit the site's `mail.from.local_part` ([Mail sender](#mail-sender))
