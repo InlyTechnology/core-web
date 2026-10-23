@@ -11,7 +11,7 @@ use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 /**
  * The config a Statamic site needs on Laravel Cloud, whose disk every deploy resets,
  * set at register so a cached config cannot hold the local values. An env var the
- * environment sets keeps its own value.
+ * environment sets keeps its own value, and a config cached here keeps what it resolved.
  */
 final class CloudDefaults
 {
@@ -64,14 +64,22 @@ final class CloudDefaults
 
         $config = $app['config'];
 
-        foreach (self::DEFAULTS as $key => [$env, $value]) {
-            self::set($config, $key, $env, $value);
+        // A config cached on Cloud was resolved here with the build's env, which a request does not see: Cloud's env is in
+        // .env, and Laravel skips .env once the config is cached, so reading it again would put back every default.
+        $resolved = $app->configurationIsCached() && $config->get('core-web.cloud.resolved') === true;
+
+        if (! $resolved) {
+            foreach (self::DEFAULTS as $key => [$env, $value]) {
+                self::set($config, $key, $env, $value);
+            }
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
-        if (Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
+        if (! $resolved && Env::get('STATAMIC_REVISIONS_ENABLED') === null && ! $config->get('statamic.editions.pro')) {
             $config->set('statamic.revisions.enabled', false);
         }
+
+        $config->set('core-web.cloud.resolved', true);
 
         // Statamic's licensing ping keeps its marker in an `outpost` store when one exists. The build runs artisan
         // before any migration made the cache table, so on the database store every build command would fail.
@@ -98,6 +106,10 @@ final class CloudDefaults
         // The driver binds its repositories in register(); set after, the site would keep reading the reset disk.
         if ($app->providerIsLoaded(EloquentDriver::class)) {
             throw new LogicException('core-web.features.cloud: statamic/eloquent-driver registered before core-web, so its repositories ignore the Cloud defaults. Register Inly\CoreWeb\CoreWebServiceProvider first.');
+        }
+
+        if ($resolved) {
+            return;
         }
 
         foreach (self::CONTENT as $part) {

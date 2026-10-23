@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Cloud's env vars survive a cached config**: with `cloud` on, a config
+  cached on Laravel Cloud kept the values the build resolved only until the
+  first request, which read the env again without `.env` and put every
+  default back (a Solo site showed Statamic Pro's trial alert). The values
+  resolved when the config was cached are now kept, from the next deploy.
+
 ## v0.29.0
 
 - **Solo sites on Cloud need one env var**: with `cloud` on,

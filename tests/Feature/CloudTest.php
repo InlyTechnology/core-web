@@ -93,6 +93,31 @@ class CloudTest extends TestCase
         $this->assertTrue(config('statamic.revisions.enabled'), 'an env that names revisions keeps its value');
     }
 
+    public function test_a_config_cached_on_cloud_keeps_the_values_resolved_when_it_was_cached(): void
+    {
+        $this->setEnv('STATAMIC_PRO_ENABLED', 'false');
+        CloudDefaults::apply($this->app);
+
+        // A request reads the cached config without .env, so the env var is gone.
+        $this->setEnv('STATAMIC_PRO_ENABLED', null);
+        $this->app->instance('config_loaded_from_cache', true);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertFalse(config('statamic.editions.pro'));
+        $this->assertFalse(config('statamic.revisions.enabled'));
+    }
+
+    public function test_a_config_cached_elsewhere_reads_the_env_again(): void
+    {
+        config(['statamic.editions.pro' => false, 'core-web.cloud.resolved' => null]);
+        $this->app->instance('config_loaded_from_cache', true);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertTrue(config('statamic.editions.pro'));
+    }
+
     public function test_glide_caches_kept_in_one_container_are_turned_off(): void
     {
         foreach (['hybrid', true] as $mode) {
