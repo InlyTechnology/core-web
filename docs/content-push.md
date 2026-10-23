@@ -144,8 +144,9 @@ listed with the reason:
   written files still go live).
 
 A published entry gets a revision, so it is undone in the CP like any
-other; an applied term, global or tree gets none, as a CP save of one does
-not, and a new term is created with no draft before it. When a file is
+other; an applied term, global or tree is undone from its proposal (see
+[Proposals](drafts.md#proposals)), and a new term, created with no draft or
+proposal before it, has nothing to undo to. When a file is
 refused while writing, no new term is created either. A file that went live is recorded under `published` in the lock, with
 its new site version in `bases`, so the next push of it needs no pull
 first; a file left as a draft is not recorded as pushed, so the next

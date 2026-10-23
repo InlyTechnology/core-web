@@ -577,7 +577,7 @@ class ContentPush
         $termBlueprint = $found->termBlueprint($blueprint);
 
         if ($termBlueprint === null) {
-            throw ValidationException::withMessages(['blueprint' => __('core-web::sync.push_blueprint')]);
+            throw ValidationException::withMessages(['blueprint' => __('core-web::sync.push_term_new_blueprint')]);
         }
 
         $known = $termBlueprint->fields()->except('slug')->all()->keys()->map(fn ($handle) => (string) $handle)->all();
