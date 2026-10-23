@@ -28,6 +28,15 @@ class CloudMediaTest extends TestCase
         ]]));
         $app['config']->set('filesystems.disks.favicons', ['driver' => 'local', 'root' => public_path('favicons')]);
         $app['config']->set('filesystems.disks.social_images', ['driver' => 'local', 'root' => public_path('social_images')]);
+        // A site that keeps its Files container local for another host.
+        $app['config']->set('core-web.media.disks', ['assets' => 'assets', 'files' => 'files']);
+        $app['config']->set('filesystems.disks.files', ['driver' => 'local', 'root' => public_path('files')]);
+    }
+
+    public function test_on_cloud_a_media_disk_the_site_keeps_local_is_on_the_bucket(): void
+    {
+        $this->assertTrue(MediaDisks::defines('files'));
+        $this->assertSame(['s3', 'fls-site'], [config('filesystems.disks.files.driver'), config('filesystems.disks.files.bucket')]);
     }
 
     public function test_on_cloud_peaks_local_disks_are_media_disks_on_the_bucket(): void
@@ -45,7 +54,7 @@ class CloudMediaTest extends TestCase
     {
         config(['filesystems.disks.favicons' => ['driver' => 's3', 'bucket' => 'own'], 'core-web.media.disks' => ['assets' => 'assets']]);
 
-        CloudDefaults::movePeakDisksToBucket($this->app['config']);
+        CloudDefaults::moveLocalDisksToBucket($this->app['config']);
 
         $this->assertSame('own', config('filesystems.disks.favicons.bucket'));
         $this->assertSame(['assets' => 'assets'], config('core-web.media.disks'));
@@ -55,7 +64,7 @@ class CloudMediaTest extends TestCase
     {
         config(['filesystems.disks.favicons' => ['driver' => 'local', 'root' => '/x'], 'core-web.media.disks' => ['favicons' => 'icons']]);
 
-        CloudDefaults::movePeakDisksToBucket($this->app['config']);
+        CloudDefaults::moveLocalDisksToBucket($this->app['config']);
 
         $this->assertSame('icons', config('core-web.media.disks.favicons'));
         $this->assertNull(config('filesystems.disks.favicons'));
