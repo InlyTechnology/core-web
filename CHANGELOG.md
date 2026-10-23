@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.27.0
 
 - **`content:import` finishes asset meta on large media libraries**: asset
   meta is imported one container per process (up to an hour each) through
