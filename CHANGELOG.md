@@ -6,6 +6,19 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Cookie consent**: an opt-in `consent` feature, a light consent tool in
+  place of Cookiebot for sites that need no certified CMP. The banner,
+  settings dialog and cookie declaration in Inly Core's look (overridable),
+  scripts and embeds held back per category, Google Consent Mode v2 with
+  Tag Manager held back until statistics or marketing consent by default, and a consent
+  log in the site's database. A corner button reopens the settings once the
+  visitor has chosen (`consent.button`). Editors set the banner's title,
+  text and cookie page on a global (`consent.global`, the `core-web::consent`
+  fieldset), and a site with only necessary cookies shows no banner.
+  README → Cookie consent.
+
 ## v0.24.0
 
 - **Glide images on Cloud work on every replica**: the `cloud` feature turns
