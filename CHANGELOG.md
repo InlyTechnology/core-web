@@ -11,6 +11,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Solo sites on Cloud need one env var**: with `cloud` on,
   `STATAMIC_PRO_ENABLED=false` turns revisions off too, since they need Pro.
   `STATAMIC_REVISIONS_ENABLED` still wins when set. README → Laravel Cloud.
+- **The cookie settings dialog opens centred**: on a site whose CSS reset
+  zeroes margins (Tailwind's preflight) it opened in the top-left corner.
+  The page behind it no longer scrolls while it is open.
 
 ## v0.28.0
 

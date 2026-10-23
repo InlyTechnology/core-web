@@ -101,6 +101,11 @@
 }
 
 .core-consent__dialog {
+    /* A site's CSS reset (Tailwind's preflight) zeroes every margin, which
+       pins a modal dialog to the top-left instead of the centre. */
+    position: fixed;
+    inset: 0;
+    margin: auto;
     width: min(40rem, calc(100vw - 32px));
     max-height: calc(100dvh - 32px);
     font-family: var(--core-consent-font);
@@ -109,6 +114,10 @@
 .core-consent__dialog .core-consent__panel {
     max-height: calc(100dvh - 44px);
     overflow-y: auto;
+}
+
+:root:has(.core-consent__dialog[open]) {
+    overflow: hidden;
 }
 
 .core-consent__dialog::backdrop {
