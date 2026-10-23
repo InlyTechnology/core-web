@@ -7,6 +7,7 @@ use Illuminate\Console\Application as Artisan;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
@@ -125,11 +126,20 @@ class CoreWebServiceProvider extends ServiceProvider
         // Now, not on booting: the eloquent driver picks its repositories in its own register(), which runs after this one.
         if (self::enabled('cloud')) {
             CloudDefaults::apply($this->app);
+
+            $this->callAfterResolving('filesystem', fn (FilesystemManager $manager) => $manager->extend(
+                CloudDefaults::UPLOADS_DRIVER,
+                fn ($app, array $config) => $manager->createS3Driver($config),
+            ));
         }
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
             SiteCore::apply($this->app);
+
+            if (self::enabled('cloud') && CloudDefaults::onCloud()) {
+                CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+            }
             MailSender::apply($this->app);
 
             if (self::enabled('snapshots')) {
@@ -150,7 +160,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
                 // A cached config already holds the moved disks; a local one left in it was the build's choice.
                 if (self::enabled('cloud') && CloudDefaults::onCloud() && ! $this->app->configurationIsCached()) {
-                    CloudDefaults::movePeakDisksToBucket($this->app['config']);
+                    CloudDefaults::moveLocalDisksToBucket($this->app['config']);
                 }
 
                 MediaDisks::define($this->app);

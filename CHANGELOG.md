@@ -6,6 +6,32 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Cloud sites keep one static cache across replicas**: with `cloud` on, a
+  `static_cache` cache store on the `file` driver is removed on Cloud, so
+  cached pages and nocache regions sit in the shared default store. Before, a
+  save cleared one replica's copy and the others kept serving the old page.
+- **Form uploads on Cloud wait in the private bucket**: Livewire's temporary
+  uploads (CoreForm file fields, a site's own) go to a `livewire-tmp` disk on
+  the private bucket Cloud attaches, with several files per upload. Give that
+  bucket a lifecycle rule deleting `livewire-tmp/` after a day.
+- **The Stache uses the `file` store on Cloud**, and a media disk a site keeps
+  `local` for another host is moved to the bucket there, as Peak's are.
+  README → Laravel Cloud.
+
+### Upgrade notes
+
+- **Livewire's temporary uploads on Cloud are no longer cleaned up by
+  Livewire.** On a Cloud site with a private bucket attached as `private`,
+  temporary uploads move to `livewire-tmp/` in that bucket and Livewire's own
+  cleanup is off, so without a lifecycle rule they stay. Find: a Cloud site
+  whose `LARAVEL_CLOUD_DISK_CONFIG` names a `private` disk. Migrate: give
+  that bucket a lifecycle rule deleting `livewire-tmp/` after 1 day, and
+  drop any app code that set `livewire.temporary_file_upload.disk` to the
+  same thing. Verify: `php artisan tinker --execute="dump(config('livewire.temporary_file_upload'))"`
+  on Cloud shows the disk `livewire-tmp` and `cleanup` false.
+
 ## v0.29.1
 
 - **Cloud's env vars survive a cached config**: with `cloud` on, a config
