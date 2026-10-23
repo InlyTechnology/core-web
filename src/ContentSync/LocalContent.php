@@ -21,6 +21,9 @@ class LocalContent
     /** @var array<string, string>|null path => git blob id, as the checkout's HEAD has content/ */
     private ?array $committed = null;
 
+    /** @var array<string, array{tracked: array<string, true>, differs: array<string, true>}> by `index` or `HEAD` */
+    private array $git = [];
+
     public function __construct(private string $root, private string $lockFile) {}
 
     public static function fromApp(): self
@@ -61,7 +64,11 @@ class LocalContent
      */
     public function matchesCommitted(string $path): bool
     {
-        $blob = $this->committed()[$path] ?? null;
+        return $this->matchesBlob($this->committed()[$path] ?? null, $path);
+    }
+
+    private function matchesBlob(?string $blob, string $path): bool
+    {
         $file = $this->absolute($path);
 
         if ($blob === null || ! is_file($file) || is_link($file)) {
@@ -71,6 +78,28 @@ class LocalContent
         $contents = (string) file_get_contents($file);
 
         return hash(strlen($blob) === 64 ? 'sha256' : 'sha1', 'blob '.strlen($contents)."\0".$contents) === $blob;
+    }
+
+    /**
+     * Whether git holds the file as it is now: `index` for `git add`ed (or committed and unchanged since), `HEAD`
+     * for committed. Git compares through its own filters, so line-ending conversion does not count as a change.
+     */
+    public function inGitAsNow(string $path, string $against): bool
+    {
+        $git = $this->git[$against] ??= $this->readGit($against);
+
+        return isset($git['tracked'][$path]) && ! isset($git['differs'][$path]);
+    }
+
+    public function inGit(): bool
+    {
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(10)->run(['git', 'rev-parse', '--is-inside-work-tree']) : null;
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $result !== null && $result->successful() && trim($result->output()) === 'true';
     }
 
     /** Throws for a path a write or delete must not go through: one out of content/, or a symlink, which would carry it elsewhere. */
@@ -228,6 +257,44 @@ class LocalContent
         }
 
         return $this->committed;
+    }
+
+    /** @return array{tracked: array<string, true>, differs: array<string, true>} paths relative to content/ */
+    private function readGit(string $against): array
+    {
+        $tracked = $against === 'HEAD'
+            ? array_fill_keys(array_keys($this->committed()), true)
+            : $this->gitPaths(['ls-files', '-z', '--stage', '--', '.'], '/^100(?:644|755) [0-9a-f]{40,64} 0\t(.+)$/s');
+        $differs = $this->gitPaths(['diff', ...($against === 'HEAD' ? ['HEAD'] : []), '--name-only', '--relative', '-z', '--', '.'], '/^(.+)$/s');
+
+        return ['tracked' => $tracked, 'differs' => $differs];
+    }
+
+    /**
+     * @param  list<string>  $arguments
+     * @return array<string, true>
+     */
+    private function gitPaths(array $arguments, string $pattern): array
+    {
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', ...$arguments]) : null;
+        } catch (Throwable) {
+            return [];
+        }
+
+        if ($result === null || ! $result->successful()) {
+            return [];
+        }
+
+        $paths = [];
+
+        foreach (explode("\0", $result->output()) as $line) {
+            if ($line !== '' && preg_match($pattern, $line, $match) === 1) {
+                $paths[$match[1]] = true;
+            }
+        }
+
+        return $paths;
     }
 
     private function absolute(string $path): string
