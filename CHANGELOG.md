@@ -13,7 +13,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   settings dialog and cookie declaration in Inly Core's look (overridable),
   scripts and embeds held back per category, Google Consent Mode v2 with
   Tag Manager held back until statistics or marketing consent by default, and a consent
-  log in the site's database. README → Cookie consent.
+  log in the site's database. A corner button reopens the settings once the
+  visitor has chosen (`consent.button`). README → Cookie consent.
 
 ## v0.24.0
 

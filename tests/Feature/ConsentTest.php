@@ -92,6 +92,17 @@ class ConsentTest extends TestCase
         $this->assertStringContainsString('Consent by Inly Core', $html);
     }
 
+    public function test_a_corner_button_reopens_the_settings_where_configured(): void
+    {
+        $this->assertMatchesRegularExpression('/class="core-consent__fab core-consent__fab--bottom-left" data-consent-open data-consent-fab/', Blade::render('<x-core-web::consent.banner />'));
+
+        config(['core-web.consent.button' => 'bottom-right']);
+        $this->assertStringContainsString('core-consent__fab--bottom-right', Blade::render('<x-core-web::consent.banner />'));
+
+        config(['core-web.consent.button' => false]);
+        $this->assertStringNotContainsString('data-consent-fab', Blade::render('<x-core-web::consent.banner />'));
+    }
+
     public function test_the_branding_override_restyles_the_banner_and_can_hide_the_mark(): void
     {
         config(['core-web.consent.branding' => ['accent' => '#c00', 'logo' => '/logo.svg', 'show_mark' => false, 'font' => 'x; } body { display: none']]);

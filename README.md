@@ -2105,6 +2105,11 @@ import coreConsent from '../../vendor/inly/core-web/resources/js/core-consent.js
 coreConsent()
 ```
 
+Once the visitor has chosen, a round button in the bottom-left corner reopens
+the settings, so taking consent back is as easy as giving it.
+`consent.button` moves it (`bottom-right`) or turns it off (`false`) where the
+site links `<x-core-web::consent.settings-link>` itself.
+
 ```css
 @import '../../vendor/inly/core-web/resources/css/core-consent.css';
 ```

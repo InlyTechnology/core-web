@@ -1,6 +1,7 @@
 @props(['policyUrl' => \Inly\CoreWeb\Consent\Consent::setting('policy_url')])
 @php
     $categories = \Inly\CoreWeb\Consent\ConsentVendors::byCategory();
+    $button = \Inly\CoreWeb\Consent\Consent::setting('button', 'bottom-left');
     $branding = (array) \Inly\CoreWeb\Consent\Consent::setting('branding', []);
     $descriptions = [
         'necessary' => __('Needed for the site to work, such as remembering this choice. Always on.'),
@@ -37,6 +38,12 @@
         </div>
         @include('core-web::components.consent.mark')
     </section>
+
+    @if (in_array($button, ['bottom-left', 'bottom-right'], true))
+        <button type="button" class="core-consent__fab core-consent__fab--{{ $button }}" data-consent-open data-consent-fab aria-label="{{ __('Cookie settings') }}" title="{{ __('Cookie settings') }}" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/></svg>
+        </button>
+    @endif
 
     <dialog class="core-consent__dialog" data-consent-dialog aria-labelledby="core-consent-settings-title">
         <form method="dialog" class="core-consent__form">

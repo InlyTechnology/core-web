@@ -40,6 +40,51 @@
     display: none;
 }
 
+.core-consent__fab {
+    position: fixed;
+    z-index: 2147482999;
+    bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--core-consent-border);
+    border-radius: 999px;
+    background: var(--core-consent-background);
+    color: var(--core-consent-accent);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
+    cursor: pointer;
+}
+
+.core-consent__fab--bottom-left {
+    left: 16px;
+}
+
+.core-consent__fab--bottom-right {
+    right: 16px;
+}
+
+.core-consent__fab[hidden] {
+    display: none;
+}
+
+.core-consent__fab svg {
+    width: 22px;
+    height: 22px;
+}
+
+.core-consent__fab:hover {
+    filter: brightness(0.96);
+}
+
+@media print {
+    .core-consent__fab {
+        display: none;
+    }
+}
+
 .core-consent__dialog {
     width: min(40rem, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
@@ -135,6 +180,7 @@
 }
 
 .core-consent__button:focus-visible,
+.core-consent__fab:focus-visible,
 .core-consent__close:focus-visible,
 .core-consent__toggle input:focus-visible {
     outline: 2px solid color-mix(in oklab, var(--core-consent-accent) 45%, var(--core-consent-background));

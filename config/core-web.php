@@ -821,6 +821,11 @@ return [
     | `foreground`, `font` (a CSS font-family), `logo` (an image URL shown
     | beside the title) and `show_mark` (the "Consent by Inly Core" line).
     |
+    | button: once the visitor has chosen, a small round button in a corner
+    | reopens the settings, as the law asks withdrawing to be as easy as
+    | giving: `bottom-left`, `bottom-right`, or false for none (the site then
+    | links <x-core-web::consent.settings-link> itself, as in its footer).
+    |
     */
 
     'consent' => [
@@ -851,5 +856,6 @@ return [
             'logo' => null,
             'show_mark' => true,
         ],
+        'button' => 'bottom-left',
     ],
 ];

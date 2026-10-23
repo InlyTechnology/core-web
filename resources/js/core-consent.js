@@ -6,7 +6,8 @@
  | (<script type="text/plain" data-consent="statistics">, <x-core-web::consent.gate>),
  | updates Consent Mode, and logs the choice as proof of consent. A category
  | taken back deletes its cookies and reloads the page, since a script that ran
- | cannot be stopped. window.CoreConsent opens the settings and answers has().
+ | cannot be stopped. Once chosen, a corner button reopens the settings.
+ | window.CoreConsent opens the settings and answers has().
  */
 const settings = () => window.coreConsent || {}
 
@@ -177,7 +178,12 @@ const choose = (categories, action) => {
 
 const banner = () => document.querySelector('[data-consent-banner]')
 const dialog = () => document.querySelector('[data-consent-dialog]')
-const hideBanner = () => banner() && (banner().hidden = true)
+const fab = () => document.querySelector('[data-consent-fab]')
+const showFab = () => fab() && (fab().hidden = false)
+const hideBanner = () => {
+    if (banner()) banner().hidden = true
+    showFab()
+}
 const closeDialog = () => dialog()?.open && dialog().close()
 
 const openDialog = () => {
@@ -213,6 +219,7 @@ export default function coreConsent() {
 
     if (current) {
         release(current)
+        showFab()
     } else if (banner()) {
         banner().hidden = false
     }
