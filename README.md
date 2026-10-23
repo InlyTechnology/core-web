@@ -27,6 +27,8 @@ What the package gives a site:
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
 | Media | `Inly\CoreWeb\Media\*` | `<x-core-img>`, `<x-core-video>`, `<x-core-media>` over the CDN (`CoreCdnScheme`), asset disks on the bucket with a layer outside production (`MediaDisks`, `LayeredAdapter`), `media:sync`, `media:check` |
+| Mail sender | `Inly\CoreWeb\Mail\MailSender` | The From address built as `local_part@domain` from committed config, each part overridable by env |
+| Cookie consent | `Inly\CoreWeb\Consent\*` | The site's own cookie banner, settings dialog and cookie declaration, scripts and embeds held back per category, Google Consent Mode v2, and a consent log as proof of consent |
 | Test helpers | `Inly\CoreWeb\Testing\FakesCore`, `CoreEnvelopeSealer` | A fake Core over `Http::fake()`, pings signed as Core signs them, and content calls sealed with a test key published as Core's |
 
 What stays in the site: the domain snapshots (which Core types, what a stored
@@ -66,6 +68,7 @@ nothing.
 | Laravel Cloud | `features.cloud` | On Laravel Cloud, the config a site needs there; everywhere, `content:import` and `core-web:deploy` (see [Laravel Cloud](#laravel-cloud)) |
 | Media | `features.media` | `<x-core-img>`, `<x-core-video>` and `<x-core-media>`, the asset disks in `media.disks` (unless the app defines them), the `core-web-layered` disk driver, `media:sync` and `media:check`; with `features.content_sync` on a `local` or `testing` app, the `core-web-remote-index` driver and the `/!/core-web/media` route `Asset::url()` resolves through (see [Media](#media)) |
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](#website-content)) |
+| Cookie consent | `features.consent` | The `<x-core-web::consent.*>` components, the `@consentScript` directive, the consent log route `POST /!/core-web/consent` with `consent:prune` and its schedule (`consent.log.enabled`) (see [Cookie consent](#cookie-consent)) |
 | Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull` and `content:push` (see [Content pull](#content-pull) and [Content push](#content-push)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
@@ -105,6 +108,8 @@ shares with the backoffice under the backoffice's own names:
 | `CORE_MEDIA_LAYER` | `media.layer.enabled` | `false` on a server set up before the site is live (staging while the content is built): it writes the bucket directly. Remove it at go-live. On a Laravel Cloud bucket the layer is off unless this is `true` |
 | `CORE_MEDIA_KEY` / `CORE_MEDIA_SECRET` | `media.bucket.key` / `media.bucket.secret` | The bucket key of a server that serves the asset disks from the bucket. Not needed locally, nor on Laravel Cloud with a bucket attached (see [Media](#media)) |
 | `LARAVEL_CLOUD_DISK_CONFIG` | `media.bucket.cloud` | Set by Laravel Cloud, never by hand: its attached buckets, used when no key is set (see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_PUBLIC_DISK` | `media.bucket.cloud_disk` | The Cloud disk the asset disks use on Laravel Cloud, when not `media` (the public bucket Core Cloud attaches to a website; see [On Laravel Cloud](#on-laravel-cloud)) |
+| `CORE_CDN_BASE_URL` | `media.bucket.cdn_url` | Set by Core Cloud's CDN integration: the CDN in front of the Cloud bucket, the files' URL when the site commits no `media.bucket.url` (see [On Laravel Cloud](#on-laravel-cloud)) |
 | `CORE_SNAPSHOT_STORE` | `snapshots.store_driver` | `file` (default) or `database`: what the `snapshots` store is (see [Where snapshots live](#where-snapshots-live)) |
 
 `config/core-web.php`:
@@ -1177,8 +1182,10 @@ block keeps the package's defaults for what it leaves out, one group deep
 ],
 ```
 
-Leave out disks a Statamic addon hardcodes as local (Peak's `favicons` and
-`social_images`). For R2, set `endpoint` to the account's R2 endpoint and
+Peak's `favicons` and `social_images` containers keep their handles but
+write through their disks, so they can be media disks too: list them and
+remove their `local` definitions from `config/filesystems.php`. On Laravel
+Cloud the `cloud` feature does that for them. For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
 
 ### Moving a site's own bucket disk onto these
@@ -1211,14 +1218,20 @@ from their `.env` and run `content:pull --only=assets`.
 ### On Laravel Cloud
 
 With no `CORE_MEDIA_KEY`, the disks use the bucket Laravel Cloud attaches to
-the environment: the first entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` that
-is not a scoped disk gives the key, secret, bucket, endpoint and region. A
-key in config still wins. Cloud's buckets are R2, so `acl` is `false` for
-them whatever config says. The files' URL is the committed `media.bucket.url`
-(the CDN's, so the components transform them), or the bucket's own URL when
-the site commits none, which serves files untransformed. A committed CDN
-URL must have this Cloud bucket as its origin, or new uploads land in one
-bucket while their URLs point at another.
+the environment: the entry in Cloud's `LARAVEL_CLOUD_DISK_CONFIG` whose disk
+is `media.bucket.cloud_disk` (`CORE_PUBLIC_DISK` when set, else `media`, the
+public bucket Core Cloud attaches to a website), else the first that is not a
+scoped disk, gives the key, secret, bucket, endpoint and region. Core Cloud
+attaches a private bucket beside it for form uploads, so the name keeps the
+asset disks off that one whatever order Cloud lists them in. A key in config still wins. Cloud's
+buckets are R2, so `acl` is `false` for them whatever config says. The files'
+URL is the committed `media.bucket.url`, else `CORE_CDN_BASE_URL`, which Core
+Cloud's CDN integration sets to the CDN in front of the public bucket (used
+only when the bucket was found by name, so it is that bucket), else the
+bucket's own URL, which serves files untransformed. The first two are CDN
+URLs, so the components transform the files. A committed CDN URL must have this Cloud
+bucket as its origin, or new uploads land in one bucket while their URLs
+point at another.
 
 Cloud attaches a bucket per environment, so a Cloud bucket gets no layer: a
 Cloud environment before go-live (on `APP_ENV=staging` for noindex) writes
@@ -1229,6 +1242,9 @@ environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
   (`assets`, `files`): Cloud registers its disk before core-web, so a clash
   leaves Cloud's plain disk in place of core-web's, and `media:check` reports
   it as the app's own.
+- The public bucket answers CORS itself, since core-cdn redirects every
+  untransformed file to it: allowed origins `*`, for `GET` and `HEAD`.
+  `media:check` reports a bucket that does not.
 - The first deploy copies the git-tracked images into the bucket with
   `php artisan media:sync push --force`, on the Cloud credentials like any
   other key.
@@ -1898,6 +1914,34 @@ and the message "Pushed by <name> from <machine>". A push never sets or clears a
 `author`. The command runs only
 where `APP_ENV` is `local`.
 
+## Mail sender
+
+Every site sends from `<local part>@<domain>` on the agency transactional
+domain, with the site's Resend key restricted to that domain. So the site
+commits only its local part in its `config/core-web.php`, and core-web
+builds `mail.from.address`. It is always on and needs no feature switch:
+
+```php
+'mail' => [
+    'from' => [
+        'local_part' => env('MAIL_FROM_LOCAL_PART', 'acme'),
+    ],
+],
+```
+
+| Config | Default | Env var that overrides it |
+|---|---|---|
+| `core-web.mail.from.local_part` | none: without one, `mail.from` is left alone | `MAIL_FROM_LOCAL_PART` |
+| `core-web.mail.from.domain` | `transactional.inly.dev` | `MAIL_FROM_DOMAIN` |
+
+core-web fills the address only while `mail.from.address` is unset or
+Laravel's stock `hello@example.com`, so `MAIL_FROM_ADDRESS`, or an address
+the site's `config/mail.php` commits, still wins. A site's `mail` block keeps
+the package's domain when it sets only the local part. Change the domain only
+together with the key: Resend refuses a From address on a domain the key is
+not restricted to. The sender's name stays Laravel's `MAIL_FROM_NAME`, which
+defaults to `APP_NAME`.
+
 ## Laravel Cloud
 
 Laravel Cloud resets the disk on every deploy, so what editors write cannot
@@ -1913,8 +1957,11 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
+| Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
+| Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`) | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
+| Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
 
 An env var the environment sets keeps its own value, including one Cloud
 itself injects when a resource is attached (a cache cluster sets
@@ -1927,10 +1974,22 @@ The site does its half once:
 - `composer require statamic/eloquent-driver`, publish its config
   (`--tag=statamic-eloquent-config`) with every `driver` left on `file`
   (the feature switches the content parts) and `UuidEntryModel` for
-  entries, and publish its migrations.
+  entries. For the tables, publish core-web's copies of the driver's
+  migrations (`--tag=core-web-cloud-migrations`) instead of the driver's own.
+  The stock ones make entry ids uuid, which a Statamic id such as `home`
+  fails on in Postgres, and content columns jsonb, which re-sorts keys.
+  `content:import` checks the columns first and names any it cannot fill.
+  A site that already published the driver's copies publishes with `--force`
+  to replace them, deletes any driver entries migration under another name
+  (`create_entries_table.php`), and rebuilds those tables (`migrate:fresh` on
+  a database no editor has used yet): these are create migrations, so they
+  never change a table that already exists.
 - Give the `users` table uuid ids and the User model `HasUuids`, an empty
   `$guarded` and casts for `super`, `preferences` and `last_login`, which
-  Statamic's eloquent users write.
+  Statamic's eloquent users write. Every `user_id` column follows as
+  `foreignUuid`: on `sessions`, or the first sign-in fails writing a uuid
+  into a bigint, and in the tables `php please auth:migration` writes, or
+  Postgres refuses their foreign keys.
 - Give the `users` table a column for every key the site stores on a user
   (an SSO site's `core_user_id`, and `core_web_live_user_id` where a local
   checkout signs in through the live site, for instance): eloquent users write each
@@ -1942,6 +2001,18 @@ The site does its half once:
 - Asset files: the disk does not outlive a deploy either, so uploads need a
   bucket. Attach one in Cloud and turn on `features.media`, whose disks read
   it from `LARAVEL_CLOUD_DISK_CONFIG` (see [On Laravel Cloud](#on-laravel-cloud)).
+  Require `league/flysystem-aws-s3-v3` before attaching it: Cloud refuses to
+  deploy an app with a bucket and without that package.
+- A Statamic Solo licence sets `STATAMIC_PRO_ENABLED=false` and
+  `STATAMIC_REVISIONS_ENABLED=false` on the environment, since the feature
+  turns both on, and keeps `revisions: false` on its collections.
+- Cloud fills `APP_NAME` with the application's slug, which Statamic shows
+  above the CP login; set it to the site's name.
+- Mail: commit the site's `mail.from.local_part` ([Mail sender](#mail-sender))
+  rather than a `MAIL_FROM_ADDRESS` per environment.
+- The feature leaves the queue alone. With no worker and no Cloud queue
+  attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail, the
+  snapshot and sign-in jobs) never runs.
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
@@ -1952,6 +2023,21 @@ The site does its half once:
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
+
+### Scheduled entries and sleeping
+
+Cloud's scheduler wakes a hibernating site for each task that is due, so a
+task due every minute keeps it awake for good. Statamic schedules one: the
+job that tells the static cache and search that an entry dated in the past
+minute is now published. On Cloud the feature turns it off and schedules
+`core-web:scheduled-entries` on `cloud.scheduled_entries.schedule` (every 15
+minutes, the wake-up interval these sites use). It covers every entry in a dated
+collection dated since its last run, at most `lookback_minutes` (a day)
+back, so nothing is skipped between runs. A scheduled entry is published
+from its date on either way; only its static-cache copy and search entry
+wait for the next run. Match the schedule to the site's wake-up interval,
+and turn on Cloud's scheduler. `core-web:deploy` warns on Cloud about any
+task scheduled more often than every 15 minutes.
 
 The feature also adds an `outpost` file cache store when the site has none:
 Statamic's licensing ping keeps its marker there, and Cloud's build runs
@@ -1970,9 +2056,13 @@ tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work
 included, so it is for a first deploy or a rebuild only; form submissions,
 revisions and tokens exist only in the database and are kept. Run it whole:
-an asset without its meta row renders no image. It does not move CP users:
-on an SSO site Core creates each account on its first sign-in, and
-otherwise `statamic:eloquent:import-users` does.
+an asset without its meta row renders no image. Last, with users on the
+eloquent repository, it imports `users/` (`statamic:eloquent:import-users`)
+while the users table is empty. A table that holds an account, or a site
+with `cms_sign_in` on (Core makes each account at its first sign-in and
+will not adopt one it did not make), keeps `users/` out, and `--fresh`
+never empties the table. A users import that fails only warns: the
+content is in, so run `statamic:eloquent:import-users` by hand.
 
 The order is the point. The driver's own `import-collections` saves the
 trees before the entries exist, and saving a tree drops every id the
@@ -1981,6 +2071,27 @@ first, then trees, then the rest, with URIs and order recomputed last. Each
 import also runs in its own process: in one process the entry import leaves
 the still-empty database trees cached, and the tree import would save those
 instead of the files.
+
+Entry URIs and order are recomputed after the rows, one collection per
+process (up to an hour each), so a large site's set neither runs out of
+memory nor stops without a word. If one fails or runs out of time, the
+rows are in: the command names the
+`php artisan core-web:entry-order <collection>` runs that finish it.
+
+Nothing is left on the queue. Each step runs through the hidden
+`core-web:import-step`, with the `sync` queue (Cloud caches config at build,
+so an environment variable handed to the step would not reach it) and
+with search indexing off (the indexes, Statamic's `cp` one included, are
+swapped for a null index), which would otherwise update them once per saved
+entry. When an index's driver keeps it off the container (any but `local`
+and `null`), every index is rebuilt once at the end with
+`statamic:search:update --all`; a site with only `local` indexes skips it,
+since such an index is a file on one container's disk and builds itself on
+its first search.
+
+With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
+every site: while their feature (`media`, `checks`) is off they say so and
+succeed, so one first-deploy list fits every site.
 
 ### Deploy commands
 
@@ -1998,6 +2109,153 @@ serves the snapshots it has), then the site's own commands in
 refuses to run while content would still be on the disk. Build commands
 stay the host's: `composer install`, the front-end build and
 `php artisan optimize`.
+
+## Cookie consent
+
+A light consent tool in place of Cookiebot, for a site that needs no
+certified CMP (IAB TCF, as Google requires of sites that show its ads). It
+asks before any optional cookie is set, offers *Reject all* beside *Accept
+all* in the same style, lets the visitor change their mind from any page,
+re-asks after `renew_after_days` or when `policy_version` rises, and logs
+each choice. It wears Inly Core's look unless the site overrides it.
+
+What stays in the site: which vendors it loads, its cookie page and its
+texts (the strings are `__()` keys, so the site's `lang/*.json` rewords
+them, and editors can set the banner's own in the CP, below). It has no scanner: a vendor added to the site is added to
+`consent.vendors` in the same change, and `policy_version` raised.
+
+```php
+// config/core-web.php
+return [
+    'features' => ['consent' => true],
+    'consent' => [
+        'vendors' => ['google_analytics', 'hubspot'],
+        'policy_url' => '/cookies',
+    ],
+];
+```
+
+A vendor is a key of the catalogue in `resources/consent/vendors.json`
+(Google Analytics and Ads, Meta Pixel, LinkedIn, HubSpot, Hotjar, Clarity,
+YouTube, Vimeo), or a definition of the site's own:
+`'booking' => ['name' => 'Booking', 'category' => 'marketing', 'cookies' => [['name' => 'bk_id', 'purpose' => 'Keeps the booking.', 'days' => 30]]]`.
+A category no vendor uses is not asked for, and a site with only necessary
+cookies shows no banner and no settings link at all, so Tag Manager and held
+scripts need their vendors declared or they never load. The site's session, CSRF
+and consent cookies are always declared as necessary.
+
+### Editing the banner in the CP
+
+`consent.global` names a global set (the site's Configuration global, say)
+whose blueprint imports the `core-web::consent` fieldset:
+
+```yaml
+# resources/blueprints/globals/configuration.yaml
+- import: core-web::consent
+```
+
+Editors then set the banner's title, its text and the cookie page (picked as
+an entry, so it follows a slug change) per site. A field left empty keeps
+the default text, or `policy_url`; a non-empty `policy-url` attribute on the
+component still wins. A page with no version on the current site is not
+linked there. Saving the global must flush the cached pages, as the `all`
+invalidation rule (or `SiteScopedInvalidator`) does.
+
+### The page
+
+```blade
+<head>
+    <x-core-web::consent.head />          {{-- first: Consent Mode's denied defaults --}}
+    <x-core-web::consent.google-tag-manager id="GTM-XXXX" />
+</head>
+<body>
+    ...
+    <footer><x-core-web::consent.settings-link /></footer>
+    <x-core-web::consent.banner :policy-url="configPage('cookie_page')" />
+</body>
+```
+
+```js
+import coreConsent from '../../vendor/inly/core-web/resources/js/core-consent.js'
+coreConsent()
+```
+
+Once the visitor has chosen, a round button in the bottom-left corner reopens
+the settings, so taking consent back is as easy as giving it.
+`consent.button` moves it (`bottom-right`) or turns it off (`false`) where the
+site links `<x-core-web::consent.settings-link>` itself.
+
+```css
+@import '../../vendor/inly/core-web/resources/css/core-consent.css';
+```
+
+All of it is the same for every visitor, so it is safe in statically cached
+pages: the choice lives in the `core_consent` cookie and the script applies
+it.
+
+- **Google Tag Manager**: render it through the component, not through Peak
+  SEO's tracker setting. In `basic` mode (the default) the container waits
+  until statistics or marketing is granted, and its tags read Consent Mode
+  for which; `advanced` loads it at once and lets Google's tags
+  send cookieless pings under Consent Mode. Tags in the container that need
+  marketing consent read Consent Mode's `ad_*` signals, and a
+  `consent_update` event is pushed to the dataLayer on every choice.
+- **Any other script**: `@consentScript('marketing') ... @endconsentScript`,
+  or `<script type="text/plain" data-consent="marketing" data-src="https://js.hs-scripts.com/123.js" async></script>`
+  for an external one. `data-consent` takes several categories, space
+  separated, all of which must be granted (`data-consent-match="any"` for
+  any one of them).
+- **An embed** (a HubSpot form, a booking frame, a video):
+  `<x-core-web::consent.gate category="marketing">...</x-core-web::consent.gate>`
+  shows a placeholder with *Accept marketing cookies* until it is granted.
+  Declare the embed's vendor too, so the category is in the banner.
+- **The declaration**: `<x-core-web::consent.declaration />` on the cookie
+  page, a table per category read from the same list, with the visitor's
+  current choice and a button to change it.
+
+Every choice deletes the cookies of the categories it does not grant, and a
+category taken back reloads the page, since a
+script that ran cannot be stopped. `window.CoreConsent` has `open()`,
+`has(category)`, `categories()` and `onChange(fn)`, and a
+`core-consent:change` event fires on `window`.
+
+### Several domains
+
+On a multisite install every site shows the banner, in its own locale, and a
+domain asks on its own: a cookie belongs to one domain, so a visitor moving
+from one site to another chooses again there. `consent.sites.<handle>`
+overrides any setting for one site (its vendors, branding, `policy_url`,
+`policy_version`), and each log row names the site the choice was made on.
+
+```php
+'consent' => [
+    'vendors' => ['google_analytics'],
+    'sites' => ['trucks' => ['vendors' => ['google_analytics', 'linkedin_insight']]],
+],
+```
+
+### Branding
+
+The banner is Inly Core's: Paper, Ink and Core blue, Geist where the site
+loads it, and a "Core Consent" line. `consent.branding` overrides
+`accent`, `accent_foreground`, `background`, `foreground`, `font`, `logo` and
+`show_mark`; the CSS custom properties (`--core-consent-accent`, ...) can be
+set in the site's own CSS too.
+
+### The consent log
+
+```bash
+php artisan vendor:publish --tag=core-web-consent-migration
+php artisan migrate
+```
+
+Each choice posts to `/!/core-web/consent` (no session, rate limited per
+address by `log.rate_limit`, refused from another origin) and becomes one
+row: the visitor's random consent id (shown in the settings dialog, so they
+can quote it), the site, the action, the categories and the policy version. No IP
+address, user agent or user. `consent:prune` deletes rows older than
+`log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
+no log sets `log.enabled` to false.
 
 ## Statamic helpers
 
