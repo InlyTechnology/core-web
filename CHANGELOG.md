@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Core AI's drafts through core-web**: with `drafts` and `content` on,
+  core-web serves `POST drafts`, `GET drafts/{id}` and `POST
+  drafts/{id}/publish` (Statamic connector API v1.1) on its shared
+  `DraftWriter`, so a site drops its own drafts controller and writer. A site
+  with a block catalog binds the new `DraftCatalog` for the `catalog_hash`
+  check. See README → Drafts → Core AI's drafts.
+
 ## v0.25.0
 
 - **`content:import` imports CP users**: with users on the eloquent

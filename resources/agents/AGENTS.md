@@ -88,6 +88,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   written as the person's own CP account.
 - **Links to the site's own pages are entry references**, never typed URLs; `content:check own-url-links` finds
   the ones that are not; fixing a finding writes the draft.
+- **Core AI's drafts are core-web's endpoints** (`drafts` + `content`): a site never keeps its own drafts controller
+  or writer. What is site-specific goes in bindings: `DraftValueNormaliser` for its field shapes, `DraftCatalog` for
+  its block catalog's hash.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 
 ## Forms, chat and live reads

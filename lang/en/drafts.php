@@ -27,4 +27,7 @@ return [
     'no_cms_user' => ':name has no account in the site\'s CMS.',
     'core_ai_draft' => 'Drafted by Core AI for :name',
     'core_ai_proposal' => 'Proposed by Core AI for :name',
+    'core_ai_publish' => 'Published by Core AI for :name',
+    'no_draft' => 'The site has no such entry to draft.',
+    'catalog_changed' => 'What a draft may be built from changed since you read it: read the catalog again and redo the draft.',
 ];

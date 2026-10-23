@@ -1423,6 +1423,9 @@ rather than change a live entry.
   hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
   checks without saving.
 - `publish()` makes the draft live; `read()` returns it with who holds it.
+  Both writes take the author or a closure that makes one, called only once
+  the request names an entry it may draft, so a refusal about the request
+  (an unknown entry is `not_found`, 404) comes before one about the author.
 
 ```php
 $author = new DraftAuthor($cpUser, $name, DraftProvenance::make('content-push', ['by' => $email]), 'Pushed from local');
@@ -1443,6 +1446,26 @@ update names (`FieldsHash` hashes the draft's fields). Refusals throw
 `DraftRefused`, which renders as JSON (`error`, `message`, details); the
 messages are translations a site rewords in
 `lang/vendor/core-web/{locale}/drafts.php`.
+
+### Core AI's drafts (API v1.1)
+
+With `features.content` on as well, core-web takes Core AI's drafts itself,
+under `content.prefix` (`api/core/v1`), each sealed with Core's key:
+
+| Route | Purpose |
+|---|---|
+| `POST drafts` (`dry_run` to validate only) | `website.draft` |
+| `GET drafts/{id}` | `website.draft` |
+| `POST drafts/{id}/publish` | `website.publish` |
+
+A draft is the `DraftWriter` request above, written for the person the body
+names in `actor` (as a fix or a proposal, see below), marked `via: core-ai`
+with Core's request and approval ids. A new entry answers 201, an update or
+a dry run 200. A site whose drafts are built from a catalog Core reads (a
+block catalog) binds `Inly\CoreWeb\Drafts\DraftCatalog`: a draft naming an
+older `catalog_hash` is then refused (`catalog_changed`, with the current
+hash). A site whose drafts arrive in another shape than Statamic stores
+binds its own `DraftValueNormaliser`.
 
 ### Proposals
 
