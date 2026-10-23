@@ -134,6 +134,7 @@ class SyncApiController
             'assets.*.hash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/'],
             'assets.*.size' => ['nullable', 'integer', 'min:0'],
             'git_sha' => ['nullable', 'string', 'regex:/^[0-9a-f]{7,64}$/'],
+            'publish' => ['nullable', 'boolean'],
         ]);
 
         if ($validator->fails()) {
@@ -143,6 +144,15 @@ class SyncApiController
         // Each file is capped, but a full batch of capped files would still be parsed whole in one request.
         if (array_sum(array_map(fn (array $item) => strlen((string) $item['contents']), (array) $request->input('items'))) > (int) config('core-web.content_sync.push_bytes', 10 * 1024 * 1024)) {
             return new JsonResponse(['error' => 'too_large', 'message' => __('core-web::sync.push_too_large')], 413);
+        }
+
+        if ($request->boolean('publish') && ! filter_var(config('core-web.content_sync.push_publish', false), FILTER_VALIDATE_BOOLEAN)) {
+            return new JsonResponse(['error' => 'publish_off', 'message' => __('core-web::sync.push_publish_off')], 403);
+        }
+
+        // Going live over a change made on the site since the pull would publish over an editor's edit unseen.
+        if ($request->boolean('publish') && $request->boolean('force')) {
+            return new JsonResponse(['error' => 'publish_force', 'message' => __('core-web::sync.push_publish_force')], 422);
         }
 
         $user = User::current();
@@ -174,7 +184,7 @@ class SyncApiController
             'base' => $item['base'] ?? null,
             'draft' => $item['draft'] ?? null,
             'parent_id' => $item['parent_id'] ?? null,
-        ], $items), $request->boolean('partial'), $request->boolean('force'), $dryRun, $refusedAssets);
+        ], $items), $request->boolean('partial'), $request->boolean('force'), $dryRun, $refusedAssets, $request->boolean('publish'));
 
         return new JsonResponse([...$result, 'assets' => array_values($statuses)]);
     }

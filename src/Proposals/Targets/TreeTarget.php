@@ -17,6 +17,9 @@ abstract class TreeTarget implements ProposalTarget
     /** @var list<string> the entry ids the tree holds now */
     private array $held = [];
 
+    /** @var list<string> entry ids the tree may hold before they exist, as a push that also creates them checks it */
+    private array $expected = [];
+
     abstract protected function tree(): Tree;
 
     /** Whether a branch may be a URL rather than an entry (a navigation's may, a page tree's may not). */
@@ -34,6 +37,19 @@ abstract class TreeTarget implements ProposalTarget
     public function current(): array
     {
         return $this->tree()->tree();
+    }
+
+    /**
+     * This target, checking a tree that may hold the given entries before they are saved.
+     *
+     * @param  list<string>  $ids
+     */
+    public function expecting(array $ids): static
+    {
+        $copy = clone $this;
+        $copy->expected = array_values($ids);
+
+        return $copy;
     }
 
     public function validate(array $value): array
@@ -96,7 +112,7 @@ abstract class TreeTarget implements ProposalTarget
                 $entry = Entry::find((string) $branch['entry']);
 
                 // A branch the tree holds already stays, even when its entry is gone: that is the editor's to clear.
-                $kept = ! $entry && in_array((string) $branch['entry'], $this->held, true);
+                $kept = ! $entry && (in_array((string) $branch['entry'], $this->held, true) || in_array((string) $branch['entry'], $this->expected, true));
 
                 if (! $kept && (! $entry || ! in_array($entry->collectionHandle(), $this->collections(), true) || $entry->locale() !== $this->tree()->locale())) {
                     $errors["{$at}.entry"][] = "No entry `{$branch['entry']}` this tree can hold.";

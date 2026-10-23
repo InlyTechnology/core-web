@@ -6,6 +6,27 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`content:push --publish`**: on a live site with
+  `content_sync.push_publish` on (off by default), a push publishes its
+  drafts and applies its proposals once every file is written, as the
+  pushing person and within their CP permissions; what they may not publish,
+  or what the checkout keeps `published: false`, stays a draft and is sent
+  again by the next `--publish`. Not combined with `--force`. The lock gains
+  `published`. See `docs/content-push.md`, Publishing.
+- **`content:push` carries page trees and terms**: a collection's page tree
+  is a proposal like a nav tree (a new entry pushed in the same run may sit
+  in it), and a term's default-site values are a proposal; a new term,
+  which Statamic cannot keep as a draft, is created only by `--publish`.
+  Each needs the person's own reorder, edit or create permission. See
+  `docs/content-push.md`, What is sent and Terms.
+- **Choosing what a push sends**: `content:push` takes paths (files,
+  folders or `*` patterns under `content/`), `--staged` (as `git add`ed) and
+  `--committed`, and `--json` for agents. The new `content:status` lists
+  what a push with the same arguments would send, without calling the site.
+  See `docs/content-push.md`, Choosing what goes.
+
 ## v0.30.0
 
 - **Docs in `docs/`**: the README keeps the overview and installation, and

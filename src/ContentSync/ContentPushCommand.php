@@ -3,40 +3,81 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Illuminate\Console\Command;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
-use Inly\CoreWeb\CoreWebServiceProvider;
-use Inly\CoreWeb\Media\MediaDisks;
 use InvalidArgumentException;
-use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
-use Statamic\Facades\Site;
 use Statamic\Facades\YAML;
-use Symfony\Component\Finder\SplFileInfo;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Throwable;
 
 /**
  * Sends what changed in content/ since the last pull to the live site, as
  * drafts and proposals an editor publishes or applies there (ContentPush),
  * with the files uploaded here that they name (AssetPush). Nothing it sends
- * goes live by itself, and content.lock records only what was pushed: the
- * live site is unchanged until an editor acts, and the next pull brings it.
+ * goes live by itself unless `--publish` asks and the site allows it, and
+ * content.lock records only what was pushed: the live site is unchanged
+ * until an editor acts, and the next pull brings it.
  */
 class ContentPushCommand extends Command
 {
     use SignsInToRemoteSite;
 
     protected $signature = 'content:push
-        {--only= : Types to push, comma separated, each optionally narrowed to a handle (entries:pages,globals,nav-trees:main); every pushable type when omitted}
+        {paths?* : Only these files: each a file or folder under content/ (content/ prefix optional) or a * pattern}
+        {--only= : Types to push, comma separated, each optionally narrowed to a handle (entries:pages,terms:tags,globals,collection-trees,nav-trees:main); every pushable type when omitted}
         {--site= : Only this site\'s content}
         {--dry-run : Check every file on the site and write nothing}
         {--partial : Write the files that pass even when others are refused}
-        {--force : Push over a change made on the site since the last pull (never over someone else\'s draft)}';
+        {--force : Push over a change made on the site since the last pull (never over someone else\'s draft)}
+        {--publish : Publish the drafts and apply the proposals once all are written, within your permissions (core-web.content_sync.push_publish on the site)}
+        {--staged : Only files whose contents are as git\'s index has them (git add)}
+        {--committed : Only files whose contents are as the last commit has them}
+        {--json : Print one JSON document instead of text, and never ask anything}';
 
     protected $description = 'Push content/ changes to the remote site (core-web.content_sync.remote_url) as drafts and proposals';
 
+    /** @var array{files: list<string>, written: bool, results: list<array<string, mixed>>} what the run sent and the site answered, for --json */
+    private array $outcome = ['files' => [], 'written' => false, 'results' => []];
+
     public function handle(LocalContent $local): int
+    {
+        if (! $this->option('json')) {
+            return $this->push($local);
+        }
+
+        // An agent reads one document: the text goes into it as messages, and a login it would ask for is an error instead.
+        $this->input->setInteractive(false);
+        $terminal = $this->output;
+        $buffer = new BufferedOutput;
+        $this->output = new OutputStyle($this->input, $buffer);
+
+        $error = null;
+
+        try {
+            $exit = $this->push($local);
+        } catch (Throwable $e) {
+            $exit = self::FAILURE;
+            $error = $e->getMessage();
+            report($e);
+        } finally {
+            $this->output = $terminal;
+        }
+
+        $this->output->writeln((string) json_encode([
+            'ok' => $exit === self::SUCCESS,
+            ...($error === null ? [] : ['error' => $error]),
+            'remote' => RemoteSite::configuredUrl() ?: null,
+            'dry_run' => (bool) $this->option('dry-run'),
+            ...$this->outcome,
+            'messages' => array_values(array_filter(array_map('trim', explode("\n", $buffer->fetch())), fn (string $line) => $line !== '')),
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        return $exit;
+    }
+
+    private function push(LocalContent $local): int
     {
         if (! app()->environment(['local', 'testing'])) {
             $this->error('content:push sends this checkout\'s content to another site, so it runs only where APP_ENV is local.');
@@ -51,8 +92,7 @@ class ContentPushCommand extends Command
         }
 
         try {
-            $scopes = $this->scopes();
-            $site = $this->siteOption();
+            $selection = $this->selection($local);
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
@@ -68,15 +108,17 @@ class ContentPushCommand extends Command
         }
 
         try {
-            $files = $this->changed($local, $lock, $scopes, $site);
+            $files = $this->changed($local, $lock, $selection);
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
+        $this->outcome['files'] = array_keys($files);
+
         if ($files === []) {
-            $this->line('Nothing to push: content/ is as last pulled or pushed.');
+            $this->line('Nothing to push: no selected file changed since the last pull or push (php artisan content:status lists what would go).');
 
             return self::SUCCESS;
         }
@@ -139,10 +181,12 @@ class ContentPushCommand extends Command
             'git_sha' => $this->gitSha(),
             'partial' => (bool) $this->option('partial'),
             'force' => (bool) $this->option('force'),
+            'publish' => (bool) $this->option('publish'),
         ];
 
         $checked = $this->request($remote, [...$payload, 'dry_run' => true]);
         $refused = array_filter($checked['results'], fn (array $result) => $result['status'] === ContentPush::STATUS_REFUSED);
+        $this->outcome['results'] = $checked['results'];
 
         if ($this->option('dry-run') || ($refused !== [] && ! $this->option('partial'))) {
             $this->report($checked['results']);
@@ -173,29 +217,73 @@ class ContentPushCommand extends Command
         }
 
         $result = $this->request($remote, [...$payload, 'dry_run' => false]);
+        $this->outcome = [...$this->outcome, 'written' => (bool) ($result['written'] ?? false), 'results' => $result['results']];
         $this->report($result['results']);
 
         $pushed = $local->lock()['pushed'];
         $drafts = [];
+        $bases = [];
+        $published = [];
         $written = 0;
+        $live = 0;
 
         foreach ($result['results'] as $item) {
-            if ($item['status'] !== ContentPush::STATUS_REFUSED && isset($files[$item['path']])) {
-                $pushed[$item['path']] = $files[$item['path']]['hash'];
-                $written++;
+            if (! isset($files[$item['path']])) {
+                continue;
+            }
 
-                if (is_string($item['draft'] ?? null)) {
-                    $drafts[$item['path']] = $item['draft'];
+            // A refused page tree the push still placed new entries in names the site's version, so a retry is not refused as changed.
+            if ($item['status'] === ContentPush::STATUS_REFUSED) {
+                if (is_string($item['base'] ?? null)) {
+                    $bases[$item['path']] = $item['base'];
+                }
+
+                continue;
+            }
+
+            $written++;
+            $isLive = in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true);
+            // A file the site already held as sent is as live as one the push made live, and its version is the site's.
+            $isLanded = $isLive || $item['status'] === ContentPush::STATUS_UNCHANGED;
+
+            // What a --publish push left as a draft is not recorded as pushed, so the next one sends it again.
+            if (! $this->option('publish') || $isLanded) {
+                $pushed[$item['path']] = $files[$item['path']]['hash'];
+            }
+
+            if (is_string($item['draft'] ?? null)) {
+                $drafts[$item['path']] = $item['draft'];
+            }
+
+            if ($isLive) {
+                $live++;
+            }
+
+            if ($isLanded) {
+                $published[$item['path']] = $files[$item['path']]['hash'];
+
+                if (is_string($item['base'] ?? null)) {
+                    $bases[$item['path']] = $item['base'];
                 }
             }
         }
 
         if ($result['written'] ?? false) {
-            $local->writePushed($pushed, $drafts);
+            $local->writePushed($pushed, $drafts, $bases, $published);
+        }
+
+        if ($this->option('publish') && ! self::reportsPublishing($result['results'])) {
+            $this->warn('The site said nothing about publishing: it may predate content:push --publish. What was pushed is a draft or proposal; publish it in the CP, or update core-web on the site.');
         }
 
         $failed = count($result['results']) - $written;
-        $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
+
+        if ($this->option('publish')) {
+            $waiting = $written - $live - count(array_filter($result['results'], fn (array $item) => $item['status'] === ContentPush::STATUS_UNCHANGED));
+            $this->info(sprintf('Pushed to %s: %d published or applied, %d left for an editor in the CP, %d refused.', $remote->url(), $live, $waiting, $failed));
+        } else {
+            $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
+        }
 
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
@@ -237,55 +325,34 @@ class ContentPushCommand extends Command
     }
 
     /**
-     * The files of the scopes that differ from the lock (as pulled) and from what was last pushed, each with what the push sends.
+     * The files the selection sends, each with what the push sends for it.
      *
-     * @param  array{items: array<string, string>, bases: array<string, string>, pushed: array<string, string>}  $lock
-     * @param  list<array{type: string, handle: ?string}>  $scopes
+     * @param  array{items: array<string, string>, bases: array<string, string>, pushed: array<string, string>, drafts: array<string, string>, published: array<string, string>}  $lock
      * @return array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>
      */
-    private function changed(LocalContent $local, array $lock, array $scopes, ?string $site): array
+    private function changed(LocalContent $local, array $lock, PushSelection $selection): array
     {
-        $layers = $this->assetLayers();
-        $files = [];
+        $selected = $selection->files($lock);
         $max = max(1, (int) config('core-web.content_sync.push_items', 200));
 
-        foreach ($scopes as $scope) {
-            $directory = rtrim($local->root(), '/').'/'.ContentPaths::directory($scope['type']);
-
-            if (! is_dir($directory)) {
-                continue;
-            }
-
-            foreach (File::allFiles($directory) as $file) {
-                $path = ContentPaths::directory($scope['type']).'/'.str_replace('\\', '/', $file->getRelativePathname());
-
-                if (! ContentPaths::inScope($scope['type'], $path, $scope['handle'], $site) || ContentPush::typeOf($path) !== $scope['type']) {
-                    continue;
-                }
-
-                $hash = $local->hash($path);
-
-                if ($hash === null || $hash === ($lock['items'][$path] ?? null) || $hash === ($lock['pushed'][$path] ?? null)) {
-                    continue;
-                }
-
-                $contents = (string) $local->read($path);
-                $files[$path] = [
-                    'hash' => $hash,
-                    'contents' => $contents,
-                    'base' => $lock['bases'][$path] ?? null,
-                    'draft' => $lock['drafts'][$path] ?? null,
-                    'parent_id' => $scope['type'] === 'entries' ? $this->parentOf($local, $path, $contents) : null,
-                    'assets' => $this->assetsIn($contents, $layers),
-                ];
-            }
+        if (count($selected) > $max) {
+            throw new InvalidArgumentException(count($selected)." files changed, more than one push carries ({$max}): narrow it with paths, --only or --site.");
         }
 
-        if (count($files) > $max) {
-            throw new InvalidArgumentException(count($files)." files changed, more than one push carries ({$max}): narrow it with --only or --site.");
-        }
+        $layers = PushSelection::assetLayers();
+        $files = [];
 
-        ksort($files);
+        foreach ($selected as $path => $file) {
+            $contents = (string) $local->read($path);
+            $files[$path] = [
+                'hash' => $file['hash'],
+                'contents' => $contents,
+                'base' => $lock['bases'][$path] ?? null,
+                'draft' => $lock['drafts'][$path] ?? null,
+                'parent_id' => $file['type'] === 'entries' ? $this->parentOf($local, $path, $contents) : null,
+                'assets' => PushSelection::assetsIn($contents, $layers),
+            ];
+        }
 
         return $files;
     }
@@ -362,117 +429,17 @@ class ContentPushCommand extends Command
         return false;
     }
 
-    /**
-     * The local layer of every asset disk that reads the site's index: the files uploaded here, by container.
-     *
-     * @return array<string, string> container handle => the layer's folder
-     */
-    private function assetLayers(): array
+    private function selection(LocalContent $local): PushSelection
     {
-        if (! CoreWebServiceProvider::enabled('media')) {
-            return [];
-        }
-
-        $layers = [];
-
-        foreach (AssetContainer::all() as $container) {
-            $disk = (string) $container->diskHandle();
-            $root = config("filesystems.disks.{$disk}.upper.root");
-
-            if (MediaDisks::isRemoteIndexed($disk) && is_string($root) && is_dir($root)) {
-                $layers[$container->handle()] = $root;
-            }
-        }
-
-        return $layers;
-    }
-
-    /**
-     * The files uploaded here that a pushed file names, by `container::path`.
-     *
-     * @param  array<string, string>  $layers
-     * @return array<string, array<string, mixed>>
-     */
-    private function assetsIn(string $contents, array $layers): array
-    {
-        $found = [];
-
-        foreach ($layers as $container => $root) {
-            foreach (File::allFiles($root) as $file) {
-                $path = str_replace('\\', '/', $file->getRelativePathname());
-
-                if (! AssetPush::safePath($path) || ! str_contains($contents, $path)) {
-                    continue;
-                }
-
-                $found["{$container}::{$path}"] = [
-                    'container' => $container,
-                    'path' => $path,
-                    'file' => $file->getPathname(),
-                    ...self::fingerprint($file),
-                    ...self::meta($file),
-                ];
-            }
-        }
-
-        return $found;
-    }
-
-    /** @return array{hash: string, size: int} of the bytes the site would store for the file */
-    private static function fingerprint(SplFileInfo $file): array
-    {
-        $bytes = AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname()));
-
-        return ['hash' => hash('sha256', $bytes), 'size' => strlen($bytes)];
-    }
-
-    /** @return array{alt?: string, focus?: string} the editable meta of a file uploaded here, from its `.meta` beside it */
-    private static function meta(SplFileInfo $file): array
-    {
-        $meta = $file->getPath().'/.meta/'.$file->getFilename().'.yaml';
-
-        try {
-            $data = is_file($meta) ? (array) (YAML::parse((string) file_get_contents($meta))['data'] ?? []) : [];
-        } catch (Throwable) {
-            return [];
-        }
-
-        return array_filter(array_intersect_key($data, array_flip(AssetPush::META_KEYS)), fn (mixed $value) => is_string($value) && $value !== '');
-    }
-
-    /** @return list<array{type: string, handle: ?string}> */
-    private function scopes(): array
-    {
-        $only = trim((string) $this->option('only'));
-
-        if ($only === '') {
-            return array_map(fn (string $type) => ['type' => $type, 'handle' => null], ContentPush::TYPES);
-        }
-
-        return array_values(array_map(function (string $part): array {
-            [$type, $handle] = array_pad(explode(':', trim($part), 2), 2, null);
-
-            if (! in_array($type, ContentPush::TYPES, true)) {
-                throw new InvalidArgumentException("[{$type}] is not pushed; a push carries ".implode(', ', ContentPush::TYPES).'.');
-            }
-
-            return ['type' => $type, 'handle' => blank($handle) ? null : $handle];
-        }, array_filter(explode(',', $only), fn (string $part) => trim($part) !== '')));
-    }
-
-    private function siteOption(): ?string
-    {
-        $site = $this->option('site');
-
-        if (! is_string($site) || $site === '') {
-            return null;
-        }
-
-        if (Site::get($site) === null) {
-            throw new InvalidArgumentException("No site [{$site}]. Known: ".Site::all()->keys()->implode(', ').'.');
-        }
-
-        return $site;
+        return PushSelection::fromOptions(
+            $local,
+            $this->option('only'),
+            $this->option('site'),
+            (array) $this->argument('paths'),
+            (bool) $this->option('staged'),
+            (bool) $this->option('committed'),
+            (bool) $this->option('publish'),
+        );
     }
 
     private function gitSha(): ?string
@@ -488,6 +455,18 @@ class ContentPushCommand extends Command
         return $result->successful() && preg_match('/^[0-9a-f]{7,64}$/', $sha) === 1 ? $sha : null;
     }
 
+    /**
+     * Whether the site answered a --publish push with what it published or left (a site that predates the flag answers with drafts alone).
+     *
+     * @param  list<array<string, mixed>>  $results
+     */
+    private static function reportsPublishing(array $results): bool
+    {
+        $drafted = array_filter($results, fn (array $result) => ! in_array($result['status'], [ContentPush::STATUS_REFUSED, ContentPush::STATUS_UNCHANGED], true));
+
+        return $drafted === [] || collect($drafted)->contains(fn (array $result) => isset($result['not_published']) || in_array($result['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true));
+    }
+
     /** @param  list<array<string, mixed>>  $results */
     private function report(array $results): void
     {
@@ -501,6 +480,18 @@ class ContentPushCommand extends Command
             }
 
             $this->line($line.(isset($result['cp_url']) ? "  {$result['cp_url']}" : ''));
+
+            if (isset($result['not_published'])) {
+                $this->line("  <comment>{$result['not_published']}</comment>");
+            }
+
+            if (($result['ignored_fields'] ?? []) !== []) {
+                $this->line('  <comment>Left out, as the site does not take them: '.implode(', ', (array) $result['ignored_fields']).'.</comment>');
+            }
+
+            if ($result['status'] === ContentPush::STATUS_PUBLISHED && ($result['images_needed'] ?? []) !== []) {
+                $this->line('  <comment>Live without the required images: '.implode(', ', (array) $result['images_needed']).'; add them in the CP.</comment>');
+            }
         }
     }
 }

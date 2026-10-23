@@ -654,9 +654,14 @@ return [
     |
     | push: whether this site takes `content:push` from a checkout: entries
     | as drafts (working copies, new entries unpublished; the collections in
-    | drafts.collections), globals and navigation trees as proposals (with
-    | features.drafts on, whose CP page decides them). Pushing needs the
-    | "Push content" permission. False keeps the site pull only.
+    | drafts.collections), terms, globals, page trees and navigation trees as
+    | proposals (with features.drafts on, whose CP page decides them).
+    | Pushing needs the "Push content" permission. False keeps the site pull
+    | only.
+    | push_publish: whether `content:push --publish` may make what it pushes
+    | live: each draft published and each proposal applied as the pushing
+    | person, within their own CP permissions (what they may not publish
+    | stays a draft). Off, a push only ever drafts and proposes.
     | push_items: the most files one push carries.
     | push_bytes: the most content (all files together) one push carries.
     | push_asset_bytes: the largest asset file a push uploads.
@@ -683,6 +688,7 @@ return [
         ],
         'pull_assets' => true,
         'push' => true,
+        'push_publish' => false,
         'push_items' => 200,
         'push_bytes' => 10 * 1024 * 1024,
         'push_asset_bytes' => 20 * 1024 * 1024,

@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\ContentSync;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -19,6 +20,9 @@ class LocalContent
 {
     /** @var array<string, string>|null path => git blob id, as the checkout's HEAD has content/ */
     private ?array $committed = null;
+
+    /** @var array<string, array{tracked: array<string, true>, differs: array<string, true>}> by `index` or `HEAD` */
+    private array $git = [];
 
     public function __construct(private string $root, private string $lockFile) {}
 
@@ -60,7 +64,11 @@ class LocalContent
      */
     public function matchesCommitted(string $path): bool
     {
-        $blob = $this->committed()[$path] ?? null;
+        return $this->matchesBlob($this->committed()[$path] ?? null, $path);
+    }
+
+    private function matchesBlob(?string $blob, string $path): bool
+    {
         $file = $this->absolute($path);
 
         if ($blob === null || ! is_file($file) || is_link($file)) {
@@ -70,6 +78,28 @@ class LocalContent
         $contents = (string) file_get_contents($file);
 
         return hash(strlen($blob) === 64 ? 'sha256' : 'sha1', 'blob '.strlen($contents)."\0".$contents) === $blob;
+    }
+
+    /**
+     * Whether git holds the file as it is now: `index` for `git add`ed (or committed and unchanged since), `HEAD`
+     * for committed. Git compares through its own filters, so line-ending conversion does not count as a change.
+     */
+    public function inGitAsNow(string $path, string $against): bool
+    {
+        $git = $this->git[$against] ??= $this->readGit($against);
+
+        return isset($git['tracked'][$path]) && ! isset($git['differs'][$path]);
+    }
+
+    public function inGit(): bool
+    {
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(10)->run(['git', 'rev-parse', '--is-inside-work-tree']) : null;
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $result !== null && $result->successful() && trim($result->output()) === 'true';
     }
 
     /** Throws for a path a write or delete must not go through: one out of content/, or a symlink, which would carry it elsewhere. */
@@ -103,16 +133,18 @@ class LocalContent
      * as what its change was made against. `pushed`: each file's hash as last
      * pushed, so a file unchanged since is not pushed again. `drafts`: the
      * site's hash of the draft each entry's last push left, so the next push
-     * of it is not taken for a change made on the site.
+     * of it is not taken for a change made on the site. `published`: each
+     * file's hash as a `--publish` push last made it live, so such a push
+     * resends what an earlier push only drafted.
      *
-     * @return array{remote: ?string, pulled_at: ?string, items: array<string, string>, bases: array<string, string>, pushed: array<string, string>, drafts: array<string, string>}
+     * @return array{remote: ?string, pulled_at: ?string, items: array<string, string>, bases: array<string, string>, pushed: array<string, string>, drafts: array<string, string>, published: array<string, string>}
      */
     public function lock(): array
     {
         $data = is_file($this->lockFile) ? json_decode((string) file_get_contents($this->lockFile), true) : null;
 
         if (! is_array($data)) {
-            return ['remote' => null, 'pulled_at' => null, 'items' => [], 'bases' => [], 'pushed' => [], 'drafts' => []];
+            return ['remote' => null, 'pulled_at' => null, 'items' => [], 'bases' => [], 'pushed' => [], 'drafts' => [], 'published' => []];
         }
 
         return [
@@ -122,6 +154,7 @@ class LocalContent
             'bases' => self::hashes($data['bases'] ?? []),
             'pushed' => self::hashes($data['pushed'] ?? []),
             'drafts' => self::hashes($data['drafts'] ?? []),
+            'published' => self::hashes($data['published'] ?? []),
         ];
     }
 
@@ -134,22 +167,26 @@ class LocalContent
     public function writeLock(string $remote, array $items, array $bases = []): void
     {
         $lock = $this->lock();
-        $pushed = array_filter($lock['pushed'], fn (string $hash, string $path) => ($items[$path] ?? null) !== $hash && $this->hash($path) === $hash, ARRAY_FILTER_USE_BOTH);
+        $kept = fn (string $hash, string $path) => ($items[$path] ?? null) !== $hash && $this->hash($path) === $hash;
+        $pushed = array_filter($lock['pushed'], $kept, ARRAY_FILTER_USE_BOTH);
+        $published = array_filter($lock['published'], $kept, ARRAY_FILTER_USE_BOTH);
         // A stale draft hash only sends the next push to the pulled base, so it is kept while the file is.
         $drafts = array_filter($lock['drafts'], fn (string $path) => $this->hash($path) !== null, ARRAY_FILTER_USE_KEY);
 
-        $this->put($remote, CarbonImmutable::now()->toIso8601String(), $items, $bases, $pushed, $drafts);
+        $this->put($remote, CarbonImmutable::now()->toIso8601String(), $items, $bases, $pushed, $drafts, $published);
     }
 
     /**
      * @param  array<string, string>  $pushed
      * @param  array<string, string>  $drafts
+     * @param  array<string, string>  $bases  the site's version of what a push published or applied, which drops its draft
+     * @param  array<string, string>  $published  the hashes of the files a push made live
      */
-    public function writePushed(array $pushed, array $drafts = []): void
+    public function writePushed(array $pushed, array $drafts = [], array $bases = [], array $published = []): void
     {
         $lock = $this->lock();
 
-        $this->put((string) $lock['remote'], $lock['pulled_at'], $lock['items'], $lock['bases'], $pushed, [...$lock['drafts'], ...$drafts]);
+        $this->put((string) $lock['remote'], $lock['pulled_at'], $lock['items'], [...$lock['bases'], ...$bases], $pushed, [...Arr::except($lock['drafts'], array_keys($bases)), ...$drafts], [...$lock['published'], ...$published]);
     }
 
     /**
@@ -157,13 +194,15 @@ class LocalContent
      * @param  array<string, string>  $bases
      * @param  array<string, string>  $pushed
      * @param  array<string, string>  $drafts
+     * @param  array<string, string>  $published
      */
-    private function put(string $remote, ?string $pulledAt, array $items, array $bases, array $pushed, array $drafts): void
+    private function put(string $remote, ?string $pulledAt, array $items, array $bases, array $pushed, array $drafts, array $published = []): void
     {
         ksort($items);
         ksort($bases);
         ksort($pushed);
         ksort($drafts);
+        ksort($published);
 
         File::put($this->lockFile, json_encode(array_filter([
             'remote' => $remote,
@@ -172,6 +211,7 @@ class LocalContent
             'bases' => $bases === [] ? null : $bases,
             'pushed' => $pushed === [] ? null : $pushed,
             'drafts' => $drafts === [] ? null : $drafts,
+            'published' => $published === [] ? null : $published,
         ], fn (mixed $value) => $value !== null), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
     }
 
@@ -217,6 +257,44 @@ class LocalContent
         }
 
         return $this->committed;
+    }
+
+    /** @return array{tracked: array<string, true>, differs: array<string, true>} paths relative to content/ */
+    private function readGit(string $against): array
+    {
+        $tracked = $against === 'HEAD'
+            ? array_fill_keys(array_keys($this->committed()), true)
+            : $this->gitPaths(['ls-files', '-z', '--stage', '--', '.'], '/^100(?:644|755) [0-9a-f]{40,64} 0\t(.+)$/s');
+        $differs = $this->gitPaths(['diff', ...($against === 'HEAD' ? ['HEAD'] : []), '--name-only', '--relative', '-z', '--', '.'], '/^(.+)$/s');
+
+        return ['tracked' => $tracked, 'differs' => $differs];
+    }
+
+    /**
+     * @param  list<string>  $arguments
+     * @return array<string, true>
+     */
+    private function gitPaths(array $arguments, string $pattern): array
+    {
+        try {
+            $result = is_dir($this->root) ? Process::path($this->root)->timeout(60)->run(['git', ...$arguments]) : null;
+        } catch (Throwable) {
+            return [];
+        }
+
+        if ($result === null || ! $result->successful()) {
+            return [];
+        }
+
+        $paths = [];
+
+        foreach (explode("\0", $result->output()) as $line) {
+            if ($line !== '' && preg_match($pattern, $line, $match) === 1) {
+                $paths[$match[1]] = true;
+            }
+        }
+
+        return $paths;
     }
 
     private function absolute(string $path): string

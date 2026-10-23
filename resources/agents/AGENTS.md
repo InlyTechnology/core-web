@@ -44,9 +44,28 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - Snapshot sitemaps are listed in the robots view with `{{ core_sitemaps }}`.
 - **Locally, data comes from the live site, not from production Core**: `content:pull` (with `content_sync`)
   brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
+
+## Content pull and push (`content_sync`)
+
 - **Local content changes reach the live site only through `content:push`**, as drafts and proposals an editor
-  publishes in the CP, with the local media files they name. Pull before pushing: a file changed on the site since
-  the pull is refused.
+  publishes in the CP, with the local media files they name. Never copy content to a server another way.
+- **Pull before you change content**: `content:pull`, so the push knows which version you changed. A file changed
+  on the site since the pull is refused (`base_changed`); pull again and redo the change, never `--force` over an
+  editor's edit without the user's say.
+- **Push exactly the files you changed, never everything.** The checkout may hold other people's unpushed edits,
+  and a bare `content:push` sends all of them. An agent's push, in order:
+  1. `php artisan content:status --json <paths>`: check that `push` lists exactly your files and nothing else.
+  2. `php artisan content:push --json --dry-run <paths>`: every result's `status` is something other than
+     `refused`; fix each refusal by its `error` and `message`.
+  3. `php artisan content:push --json <paths>`: report each file's `status` and `cp_url` to the user, and that an
+     editor makes it live in the CP.
+  Name each file you changed as a path (`content/collections/pages/sv/om-oss.md`), or `git add` them and pass
+  `--staged` instead. A folder or a quoted `*` pattern is for when the user asked for everything under it.
+- **Always `--json` when an agent runs these commands**: one document, no prompts. `ok: false` with a message
+  saying to run `content:login` means the person signs in; ask them, never work around it.
+- **`--partial` and `--publish` only on the user's say.** `--partial` writes what passes while others are refused,
+  and `--publish` makes the push live where the site sets `content_sync.push_publish`; never turn that on for a
+  site without the user's say. Dry-run a `--publish` push first.
 
 ## CMS sign-in (`cms_sign_in`)
 
