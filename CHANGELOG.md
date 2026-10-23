@@ -39,6 +39,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   (`StatamicContentSchema`, configured in `drafts.schema`), and refuses a
   draft naming an older `catalog_hash`. Docs: README → Drafts → Content
   schema.
+- **Statamic helpers**: `Inly\CoreWeb\Support\Values` (`unwrap`, `collect`,
+  `first`), `Assets` (`meta`, `mimeType`, `size`, outage-guarded) and `Links`
+  (`url`, `withSuffix`), for the field shapes every site normalises; the media
+  components read through them too. `Values::first()` fetches a query builder
+  before taking the first item, so it keeps the editor's manual order where a
+  site's own `firstAsset()` calling `->first()` on the builder did not. Docs:
+  README → Statamic helpers.
 
 ### Upgrade notes
 

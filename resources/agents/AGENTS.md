@@ -118,6 +118,13 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
 - A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
 
+## Statamic helpers
+
+- **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with
+  `Links` (README → Statamic helpers), never a copy of them in the site; a site's short global helper only wraps one.
+- **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
+  handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
+
 ## Testing
 
 - Use `Inly\CoreWeb\Testing\FakesCore` for a fake Core and signed pings, and
