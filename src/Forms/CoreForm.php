@@ -6,6 +6,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\RateLimiter;
+use Inly\CoreWeb\Support\ClientAddress;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -162,7 +163,7 @@ abstract class CoreForm extends Component
             ),
         );
 
-        $key = 'core-web-forms|'.static::coreForm().'|'.sha1((string) request()->ip());
+        $key = 'core-web-forms|'.static::coreForm().'|'.sha1(ClientAddress::key(request()));
 
         if (RateLimiter::tooManyAttempts($key, max(1, (int) config('core-web.forms.submit_rate_limit', 5)))) {
             $this->status = SubmissionResult::THROTTLED->value;

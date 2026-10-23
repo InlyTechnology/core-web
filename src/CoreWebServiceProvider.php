@@ -74,6 +74,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
@@ -449,7 +450,7 @@ class CoreWebServiceProvider extends ServiceProvider
         Auth::provider(SsoUserProvider::DRIVER, fn () => new SsoUserProvider);
 
         RateLimiter::for('core-web.cms-sign-in', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.cms_sign_in.rate_limit', 10)))
-            ->by((string) $request->ip()));
+            ->by(ClientAddress::key($request)));
 
         // Global, ahead of the session: a signed-in person asking for the login page is sent through Core too.
         $this->app->make(HttpKernel::class)->prependMiddleware(RedirectCpLoginToCore::class);
@@ -513,9 +514,9 @@ class CoreWebServiceProvider extends ServiceProvider
         // Per session and address, and per address alone: a fresh session per message would otherwise reset the first.
         RateLimiter::for(ChatController::TURN_LIMITER, fn (Request $request) => [
             Limit::perMinute(max(1, (int) config('core-web.chat.turn_rate_limit', 10)))
-                ->by('session|'.sha1(($request->hasSession() ? $request->session()->getId() : '').'|'.$request->ip())),
+                ->by('session|'.sha1(($request->hasSession() ? $request->session()->getId() : '').'|'.ClientAddress::key($request))),
             Limit::perMinute(max(1, (int) config('core-web.chat.turn_rate_limit_per_address', 30)))
-                ->by('address|'.sha1((string) $request->ip())),
+                ->by('address|'.sha1(ClientAddress::key($request))),
         ]);
 
         // The front end reads the hint cookie; it says only that a conversation exists, never which.
@@ -535,7 +536,7 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         RateLimiter::for('core-web.consent', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.consent.log.rate_limit', 30)))
-            ->by('consent|'.sha1((string) $request->ip())));
+            ->by('consent|'.sha1(ClientAddress::key($request))));
         $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
         $this->commands([PruneConsentsCommand::class]);
 

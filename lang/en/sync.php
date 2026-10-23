@@ -62,6 +62,7 @@ return [
     'push_asset_path' => '[:path] is not a path an upload may name.',
     'push_asset_missing' => 'The asset :path this file names has not reached the site.',
     'push_asset_request' => 'Send the container, the path and the file.',
+    'local_sign_in_loopback' => 'This local site signs in as your live account only from this machine itself: open it on localhost or its .test address, not through a share, a tunnel or another device.',
     'local_login_needed' => 'This local site signs its control panel in through :site, and this machine is not signed in there (or its login expired or was revoked). Run php artisan content:login, then reload.',
     'local_site_unreachable' => 'Could not ask :site who this machine is signed in as (:reason). Try again in a minute.',
     'local_site_outdated' => ':site does not answer who a machine is signed in as yet: its core-web predates local sign-in. Update it there, or set CORE_URL to a local Core.',

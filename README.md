@@ -399,12 +399,13 @@ Core posts to `POST /api/core/objects`:
 - `id`: Core's id of the object, or `all` (or `0`) for a bulk change.
 - `public_id` (optional): the document key a deletion or a 404 removes.
 - `action`: `saved` or `deleted`.
-- `expires_at`: unix time; an expired envelope is a 403.
-- `nonce`: makes each signature unique; not checked for replay (a replayed ping
-  only re-runs a pull the site deduplicates itself).
+- `expires_at`: unix time, in the future and at most an hour (plus a minute of
+  clock skew) out.
+- `nonce`: 32 lowercase hex characters; each opens once (spent in the
+  `core-web.content.store` cache).
 
-A missing field is a 422, a bad signature, an empty secret or an expired
-envelope a 403, an accepted ping a `202 {"status":"accepted"}`. The object
+A missing field is a 422, a bad signature, an empty secret, an envelope out of
+its window or one whose nonce was seen before a 403, an accepted ping a `202 {"status":"accepted"}`. The object
 itself never travels in the ping: the job reads it back from Core.
 
 Test vector (shared with the sender's tests): secret
