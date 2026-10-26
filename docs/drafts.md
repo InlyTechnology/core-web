@@ -46,9 +46,10 @@ messages are translations a site rewords in
 ## Dashboard widget
 
 The `core_drafts` widget lists the drafts a source wrote that nobody has
-published yet, newest first: every working copy that still carries a
-provenance, and every unpublished entry whose latest revision is a source's
-(an editor's own save of it makes it theirs, and it leaves the list). Each
+published yet, newest first, in the collections of `drafts.collections`:
+every working copy that still carries a provenance, and every unpublished
+entry whose latest revision is a source's (an editor's later CP save makes
+it theirs, and it leaves the list). Each
 row shows the entry's title, the source, the revision message (which names
 the person Core AI drafted for), how long ago, and a Review link to the
 entry in the CP. An editor sees only the entries they may view.
@@ -62,9 +63,10 @@ entry in the CP. An editor sees only the entries they may view.
 
 Options: `via` (the sources to show, every source by default), `limit` (5,
 at most 50), `title` (`Drafts to review` by default, through `__()`), and
-Statamic's own `width`, `can` and `sites`. It reads the revisions store
-(the Stache or the Eloquent driver), and each unpublished entry's latest
-revision, on every dashboard visit.
+Statamic's own `width`, `can` and `sites`. On every dashboard visit it
+reads the working copies from the revisions store (the Stache or the
+Eloquent driver) and the latest revision of each unpublished entry in those
+collections.
 
 ## Core AI's drafts (API v1.1)
 

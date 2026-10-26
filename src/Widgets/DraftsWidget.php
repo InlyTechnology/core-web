@@ -27,11 +27,11 @@ class DraftsWidget extends Widget
         $via = array_values(array_filter(array_map('strval', (array) $this->config('via', [])), fn (string $source) => $source !== ''));
         $limit = (int) $this->config('limit', 5);
         $limit = $limit < 1 ? 5 : min(self::MAX_LIMIT, $limit);
-        $drafts = app(OpenDrafts::class)->for(User::current(), $via);
+        $open = app(OpenDrafts::class)->for(User::current(), $via, $limit);
 
         return view('core-web::widgets.drafts', [
             'title' => __((string) $this->config('title', 'Drafts to review')),
-            'total' => count($drafts),
+            'total' => $open['total'],
             'rows' => array_map(fn (array $draft): array => [
                 'title' => $draft['title'],
                 'source' => self::source($draft['via']),
@@ -39,7 +39,7 @@ class DraftsWidget extends Widget
                 'ago' => $draft['at']?->diffForHumans(),
                 'edit_url' => $draft['edit_url'],
                 'new' => $draft['kind'] === 'new_entry',
-            ], array_slice($drafts, 0, $limit)),
+            ], $open['drafts']),
         ]);
     }
 

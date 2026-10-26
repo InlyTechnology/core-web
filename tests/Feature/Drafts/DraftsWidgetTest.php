@@ -102,9 +102,7 @@ class DraftsWidgetTest extends TestCase
         $result = $this->draft('core-ai', ['fields' => ['title' => 'Went live']], 'AI');
         Entry::find($result['entry_id'])->published(true)->save();
 
-        $drafts = app(OpenDrafts::class)->for($this->editor);
-
-        $this->assertSame([], $drafts);
+        $this->assertSame(0, app(OpenDrafts::class)->for($this->editor)['total']);
         $this->assertStringContainsString('No drafts waiting', $this->render());
     }
 
@@ -115,7 +113,34 @@ class DraftsWidgetTest extends TestCase
         $reader = User::make()->email('bo@example.com');
         $reader->save();
 
-        $this->assertSame([], app(OpenDrafts::class)->for($reader));
-        $this->assertSame([], app(OpenDrafts::class)->for(null));
+        $this->assertSame(0, app(OpenDrafts::class)->for($reader)['total']);
+        $this->assertSame(0, app(OpenDrafts::class)->for(null)['total']);
+    }
+
+    public function test_an_editors_later_save_of_a_new_draft_makes_it_theirs(): void
+    {
+        $result = $this->draft('core-ai', ['fields' => ['title' => 'Edited since']], 'AI');
+
+        $this->travel(5)->minutes();
+        Entry::find($result['entry_id'])->set('title', 'Edited since')->updateLastModified($this->editor)->save();
+
+        $this->assertSame(0, app(OpenDrafts::class)->for($this->editor)['total']);
+    }
+
+    public function test_it_reads_only_collections_sources_may_draft_and_caps_the_rows(): void
+    {
+        foreach (['One', 'Two', 'Three'] as $title) {
+            $this->draft('core-ai', ['fields' => ['title' => $title]], 'AI');
+        }
+
+        $open = app(OpenDrafts::class)->for($this->editor, [], 2);
+
+        $this->assertSame(3, $open['total']);
+        $this->assertCount(2, $open['drafts']);
+        $this->assertStringContainsString('text="3"', $this->render(['limit' => 1]));
+
+        config(['core-web.drafts.collections' => []]);
+
+        $this->assertSame(0, app(OpenDrafts::class)->for($this->editor)['total']);
     }
 }
