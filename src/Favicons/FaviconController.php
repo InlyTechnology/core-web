@@ -18,7 +18,8 @@ final class FaviconController
             throw new NotFoundHttpException;
         }
 
-        return response()->json(Favicons::manifest($site->handle()), 200, ['Content-Type' => 'application/manifest+json'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return response()->json(Favicons::manifest($site->handle()), 200, ['Content-Type' => 'application/manifest+json'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            ->setCache(['public' => true, 'max_age' => 3600]);
     }
 
     /** Browsers and crawlers ask for /favicon.ico whatever the head says; a redirect to the tab PNG answers them. */
@@ -30,6 +31,6 @@ final class FaviconController
             throw new NotFoundHttpException;
         }
 
-        return redirect()->away($url, 302);
+        return redirect()->away($url, 302)->setCache(['public' => true, 'max_age' => 3600]);
     }
 }

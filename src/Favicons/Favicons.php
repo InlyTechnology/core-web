@@ -25,7 +25,7 @@ final class Favicons
 
     public const MANIFEST = [192, 512];
 
-    /** The PNG at a square size, absolute; the file itself when no rendition can be made. */
+    /** The PNG cut to a square size, absolute; null when no rendition can be made, since the file itself may be any size. */
     public static function png(int $size, ?string $site = null): ?string
     {
         $source = MediaSource::from(self::augmented('favicon', $site));
@@ -34,7 +34,9 @@ final class Favicons
             return null;
         }
 
-        return URL::makeAbsolute(self::rendition($source, $size) ?? $source->url);
+        $url = self::rendition($source, $size);
+
+        return $url === null ? null : URL::makeAbsolute($url);
     }
 
     public static function svg(string $field = 'favicon_svg', ?string $site = null): ?string
@@ -48,7 +50,7 @@ final class Favicons
     {
         $color = Values::unwrap(self::variables($site)?->value('theme_color'));
 
-        return is_string($color) && preg_match('/^#[0-9a-f]{3,8}$/i', $color) === 1 ? $color : null;
+        return is_string($color) && preg_match('/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $color) === 1 ? $color : null;
     }
 
     /** The manifest's address for the current site: under the site's path when it shares a host. */
@@ -86,7 +88,15 @@ final class Favicons
         $scheme = CoreWebServiceProvider::enabled('media') ? app(UrlScheme::class) : null;
 
         if ($scheme !== null && $scheme->serves($source->url)) {
-            return $scheme->image($source->url, ['width' => $size, 'height' => $size, 'fit' => 'cover', 'format' => 'png']);
+            $focus = $source->focus;
+
+            return $scheme->image($source->url, array_filter([
+                'width' => $size,
+                'height' => $size,
+                'fit' => 'cover',
+                'format' => 'png',
+                'gravity' => $focus ? round($focus[0] / 100, 4).'x'.round($focus[1] / 100, 4) : null,
+            ]));
         }
 
         if ($source->asset === null) {
@@ -113,6 +123,7 @@ final class Favicons
         $handle = (string) config('core-web.favicons.global', 'favicons');
         $set = $handle === '' ? null : GlobalSet::findByHandle($handle);
 
-        return $set?->in($site ?? Site::current()->handle());
+        // The fields are not localizable: a site without its own localization takes the default site's.
+        return $set?->in($site ?? Site::current()->handle()) ?? $set?->in(Site::default()->handle());
     }
 }

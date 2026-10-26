@@ -35,8 +35,8 @@ favicon generation, which writes files with Imagick.
 | `favicon_svg_dark` | Optional. With `favicon_svg`, the tab icon in dark mode. |
 | `theme_color` | Optional. `<meta name="theme-color">` and the manifest's theme and background colour. |
 
-An SVG is never the only source: the CDN passes SVG through untouched rather than turning it into PNGs, and
-Apple's touch icon and the manifest need PNGs.
+Upload the PNG even when there is an SVG: the CDN passes SVG through untouched rather than turning it into PNGs,
+and Apple's touch icon, the manifest and `/favicon.ico` need PNGs. With an SVG alone only the tab links render.
 
 ## What it serves
 
@@ -47,5 +47,8 @@ Apple's touch icon and the manifest need PNGs.
   192 and 512 px icons.
 - **`/favicon.ico`**: a redirect to the default site's 32 px PNG, for the browsers and crawlers that ask for it
   whatever the head says. A real `public/favicon.ico` is served before the route is reached: delete it.
+
+The routes are registered before the site's own, so a site with this feature on has no `/site.webmanifest` or
+`/favicon.ico` route of its own.
 
 Without the CDN, each size is one Glide render, made once and cached by Glide like any other.
