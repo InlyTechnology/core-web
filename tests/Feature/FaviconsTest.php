@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
+use Inly\CoreWeb\Favicons\CpFavicon;
 use Inly\CoreWeb\Favicons\Favicons;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Facades\AssetContainer;
@@ -28,6 +29,7 @@ class FaviconsTest extends TestCase
         $this->scratch = sys_get_temp_dir().'/core-web-favicons-'.uniqid();
         File::ensureDirectoryExists($this->scratch.'/files');
         File::copy(__DIR__.'/../fixtures/pixel.png', $this->scratch.'/files/icon.png');
+        File::copy(__DIR__.'/../fixtures/pixel.png', $this->scratch.'/files/icon-dark.png');
         File::put($this->scratch.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
         File::put($this->scratch.'/files/icon-dark.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
         config(['filesystems.disks.favicons' => ['driver' => 'local', 'root' => $this->scratch.'/files', 'url' => self::CDN]]);
@@ -138,5 +140,39 @@ class FaviconsTest extends TestCase
 
         $this->assertStringContainsString('/img/asset/', (string) $url);
         $this->assertStringContainsString('w=180&h=180&fit=crop&fm=png', (string) $url);
+    }
+
+    public function test_a_dark_png_switches_the_tab_icon_in_dark_mode(): void
+    {
+        $this->favicons(['favicon' => 'icon.png', 'favicon_dark' => 'icon-dark.png']);
+
+        $html = Blade::render('<x-core-web::favicons.head />');
+
+        $this->assertStringContainsString('href="'.e(self::CDN.'/icon.png?width=32&height=32&fit=cover&format=png').'" media="(prefers-color-scheme: light)">', $html);
+        $this->assertStringContainsString('href="'.e(self::CDN.'/icon-dark.png?width=32&height=32&fit=cover&format=png').'" media="(prefers-color-scheme: dark)">', $html);
+        $this->assertStringContainsString(e(self::CDN.'/icon.png?width=180'), $html);
+    }
+
+    public function test_saving_the_global_writes_the_marked_cp_icon_and_pro_uses_it(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+
+        $this->assertFileExists($this->scratch.'/files/'.CpFavicon::PATH);
+        $this->assertSame([64, 64], array_slice(getimagesize($this->scratch.'/files/'.CpFavicon::PATH), 0, 2));
+
+        config(['statamic.editions.pro' => true, 'statamic.cp.custom_favicon_url' => null]);
+        view('statamic::partials.head')->render();
+
+        $this->assertSame('favicons::'.CpFavicon::PATH, config('statamic.cp.custom_favicon_url'));
+    }
+
+    public function test_solo_keeps_statamic_s_cp_icon(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+        config(['statamic.editions.pro' => false, 'statamic.cp.custom_favicon_url' => null]);
+
+        rescue(fn () => view('statamic::partials.head')->render(), report: false);
+
+        $this->assertNull(config('statamic.cp.custom_favicon_url'));
     }
 }

@@ -26,9 +26,9 @@ final class Favicons
     public const MANIFEST = [192, 512];
 
     /** The PNG cut to a square size, absolute; null when no rendition can be made, since the file itself may be any size. */
-    public static function png(int $size, ?string $site = null): ?string
+    public static function png(int $size, ?string $site = null, string $field = 'favicon'): ?string
     {
-        $source = MediaSource::from(self::augmented('favicon', $site));
+        $source = MediaSource::from(self::augmented($field, $site));
 
         if ($source === null || $source->isVideo() || $source->isSvg()) {
             return null;

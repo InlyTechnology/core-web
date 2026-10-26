@@ -1000,9 +1000,19 @@ return [
     |
     | global: the global whose blueprint imports core-web::favicons.
     |
+    | cp_mark: the control panel's tab icon, the site's PNG with a dot in
+    | `color`, written to `container` as cp-favicon.png whenever the global
+    | is saved. Statamic shows it on Pro only; a site's own
+    | statamic.cp.custom_favicon_url wins. `enabled` false leaves Statamic's.
+    |
     */
 
     'favicons' => [
         'global' => 'favicons',
+        'cp_mark' => [
+            'enabled' => true,
+            'color' => '#ff269e',
+            'container' => 'favicons',
+        ],
     ],
 ];

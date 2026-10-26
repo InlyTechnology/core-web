@@ -2,7 +2,7 @@
 
 `features.favicons` puts the site's icons in the head and answers `/site.webmanifest` and `/favicon.ico`. Every
 size is cut from one PNG an editor uploads: by the CDN when the `media` feature serves the file, by Glide
-otherwise. Nothing is generated or stored, so a new upload is the new icon everywhere. It replaces Peak Tools'
+otherwise, so a new upload is the new icon everywhere. It replaces Peak Tools'
 favicon generation, which writes files with Imagick.
 
 ## Setup
@@ -31,6 +31,7 @@ favicon generation, which writes files with Imagick.
 | Handle | What it is |
 | --- | --- |
 | `favicon` | A square PNG, at least 512 px. The tab icon (32), the Apple touch icon (180) and the manifest's icons (192, 512) are cut from it. |
+| `favicon_dark` | Optional. A square PNG for the tab in dark mode. Safari ignores it, and home screens and the manifest keep `favicon`. |
 | `favicon_svg` | Optional. Browsers that read SVG favicons show it in the tab instead of the PNG. |
 | `favicon_svg_dark` | Optional. With `favicon_svg`, the tab icon in dark mode. |
 | `theme_color` | Optional. `<meta name="theme-color">` and the manifest's theme and background colour. |
@@ -50,5 +51,13 @@ and Apple's touch icon, the manifest and `/favicon.ico` need PNGs. With an SVG a
 
 The routes are registered before the site's own, so a site with this feature on has no `/site.webmanifest` or
 `/favicon.ico` route of its own.
+
+## The control panel's icon
+
+Saving the global writes `cp-favicon.png` into the `favicons` container: the PNG at 64 px with a dot in its
+bottom-right corner (`favicons.cp_mark.color`, Statamic's pink by default), so the CMS and the site tell apart in
+neighbouring tabs. The CP uses it in place of Statamic's icon on Statamic Pro; Solo always shows Statamic's.
+A site that sets `statamic.cp.custom_favicon_url` keeps its own, and `favicons.cp_mark.enabled` false turns it
+off. It needs PHP's GD extension. An existing site gets the file the next time an editor saves the global.
 
 Without the CDN, each size is one Glide render, made once and cached by Glide like any other.

@@ -1,8 +1,12 @@
 {{-- In the head. Each link renders only when the favicons global holds its file; the PNG's sizes lets a browser that reads SVG prefer the SVG. --}}
 @php($tab = \Inly\CoreWeb\Favicons\Favicons::png(\Inly\CoreWeb\Favicons\Favicons::TAB))
+@php($tabDark = \Inly\CoreWeb\Favicons\Favicons::png(\Inly\CoreWeb\Favicons\Favicons::TAB, null, 'favicon_dark'))
 @php($svg = \Inly\CoreWeb\Favicons\Favicons::svg())
 @php($svgDark = \Inly\CoreWeb\Favicons\Favicons::svg('favicon_svg_dark'))
-@if ($tab)
+@if ($tab && $tabDark)
+<link rel="icon" type="image/png" sizes="32x32" href="{{ $tab }}" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ $tabDark }}" media="(prefers-color-scheme: dark)">
+@elseif ($tab)
 <link rel="icon" type="image/png" sizes="32x32" href="{{ $tab }}">
 @endif
 @if ($svg && $svgDark)

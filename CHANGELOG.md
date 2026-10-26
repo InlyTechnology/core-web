@@ -21,8 +21,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`favicons` feature, in place of Peak Tools' favicons**:
   `<x-core-web::favicons.head>`, `/site.webmanifest` and `/favicon.ico`,
   every size cut by the CDN (or Glide) from one PNG on the `favicons`
-  global, with an optional SVG for light and dark tabs. Nothing is
-  generated or stored. Off by default. See `docs/favicons.md`.
+  global, with an optional dark PNG and SVGs for light and dark tabs. On
+  Statamic Pro the control panel's tab icon becomes the site's icon with a
+  dot, written when the global is saved. Off by default. See
+  `docs/favicons.md`.
 
 ## v0.31.0
 

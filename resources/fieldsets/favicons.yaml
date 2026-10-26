@@ -14,6 +14,19 @@ fields:
         - mimes:png
       localizable: false
   -
+    handle: favicon_dark
+    field:
+      type: assets
+      container: favicons
+      max_files: 1
+      mode: grid
+      display: 'Icon in dark mode'
+      instructions: 'Optional. A square PNG shown in the tab when the browser is in dark mode. Safari, home screens and the app manifest keep the icon above.'
+      validate:
+        - image
+        - mimes:png
+      localizable: false
+  -
     handle: favicon_svg
     field:
       type: assets

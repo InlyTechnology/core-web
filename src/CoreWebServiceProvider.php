@@ -58,6 +58,7 @@ use Inly\CoreWeb\Drafts\FieldsHash;
 use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StatamicContentSchema;
 use Inly\CoreWeb\Drafts\StoredValues;
+use Inly\CoreWeb\Favicons\CpFavicon;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Mail\MailSender;
@@ -382,6 +383,10 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('favicons')) {
             $this->loadViews();
             $this->loadRoutesFrom(__DIR__.'/../routes/favicons.php');
+
+            if (config('core-web.favicons.cp_mark.enabled')) {
+                CpFavicon::register();
+            }
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
