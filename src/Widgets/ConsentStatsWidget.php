@@ -26,8 +26,16 @@ class ConsentStatsWidget extends Widget
         $days = (int) $this->config('days', 30);
         $days = $days < 1 ? 30 : min(self::MAX_DAYS, $days);
         $site = $this->config('site');
-        $stats = app(ConsentStats::class)->since(now()->subDays($days), is_string($site) && $site !== '' ? $site : null);
+        $site = is_string($site) && $site !== '' ? $site : null;
+        $consent = app(ConsentStats::class);
+
+        if (! $consent->available()) {
+            return '<ui-widget><div class="px-4 py-3 text-sm text-red-600" v-pre>'.e(__('The consent log has no table yet. Publish and run its migration (core-web-consent-migration).')).'</div></ui-widget>';
+        }
+
+        $stats = $consent->since(now()->subDays($days), $site);
         $percent = fn (int $count): int => $stats['total'] === 0 ? 0 : (int) round($count / $stats['total'] * 100);
+        $shares = self::shares([$stats['actions']['accept_all'], $stats['actions']['custom'], $stats['actions']['reject_all']]);
         $asked = array_values(array_diff(array_keys(ConsentVendors::byCategory()), ['necessary']));
 
         return view('core-web::widgets.consent-stats', [
@@ -35,15 +43,41 @@ class ConsentStatsWidget extends Widget
             'period' => __('Last :days days', ['days' => $days]),
             'total' => $stats['total'],
             'actions' => [
-                ['label' => __('Accepted all'), 'percent' => $percent($stats['actions']['accept_all']), 'color' => 'bg-green-500'],
-                ['label' => __('Chose some'), 'percent' => $percent($stats['actions']['custom']), 'color' => 'bg-amber-500'],
-                ['label' => __('Rejected all'), 'percent' => $percent($stats['actions']['reject_all']), 'color' => 'bg-red-500'],
+                ['label' => __('Accepted all'), 'percent' => $shares[0], 'color' => 'bg-green-500'],
+                ['label' => __('Chose some'), 'percent' => $shares[1], 'color' => 'bg-amber-500'],
+                ['label' => __('Rejected all'), 'percent' => $shares[2], 'color' => 'bg-red-500'],
             ],
             'categories' => array_map(fn (string $category): array => [
                 'label' => __(ucfirst($category)),
                 'percent' => $percent($stats['categories'][$category] ?? 0),
             ], array_values(array_intersect(array_keys($stats['categories']), $asked))),
-            'multisite' => Site::multiEnabled() && ! (is_string($site) && $site !== ''),
+            'multisite' => Site::hasMultiple() && $site === null,
         ]);
+    }
+
+    /**
+     * Whole percentages of the counts that add up to 100 (largest remainder), so the stacked bar fills exactly.
+     *
+     * @param  list<int>  $counts
+     * @return list<int>
+     */
+    public static function shares(array $counts): array
+    {
+        $total = array_sum($counts);
+
+        if ($total === 0) {
+            return array_fill(0, count($counts), 0);
+        }
+
+        $exact = array_map(fn (int $count): float => $count / $total * 100, $counts);
+        $shares = array_map(fn (float $share): int => (int) floor($share), $exact);
+        $remainders = array_map(fn (float $share, int $floor): float => $share - $floor, $exact, $shares);
+        arsort($remainders);
+
+        foreach (array_slice(array_keys($remainders), 0, 100 - array_sum($shares)) as $index) {
+            $shares[$index]++;
+        }
+
+        return $shares;
     }
 }

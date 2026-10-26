@@ -162,5 +162,7 @@ their mind counts once per choice.
 
 Options: `days` (30, at most 365), `site` (one site's choices; every site by
 default), `title` (`Cookie consent` by default, through `__()`), and
-Statamic's own `width` and `can`. It reads the window's rows on every
-dashboard visit, a thousand at a time.
+Statamic's own `width` and `can`. On every dashboard visit it counts the
+window's choices per action in the database and reads the categories of
+those that were not a rejection, a thousand rows at a time. Until the log's
+migration has run, it says so instead.

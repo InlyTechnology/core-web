@@ -20,7 +20,7 @@
                 </div>
                 <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
                     @foreach ($actions as $action)
-                        <span class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-full {{ $action['color'] }}"></span>{{ $action['label'] }} <span class="tabular-nums">{{ $action['percent'] }}%</span></span>
+                        <span class="flex items-center gap-1"><span class="inline-block size-2 rounded-full {{ $action['color'] }}"></span>{{ $action['label'] }} <span class="tabular-nums">{{ $action['percent'] }}%</span></span>
                     @endforeach
                 </div>
             </div>

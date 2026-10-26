@@ -6,6 +6,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 use Inly\CoreWeb\Proposals\Proposal;
 use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\ProposalTarget;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Revisions\Revision as RevisionContract;
@@ -55,7 +56,8 @@ class OpenDrafts
     }
 
     /**
-     * Open proposals on targets the user may apply them to.
+     * Open proposals on targets the user may apply them to; a proposal whose
+     * source recorded no `via` is not a source's and is left out.
      *
      * @param  list<string>  $via
      * @return list<array{at: CarbonInterface, row: \Closure(): array<string, mixed>}>
@@ -71,25 +73,24 @@ class OpenDrafts
                 continue;
             }
 
-            $found[] = ['at' => $proposal->createdAt, 'row' => fn (): array => $this->proposalRow($proposal, $source)];
+            $found[] = ['at' => $proposal->createdAt, 'row' => fn (): array => $this->proposalRow($proposal, $target, $source)];
         }
 
         return $found;
     }
 
-    private function proposalRow(Proposal $proposal, string $source): array
+    private function proposalRow(Proposal $proposal, ProposalTarget $target, string $source): array
     {
-        $described = $this->proposals->describe($proposal, undoable: false);
         $message = trim($proposal->message);
 
         return [
-            'title' => (string) ($described['label'] ?? $proposal->target),
+            'title' => $target->label(),
             'via' => $source,
             'message' => $message !== '' ? $message : null,
             'at' => $proposal->createdAt,
-            'edit_url' => (string) $described['cp_url'],
+            'edit_url' => cp_route('core-web.proposals.show', $proposal->id),
             'kind' => 'proposal',
-            'stale' => (bool) $described['stale'],
+            'stale' => ! hash_equals(Proposals::base($target), $proposal->base),
         ];
     }
 

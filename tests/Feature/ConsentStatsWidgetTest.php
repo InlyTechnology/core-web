@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inly\CoreWeb\Consent\ConsentStats;
 use Inly\CoreWeb\Tests\TestCase;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
@@ -78,5 +79,19 @@ class ConsentStatsWidgetTest extends TestCase
         $this->assertSame(0, app(ConsentStats::class)->since(now()->subDays(30), 'default')['total']);
         $this->assertStringContainsString('No choices logged in this period', $this->render(['site' => 'default', 'days' => 7]));
         $this->assertStringContainsString('Last 7 days', $this->render(['site' => 'default', 'days' => 7]));
+    }
+
+    public function test_the_action_shares_add_up_to_a_full_bar(): void
+    {
+        $this->assertSame([34, 33, 33], ConsentStatsWidget::shares([1, 1, 1]));
+        $this->assertSame([67, 33, 0], ConsentStatsWidget::shares([2, 1, 0]));
+        $this->assertSame([0, 0, 0], ConsentStatsWidget::shares([0, 0, 0]));
+    }
+
+    public function test_without_the_log_s_table_it_says_so_instead_of_failing_the_dashboard(): void
+    {
+        Schema::drop('core_web_consents');
+
+        $this->assertStringContainsString('The consent log has no table yet', $this->render());
     }
 }

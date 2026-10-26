@@ -91,5 +91,6 @@
     "No choices logged in this period": "Inga val loggade under perioden",
     "Choices made": "Gjorda val",
     "Choices made, all sites": "Gjorda val, alla webbplatser",
-    "Allowed": "Tillåtna"
+    "Allowed": "Tillåtna",
+    "The consent log has no table yet. Publish and run its migration (core-web-consent-migration).": "Samtyckesloggen saknar tabell. Publicera och kör dess migrering (core-web-consent-migration)."
 }

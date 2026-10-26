@@ -52,8 +52,9 @@ yet, newest first:
   entry whose latest revision is a source's (an editor's later CP save makes
   it theirs, and it leaves the list), in the collections of
   `drafts.collections`;
-- every open proposal (content without revisions: navs, page trees, globals,
-  terms, asset details), marked **Changed since** when its target changed
+- every open proposal a source made (content without revisions: navs, page
+  trees, globals, terms, asset details; one without a `via` in its
+  provenance is left out), marked **Changed since** when its target changed
   after it was made.
 
 Each row shows the title, the source, the message (which names the person
