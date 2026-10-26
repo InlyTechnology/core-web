@@ -31,7 +31,7 @@ favicon generation, which writes files with Imagick.
 | Handle | What it is |
 | --- | --- |
 | `favicon` | A square PNG, at least 512 px. The tab icon (32), the Apple touch icon (180) and the manifest's icons (192, 512) are cut from it. |
-| `favicon_dark` | Optional. A square PNG for the tab in dark mode. Safari ignores it, and home screens and the manifest keep `favicon`. |
+| `favicon_dark` | Optional. A square PNG for the tab in dark mode. A browser that ignores `media` (Safari) shows `favicon`, listed last; home screens and the manifest keep `favicon`. |
 | `favicon_svg` | Optional. Browsers that read SVG favicons show it in the tab instead of the PNG. |
 | `favicon_svg_dark` | Optional. With `favicon_svg`, the tab icon in dark mode. |
 | `theme_color` | Optional. `<meta name="theme-color">` and the manifest's theme and background colour. |
@@ -58,6 +58,6 @@ Saving the global writes `cp-favicon.png` into the `favicons` container: the PNG
 bottom-right corner (`favicons.cp_mark.color`, Statamic's pink by default), so the CMS and the site tell apart in
 neighbouring tabs. The CP uses it in place of Statamic's icon on Statamic Pro; Solo always shows Statamic's.
 A site that sets `statamic.cp.custom_favicon_url` keeps its own, and `favicons.cp_mark.enabled` false turns it
-off. It needs PHP's GD extension. An existing site gets the file the next time an editor saves the global.
+off. It needs PHP's GD extension, and a source PNG no wider or taller than 4096 px (GD holds it whole in memory). An existing site gets the file the next time an editor saves the global.
 
 Without the CDN, each size is one Glide render, made once and cached by Glide like any other.

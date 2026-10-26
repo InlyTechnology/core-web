@@ -149,6 +149,7 @@ class FaviconsTest extends TestCase
         $html = Blade::render('<x-core-web::favicons.head />');
 
         $this->assertStringContainsString('href="'.e(self::CDN.'/icon.png?width=32&height=32&fit=cover&format=png').'" media="(prefers-color-scheme: light)">', $html);
+        $this->assertGreaterThan(strpos($html, 'icon-dark.png'), strpos($html, 'icon.png?width=32'));
         $this->assertStringContainsString('href="'.e(self::CDN.'/icon-dark.png?width=32&height=32&fit=cover&format=png').'" media="(prefers-color-scheme: dark)">', $html);
         $this->assertStringContainsString(e(self::CDN.'/icon.png?width=180'), $html);
     }
@@ -171,8 +172,39 @@ class FaviconsTest extends TestCase
         $this->favicons(['favicon' => 'icon.png']);
         config(['statamic.editions.pro' => false, 'statamic.cp.custom_favicon_url' => null]);
 
-        rescue(fn () => view('statamic::partials.head')->render(), report: false);
+        view('statamic::partials.head')->render();
 
         $this->assertNull(config('statamic.cp.custom_favicon_url'));
+    }
+
+    public function test_a_site_s_own_cp_favicon_wins(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+        config(['statamic.editions.pro' => true, 'statamic.cp.custom_favicon_url' => '/own.png']);
+
+        view('statamic::partials.head')->render();
+
+        $this->assertSame('/own.png', config('statamic.cp.custom_favicon_url'));
+    }
+
+    public function test_a_new_icon_rewrites_the_cp_icon_cropped_square_and_a_removed_one_deletes_it(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+        $first = File::get($this->scratch.'/files/'.CpFavicon::PATH);
+
+        // 200 x 100: a blue left square that the centre crop drops, and a red centre it keeps.
+        $wide = imagecreatetruecolor(200, 100);
+        imagefill($wide, 0, 0, imagecolorallocate($wide, 0, 0, 255));
+        imagefilledrectangle($wide, 50, 0, 149, 99, imagecolorallocate($wide, 255, 0, 0));
+        imagepng($wide, $this->scratch.'/files/wide.png');
+        AssetContainer::findByHandle('favicons')->makeAsset('wide.png')->save();
+        $this->favicons(['favicon' => 'wide.png']);
+
+        $marked = imagecreatefrompng($this->scratch.'/files/'.CpFavicon::PATH);
+        $this->assertNotSame($first, File::get($this->scratch.'/files/'.CpFavicon::PATH));
+        $this->assertSame([255, 0, 0], array_values(array_slice(imagecolorsforindex($marked, imagecolorat($marked, 2, 2)), 0, 3)));
+
+        $this->favicons([]);
+        $this->assertFileDoesNotExist($this->scratch.'/files/'.CpFavicon::PATH);
     }
 }
