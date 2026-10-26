@@ -1,0 +1,13 @@
+title: 'SEO: Social sharing'
+fields:
+  -
+    handle: og_image
+    field:
+      type: assets
+      container: social_images
+      max_files: 1
+      mode: grid
+      display: 'Default social image'
+      instructions: 'Shown when a page is shared and has no image of its own. 1200 × 630 px.'
+      width: 50
+      localizable: true

@@ -1,0 +1,112 @@
+title: 'SEO: Titles and descriptions'
+fields:
+  -
+    handle: site_name
+    field:
+      type: text
+      display: 'Site name'
+      instructions: "Ends every page title. Leave empty for the app's name."
+      width: 66
+      localizable: true
+  -
+    handle: title_separator
+    field:
+      type: select
+      display: Separator
+      instructions: 'Between the page title and the site name.'
+      options:
+        '|': '|'
+        '-': '-'
+        '–': '–'
+        /: /
+        '·': '·'
+      default: '|'
+      clearable: false
+      width: 33
+      localizable: true
+  -
+    handle: change_page_title
+    field:
+      type: grid
+      mode: table
+      display: 'Titles per collection'
+      instructions: 'Add the collection title or a text of your own to the titles of a collection, or replace them.'
+      add_row: 'Add collection'
+      localizable: true
+      fields:
+        -
+          handle: collection
+          field:
+            type: collections
+            max_items: 1
+            mode: select
+            display: Collection
+        -
+          handle: manipulate_title
+          field:
+            type: select
+            display: Title
+            options:
+              collection_title: 'Add collection title'
+              custom_text: 'Add text'
+              replace_title: 'Replace title'
+            clearable: false
+        -
+          handle: custom_text
+          field:
+            type: text
+            display: Text
+            if:
+              manipulate_title: 'isnt collection_title'
+  -
+    handle: collection_defaults
+    field:
+      type: grid
+      mode: stacked
+      display: 'Descriptions per collection'
+      instructions: "Used as the meta and social description when an entry's own is empty."
+      add_row: 'Add collection'
+      localizable: true
+      fields:
+        -
+          handle: collection
+          field:
+            type: collections
+            max_items: 1
+            mode: select
+            display: Collection
+            width: 33
+        -
+          handle: fallback
+          field:
+            type: select
+            display: 'Taken from'
+            options:
+              field: 'A field'
+              custom_text: 'A text'
+              page_builder: 'The first block'
+            clearable: false
+            width: 33
+        -
+          handle: field_handle
+          field:
+            type: text
+            display: 'Field handle'
+            width: 33
+            if:
+              fallback: 'equals field'
+        -
+          handle: custom_text
+          field:
+            type: textarea
+            display: Text
+            character_limit: 160
+            if:
+              fallback: 'equals custom_text'
+  -
+    handle: hreflang_auto
+    field:
+      type: toggle
+      display: 'Link language versions'
+      instructions: "Tells search engines about an entry's versions on the other sites (hreflang)."
+      localizable: true

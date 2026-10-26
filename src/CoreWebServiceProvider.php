@@ -68,6 +68,9 @@ use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
+use Inly\CoreWeb\Seo\NotFoundPage;
+use Inly\CoreWeb\Seo\RedirectMissingPages;
+use Inly\CoreWeb\Seo\Sitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -82,7 +85,13 @@ use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Events\CollectionTreeSaved;
+use Statamic\Events\EntryDeleted;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\GlobalVariablesSaved;
 use Statamic\Events\RevisionSaving;
+use Statamic\Events\TermDeleted;
+use Statamic\Events\TermSaved;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
@@ -117,6 +126,8 @@ use Statamic\StaticCaching\Cacher;
  * The `cloud` feature runs the site on Laravel Cloud, its content in the
  * database, with `content:import` and `core-web:deploy`.
  * The `consent` feature is the site's own cookie banner and consent log.
+ * The `seo` feature is the page head (`<x-core-web::seo.head>`), robots.txt,
+ * the sitemaps, the editors' redirects and the page-not-found entry.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -155,6 +166,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('consent')) {
                 $this->mergeGroupDefaults('consent', ['vendors', 'sites']);
+            }
+
+            if (self::enabled('seo')) {
+                $this->mergeGroupDefaults('seo', []);
             }
 
             if (self::enabled('media')) {
@@ -337,6 +352,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('consent')) {
             $this->bootConsent();
+        }
+
+        if (self::enabled('seo')) {
+            $this->bootSeo();
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
@@ -557,6 +576,26 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->cron($cron)
                 ->withoutOverlapping());
         }
+    }
+
+    private function bootSeo(): void
+    {
+        // Peak SEO registers the same routes later in the boot, so its robots.txt and sitemaps would win over these.
+        if (class_exists('Studio1902\PeakSeo\ServiceProvider')) {
+            throw new LogicException('core-web.features.seo replaces Peak SEO: remove studio1902/statamic-peak-seo (composer remove) before switching it on.');
+        }
+
+        $this->loadViews();
+        $this->loadRoutesFrom(__DIR__.'/../routes/seo.php');
+
+        if (filled(config('core-web.seo.not_found.global'))) {
+            NotFoundPage::register();
+        }
+
+        // Statamic builds statamic.web once the app has booted; a 404 from any front-end route asks the redirects first.
+        Statamic::booted(fn () => $this->app->make(Router::class)->pushMiddlewareToGroup('statamic.web', RedirectMissingPages::class));
+
+        Event::listen([EntrySaved::class, EntryDeleted::class, TermSaved::class, TermDeleted::class, CollectionTreeSaved::class, GlobalVariablesSaved::class], fn () => Sitemaps::flush());
     }
 
     private function bootForms(): void

@@ -77,6 +77,13 @@ return [
     | until their category is granted, Google Consent Mode v2, the consent
     | log route and `consent:prune` with its schedule.
     |
+    | seo: the site's SEO (`seo`): the <x-core-web::seo.head> tags (title,
+    | description, robots, canonical, hreflang, Open Graph and its social
+    | card, JSON-LD, site verification, the Google tags), /robots.txt, the
+    | sitemaps, the redirects tried before a 404 and the not-found page an
+    | editor composes. Read from the `seo` and `redirects` globals, whose
+    | blueprints import the core-web::seo_* fieldsets.
+    |
     */
 
     'features' => [
@@ -93,6 +100,7 @@ return [
         'media' => false,
         'cloud' => false,
         'consent' => false,
+        'seo' => false,
     ],
 
     /*
@@ -908,5 +916,75 @@ return [
             'show_mark' => true,
         ],
         'button' => 'bottom-left',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | SEO
+    |--------------------------------------------------------------------------
+    |
+    | What a site's pages tell search engines, social networks and crawlers.
+    | Editors set it on two globals, per site; this block holds what a
+    | developer decides, the same in every environment.
+    |
+    | global / redirects_global: the handles of the global sets whose
+    | blueprints import the core-web::seo_* fieldsets and
+    | core-web::seo_redirects. The field handles are Peak SEO's, so a site
+    | moving off it keeps its content.
+    |
+    | social: the card a page shares as (og:image and the description), when
+    | the entry's own SEO fields are empty. `collections` names, per
+    | collection handle, the fields an image and a summary come from and its
+    | og:type: ['articles' => ['image' => 'image', 'description' =>
+    | 'excerpt', 'type' => 'article']]. Without an image the card takes the
+    | first page-builder block's when it is `hero.set` (`hero.image_field`
+    | on it, `hero.field` the replicator), then the global's og_image.
+    | `image` is the size the CDN crops a card to.
+    |
+    | robots: /robots.txt. `ai_search` false also blocks the AI search and
+    | assistant agents (ChatGPT search, Perplexity, Claude), which take a
+    | site out of AI answers; AI training crawlers are always blocked. The
+    | global's Robots field is added on top. `view` renders it.
+    |
+    | sitemap: /sitemap.xml at each site's address and the /sitemaps.xml
+    | index, cached until an entry, term, tree or the global is saved.
+    |
+    | not_found: the page-not-found entry an editor picks on a global
+    | (`global`, field `field`), its fields handed to `views` (the site's
+    | errors/404 and its layout). Null `global` renders the views on their own.
+    |
+    */
+
+    'seo' => [
+        'global' => 'seo',
+        'redirects_global' => 'redirects',
+        'social' => [
+            'collections' => [],
+            'hero' => [
+                'field' => 'page_builder',
+                'set' => 'hero',
+                'image_field' => 'image',
+            ],
+            'image' => [
+                'width' => 1200,
+                'height' => 630,
+                'format' => 'jpeg',
+            ],
+            'description_limit' => 157,
+        ],
+        'robots' => [
+            'enabled' => true,
+            'ai_search' => true,
+            'view' => 'core-web::seo.robots',
+        ],
+        'sitemap' => [
+            'enabled' => true,
+            'cache_minutes' => 1440,
+        ],
+        'not_found' => [
+            'global' => 'configuration',
+            'field' => 'error_404_entry',
+            'views' => ['errors/404', 'layout'],
+        ],
     ],
 ];

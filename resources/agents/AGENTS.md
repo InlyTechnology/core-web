@@ -137,6 +137,15 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
 - A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
 
+## SEO (`seo`)
+
+- **The head is `<x-core-web::seo.head :page="$page ?? null" />`**, robots.txt, the sitemaps, the redirects and
+  the page-not-found entry are the feature's routes and hooks: never Peak SEO beside it (boot fails), a
+  `public/robots.txt`, a sitemap route or a social-card class of the site's own.
+- **SEO fields come from the `core-web::seo_*` fieldsets**; a site's own schema (its Organization, a block's
+  FAQPage) stays in its views, and markup for the head goes in `@push('core-web.seo')`.
+- **A collection's social card is a row in `seo.social.collections`**, not code.
+
 ## Statamic helpers
 
 - **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with

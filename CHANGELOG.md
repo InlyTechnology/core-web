@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`seo` feature, in place of Peak SEO**: `<x-core-web::seo.head>` renders
+  the title, description, robots, canonical, hreflang, Open Graph, JSON-LD
+  and the Google tags (held by the `consent` feature until statistics is
+  granted); `/robots.txt` blocks AI training crawlers and lists the
+  sitemaps; `/sitemap.xml` per site and the `/sitemaps.xml` index; the
+  redirects global answers front-end 404s; the page-not-found entry fills
+  `errors/404`. The `core-web::seo_*` fieldsets keep Peak SEO's field
+  handles, so content carries over. Off by default; Peak SEO must be removed
+  before it is switched on. See `docs/seo.md`.
+
 ## v0.31.0
 
 - **`content:push --publish`**: on a live site with
