@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`core_drafts` dashboard widget**: with `features.drafts` on, the drafts
+  Core AI or a content push wrote that nobody has published yet (new
+  unpublished entries and working copies), newest first, with who they were
+  drafted for and a link to review each in the CP. `via` narrows it to one
+  source (`['core-ai']`). See `docs/drafts.md`, Dashboard widget.
+
 ## v0.31.0
 
 - **`content:push --publish`**: on a live site with

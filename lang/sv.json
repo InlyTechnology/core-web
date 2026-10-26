@@ -74,5 +74,11 @@
     "Ties form submissions to a visitor.": "Knyter formulärinskick till en besökare.",
     "Tracks visits for HubSpot's marketing analytics.": "Följer besök för HubSpots marknadsanalys.",
     "Show consent details": "Visa detaljer om samtycket",
-    "Consent date:": "Samtyckesdatum:"
+    "Consent date:": "Samtyckesdatum:",
+    "Drafts to review": "Utkast att granska",
+    "No drafts waiting": "Inga utkast väntar",
+    "New page": "Ny sida",
+    "Review": "Granska",
+    "Core AI": "Core AI",
+    "Content push": "Push av innehåll"
 }

@@ -80,6 +80,7 @@ use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
+use Inly\CoreWeb\Widgets\DraftsWidget;
 use InvalidArgumentException;
 use LogicException;
 use Statamic\Events\RevisionSaving;
@@ -384,7 +385,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
         $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+        DraftsWidget::register();
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');
 

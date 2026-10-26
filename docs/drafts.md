@@ -43,6 +43,29 @@ update names (`FieldsHash` hashes the draft's fields). Refusals throw
 messages are translations a site rewords in
 `lang/vendor/core-web/{locale}/drafts.php`.
 
+## Dashboard widget
+
+The `core_drafts` widget lists the drafts a source wrote that nobody has
+published yet, newest first: every working copy that still carries a
+provenance, and every unpublished entry whose latest revision is a source's
+(an editor's own save of it makes it theirs, and it leaves the list). Each
+row shows the entry's title, the source, the revision message (which names
+the person Core AI drafted for), how long ago, and a Review link to the
+entry in the CP. An editor sees only the entries they may view.
+
+```php
+// config/statamic/cp.php
+'widgets' => [
+    ['type' => 'core_drafts', 'via' => ['core-ai'], 'limit' => 5, 'width' => 50],
+],
+```
+
+Options: `via` (the sources to show, every source by default), `limit` (5,
+at most 50), `title` (`Drafts to review` by default, through `__()`), and
+Statamic's own `width`, `can` and `sites`. It reads the revisions store
+(the Stache or the Eloquent driver), and each unpublished entry's latest
+revision, on every dashboard visit.
+
 ## Core AI's drafts (API v1.1)
 
 With `features.content` on as well, core-web takes Core AI's drafts itself,
