@@ -144,3 +144,23 @@ can quote it), the site, the action, the categories and the policy version. No I
 address, user agent or user. `consent:prune` deletes rows older than
 `log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
 no log sets `log.enabled` to false.
+
+## Dashboard widget
+
+With the log on, the `consent_stats` widget shows how visitors answered the
+banner over the last `days`: how many choices were made, the share that
+accepted all, chose some or rejected all, and the share that allowed each
+category the site asks for. It counts choices, not visitors: one who changes
+their mind counts once per choice.
+
+```php
+// config/statamic/cp.php
+'widgets' => [
+    ['type' => 'consent_stats', 'days' => 30, 'width' => 50],
+],
+```
+
+Options: `days` (30, at most 365), `site` (one site's choices; every site by
+default), `title` (`Cookie consent` by default, through `__()`), and
+Statamic's own `width` and `can`. It reads the window's rows on every
+dashboard visit, a thousand at a time.

@@ -14,6 +14,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   trees, globals, terms and assets), newest first, with who they were for
   and a link to review each in the CP. `via` narrows it to one
   source (`['core-ai']`). See `docs/drafts.md`, Dashboard widget.
+- **`consent_stats` dashboard widget**: with `features.consent` and the
+  consent log on, how visitors answered the banner over the last 30 days
+  (`days`): choices made, the share that accepted all, chose some or
+  rejected all, and the share that allowed each category. See
+  `docs/cookie-consent.md`, Dashboard widget.
 
 ## v0.31.0
 

@@ -78,6 +78,7 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
+use Inly\CoreWeb\Widgets\ConsentStatsWidget;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use Inly\CoreWeb\Widgets\DraftsWidget;
@@ -554,6 +555,7 @@ class CoreWebServiceProvider extends ServiceProvider
             ->by('consent|'.sha1(ClientAddress::key($request))));
         $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
         $this->commands([PruneConsentsCommand::class]);
+        ConsentStatsWidget::register();
 
         if (is_string($cron = config('core-web.consent.log.prune_schedule')) && $cron !== '') {
             $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('consent:prune')

@@ -82,5 +82,14 @@
     "Core AI": "Core AI",
     "Content push": "Push av innehåll",
     "Proposal": "Förslag",
-    "Changed since": "Ändrat sedan"
+    "Changed since": "Ändrat sedan",
+    "Cookie consent": "Cookiesamtycke",
+    "Last :days days": "Senaste :days dagarna",
+    "Accepted all": "Godkände alla",
+    "Chose some": "Valde själv",
+    "Rejected all": "Avböjde alla",
+    "No choices logged in this period": "Inga val loggade under perioden",
+    "Choices made": "Gjorda val",
+    "Choices made, all sites": "Gjorda val, alla webbplatser",
+    "Allowed": "Tillåtna"
 }
