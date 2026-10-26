@@ -15,6 +15,11 @@
                             <span class="line-clamp-1 font-medium" v-pre>{{ $row['title'] }}</span>
                             @if ($row['new'])
                                 <ui-badge size="sm" text="{{ __('New page') }}"></ui-badge>
+                            @elseif ($row['proposal'])
+                                <ui-badge size="sm" text="{{ __('Proposal') }}"></ui-badge>
+                            @endif
+                            @if ($row['stale'])
+                                <ui-badge size="sm" color="amber" text="{{ __('Changed since') }}"></ui-badge>
                             @endif
                         </div>
                         <div class="text-xs text-gray-600 dark:text-gray-400 line-clamp-1" v-pre>{{ $row['source'] }}@if ($row['message']) · {{ $row['message'] }}@endif @if ($row['ago']) · {{ $row['ago'] }}@endif</div>

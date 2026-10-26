@@ -45,14 +45,21 @@ messages are translations a site rewords in
 
 ## Dashboard widget
 
-The `core_drafts` widget lists the drafts a source wrote that nobody has
-published yet, newest first, in the collections of `drafts.collections`:
-every working copy that still carries a provenance, and every unpublished
-entry whose latest revision is a source's (an editor's later CP save makes
-it theirs, and it leaves the list). Each
-row shows the entry's title, the source, the revision message (which names
-the person Core AI drafted for), how long ago, and a Review link to the
-entry in the CP. An editor sees only the entries they may view.
+The `core_drafts` widget lists what a source made that nobody has decided
+yet, newest first:
+
+- every working copy that still carries a provenance, and every unpublished
+  entry whose latest revision is a source's (an editor's later CP save makes
+  it theirs, and it leaves the list), in the collections of
+  `drafts.collections`;
+- every open proposal (content without revisions: navs, page trees, globals,
+  terms, asset details), marked **Changed since** when its target changed
+  after it was made.
+
+Each row shows the title, the source, the message (which names the person
+Core AI made it for), how long ago, and a Review link: the entry in the CP,
+or the proposal's page. An editor sees only the entries they may view and
+the proposals they may apply.
 
 ```php
 // config/statamic/cp.php
@@ -65,8 +72,8 @@ Options: `via` (the sources to show, every source by default), `limit` (5,
 at most 50), `title` (`Drafts to review` by default, through `__()`), and
 Statamic's own `width`, `can` and `sites`. On every dashboard visit it
 reads the working copies from the revisions store (the Stache or the
-Eloquent driver) and the latest revision of each unpublished entry in those
-collections.
+Eloquent driver), the latest revision of each unpublished entry in those
+collections, and the open proposals.
 
 ## Core AI's drafts (API v1.1)
 

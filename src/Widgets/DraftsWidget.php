@@ -10,9 +10,9 @@ use Statamic\Facades\User;
 use Statamic\Widgets\Widget;
 
 /**
- * The `core_drafts` dashboard widget: the drafts Core AI or a content push
- * wrote that nobody has published yet (OpenDrafts), newest first, each to
- * open in the CP.
+ * The `core_drafts` dashboard widget: the drafts and proposals Core AI or a
+ * content push made that nobody has decided yet (OpenDrafts), newest first,
+ * each to open in the CP.
  *
  *     ['type' => 'core_drafts', 'via' => ['core-ai'], 'limit' => 5, 'width' => 50]
  */
@@ -39,6 +39,8 @@ class DraftsWidget extends Widget
                 'ago' => $draft['at']?->diffForHumans(),
                 'edit_url' => $draft['edit_url'],
                 'new' => $draft['kind'] === 'new_entry',
+                'proposal' => $draft['kind'] === 'proposal',
+                'stale' => $draft['stale'],
             ], $open['drafts']),
         ]);
     }

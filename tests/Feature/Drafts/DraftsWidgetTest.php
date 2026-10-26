@@ -3,16 +3,21 @@
 namespace Inly\CoreWeb\Tests\Feature\Drafts;
 
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Drafts\DraftWriter;
 use Inly\CoreWeb\Drafts\OpenDrafts;
+use Inly\CoreWeb\Proposals\Proposals;
+use Inly\CoreWeb\Proposals\Targets\GlobalTarget;
 use Inly\CoreWeb\Tests\TestCase;
 use Inly\CoreWeb\Widgets\DraftsWidget;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 use Statamic\Widgets\Loader;
@@ -35,6 +40,8 @@ class DraftsWidgetTest extends TestCase
         $this->scratch = sys_get_temp_dir().'/core-web-drafts-widget-'.uniqid();
         config(['statamic.revisions.enabled' => true, 'statamic.revisions.path' => $this->scratch.'/revisions']);
         config(['core-web.drafts.collections' => ['articles' => []]]);
+        Storage::fake('local');
+        Blueprint::setDirectory($this->scratch.'/blueprints');
 
         Collection::make('articles')->sites(['default'])->revisionsEnabled(true)->routes('/articles/{slug}')->save();
 
@@ -142,5 +149,31 @@ class DraftsWidgetTest extends TestCase
         config(['core-web.drafts.collections' => []]);
 
         $this->assertSame(0, app(OpenDrafts::class)->for($this->editor)['total']);
+    }
+
+    public function test_it_lists_open_proposals_beside_drafts(): void
+    {
+        $set = GlobalSet::make('settings')->title('Settings');
+        $set->save();
+        $set->makeLocalization('default')->data(['phone' => '123'])->save();
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [['handle' => 'phone', 'field' => ['type' => 'text']]]])->save();
+
+        $target = GlobalTarget::make('settings', 'default');
+        app(Proposals::class)->propose(new DraftAuthor($this->editor, 'Ann', DraftProvenance::make('core-ai'), 'Proposed by Core AI for Eva'), $target, ['phone' => '456'], Proposals::base($target));
+        $this->draft('content-push', ['fields' => ['title' => 'Pushed article']], 'Push');
+
+        $html = $this->render();
+
+        $this->assertStringContainsString($target->label(), $html);
+        $this->assertStringContainsString('text="Proposal"', $html);
+        $this->assertStringContainsString('Core AI · Proposed by Core AI for Eva', $html);
+        $this->assertStringContainsString('/core-web/proposals/', $html);
+        $this->assertStringContainsString('text="2"', $html);
+        $this->assertStringNotContainsString('Changed since', $html);
+
+        GlobalSet::find('settings')->in('default')->data(['phone' => '789'])->save();
+
+        $this->assertStringContainsString('Changed since', $this->render());
+        $this->assertSame(1, app(OpenDrafts::class)->for($this->editor, ['content-push'])['total']);
     }
 }
