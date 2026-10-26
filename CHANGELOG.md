@@ -15,7 +15,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   sitemaps; `/sitemap.xml` per site and the `/sitemaps.xml` index; the
   redirects global answers front-end 404s; the page-not-found entry fills
   `errors/404`. The `core-web::seo_*` fieldsets keep Peak SEO's field
-  handles, so content carries over. Off by default; Peak SEO must be removed
+  handles, so content carries over; only production is indexed (one global
+  toggle and one per entry). Off by default; Peak SEO must be removed
   before it is switched on. See `docs/seo.md`.
 
 ## v0.31.0

@@ -22,12 +22,11 @@ fields:
     field:
       type: button_group
       display: Indexing
-      instructions: 'Inherit follows the setting for the collection. Noindex also leaves it out of the sitemap.'
+      instructions: 'Noindex keeps the page out of search and out of the sitemap.'
       options:
-        inherit: Inherit
         index: Index
         noindex: Noindex
-      default: inherit
+      default: index
       width: 50
       listable: hidden
       localizable: true

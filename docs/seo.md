@@ -47,11 +47,12 @@ component is passed wins over the entry's fields.
   a text of its own, or replaces the title.
 - **Description**: `seo_description`, else the collection's field
   (`social.collections`, or a `collection_defaults` row).
-- **Robots**: an environment is indexed only when its `noindex_{environment}`
-  toggle is saved off and it is `local`, `staging` or `production`; a toggle
-  never saved counts as on, so check production's before launch. An error
-  page (a 404, a 500) is always noindexed and has no canonical. An entry's `seo_noindex` wins over its
-  collection's or taxonomy's default.
+- **Robots**: only production is indexed, and only while the global's
+  `noindex_production` toggle is off; every other environment is noindexed
+  whatever it says. An entry or term is noindexed with its own `seo_noindex`.
+  An error page (a 404, a 500) is always noindexed and has no canonical.
+  Peak's `noindex_local`, `noindex_staging` and collection/taxonomy indexing
+  defaults are not read.
 - **Social card**: `og_image`, else the collection's image field, else the
   first page-builder block's when it is the hero (`social.hero`), else the
   global's `og_image`. With the `media` feature it is cropped on the CDN to

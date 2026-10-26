@@ -97,16 +97,25 @@ class SeoTest extends TestCase
         $this->assertStringNotContainsString('rel="canonical"', $html);
     }
 
-    public function test_a_noindexed_entry_and_a_collection_default_noindex_the_page(): void
+    public function test_a_noindexed_entry_noindexes_the_page(): void
     {
         $this->production();
         $this->assertStringContainsString('<meta name="robots" content="noindex">', $this->renderHead('hidden'));
+        $this->assertFalse(Seo::noindex(Entry::find('about')));
+    }
 
-        $this->seo(['collection_indexing_defaults' => [['collection' => ['articles'], 'noindex' => 'noindex']]]);
-        $this->assertTrue(Seo::noindex(Entry::find('news-1')));
+    public function test_only_production_is_indexed_and_only_while_its_toggle_is_off(): void
+    {
+        $this->app->detectEnvironment(fn () => 'staging');
+        $this->seo(['noindex_staging' => false]);
+        $this->assertFalse(Seo::indexesEnvironment());
 
-        Entry::find('news-1')->set('seo_noindex', 'index')->save();
-        $this->assertFalse(Seo::noindex(Entry::find('news-1')));
+        $this->production();
+        $this->seo(['noindex_production' => null]);
+        $this->assertTrue(Seo::indexesEnvironment());
+
+        $this->seo(['noindex_production' => true]);
+        $this->assertFalse(Seo::indexesEnvironment());
     }
 
     public function test_a_page_outside_the_cascade_passes_its_own_title_and_description(): void

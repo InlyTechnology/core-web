@@ -28,16 +28,10 @@ final class Seo
         return $variables === null ? null : Values::unwrap($variables->augmentedValue($key));
     }
 
-    /** Whether this environment may be indexed at all: the global's noindex_{environment} toggle, and never an environment it names none for. */
+    /** Whether this environment may be indexed at all: only production, and only while its noindex_production toggle is off. */
     public static function indexesEnvironment(): bool
     {
-        $environment = (string) app()->environment();
-
-        if (! in_array($environment, ['local', 'staging', 'production'], true)) {
-            return false;
-        }
-
-        return ! self::get("noindex_{$environment}", $environment !== 'production');
+        return app()->environment('production') && ! self::get('noindex_production', false);
     }
 
     /** Whether the Google tags render in this environment: the global's trackers_{environment} toggle. */
@@ -52,45 +46,12 @@ final class Seo
         return (bool) self::get("trackers_{$environment}", false);
     }
 
-    /** The entry's or term's own noindex choice, else the global's default for its collection or taxonomy. */
+    /** The entry's or term's own noindex choice. */
     public static function noindex(mixed $content): bool
     {
-        $content = self::content($content);
+        $own = self::content($content)?->value('seo_noindex');
 
-        if ($content === null) {
-            return false;
-        }
-
-        $own = $content->value('seo_noindex');
-
-        if ($own === 'noindex' || $own === true) {
-            return true;
-        }
-
-        if ($own === 'index') {
-            return false;
-        }
-
-        if ($content instanceof Entry) {
-            return self::defaultNoindex('collection_indexing_defaults', 'collection', (string) $content->collectionHandle());
-        }
-
-        if ($content instanceof Term) {
-            return self::defaultNoindex('taxonomy_indexing_defaults', 'taxonomy', (string) $content->taxonomyHandle());
-        }
-
-        return false;
-    }
-
-    public static function defaultNoindex(string $grid, string $key, string $handle, ?string $site = null): bool
-    {
-        foreach ((array) self::get($grid, [], $site) as $row) {
-            if (in_array($handle, (array) ($row[$key] ?? []), true)) {
-                return ($row['noindex'] ?? 'index') === 'noindex';
-            }
-        }
-
-        return false;
+        return $own === 'noindex' || $own === true;
     }
 
     /** A structure page is its entry; anything else that is neither an entry nor a term is no content. */

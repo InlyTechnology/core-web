@@ -1,78 +1,11 @@
 title: 'SEO: Indexing'
 fields:
   -
-    handle: noindex_local
-    field:
-      type: toggle
-      display: 'Noindex locally'
-      default: true
-      width: 33
-  -
-    handle: noindex_staging
-    field:
-      type: toggle
-      display: 'Noindex on staging'
-      default: true
-      width: 33
-  -
     handle: noindex_production
     field:
       type: toggle
       display: 'Noindex in production'
-      instructions: 'Only before launch.'
-      width: 33
-  -
-    handle: collection_indexing_defaults
-    field:
-      type: grid
-      mode: table
-      display: 'Collections'
-      instructions: 'Index or noindex a collection by default. An entry can override it. Unlisted collections are indexed.'
-      add_row: 'Add collection'
-      localizable: true
-      fields:
-        -
-          handle: collection
-          field:
-            type: collections
-            max_items: 1
-            mode: select
-            display: Collection
-        -
-          handle: noindex
-          field:
-            type: button_group
-            display: Default
-            options:
-              index: Index
-              noindex: Noindex
-            default: index
-  -
-    handle: taxonomy_indexing_defaults
-    field:
-      type: grid
-      mode: table
-      display: 'Taxonomies'
-      instructions: 'Index or noindex a taxonomy by default. A term can override it.'
-      add_row: 'Add taxonomy'
-      localizable: true
-      fields:
-        -
-          handle: taxonomy
-          field:
-            type: taxonomies
-            max_items: 1
-            mode: select
-            display: Taxonomy
-        -
-          handle: noindex
-          field:
-            type: button_group
-            display: Default
-            options:
-              index: Index
-              noindex: Noindex
-            default: index
+      instructions: 'Keeps the whole live site out of search, before launch say. Every other environment is always noindexed.'
   -
     handle: breadcrumbs
     field:
