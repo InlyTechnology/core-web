@@ -37,7 +37,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false, 'consent' => false, 'seo' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false, 'consent' => false, 'seo' => false, 'favicons' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void

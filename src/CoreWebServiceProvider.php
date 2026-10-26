@@ -174,6 +174,10 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeSocialDefaults();
             }
 
+            if (self::enabled('favicons')) {
+                $this->mergeGroupDefaults('favicons', []);
+            }
+
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
 
@@ -373,6 +377,11 @@ class CoreWebServiceProvider extends ServiceProvider
 
         if (self::enabled('seo')) {
             $this->bootSeo();
+        }
+
+        if (self::enabled('favicons')) {
+            $this->loadViews();
+            $this->loadRoutesFrom(__DIR__.'/../routes/favicons.php');
         }
 
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {

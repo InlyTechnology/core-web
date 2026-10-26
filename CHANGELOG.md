@@ -18,6 +18,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   handles, so content carries over; only production is indexed (one global
   toggle and one per entry). Off by default; Peak SEO must be removed
   before it is switched on. See `docs/seo.md`.
+- **`favicons` feature, in place of Peak Tools' favicons**:
+  `<x-core-web::favicons.head>`, `/site.webmanifest` and `/favicon.ico`,
+  every size cut by the CDN (or Glide) from one PNG on the `favicons`
+  global, with an optional SVG for light and dark tabs. Nothing is
+  generated or stored. Off by default. See `docs/favicons.md`.
 
 ## v0.31.0
 

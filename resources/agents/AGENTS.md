@@ -146,6 +146,12 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   FAQPage) stays in its views, and markup for the head goes in `@push('core-web.seo')`.
 - **A collection's social card is a row in `seo.social.collections`**, not code.
 
+## Favicons (`favicons`)
+
+- **Icons are one PNG on the `favicons` global**, rendered by `<x-core-web::favicons.head />`; every size is cut
+  from it on request. Never generated icon files, a `public/favicon.ico`, a hand-written manifest or Peak Tools'
+  favicon fields beside it.
+
 ## Statamic helpers
 
 - **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with

@@ -23,6 +23,7 @@ nothing.
 | Website content | `features.content` | Lets the `core-web.envelope` route middleware open envelopes; switched off, it refuses every call. The site registers its own content routes behind it (see [Website content](website-content.md)) |
 | Cookie consent | `features.consent` | The `<x-core-web::consent.*>` components, the `@consentScript` directive, the consent log route `POST /!/core-web/consent` with `consent:prune` and its schedule (`consent.log.enabled`) (see [Cookie consent](cookie-consent.md)) |
 | SEO | `features.seo` | The `<x-core-web::seo.head>` component, `/robots.txt`, `/sitemap.xml` and `/sitemaps.xml`, the redirects middleware on front-end 404s, the page-not-found entry and the sitemap cache's flush on save; Peak SEO must be removed (see [SEO](seo.md)) |
+| Favicons | `features.favicons` | The `<x-core-web::favicons.head>` component, `/site.webmanifest` and `/favicon.ico`, every size cut from the `favicons` global's PNG by the CDN or Glide (see [Favicons](favicons.md)) |
 | Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull`, `content:push` and `content:status` (see [Content pull](content-pull.md) and [Content push](content-push.md)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a

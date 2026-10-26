@@ -1,0 +1,142 @@
+<?php
+
+namespace Inly\CoreWeb\Tests\Feature;
+
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\File;
+use Inly\CoreWeb\Favicons\Favicons;
+use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Facades\AssetContainer;
+use Statamic\Facades\Blueprint;
+use Statamic\Facades\GlobalSet;
+use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
+
+class FaviconsTest extends TestCase
+{
+    use PreventsSavingStacheItemsToDisk;
+
+    protected array $features = ['favicons', 'media'];
+
+    private const CDN = 'https://cdn.inlycore.com/client/site/favicons';
+
+    private string $scratch;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->scratch = sys_get_temp_dir().'/core-web-favicons-'.uniqid();
+        File::ensureDirectoryExists($this->scratch.'/files');
+        File::copy(__DIR__.'/../fixtures/pixel.png', $this->scratch.'/files/icon.png');
+        File::put($this->scratch.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+        File::put($this->scratch.'/files/icon-dark.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+        config(['filesystems.disks.favicons' => ['driver' => 'local', 'root' => $this->scratch.'/files', 'url' => self::CDN]]);
+        AssetContainer::make('favicons')->disk('favicons')->save();
+
+        Blueprint::setDirectory($this->scratch.'/blueprints');
+        Blueprint::make('favicons')->setNamespace('globals')->setContents(['fields' => [['import' => 'core-web::favicons']]])->save();
+    }
+
+    protected function tearDown(): void
+    {
+        File::deleteDirectory($this->scratch);
+
+        parent::tearDown();
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function favicons(array $data): void
+    {
+        $set = GlobalSet::make('favicons')->title('Favicons');
+        $set->save();
+        $set->in('default')->data($data)->save();
+    }
+
+    public function test_every_size_is_a_cdn_crop_of_the_one_png(): void
+    {
+        $this->favicons(['favicon' => 'icon.png', 'theme_color' => '#112233']);
+
+        $html = Blade::render('<x-core-web::favicons.head />');
+
+        $this->assertStringContainsString('<link rel="icon" type="image/png" sizes="32x32" href="'.e(self::CDN.'/icon.png?width=32&height=32&fit=cover&format=png').'">', $html);
+        $this->assertStringContainsString('<link rel="apple-touch-icon" sizes="180x180" href="'.e(self::CDN.'/icon.png?width=180&height=180&fit=cover&format=png').'">', $html);
+        $this->assertStringContainsString('<link rel="manifest" href="http://default.test/site.webmanifest">', $html);
+        $this->assertStringContainsString('<meta name="theme-color" content="#112233">', $html);
+        $this->assertStringNotContainsString('image/svg+xml', $html);
+    }
+
+    public function test_svgs_are_linked_for_light_and_dark(): void
+    {
+        $this->favicons(['favicon' => 'icon.png', 'favicon_svg' => 'icon.svg', 'favicon_svg_dark' => 'icon-dark.svg']);
+
+        $html = Blade::render('<x-core-web::favicons.head />');
+
+        $this->assertStringContainsString('<link rel="icon" type="image/svg+xml" href="'.self::CDN.'/icon.svg" media="(prefers-color-scheme: light)">', $html);
+        $this->assertStringContainsString('<link rel="icon" type="image/svg+xml" href="'.self::CDN.'/icon-dark.svg" media="(prefers-color-scheme: dark)">', $html);
+        $this->assertLessThan(strpos($html, 'image/svg+xml'), strpos($html, 'image/png'));
+    }
+
+    public function test_an_svg_alone_is_linked_without_media(): void
+    {
+        $this->favicons(['favicon_svg' => 'icon.svg']);
+
+        $html = Blade::render('<x-core-web::favicons.head />');
+
+        $this->assertStringContainsString('<link rel="icon" type="image/svg+xml" href="'.self::CDN.'/icon.svg">', $html);
+        $this->assertStringNotContainsString('manifest', $html);
+    }
+
+    public function test_nothing_renders_without_a_global(): void
+    {
+        $this->assertSame('', trim(Blade::render('<x-core-web::favicons.head />')));
+    }
+
+    public function test_the_manifest_lists_the_app_icons(): void
+    {
+        config(['app.name' => 'Acme']);
+        $this->favicons(['favicon' => 'icon.png', 'theme_color' => '#112233']);
+
+        $this->get('/site.webmanifest')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/manifest+json')
+            ->assertJson([
+                'name' => 'Acme',
+                'display' => 'standalone',
+                'theme_color' => '#112233',
+                'icons' => [
+                    ['src' => self::CDN.'/icon.png?width=192&height=192&fit=cover&format=png', 'sizes' => '192x192', 'type' => 'image/png'],
+                    ['src' => self::CDN.'/icon.png?width=512&height=512&fit=cover&format=png', 'sizes' => '512x512', 'type' => 'image/png'],
+                ],
+            ]);
+    }
+
+    public function test_a_manifest_under_a_path_no_site_has_is_not_found(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+
+        $this->get('/nope/site.webmanifest')->assertNotFound();
+    }
+
+    public function test_favicon_ico_redirects_to_the_tab_png(): void
+    {
+        $this->favicons(['favicon' => 'icon.png']);
+
+        $this->get('/favicon.ico')->assertRedirect(self::CDN.'/icon.png?width=32&height=32&fit=cover&format=png');
+    }
+
+    public function test_favicon_ico_is_not_found_without_an_icon(): void
+    {
+        $this->get('/favicon.ico')->assertNotFound();
+    }
+
+    public function test_a_file_the_cdn_does_not_serve_falls_back_to_glide(): void
+    {
+        config(['filesystems.disks.favicons.url' => '/favicons']);
+        $this->favicons(['favicon' => 'icon.png']);
+
+        $url = Favicons::png(Favicons::APPLE);
+
+        $this->assertStringContainsString('/img/asset/', (string) $url);
+        $this->assertStringContainsString('w=180&h=180&fit=crop&fm=png', (string) $url);
+    }
+}

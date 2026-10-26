@@ -84,6 +84,10 @@ return [
     | editor composes. Read from the `seo` and `redirects` globals, whose
     | blueprints import the core-web::seo_* fieldsets.
     |
+    | favicons: the <x-core-web::favicons.head> links, /site.webmanifest and
+    | /favicon.ico, every size cut by the CDN (or Glide) from the one PNG on
+    | the `favicons` global, whose blueprint imports core-web::favicons.
+    |
     */
 
     'features' => [
@@ -101,6 +105,7 @@ return [
         'cloud' => false,
         'consent' => false,
         'seo' => false,
+        'favicons' => false,
     ],
 
     /*
@@ -986,5 +991,18 @@ return [
             'field' => 'error_404_entry',
             'views' => ['errors/404', 'layout'],
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Favicons
+    |--------------------------------------------------------------------------
+    |
+    | global: the global whose blueprint imports core-web::favicons.
+    |
+    */
+
+    'favicons' => [
+        'global' => 'favicons',
     ],
 ];
