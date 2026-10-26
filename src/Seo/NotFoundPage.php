@@ -22,7 +22,7 @@ final class NotFoundPage
                 return;
             }
 
-            $view->with($entry->toAugmentedArray());
+            $view->with($entry->toAugmentedArray())->with('page', $entry);
         });
     }
 

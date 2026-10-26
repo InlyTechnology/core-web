@@ -27,8 +27,9 @@ final class SeoHead
         $site = Site::current();
 
         $title = $overrides['title'] ?? self::text($content?->value('title')) ?? self::text(self::cascade('title')) ?? '';
-        $description = self::text($content?->value('seo_description')) ?? $overrides['description'] ?? $card['description'];
-        $noindex = $overrides['noindex'] ?? Seo::noindex($content);
+        $description = $overrides['description'] ?? self::text($content?->value('seo_description')) ?? $card['description'];
+        // An error page is never indexed, whatever the entry editors made of it.
+        $noindex = (int) self::cascade('response_code') >= 400 || ($overrides['noindex'] ?? Seo::noindex($content));
         $nofollow = (bool) $content?->value('seo_nofollow');
         $indexes = Seo::indexesEnvironment();
         $permalink = $content?->absoluteUrl();

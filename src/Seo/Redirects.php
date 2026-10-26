@@ -29,6 +29,10 @@ final class Redirects
 
         $to = self::target($row);
 
+        if ($to !== null && in_array(self::normalise($to), $paths, true) && self::sameHost($to)) {
+            return null;
+        }
+
         return $to === null ? null : ['to' => $to, 'status' => (int) ($row['response'] ?? 301) === 302 ? 302 : 301];
     }
 
@@ -50,7 +54,7 @@ final class Redirects
             $entry = Entry::find(str_replace('entry::', '', $id));
             $entry = $entry?->in(Site::current()->handle()) ?? $entry;
 
-            if ($entry?->url() !== null) {
+            if ($entry?->published() && $entry->url() !== null) {
                 return (string) $entry->absoluteUrl();
             }
         }
@@ -83,6 +87,13 @@ final class Redirects
         }
 
         return false;
+    }
+
+    private static function sameHost(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return $host === null || $host === request()->getHost();
     }
 
     private static function normalise(string $path): string

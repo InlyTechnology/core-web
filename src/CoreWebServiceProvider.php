@@ -85,6 +85,7 @@ use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
@@ -170,6 +171,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('seo')) {
                 $this->mergeGroupDefaults('seo', []);
+                $this->mergeSocialDefaults();
             }
 
             if (self::enabled('media')) {
@@ -249,6 +251,21 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         config(["core-web.{$key}" => array_replace($defaults, $site)]);
+    }
+
+    /** The social card's `hero` and `image` keep their other defaults when a site sets only one key; a null hero is off. */
+    private function mergeSocialDefaults(): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')['seo']['social'];
+        $social = (array) config('core-web.seo.social');
+
+        foreach (['hero', 'image'] as $group) {
+            if (is_array($social[$group] ?? null)) {
+                $social[$group] = array_replace($defaults[$group], $social[$group]);
+            }
+        }
+
+        config(['core-web.seo.social' => $social]);
     }
 
     public function boot(): void
@@ -592,10 +609,9 @@ class CoreWebServiceProvider extends ServiceProvider
             NotFoundPage::register();
         }
 
-        // Statamic builds statamic.web once the app has booted; a 404 from any front-end route asks the redirects first.
-        Statamic::booted(fn () => $this->app->make(Router::class)->pushMiddlewareToGroup('statamic.web', RedirectMissingPages::class));
+        RedirectMissingPages::register();
 
-        Event::listen([EntrySaved::class, EntryDeleted::class, TermSaved::class, TermDeleted::class, CollectionTreeSaved::class, GlobalVariablesSaved::class], fn () => Sitemaps::flush());
+        Event::listen([EntrySaved::class, EntryDeleted::class, TermSaved::class, TermDeleted::class, CollectionSaved::class, CollectionTreeSaved::class, GlobalVariablesSaved::class], fn () => Sitemaps::flush());
     }
 
     private function bootForms(): void

@@ -979,7 +979,7 @@ return [
         ],
         'sitemap' => [
             'enabled' => true,
-            'cache_minutes' => 1440,
+            'cache_minutes' => 60,
         ],
         'not_found' => [
             'global' => 'configuration',

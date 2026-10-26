@@ -23,6 +23,8 @@ final class RobotsController
     {
         $host = $request->getHost();
         $sites = Site::all()->filter(fn ($site) => parse_url($site->absoluteUrl(), PHP_URL_HOST) === $host)->values();
+        // A host no site names (www against the apex, a staging host) gets the current site's.
+        $sites = $sites->isEmpty() ? collect([Site::current()]) : $sites;
         $current = $sites->first() ?? Site::current();
 
         $sitemaps = $sites->filter(fn ($site) => Sitemaps::enabled($site->handle()))

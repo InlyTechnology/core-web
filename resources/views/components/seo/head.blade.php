@@ -20,7 +20,7 @@
 <meta name="{{ $name }}" content="{{ $content }}">
 @endforeach
 @foreach ($seo['json_ld'] as $json)
-<script type="application/ld+json">{!! str_ireplace('</script', '<\/script', $json) !!}</script>
+<script type="application/ld+json">{!! str_ireplace(['</script', '<!--'], ['<\/script', '<\!--'], $json) !!}</script>
 @endforeach
 @if ($seo['verification'])
 <meta name="google-site-verification" content="{{ $seo['verification'] }}">

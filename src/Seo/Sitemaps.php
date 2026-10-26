@@ -89,7 +89,7 @@ final class Sitemaps
         }
 
         return Terms::query()->where('taxonomy', $handle)->where('site', $site)->get()
-            ->map(fn ($term) => $context === null ? $term : $term->collection($context))
+            ->map(fn ($term) => $context === null ? $term : (clone $term)->collection($context))
             ->filter(fn ($term) => $term->url() !== null && ($collection === null || $term->entriesCount() > 0) && ! Seo::noindex($term));
     }
 

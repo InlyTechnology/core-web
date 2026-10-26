@@ -6,9 +6,10 @@ consent, `/robots.txt`, the sitemaps, the editors' redirects and the
 page-not-found entry. The field handles are Peak SEO's, so a site moving off
 it keeps its content.
 
-Peak SEO must be removed first (`composer remove studio1902/statamic-peak-seo`):
-its routes register after core-web's and would serve robots.txt and the
-sitemaps in their place. With both installed, boot fails and says so.
+Peak SEO and this feature cannot be installed together: Peak's routes
+register after core-web's and would serve robots.txt and the sitemaps in
+their place, so boot fails while both are there. Make the whole move in one
+commit (see [Moving a site off Peak SEO](#moving-a-site-off-peak-seo)).
 
 ```php
 // config/core-web.php
@@ -38,7 +39,8 @@ links, Open Graph and Twitter tags, JSON-LD, Google site verification and the
 Google tags. Without `page` it reads the cascade's. A page outside the
 cascade (a controller's route) passes what it knows: `title`, `description`,
 `image` (an asset or a URL), `url`, `type`, `noindex`. Markup of the page's
-own (its structured data, say) goes in `@push('core-web.seo')`.
+own (its structured data, say) goes in `@push('core-web.seo')`. What the
+component is passed wins over the entry's fields.
 
 - **Title**: the entry's `seo_title` as it is, else its title, the separator
   and the site name. A `change_page_title` row adds the collection's title or
@@ -46,13 +48,15 @@ own (its structured data, say) goes in `@push('core-web.seo')`.
 - **Description**: `seo_description`, else the collection's field
   (`social.collections`, or a `collection_defaults` row).
 - **Robots**: an environment is indexed only when its `noindex_{environment}`
-  toggle is off (local and staging are on by default) and it is `local`,
-  `staging` or `production`. An entry's `seo_noindex` wins over its
+  toggle is saved off and it is `local`, `staging` or `production`; a toggle
+  never saved counts as on, so check production's before launch. An error
+  page (a 404, a 500) is always noindexed and has no canonical. An entry's `seo_noindex` wins over its
   collection's or taxonomy's default.
 - **Social card**: `og_image`, else the collection's image field, else the
   first page-builder block's when it is the hero (`social.hero`), else the
   global's `og_image`. With the `media` feature it is cropped on the CDN to
-  `social.image`, around the focal point.
+  `social.image`, around the focal point; without it the original file is
+  linked as it is, so keep social images small.
 - **hreflang** (`hreflang_auto`): the entry in each site it is published in,
   on sites sharing the `identifier` attribute.
 - **JSON-LD**: the entry's `schema_jsonld`, and a `BreadcrumbList` when
@@ -90,8 +94,9 @@ step that writes it, or the web server serves that file instead.
 `sitemap_change_frequency` and `sitemap_priority` per entry and hreflang
 alternates on a multisite. `/sitemaps.xml` indexes every site's sitemap and
 the [snapshot sitemaps](sitemaps.md). `use_sitemap` off answers 404. The
-list is cached (`seo.sitemap.cache_minutes`) until an entry, term, tree or
-global is saved.
+list is cached (`seo.sitemap.cache_minutes`, an hour) until an entry, term,
+collection, tree or global is saved. A scheduled entry saves nothing when its
+date arrives, so it joins the sitemap within the hour.
 
 ## Redirects
 
@@ -99,8 +104,9 @@ The redirects global (`seo.redirects_global`, blueprint importing
 `core-web::seo_redirects`) maps an old path to an entry or an external
 address, 301 or 302. It is asked only when a front-end request would 404, so
 a live page always wins. An exact path matches first (written encoded or
-not), then a pattern between `#`s (`#^/blog/(.*)$#`). The query string is
-kept.
+not), then a pattern between `#`s (`#^/blog/.*$#`); the target is fixed, a
+captured group is not put into it. The query string is kept. A route of the
+site's own that throws Statamic's `NotFoundHttpException` is redirected too.
 
 ## Page not found
 
@@ -130,6 +136,8 @@ scripts, server-side Tag Manager, other analytics vendors, consent banner and
 generated social images have no fields here.
 
 ## Moving a site off Peak SEO
+
+All in one commit, since the site boots with neither both nor half:
 
 1. Switch `features.seo` on, move `config/social.php`'s rows to
    `seo.social.collections`.

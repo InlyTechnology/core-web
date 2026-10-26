@@ -20,6 +20,15 @@ fields:
         '–': '–'
         /: /
         '·': '·'
+        '::': '::'
+        '>': '>'
+        '~': '~'
+        # Peak SEO stored its separators with spaces; kept so a migrated value still shows.
+        ' | ': '| (Peak SEO)'
+        ' - ': '- (Peak SEO)'
+        ' :: ': ':: (Peak SEO)'
+        ' > ': '> (Peak SEO)'
+        ' ~ ': '~ (Peak SEO)'
       default: '|'
       clearable: false
       width: 33

@@ -2,16 +2,18 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
-use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
+use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Seo\NotFoundPage;
-use Inly\CoreWeb\Seo\RedirectMissingPages;
 use Inly\CoreWeb\Seo\Redirects;
 use Inly\CoreWeb\Seo\Seo;
 use Inly\CoreWeb\Seo\Sitemaps;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Exceptions\NotFoundHttpException;
+use Statamic\Facades\Cascade;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
@@ -221,13 +223,37 @@ class SeoTest extends TestCase
 
     public function test_a_front_end_404_follows_the_redirect(): void
     {
-        $this->assertContains(RedirectMissingPages::class, app(Router::class)->getMiddlewareGroups()['statamic.web'] ?? []);
-
         $set = GlobalSet::make('redirects')->title('Redirects');
         $set->save();
-        $set->in('default')->data(['redirects' => [['url_old' => '/old-about', 'internal_url' => ['about'], 'response' => '301']]])->save();
+        $set->in('default')->data(['redirects' => [
+            ['url_old' => '/old-about', 'internal_url' => ['about'], 'response' => '301'],
+            ['url_old' => '/old-product', 'internal_url' => ['about'], 'response' => '302'],
+        ]])->save();
 
         $this->get('http://default.test/old-about?ref=mail')->assertStatus(301)->assertRedirect('http://default.test/about?ref=mail');
+
+        Route::get('/old-product', fn () => throw new NotFoundHttpException);
+        $this->get('http://default.test/old-product')->assertStatus(302)->assertRedirect('http://default.test/about');
+
+        $this->post('http://default.test/old-about')->assertNotFound();
+    }
+
+    public function test_an_error_page_is_noindexed_without_a_canonical(): void
+    {
+        $this->production();
+        Cascade::instance()->set('response_code', 404);
+        $html = $this->renderHead('about');
+
+        $this->assertStringContainsString('noindex', $html);
+        $this->assertStringNotContainsString('rel="canonical"', $html);
+    }
+
+    public function test_the_sitemaps_index_lists_every_site_on_the_host(): void
+    {
+        $index = $this->get('http://default.test/sitemaps.xml')->assertOk()->assertHeader('Content-Type', 'application/xml; charset=UTF-8')->getContent();
+
+        $this->assertStringContainsString('<sitemapindex', $index);
+        $this->assertStringContainsString('<loc>http://default.test/sitemap.xml</loc>', $index);
     }
 
     public function test_the_page_not_found_entry_fills_the_404_view(): void
@@ -255,6 +281,18 @@ class SeoTest extends TestCase
         $this->assertStringContainsString('<meta property="og:description" content="What happened first.">', $html);
         $this->assertStringContainsString('<meta property="og:image" content="https://images.example.com/first.jpg">', $html);
         $this->assertStringContainsString('<meta name="twitter:card" content="summary_large_image">', $html);
+    }
+
+    public function test_a_site_naming_one_hero_key_keeps_the_others(): void
+    {
+        config(['core-web.seo' => ['social' => ['hero' => ['image_field' => 'background_media']]]]);
+        (function (): void {
+            $this->mergeGroupDefaults('seo', []);
+            $this->mergeSocialDefaults();
+        })->call($this->app->getProvider(CoreWebServiceProvider::class));
+
+        $this->assertSame(['field' => 'page_builder', 'set' => 'hero', 'image_field' => 'background_media'], config('core-web.seo.social.hero'));
+        $this->assertSame(1200, config('core-web.seo.social.image.width'));
     }
 
     public function test_the_fieldsets_keep_peak_seo_s_handles(): void

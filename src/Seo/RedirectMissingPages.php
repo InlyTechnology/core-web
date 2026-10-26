@@ -2,30 +2,45 @@
 
 namespace Inly\CoreWeb\Seo;
 
-use Closure;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Statamic\Exceptions\NotFoundHttpException;
 use Statamic\Statamic;
-use Symfony\Component\HttpFoundation\Response;
 
-/** Sends a front-end GET that would 404 to the redirect the editors set for its path, if any. */
+/**
+ * Answers Statamic's 404 with the redirect the editors set for its path, before the 404 page renders or a cached one
+ * is served: any route that throws Statamic's NotFoundHttpException, the front end and a site's own controllers.
+ */
 final class RedirectMissingPages
 {
-    public function handle(Request $request, Closure $next): Response
+    public static function register(): void
     {
-        $response = $next($request);
+        NotFoundHttpException::renderUsing(fn (Request $request) => RedirectMissingPages::respond($request));
+    }
 
-        if ($response->getStatusCode() !== 404 || ! in_array($request->method(), ['GET', 'HEAD'], true) || Statamic::isCpRoute()) {
-            return $response;
+    public static function respond(Request $request): ?RedirectResponse
+    {
+        if (! in_array($request->method(), ['GET', 'HEAD'], true) || Statamic::isCpRoute() || Statamic::isApiRoute()) {
+            return null;
         }
 
         $redirect = Redirects::for($request->getPathInfo());
 
         if ($redirect === null) {
-            return $response;
+            return null;
         }
 
-        $query = $request->getQueryString();
+        return redirect()->away(self::withQuery($redirect['to'], (string) $request->getQueryString()), $redirect['status']);
+    }
 
-        return redirect()->away($redirect['to'].($query && ! str_contains($redirect['to'], '?') ? '?'.$query : ''), $redirect['status']);
+    private static function withQuery(string $to, string $query): string
+    {
+        if ($query === '') {
+            return $to;
+        }
+
+        [$url, $fragment] = array_pad(explode('#', $to, 2), 2, null);
+
+        return $url.(str_contains($url, '?') ? '&' : '?').$query.($fragment === null ? '' : '#'.$fragment);
     }
 }
