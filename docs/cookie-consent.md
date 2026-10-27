@@ -24,8 +24,8 @@ return [
 ```
 
 A vendor is a key of the catalogue in `resources/consent/vendors.json`
-(Google Analytics and Ads, Meta Pixel, LinkedIn, HubSpot, Hotjar, Clarity,
-YouTube, Vimeo), or a definition of the site's own:
+(Google Analytics and Ads, Meta Pixel, LinkedIn, Microsoft Advertising,
+HubSpot, Hotjar, Clarity, YouTube, Vimeo), or a definition of the site's own:
 `'booking' => ['name' => 'Booking', 'category' => 'marketing', 'cookies' => [['name' => 'bk_id', 'purpose' => 'Keeps the booking.', 'days' => 30]]]`.
 A category no vendor uses is not asked for, and a site with only necessary
 cookies shows no banner and no settings link at all, so Tag Manager and held
@@ -88,6 +88,16 @@ it.
   send cookieless pings under Consent Mode. Tags in the container that need
   marketing consent read Consent Mode's `ad_*` signals, and a
   `consent_update` event is pushed to the dataLayer on every choice.
+- **Vendors with a consent API of their own**: Microsoft Advertising (UET
+  Consent Mode, `ad_storage` from marketing) and Clarity (Consent API v2,
+  `ad_Storage` from marketing, `analytics_Storage` from statistics). Declare
+  `microsoft_uet` or `microsoft_clarity` and the head sets their denied
+  defaults before any tag, applies a returning visitor's choice, and every
+  choice updates them, so a tag loaded from Tag Manager or a held script
+  reads the same choice as Consent Mode. Both vendors expect the signal
+  from visitors in the EEA, UK and Switzerland. Meta's Pixel has no such
+  signal: hold it under marketing, or in Tag Manager give its tag the
+  additional consent check `ad_storage`.
 - **Any other script**: `@consentScript('marketing') ... @endconsentScript`,
   or `<script type="text/plain" data-consent="marketing" data-src="https://js.hs-scripts.com/123.js" async></script>`
   for an external one. `data-consent` takes several categories, space

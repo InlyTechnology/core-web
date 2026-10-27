@@ -86,6 +86,38 @@ class ConsentTest extends TestCase
         $this->assertStringContainsString("ad_user_data: 'denied'", $html);
     }
 
+    public function test_vendors_with_a_consent_api_get_its_denied_defaults_in_the_head(): void
+    {
+        config(['core-web.consent.vendors' => ['google_analytics', 'microsoft_uet', 'microsoft_clarity']]);
+
+        $html = Blade::render('<x-core-web::consent.head />');
+
+        $this->assertSame(['uet', 'clarity'], Consent::script()['signals']);
+        $this->assertStringContainsString("window.uetq.push('consent', 'default', { ad_storage: 'denied' })", $html);
+        $this->assertStringContainsString("window.clarity('consentv2', { ad_Storage: has('marketing'), analytics_Storage: has('statistics') })", $html);
+        $this->assertLessThan(strpos($html, 'window.uetq'), strpos($html, "gtag('consent', 'default'"));
+    }
+
+    public function test_a_site_without_such_vendors_defines_no_vendor_globals(): void
+    {
+        $html = Blade::render('<x-core-web::consent.head />');
+
+        $this->assertSame([], Consent::script()['signals']);
+        $this->assertStringContainsString("gtag('consent', 'default'", $html);
+        $this->assertStringNotContainsString('window.uetq =', $html);
+        $this->assertStringNotContainsString('window.clarity =', $html);
+    }
+
+    public function test_the_signals_still_apply_with_consent_mode_off(): void
+    {
+        config(['core-web.consent.vendors' => ['microsoft_clarity'], 'core-web.consent.google.consent_mode' => false]);
+
+        $html = Blade::render('<x-core-web::consent.head />');
+
+        $this->assertStringNotContainsString("gtag('consent', 'default'", $html);
+        $this->assertStringContainsString("window.clarity('consentv2'", $html);
+    }
+
     public function test_the_banner_offers_reject_all_beside_accept_all_in_the_same_style(): void
     {
         $html = Blade::render('<x-core-web::consent.banner policy-url="/cookies" />');

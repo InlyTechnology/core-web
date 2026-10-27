@@ -8,6 +8,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Consent signals for Microsoft Advertising and Clarity**: a site that
+  declares `microsoft_uet` (new in the catalogue) or `microsoft_clarity`
+  gets their consent APIs' denied defaults in the head, and every choice
+  updates them beside Consent Mode. Nothing changes for a site declaring
+  neither.
 - **`seo` feature, in place of Peak SEO**: `<x-core-web::seo.head>` renders
   the title, description, robots, canonical, hreflang, Open Graph, JSON-LD
   and the Google tags (held by the `consent` feature until statistics is

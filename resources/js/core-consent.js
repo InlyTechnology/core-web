@@ -4,10 +4,10 @@
  | head; this shows the banner until the visitor chooses, keeps the choice in a
  | first-party cookie, runs the scripts and embeds each category held back
  | (<script type="text/plain" data-consent="statistics">, <x-core-web::consent.gate>),
- | updates Consent Mode, and logs the choice as proof of consent. A category
- | taken back deletes its cookies and reloads the page, since a script that ran
- | cannot be stopped. Once chosen, a corner button reopens the settings.
- | window.CoreConsent opens the settings and answers has().
+ | updates Consent Mode and the vendors' own consent APIs, and logs the choice
+ | as proof of consent. A category taken back deletes its cookies and reloads
+ | the page, since a script that ran cannot be stopped. Once chosen, a corner
+ | button reopens the settings. window.CoreConsent opens the settings and answers has().
  */
 const settings = () => window.coreConsent || {}
 
@@ -127,6 +127,20 @@ const updateConsentMode = (choice) => {
     })
 }
 
+// The vendors with a consent API of their own (`signal` in the catalogue) hear the choice as Consent Mode does.
+const updateSignals = (choice) => {
+    const signals = settings().signals || []
+    const state = (category) => (choice.c.includes(category) ? 'granted' : 'denied')
+
+    if (signals.includes('uet')) {
+        window.uetq = window.uetq || []
+        window.uetq.push('consent', 'update', { ad_storage: state('marketing') })
+    }
+    if (signals.includes('clarity') && typeof window.clarity === 'function') {
+        window.clarity('consentv2', { ad_Storage: state('marketing'), analytics_Storage: state('statistics') })
+    }
+}
+
 const log = (choice, action) => {
     const url = settings().log
     if (!url) return
@@ -185,6 +199,7 @@ const choose = (categories, action) => {
     current = next
     log(next, action)
     updateConsentMode(next)
+    updateSignals(next)
     hideBanner()
     closeDialog()
     showStatus(next)

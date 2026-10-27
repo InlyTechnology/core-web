@@ -1,4 +1,5 @@
-{{-- In <head>, before any tag: Consent Mode's denied defaults, and a returning visitor's choice applied at once. --}}
+{{-- In <head>, before any tag: every consent API's denied defaults, and a returning visitor's choice applied at once. --}}
+@php($signals = \Inly\CoreWeb\Consent\ConsentVendors::signals())
 <script>
     window.coreConsent = @js(\Inly\CoreWeb\Consent\Consent::script());
 @if (\Inly\CoreWeb\Consent\Consent::setting('google.consent_mode', true))
@@ -14,13 +15,18 @@
         security_storage: 'granted',
         wait_for_update: 500
     });
+@endif
     (function (settings) {
+        var choice = null;
         var match = document.cookie.match(new RegExp('(?:^|; )' + settings.cookie + '=([^;]*)'));
-        if (!match) return;
         try {
-            var choice = JSON.parse(decodeURIComponent(match[1]));
-            if (choice.v !== settings.version || Date.now() - choice.t * 1000 > settings.renewAfterDays * 864e5) return;
-            var has = function (category) { return choice.c.indexOf(category) !== -1 ? 'granted' : 'denied'; };
+            var read = match && JSON.parse(decodeURIComponent(match[1]));
+            if (read && Array.isArray(read.c) && read.v === settings.version && Date.now() - read.t * 1000 <= settings.renewAfterDays * 864e5) choice = read;
+        } catch (e) {}
+        var has = function (category) { return choice && choice.c.indexOf(category) !== -1 ? 'granted' : 'denied'; };
+
+@if (\Inly\CoreWeb\Consent\Consent::setting('google.consent_mode', true))
+        if (choice) {
             gtag('consent', 'update', {
                 analytics_storage: has('statistics'),
                 ad_storage: has('marketing'),
@@ -29,7 +35,16 @@
                 functionality_storage: has('preferences'),
                 personalization_storage: has('preferences')
             });
-        } catch (e) {}
-    })(window.coreConsent);
+        }
 @endif
+@if (in_array('uet', $signals, true))
+        window.uetq = window.uetq || [];
+        window.uetq.push('consent', 'default', { ad_storage: 'denied' });
+        if (choice) window.uetq.push('consent', 'update', { ad_storage: has('marketing') });
+@endif
+@if (in_array('clarity', $signals, true))
+        window.clarity = window.clarity || function () { (window.clarity.q = window.clarity.q || []).push(arguments); };
+        window.clarity('consentv2', { ad_Storage: has('marketing'), analytics_Storage: has('statistics') });
+@endif
+    })(window.coreConsent);
 </script>

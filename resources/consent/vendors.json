@@ -77,6 +77,24 @@
             }
         ]
     },
+    "microsoft_uet": {
+        "name": "Microsoft Advertising (UET)",
+        "category": "marketing",
+        "policy_url": "https://privacy.microsoft.com/privacystatement",
+        "signal": "uet",
+        "cookies": [
+            {
+                "name": "_uetsid",
+                "purpose": "Joins the page views of a visit for ad measurement.",
+                "days": 1
+            },
+            {
+                "name": "_uetvid",
+                "purpose": "Tells visitors apart to measure which ads lead to conversions.",
+                "days": 390
+            }
+        ]
+    },
     "hubspot": {
         "name": "HubSpot",
         "category": "marketing",
@@ -141,7 +159,8 @@
                 "purpose": "Joins the page views of a visit.",
                 "days": 1
             }
-        ]
+        ],
+        "signal": "clarity"
     },
     "youtube": {
         "name": "YouTube",

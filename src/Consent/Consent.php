@@ -25,6 +25,7 @@ class Consent
             'categories' => array_values(array_diff(array_keys(ConsentVendors::byCategory()), ['necessary'])),
             'cookies' => ConsentVendors::cookieNames(),
             'consentMode' => (bool) self::setting('google.consent_mode', true),
+            'signals' => ConsentVendors::signals(),
             'site' => Site::current()->handle(),
             'log' => self::logs() ? route('core-web.consent.store', [], false) : null,
         ];
