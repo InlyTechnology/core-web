@@ -164,8 +164,9 @@ banner the visitor chose on and its locale, and `log.snapshot_table` keeps
 each banner once under its fingerprint: every text, category, vendor and
 cookie, as the visitor read them. A page cached from an older banner sends
 that banner's fingerprint, which is kept only if someone chose on it while it
-was current; a banner shown before this release has no snapshot. `consent:prune` deletes rows older than `log.retention_days`
-(five years) on `log.prune_schedule`, and the banners no row names. A site
+was current; a banner shown before this release has no snapshot.
+`consent:prune` deletes rows older than `log.retention_days` (three years)
+on `log.prune_schedule`, and the banners no row names. A site
 that keeps no log sets `log.enabled` to false.
 
 The fingerprint covers what the banner itself draws. A `policy-url`

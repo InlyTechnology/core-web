@@ -42,7 +42,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **The consent log needs a second migration.** A site with `consent` on and
   its log enabled keeps logging every choice without it, but without the
-  banner it was made on, and reports a database error on each one. Find:
+  banner it was made on. Find:
   `config/core-web.php` has `'consent' => true` and `log.enabled` is not
   false. Migrate: `php artisan vendor:publish
   --tag=core-web-consent-snapshots-migration`, then deploy, which migrates.
@@ -54,6 +54,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   before this release carry no scope and stand until they expire or the
   version is raised. Find: nothing to change. Verify: add a vendor locally,
   reload, and the banner shows again.
+- **The consent log is kept three years, not five.** `consent.log.retention_days`
+  defaults to 1095, so the next `consent:prune` deletes choices older than
+  that. Find: a site that relies on the five-year default. Migrate: set
+  `consent.log.retention_days` to 1825 in `config/core-web.php` to keep five
+  years. Verify: `php artisan config:show core-web.consent.log.retention_days`.
 
 ## v0.31.0
 

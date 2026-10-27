@@ -913,7 +913,7 @@ return [
             'connection' => null,
             'table' => 'core_web_consents',
             'snapshot_table' => 'core_web_consent_snapshots',
-            'retention_days' => 1825,
+            'retention_days' => 1095,
             'prune_schedule' => '17 3 * * *',
             'rate_limit' => 30,
         ],

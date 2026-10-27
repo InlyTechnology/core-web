@@ -13,7 +13,7 @@ class PruneConsentsCommand extends Command
 
     public function handle(): int
     {
-        $days = max(1, (int) config('core-web.consent.log.retention_days', 1825));
+        $days = max(1, (int) config('core-web.consent.log.retention_days', 1095));
 
         $connection = DB::connection(config('core-web.consent.log.connection'));
         $log = (string) config('core-web.consent.log.table', 'core_web_consents');
