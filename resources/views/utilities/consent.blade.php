@@ -1,6 +1,14 @@
 {{-- Statamic compiles a utility's HTML as a Vue template, so every recorded value sits in v-pre elements. --}}
 <ui-header title="{{ __('Consent log') }}" icon="security-lock"></ui-header>
 
+@if (! $ready)
+    <ui-panel>
+        <ui-card>
+            <ui-description>{{ __('The consent log is not set up yet: publish and run the snapshots migration (php artisan vendor:publish --tag=core-web-consent-snapshots-migration, then php artisan migrate).') }}</ui-description>
+        </ui-card>
+    </ui-panel>
+@else
+
 <ui-panel heading="{{ __('Find a visitor\'s consent') }}">
     <ui-card>
         <form method="GET" action="{{ $action }}" class="flex flex-wrap items-center gap-2">
@@ -52,7 +60,7 @@
         <ui-panel heading="{{ __('Banner') }} {{ substr($fingerprint, 0, 12) }}">
             <ui-card>
                 @if ($banner === null)
-                    <ui-description>{{ __('No snapshot is kept for this banner: nobody chose on it while it was current.') }}</ui-description>
+                    <ui-description>{{ __('No snapshot is kept for this banner. It was shown before snapshots were kept, or nobody chose on it while it was current.') }}</ui-description>
                 @else
                     <div class="space-y-2 text-sm" v-pre>
                         <p class="font-medium">{{ $banner['texts']['title'] }}</p>
@@ -109,3 +117,4 @@
         @endif
     </ui-card>
 </ui-panel>
+@endif

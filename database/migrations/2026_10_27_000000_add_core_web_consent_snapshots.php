@@ -22,6 +22,7 @@ return new class extends Migration
             $schema->table($log, function (Blueprint $table) {
                 $table->char('fingerprint', 64)->nullable()->index();
                 $table->string('locale', 32)->nullable();
+                $table->index(['site', 'policy_version', 'fingerprint', 'action'], 'core_web_consents_banner_index');
             });
         }
 
@@ -46,6 +47,7 @@ return new class extends Migration
 
         if ($schema->hasColumn($log, 'fingerprint')) {
             $schema->table($log, function (Blueprint $table) {
+                $table->dropIndex('core_web_consents_banner_index');
                 $table->dropIndex(['fingerprint']);
                 $table->dropColumn(['fingerprint', 'locale']);
             });

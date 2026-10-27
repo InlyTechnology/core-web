@@ -3,7 +3,9 @@
 namespace Inly\CoreWeb\Consent;
 
 use Illuminate\Database\Connection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Statamic\Facades\Site;
 
 /** What a visitor saw when they chose: the banner's texts, categories, vendors and cookies, fingerprinted and kept once. */
@@ -65,9 +67,32 @@ class ConsentSnapshot
         return substr(hash('sha256', json_encode(self::sorted($scope), JSON_THROW_ON_ERROR)), 0, 16);
     }
 
+    /** The locale the banner's texts were rendered in, which a page outside Statamic's routes may not take from its site. */
     public static function locale(): string
     {
-        return (string) (Site::current()->locale() ?? app()->getLocale());
+        return app()->getLocale();
+    }
+
+    /**
+     * Whether the site has run the snapshots migration. A yes is cached, since it does not go back; a site that has not
+     * run it yet asks again on the next choice, and keeps its log rows without a fingerprint until then.
+     */
+    public static function ready(): bool
+    {
+        $key = 'core-web.consent.snapshots.'.self::table();
+
+        if (Cache::get($key) === true) {
+            return true;
+        }
+
+        $schema = Schema::connection(config('core-web.consent.log.connection'));
+        $ready = $schema->hasTable(self::table()) && $schema->hasColumn((string) config('core-web.consent.log.table', 'core_web_consents'), 'fingerprint');
+
+        if ($ready) {
+            Cache::forever($key, true);
+        }
+
+        return $ready;
     }
 
     /** Keeps the content under its fingerprint, once; a fingerprint already kept is left as it is. */

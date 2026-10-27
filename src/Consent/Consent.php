@@ -27,7 +27,8 @@ class Consent
             'consentMode' => (bool) self::setting('google.consent_mode', true),
             'signals' => ConsentVendors::signals(),
             'scope' => ConsentSnapshot::scope(),
-            'fingerprint' => ConsentSnapshot::fingerprint(ConsentSnapshot::content()),
+            'fingerprint' => self::logs() ? ConsentSnapshot::fingerprint(ConsentSnapshot::content()) : null,
+            'lang' => app()->getLocale(),
             'site' => Site::current()->handle(),
             'log' => self::logs() ? route('core-web.consent.store', [], false) : null,
         ];

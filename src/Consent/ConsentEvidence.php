@@ -44,11 +44,12 @@ class ConsentEvidence
     }
 
     /**
-     * How many choices of each kind were made on each banner, newest banner first: what an audit asks for.
+     * How many choices of each kind were made on each banner, newest banner first: what an audit asks for. The
+     * `core_web_consents_banner_index` index covers the grouping; `$limit` caps the banners listed.
      *
      * @return list<array{site: string, policy_version: int, fingerprint: string|null, accept_all: int, reject_all: int, custom: int, first: string, last: string}>
      */
-    public static function totals(): array
+    public static function totals(int $limit = 100): array
     {
         $rows = ConsentSnapshot::connection()
             ->table((string) config('core-web.consent.log.table', 'core_web_consents'))
@@ -65,6 +66,7 @@ class ConsentEvidence
                 ['first' => (string) $group->min('first'), 'last' => (string) $group->max('last')],
             ))
             ->sortByDesc('last')
+            ->take($limit)
             ->values()
             ->all();
     }

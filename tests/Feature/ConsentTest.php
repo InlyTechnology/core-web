@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inly\CoreWeb\Consent\Consent;
 use Inly\CoreWeb\Consent\ConsentSnapshot;
+use Inly\CoreWeb\Consent\ConsentUtilityController;
 use Inly\CoreWeb\Consent\ConsentVendors;
 use Inly\CoreWeb\Tests\TestCase;
 use InvalidArgumentException;
@@ -276,7 +277,18 @@ class ConsentTest extends TestCase
         $this->assertSame('Vi använder kakor', $banner['texts']['title']);
         $this->assertSame('Neka alla', $banner['texts']['buttons']['reject_all']);
         $this->assertSame(['bk_id'], array_column($banner['categories']['marketing'][1]['cookies'], 'name'));
-        $this->assertSame('sv_SE', DB::table('core_web_consents')->value('locale'));
+        $this->assertSame('sv', DB::table('core_web_consents')->value('locale'));
+    }
+
+    public function test_a_page_rendered_in_another_language_than_its_site_s_keeps_the_banner_in_that_language(): void
+    {
+        app()->setLocale('en');
+        $script = Consent::script();
+
+        $this->postJson('/!/core-web/consent', ['id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b', 'action' => 'reject_all', 'categories' => [], 'version' => 1, 'site' => 'default', 'fingerprint' => $script['fingerprint'], 'lang' => $script['lang']])->assertNoContent();
+
+        $this->assertSame('en', DB::table('core_web_consents')->value('locale'));
+        $this->assertSame('We use cookies', ConsentSnapshot::find($script['fingerprint'])['texts']['title']);
     }
 
     public function test_a_choice_on_a_cached_banner_is_logged_under_its_own_fingerprint_without_replacing_today_s(): void
@@ -313,7 +325,7 @@ class ConsentTest extends TestCase
     {
         $html = Blade::render('<x-core-web::consent.head />');
 
-        $this->assertStringContainsString('read.s === undefined || read.s === settings.scope', $html);
+        $this->assertStringContainsString('read.s[settings.site] === settings.scope', $html);
         $this->assertStringContainsString('\\u0022scope\\u0022:\\u0022'.ConsentSnapshot::scope().'\\u0022', $html);
     }
 
@@ -375,6 +387,16 @@ class ConsentTest extends TestCase
         $this->postJson('/!/core-web/consent', ['id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b', 'action' => 'reject_all', 'categories' => [], 'version' => 1, 'site' => 'default', 'fingerprint' => Consent::script()['fingerprint']])->assertNoContent();
 
         $this->assertSame(1, DB::table('core_web_consents')->count());
+    }
+
+    public function test_the_consent_utility_says_what_to_run_before_the_snapshots_migration(): void
+    {
+        Schema::drop('core_web_consent_snapshots');
+
+        $data = ConsentUtilityController::data(request());
+
+        $this->assertFalse($data['ready']);
+        $this->assertSame([], $data['totals']);
     }
 
     public function test_a_choice_from_another_origin_or_with_an_unknown_category_is_refused(): void

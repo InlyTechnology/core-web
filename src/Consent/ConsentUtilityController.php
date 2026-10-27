@@ -13,7 +13,12 @@ class ConsentUtilityController
     {
         $id = self::id($request);
 
+        if (! ConsentSnapshot::ready()) {
+            return ['ready' => false, 'id' => null, 'action' => cp_route('utilities.consent'), 'export' => null, 'evidence' => null, 'totals' => [], 'actions' => []];
+        }
+
         return [
+            'ready' => true,
             'id' => $id,
             'action' => cp_route('utilities.consent'),
             'export' => $id ? cp_route('utilities.consent.export', ['id' => $id]) : null,
@@ -30,7 +35,7 @@ class ConsentUtilityController
     public function export(Request $request): Response
     {
         $id = self::id($request);
-        abort_if($id === null, 404);
+        abort_if($id === null || ! ConsentSnapshot::ready(), 404);
 
         $evidence = ConsentEvidence::forId($id);
         abort_if($evidence['choices'] === [], 404);

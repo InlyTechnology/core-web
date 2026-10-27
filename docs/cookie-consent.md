@@ -5,7 +5,8 @@ certified CMP (IAB TCF, as Google requires of sites that show its ads). It
 asks before any optional cookie is set, offers *Reject all* beside *Accept
 all* in the same style, lets the visitor change their mind from any page,
 re-asks after `renew_after_days`, when `policy_version` rises or when the
-vendors, categories or cookies change, and logs each choice with the banner
+site's vendors, categories or cookies change (each site on a shared domain
+keeps its own), and logs each choice with the banner
 it was made on. It wears Inly Core's look unless the site overrides it.
 
 What stays in the site: which vendors it loads, its cookie page and its
@@ -162,8 +163,8 @@ address, user agent or user. Each row also names the fingerprint of the
 banner the visitor chose on and its locale, and `log.snapshot_table` keeps
 each banner once under its fingerprint: every text, category, vendor and
 cookie, as the visitor read them. A page cached from an older banner sends
-that banner's fingerprint, which a choice made while it was current has
-already kept. `consent:prune` deletes rows older than `log.retention_days`
+that banner's fingerprint, which is kept only if someone chose on it while it
+was current; a banner shown before this release has no snapshot. `consent:prune` deletes rows older than `log.retention_days`
 (five years) on `log.prune_schedule`, and the banners no row names. A site
 that keeps no log sets `log.enabled` to false.
 

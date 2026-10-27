@@ -2,7 +2,6 @@
 
 namespace Inly\CoreWeb\Consent;
 
-use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +25,7 @@ class ConsentController
             'version' => ['required', 'integer', 'min:1', 'max:100000'],
             'site' => ['required', 'string', Rule::in(Site::all()->map->handle()->values()->all())],
             'fingerprint' => ['nullable', 'string', 'regex:/^[0-9a-f]{64}$/'],
+            'lang' => ['nullable', 'string', 'max:32', 'regex:/^[A-Za-z]{2,3}([_-][A-Za-z0-9]{2,8})*$/'],
         ]);
 
         $row = [
@@ -38,13 +38,10 @@ class ConsentController
         ];
         $table = DB::connection(config('core-web.consent.log.connection'))->table((string) config('core-web.consent.log.table', 'core_web_consents'));
 
-        try {
-            $table->insert(array_merge($row, $this->shown($choice['site'], $choice['fingerprint'] ?? null)));
-        } catch (QueryException $exception) {
-            // A site that has not run the snapshots migration yet still keeps the choice itself.
-            report($exception);
-            $table->insert($row);
-        }
+        // A site that has not run the snapshots migration yet still keeps the choice itself.
+        $table->insert(ConsentSnapshot::ready()
+            ? array_merge($row, $this->shown($choice['site'], $choice['fingerprint'] ?? null, $choice['lang'] ?? null))
+            : $row);
 
         return response()->noContent();
     }
@@ -53,16 +50,16 @@ class ConsentController
      * The fingerprint and locale of the banner the visitor chose on. The page may be cached from before the banner
      * changed, so only a fingerprint matching today's banner is stored as its snapshot; an older one was kept by
      * the choices made while it was current. A page cached before fingerprints existed sends none, and the row
-     * claims none.
+     * claims none. The banner is rebuilt in the language the page sent, which is the site's own on Statamic's routes.
      *
      * @return array{fingerprint: string|null, locale: string}
      */
-    private function shown(string $handle, ?string $fingerprint): array
+    private function shown(string $handle, ?string $fingerprint, ?string $lang): array
     {
         $site = Site::current();
         $locale = app()->getLocale();
         Site::setCurrent($handle);
-        app()->setLocale(Site::current()->lang());
+        app()->setLocale($lang ?? Site::current()->lang());
 
         try {
             $content = ConsentSnapshot::content();

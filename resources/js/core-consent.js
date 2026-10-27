@@ -26,22 +26,30 @@ const setCookie = (value) => {
     } catch {}
 }
 
-const readChoice = () => {
-    const { cookie, version, scope, renewAfterDays } = settings()
-    const match = cookies().match(new RegExp(`(?:^|; )${cookie}=([^;]*)`))
+// The cookie as stored, valid or not, so a visitor asked again keeps their consent id and their earlier categories.
+const readStored = () => {
+    const match = cookies().match(new RegExp(`(?:^|; )${settings().cookie}=([^;]*)`))
     if (!match) return null
 
     try {
         const choice = JSON.parse(decodeURIComponent(match[1]))
-        if (choice.v !== version || !Array.isArray(choice.c)) return null
-        // A choice made before the scope existed has none and stands until it is renewed or the version is raised.
-        if (choice.s !== undefined && choice.s !== scope) return null
-        if (Date.now() - choice.t * 1000 > renewAfterDays * 864e5) return null
 
-        return choice
+        return choice && typeof choice === 'object' && Array.isArray(choice.c) ? choice : null
     } catch {
         return null
     }
+}
+
+const readChoice = () => {
+    const { version, scope, site, renewAfterDays } = settings()
+    const choice = readStored()
+    if (!choice || choice.v !== version) return null
+    // The scope is kept per site, since sites on one domain share the cookie. A choice made before the scope existed
+    // has none and stands until it is renewed or the version is raised.
+    if (choice.s !== undefined && (typeof choice.s !== 'object' || choice.s?.[site] !== scope)) return null
+    if (Date.now() - choice.t * 1000 > renewAfterDays * 864e5) return null
+
+    return choice
 }
 
 const uuid = () =>
@@ -152,7 +160,7 @@ const log = (choice, action) => {
         keepalive: true,
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v, fingerprint: settings().fingerprint }),
+        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v, fingerprint: settings().fingerprint, lang: settings().lang }),
     }).catch(() => {})
 }
 
@@ -188,15 +196,16 @@ const listeners = []
 const OPTIONAL = ['preferences', 'statistics', 'marketing']
 
 const choose = (categories, action) => {
-    const optional = OPTIONAL
+    const stored = readStored()
+    const scopes = stored?.s && typeof stored.s === 'object' ? stored.s : {}
     const next = {
-        id: current?.id ?? uuid(),
+        id: current?.id ?? (/^[0-9a-f-]{36}$/i.test(stored?.id ?? '') ? stored.id : uuid()),
         v: settings().version,
-        s: settings().scope,
-        c: optional.filter((category) => categories.includes(category)),
+        s: { ...scopes, [settings().site]: settings().scope },
+        c: OPTIONAL.filter((category) => categories.includes(category)),
         t: Math.floor(Date.now() / 1000),
     }
-    const withdrawn = (current?.c ?? []).filter((category) => !next.c.includes(category))
+    const withdrawn = (current?.c ?? stored?.c ?? []).filter((category) => !next.c.includes(category))
 
     writeChoice(next)
     current = next
