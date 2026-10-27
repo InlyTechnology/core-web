@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.32.0
 
 - **Block changes in a draft** (connector API v1.3): a draft of an existing
   entry may send `block_changes` instead of a whole page builder, a list of
