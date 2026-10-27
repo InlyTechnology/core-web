@@ -6,19 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.32.0
 
-- **`core_drafts` dashboard widget**: with `features.drafts` on, the drafts
-  and proposals Core AI or a content push made that nobody has decided yet
-  (new unpublished entries, working copies, and open proposals on navs,
-  trees, globals, terms and assets), newest first, with who they were for
-  and a link to review each in the CP. `via` narrows it to one
-  source (`['core-ai']`). See `docs/drafts.md`, Dashboard widget.
-- **`consent_stats` dashboard widget**: with `features.consent` and the
-  consent log on, how visitors answered the banner over the last 30 days
-  (`days`): choices made, the share that accepted all, chose some or
-  rejected all, and the share that allowed each category. See
-  `docs/cookie-consent.md`, Dashboard widget.
+- **Block changes in a draft** (connector API v1.3): a draft of an existing
+  entry may send `block_changes` instead of a whole page builder, a list of
+  `insert`, `update`, `replace`, `move` and `remove` operations naming blocks
+  by their id in the current draft. The site applies them to the draft it
+  holds, refuses a block type the page builder does not offer, and answers
+  with the draft as written. See `docs/drafts.md`, Changing single blocks.
 
 ## v0.31.0
 
