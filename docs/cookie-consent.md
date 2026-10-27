@@ -95,9 +95,12 @@ it.
   defaults before any tag, applies a returning visitor's choice, and every
   choice updates them, so a tag loaded from Tag Manager or a held script
   reads the same choice as Consent Mode. Both vendors expect the signal
-  from visitors in the EEA, UK and Switzerland. Meta's Pixel has no such
-  signal: hold it under marketing, or in Tag Manager give its tag the
-  additional consent check `ad_storage`.
+  from visitors in the EEA, UK and Switzerland; like Consent Mode, the
+  defaults are denied for every visitor. A site's own vendor definition
+  takes `'signal' => 'uet'` or `'clarity'` too. core-web does not send
+  Meta's `fbq('consent')`, which must come before the pixel's `init`: hold
+  the pixel under marketing, or in Tag Manager give its tag the additional
+  consent check `ad_storage`.
 - **Any other script**: `@consentScript('marketing') ... @endconsentScript`,
   or `<script type="text/plain" data-consent="marketing" data-src="https://js.hs-scripts.com/123.js" async></script>`
   for an external one. `data-consent` takes several categories, space

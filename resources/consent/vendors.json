@@ -148,6 +148,7 @@
         "name": "Microsoft Clarity",
         "category": "statistics",
         "policy_url": "https://privacy.microsoft.com/privacystatement",
+        "signal": "clarity",
         "cookies": [
             {
                 "name": "_clck",
@@ -159,8 +160,7 @@
                 "purpose": "Joins the page views of a visit.",
                 "days": 1
             }
-        ],
-        "signal": "clarity"
+        ]
     },
     "youtube": {
         "name": "YouTube",
