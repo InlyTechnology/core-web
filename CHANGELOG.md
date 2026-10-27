@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Block changes in a draft** (connector API v1.3): a draft of an existing
+  entry may send `block_changes` instead of a whole page builder, a list of
+  `insert`, `update`, `replace`, `move` and `remove` operations naming blocks
+  by their id in the current draft. The site applies them to the draft it
+  holds, refuses a block type the page builder does not offer, and answers
+  with the draft as written. See `docs/drafts.md`, Changing single blocks.
+
 ## v0.31.0
 
 - **`content:push --publish`**: on a live site with
