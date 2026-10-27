@@ -10,6 +10,7 @@ use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Drafts\DraftWriter;
 use Inly\CoreWeb\Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Blueprint;
@@ -48,6 +49,9 @@ class DraftWriterTest extends TestCase
             ['handle' => 'lead', 'field' => ['type' => 'text']],
             ['handle' => 'kind', 'field' => ['type' => 'text']],
             ['handle' => 'detail', 'field' => ['type' => 'text', 'if' => ['kind' => 'equals long']]],
+            ['handle' => 'page_builder', 'field' => ['type' => 'replicator', 'sets' => ['main' => ['sets' => [
+                'text' => ['fields' => [['handle' => 'heading', 'field' => ['type' => 'text']], ['handle' => 'body', 'field' => ['type' => 'text']]]],
+            ]]]]],
         ];
         Blueprint::make('article')->setNamespace('collections.articles')->setContents(['fields' => $fields])->save();
         Blueprint::make('page')->setNamespace('collections.pages')->setContents(['fields' => $fields])->save();
@@ -322,5 +326,101 @@ class DraftWriterTest extends TestCase
 
         $this->assertSame('test', DraftProvenance::via($copy));
         $this->assertSame('Drafted by a test', $copy->message());
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function blocks(): array
+    {
+        return [
+            ['id' => 'a', 'type' => 'text', 'enabled' => true, 'heading' => 'First', 'body' => 'Kept'],
+            ['id' => 'b', 'type' => 'text', 'enabled' => true, 'heading' => 'Second'],
+            ['id' => 'c', 'type' => 'text', 'enabled' => true, 'heading' => 'Third'],
+        ];
+    }
+
+    public function test_block_changes_edit_single_sets_of_the_current_draft(): void
+    {
+        $live = $this->article(['title' => 'Live title', 'page_builder' => $this->blocks()]);
+
+        $result = $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => [], 'base_hash' => $this->base($live), 'block_changes' => ['page_builder' => [
+            ['op' => 'update', 'id' => 'a', 'fields' => ['heading' => 'First, edited', 'id' => 'x', 'type' => 'other']],
+            ['op' => 'remove', 'id' => 'b'],
+            ['op' => 'move', 'id' => 'c', 'before' => 'a'],
+            ['op' => 'insert', 'after' => 'a', 'block' => ['id' => 'ignored', 'type' => 'text', 'heading' => 'New']],
+            ['op' => 'replace', 'id' => 'c', 'block' => ['type' => 'text', 'heading' => 'Replaced']],
+        ]]]);
+
+        $sets = Entry::find($live->id())->fromWorkingCopy()->get('page_builder');
+
+        $this->assertSame(['page_builder'], $result['block_changes']);
+        $this->assertSame(['page_builder'], $result['changed_fields']);
+        $this->assertSame(['Replaced', 'First, edited', 'New'], array_column($sets, 'heading'));
+        $this->assertSame(['c', 'a'], [$sets[0]['id'], $sets[1]['id']]);
+        $this->assertSame(['text', 'Kept'], [$sets[1]['type'], $sets[1]['body']]);
+        $this->assertArrayNotHasKey('body', $sets[0]);
+        $this->assertNotContains($sets[2]['id'] ?? null, [null, '', 'ignored']);
+        $this->assertSame($this->blocks(), Entry::find($live->id())->get('page_builder'));
+    }
+
+    public function test_block_changes_build_on_the_authors_own_working_copy(): void
+    {
+        $live = $this->article(['title' => 'Live title', 'page_builder' => $this->blocks()]);
+        $author = $this->author();
+        $this->writer()->write($author, ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => [], 'base_hash' => $this->base($live), 'block_changes' => ['page_builder' => [['op' => 'remove', 'id' => 'b']]]]);
+
+        $this->writer()->write($author, ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => [], 'base_hash' => $this->base($live), 'block_changes' => ['page_builder' => [['op' => 'update', 'id' => 'c', 'fields' => ['heading' => 'Third, edited']]]]]);
+
+        $this->assertSame(['First', 'Third, edited'], array_column(Entry::find($live->id())->fromWorkingCopy()->get('page_builder'), 'heading'));
+    }
+
+    public function test_a_dry_run_answers_which_fields_took_block_changes(): void
+    {
+        $live = $this->article(['title' => 'Live title', 'page_builder' => $this->blocks()]);
+
+        $result = $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'dry_run' => true, 'fields' => ['title' => 'Draft'], 'base_hash' => $this->base($live)]);
+
+        $this->assertSame([], $result['block_changes']);
+
+        $result = $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'dry_run' => true, 'fields' => [], 'base_hash' => $this->base($live), 'block_changes' => ['page_builder' => [['op' => 'remove', 'id' => 'a']]]]);
+
+        $this->assertSame(['page_builder'], $result['block_changes']);
+        $this->assertFalse(Entry::find($live->id())->hasWorkingCopy());
+    }
+
+    /** @return iterable<string, array{0: mixed, 1: string, 2?: array<string, mixed>}> */
+    public static function refusedBlockChanges(): iterable
+    {
+        yield 'a list, not a map of fields' => [[['op' => 'remove', 'id' => 'a']], 'block_changes'];
+        yield 'a field that is no page builder' => [['lead' => [['op' => 'remove', 'id' => 'a']]], 'block_changes.lead'];
+        yield 'a field the blueprint lacks' => [['nothing' => [['op' => 'remove', 'id' => 'a']]], 'block_changes.nothing'];
+        yield 'a field sent whole as well' => [['page_builder' => [['op' => 'remove', 'id' => 'a']]], 'block_changes.page_builder', ['page_builder' => []]];
+        yield 'an unknown op' => [['page_builder' => [['op' => 'swap', 'id' => 'a']]], 'block_changes.page_builder.0'];
+        yield 'an unknown set' => [['page_builder' => [['op' => 'update', 'id' => 'z', 'fields' => ['heading' => 'X']]]], 'block_changes.page_builder.0'];
+        yield 'a set without a type' => [['page_builder' => [['op' => 'remove', 'id' => 'a'], ['op' => 'insert', 'block' => ['heading' => 'X']]]], 'block_changes.page_builder.1'];
+        yield 'two places' => [['page_builder' => [['op' => 'move', 'id' => 'a', 'before' => 'b', 'after' => 'c']]], 'block_changes.page_builder.0'];
+        yield 'a set placed by itself' => [['page_builder' => [['op' => 'move', 'id' => 'a', 'after' => 'a']]], 'block_changes.page_builder.0'];
+        yield 'a removed set changed after' => [['page_builder' => [['op' => 'remove', 'id' => 'a'], ['op' => 'update', 'id' => 'a', 'fields' => ['heading' => 'X']]]], 'block_changes.page_builder.1'];
+    }
+
+    #[DataProvider('refusedBlockChanges')]
+    public function test_block_changes_that_cannot_apply_are_refused_and_save_nothing(mixed $changes, string $key, array $fields = []): void
+    {
+        $live = $this->article(['title' => 'Live title', 'page_builder' => $this->blocks()]);
+
+        try {
+            $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => $fields, 'base_hash' => $this->base($live), 'block_changes' => $changes]);
+            $this->fail('Block changes that cannot apply were written.');
+        } catch (ValidationException $refused) {
+            $this->assertArrayHasKey($key, $refused->errors());
+        }
+
+        $this->assertFalse(Entry::find($live->id())->hasWorkingCopy());
+    }
+
+    public function test_a_new_entry_has_no_sets_to_change(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->writer()->write($this->author(), ['collection' => 'articles', 'fields' => ['title' => 'New'], 'block_changes' => ['page_builder' => [['op' => 'insert', 'block' => ['type' => 'text']]]]]);
     }
 }

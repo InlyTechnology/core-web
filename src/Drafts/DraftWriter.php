@@ -16,6 +16,8 @@ use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
 use Statamic\Fields\Blueprint;
 use Statamic\Fields\Fields;
+use Statamic\Fieldtypes\Bard;
+use Statamic\Fieldtypes\Replicator;
 use Statamic\Support\Str;
 use Throwable;
 
@@ -49,6 +51,9 @@ class DraftWriter
     /** Whether this write only checks: every refusal and validation, nothing saved. */
     private bool $dryRun = false;
 
+    /** @var list<string> the page builders this write made from block changes, which its answer names so a source knows they were applied */
+    private array $blockChanged = [];
+
     /** The normaliser of this write: the site's, or the one its source passed. */
     private DraftValueNormaliser $normaliser;
 
@@ -63,7 +68,7 @@ class DraftWriter
 
     /**
      * @param  DraftAuthor|Closure(): DraftAuthor  $author  a closure is called only once the request names an entry it may draft, so a refusal about the request comes before one about its author
-     * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, base_hash?: ?string}  $request
+     * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, block_changes?: ?array<string, list<mixed>>, base_hash?: ?string}  $request
      * @return array<string, mixed>
      *
      * @throws DraftRefused|ValidationException
@@ -72,6 +77,7 @@ class DraftWriter
     {
         $this->normaliser = $values ?? $this->values;
         $this->dryRun = (bool) ($request['dry_run'] ?? false);
+        $this->blockChanged = [];
 
         if (! DraftableCollections::writable((string) $request['collection'])) {
             throw ValidationException::withMessages(['collection' => 'Drafts are written for '.implode(', ', DraftableCollections::handles()).' only; other content is edited in the CP.']);
@@ -125,6 +131,10 @@ class DraftWriter
         $by = $author;
         $fields = (array) $request['fields'];
 
+        if ($entry === null && filled($request['block_changes'] ?? null)) {
+            throw ValidationException::withMessages(['block_changes' => __('core-web::drafts.block_changes_new_entry')]);
+        }
+
         if ($entry === null) {
             return $this->create($collection, $site, $fields, $by, $this->blueprint($collection, $request['blueprint'] ?? null), $parent, $this->newId($request['id'] ?? null));
         }
@@ -134,6 +144,8 @@ class DraftWriter
                 filled($request['parent_id'] ?? null) ? 'parent_id' : 'blueprint' => 'A draft keeps an existing entry where it is and as the kind it is; move it or change its type in the CP.',
             ]);
         }
+
+        $fields = $this->withBlockChanges($entry, $fields, $request['block_changes'] ?? null);
 
         if ($entry->published() || ($entry->revisionsEnabled() && $entry->hasWorkingCopy())) {
             return $this->workingCopy($entry, $fields, $by);
@@ -161,6 +173,52 @@ class DraftWriter
         if (! hash_equals($current, $base)) {
             throw DraftRefused::baseChanged($current);
         }
+    }
+
+    /**
+     * The fields with each page builder named in `block_changes` made from
+     * the entry's current draft and those changes (BlockChanges), as if the
+     * source had sent the builder whole. The base hash the update names is
+     * what keeps the draft it builds on the one the source read.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     *
+     * @throws ValidationException
+     */
+    private function withBlockChanges(EntryContract $entry, array $fields, mixed $changes): array
+    {
+        if (blank($changes)) {
+            return $fields;
+        }
+
+        if (! is_array($changes) || array_is_list($changes)) {
+            throw ValidationException::withMessages(['block_changes' => __('core-web::drafts.block_changes_shape')]);
+        }
+
+        $draft = EntryFields::stored(EntryFields::draftOf($entry));
+
+        foreach ($changes as $handle => $list) {
+            $handle = (string) $handle;
+            $fieldtype = $entry->blueprint()->field($handle)?->fieldtype();
+
+            if (! $fieldtype instanceof Replicator || $fieldtype instanceof Bard) {
+                throw ValidationException::withMessages(["block_changes.{$handle}" => __('core-web::drafts.block_changes_not_a_builder', ['field' => $handle])]);
+            }
+
+            if (array_key_exists($handle, $fields)) {
+                throw ValidationException::withMessages(["block_changes.{$handle}" => __('core-web::drafts.block_changes_and_field', ['field' => $handle])]);
+            }
+
+            if (! is_array($list) || ! array_is_list($list)) {
+                throw ValidationException::withMessages(["block_changes.{$handle}" => __('core-web::drafts.block_changes_shape')]);
+            }
+
+            $fields[$handle] = BlockChanges::apply($handle, (array) ($draft[$handle] ?? []), $list);
+            $this->blockChanged[] = $handle;
+        }
+
+        return $fields;
     }
 
     /**
@@ -717,6 +775,7 @@ class DraftWriter
             'changed_fields' => array_values(array_unique($changed)),
             'ignored_fields' => $normalised['ignored'],
             'images_needed' => $normalised['images_needed'],
+            'block_changes' => $this->blockChanged,
         ];
     }
 
@@ -735,6 +794,7 @@ class DraftWriter
             'changed_fields' => array_values(array_unique($changed)),
             'ignored_fields' => $normalised['ignored'],
             'images_needed' => $normalised['images_needed'],
+            'block_changes' => $this->blockChanged,
         ];
     }
 

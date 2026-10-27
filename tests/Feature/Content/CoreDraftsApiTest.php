@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature\Content;
 
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Drafts\ContentSchema;
+use Inly\CoreWeb\Drafts\DraftBase;
 use Inly\CoreWeb\Drafts\DraftPerson;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Testing\FakesCore;
@@ -141,5 +142,14 @@ class CoreDraftsApiTest extends TestCase
             ->assertConflict()
             ->assertJsonPath('error', 'catalog_changed')
             ->assertJsonPath('catalog_hash', $current);
+    }
+
+    public function test_block_changes_reach_the_draft_writer(): void
+    {
+        $id = $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], ...$this->actor()])->json('data.entry_id');
+
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'entry_id' => $id, 'fields' => [], 'base_hash' => app(DraftBase::class)->hash(Entry::find($id)), 'block_changes' => ['lead' => [['op' => 'remove', 'id' => 'a']]], 'dry_run' => true, ...$this->actor()])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['block_changes.lead']);
     }
 }

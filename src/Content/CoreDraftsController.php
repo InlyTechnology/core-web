@@ -9,7 +9,7 @@ use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Drafts\DraftWriter;
 
 /**
- * Core AI's drafts of the site's entries (Statamic connector API v1.1): a new
+ * Core AI's drafts of the site's entries (Statamic connector API v1.3): a new
  * or updated draft written as the person's own CP user, the current draft of
  * an entry for Core to update, and the person's draft published when they ask
  * for it. A write is sealed for drafting, a publish for publishing.
@@ -26,6 +26,7 @@ class CoreDraftsController
             'blueprint' => ['nullable', 'string', 'max:64'],
             'dry_run' => ['sometimes', 'boolean'],
             'fields' => ['present', 'array'],
+            'block_changes' => ['sometimes', 'nullable', 'array'],
             'catalog_hash' => ['nullable', 'string', 'max:128'],
             'base_hash' => ['nullable', 'string', 'max:128'],
             ...CoreAiAuthor::rules(),
@@ -33,7 +34,7 @@ class CoreDraftsController
 
         $this->assertSchema($schema, $request->input('catalog_hash'));
 
-        $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'base_hash']));
+        $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'block_changes', 'base_hash']));
 
         return response()->json(['data' => $result], filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
     }

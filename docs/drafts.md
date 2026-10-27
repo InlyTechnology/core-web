@@ -34,6 +34,39 @@ app(DraftWriter::class)->write($author, [
 ]);
 ```
 
+### Changing single blocks
+
+A source that changes one block of a long page sends `block_changes`
+instead of the whole page builder: a map from a page builder field (a
+top-level Replicator, never Bard) to a list of changes, applied in order to
+the entry's current draft (the working copy, or the live entry when there is
+none). Each change names a set by its `id`:
+
+| Change | Keys | Does |
+|---|---|---|
+| `update` | `id`, `fields` | merges `fields` into the set; its `id` and `type` stay |
+| `replace` | `id`, `block` | puts `block` (with a `type`) in its place, under the same id |
+| `insert` | `block`, `before` or `after` | adds `block` (with a `type`), last when it names no place; the site gives it an id |
+| `move` | `id`, `before` or `after` | moves the set, last when it names no place |
+| `remove` | `id` | takes the set out |
+
+```php
+'block_changes' => ['page_builder' => [
+    ['op' => 'update', 'id' => 'mx3ab1', 'fields' => ['heading' => '…']],
+    ['op' => 'insert', 'after' => 'mx3ab1', 'block' => ['type' => 'text', 'body' => '…']],
+]],
+```
+
+The field's whole value that comes out goes through the normaliser and the
+blueprint's validation like a field sent whole, so a normaliser takes a
+stored set as it is (`StoredValues` does). A field is either sent whole in
+`fields` or changed here, never both; a new entry has no sets to change. A
+change that cannot apply (an unknown id, a set without a type) refuses the
+whole draft, keyed `block_changes.{field}.{index}`. The answer names the
+fields it changed this way in `block_changes`, also on a dry run, which a
+source checks before relying on it: a site on an older core-web ignores the
+key.
+
 The site names the collections sources may draft in `drafts.collections`
 (see the config file). Two bindings shape a source's input:
 `DraftValueNormaliser` turns the fields sent into stored values
@@ -43,7 +76,7 @@ update names (`FieldsHash` hashes the draft's fields). Refusals throw
 messages are translations a site rewords in
 `lang/vendor/core-web/{locale}/drafts.php`.
 
-## Core AI's drafts (API v1.1)
+## Core AI's drafts (API v1.3)
 
 With `features.content` on as well, core-web takes Core AI's drafts itself,
 under `content.prefix` (`api/core/v1`), each sealed with Core's key:
@@ -56,7 +89,7 @@ under `content.prefix` (`api/core/v1`), each sealed with Core's key:
 | `GET drafts/{id}` | `website.draft` |
 | `POST drafts/{id}/publish` | `website.publish` |
 
-A draft is the `DraftWriter` request above, written for the person the body
+A draft is the `DraftWriter` request above (`block_changes` included), written for the person the body
 names in `actor` (as a fix or a proposal, see below), marked `via: core-ai`
 with Core's request and approval ids. A new entry answers 201, an update or
 a dry run 200. A site whose drafts arrive in another shape than Statamic
