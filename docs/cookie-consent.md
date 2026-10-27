@@ -4,13 +4,14 @@ A light consent tool in place of Cookiebot, for a site that needs no
 certified CMP (IAB TCF, as Google requires of sites that show its ads). It
 asks before any optional cookie is set, offers *Reject all* beside *Accept
 all* in the same style, lets the visitor change their mind from any page,
-re-asks after `renew_after_days` or when `policy_version` rises, and logs
-each choice. It wears Inly Core's look unless the site overrides it.
+re-asks after `renew_after_days`, when `policy_version` rises or when the
+vendors, categories or cookies change, and logs each choice with the banner
+it was made on. It wears Inly Core's look unless the site overrides it.
 
 What stays in the site: which vendors it loads, its cookie page and its
 texts (the strings are `__()` keys, so the site's `lang/*.json` rewords
 them, and editors can set the banner's own in the CP, below). It has no scanner: a vendor added to the site is added to
-`consent.vendors` in the same change, and `policy_version` raised.
+`consent.vendors` in the same change, and every visitor is asked again.
 
 ```php
 // config/core-web.php
@@ -150,10 +151,37 @@ php artisan vendor:publish --tag=core-web-consent-migration
 php artisan migrate
 ```
 
+A site that published the log before snapshots publishes the second
+migration on its own: `--tag=core-web-consent-snapshots-migration`.
+
 Each choice posts to `/!/core-web/consent` (no session, rate limited per
 address by `log.rate_limit`, refused from another origin) and becomes one
 row: the visitor's random consent id (shown on the cookie declaration and under the dialog's consent details, so they
 can quote it), the site, the action, the categories and the policy version. No IP
-address, user agent or user. `consent:prune` deletes rows older than
-`log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
-no log sets `log.enabled` to false.
+address, user agent or user. Each row also names the fingerprint of the
+banner the visitor chose on and its locale, and `log.snapshot_table` keeps
+each banner once under its fingerprint: every text, category, vendor and
+cookie, as the visitor read them. A page cached from an older banner sends
+that banner's fingerprint, which a choice made while it was current has
+already kept. `consent:prune` deletes rows older than `log.retention_days`
+(five years) on `log.prune_schedule`, and the banners no row names. A site
+that keeps no log sets `log.enabled` to false.
+
+The fingerprint covers what the banner itself draws. A `policy-url`
+attribute on the banner component is not in it; a site that pins its cookie
+page per site sets `policy_url` in `consent.sites` instead.
+
+## Showing consent
+
+The site has to be able to show that a visitor consented (GDPR art. 7(1)).
+
+- **One visitor**: they quote their consent id (in the dialog's consent
+  details). `php artisan consent:show <id>` prints every choice under it and
+  the banner each was made on, `--json` the whole evidence. In the control
+  panel, **Utilities > Consent log** finds the same by id and downloads it as
+  JSON; it is open to super users and roles given *access consent utility*.
+  A visitor is never found by name, email or address: none is stored.
+- **An audit**: `consent:show` without an id, and the utility, list how many
+  visitors accepted, rejected or chose on each banner. With the snapshots
+  (what each banner said) and the held scripts (nothing fires before
+  consent), that is the site's account of how it asks.

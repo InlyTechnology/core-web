@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Proof of what a visitor consented to**: each consent row names the
+  fingerprint and locale of the banner it was made on, and each banner is
+  kept once with every text, vendor and cookie. `php artisan consent:show
+  <id>` and the control panel's **Consent log** utility show a visitor's
+  choices with that banner, export them as JSON, and list the totals per
+  banner. Adding or removing a vendor, category or cookie now asks every
+  visitor again by itself. See `docs/cookie-consent.md`.
 - **Consent signals for Microsoft Advertising and Clarity**: a site that
   declares `microsoft_uet` (new in the catalogue) or `microsoft_clarity`
   gets their consent APIs' denied defaults in the head, and every choice
@@ -30,6 +37,23 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   Statamic Pro the control panel's tab icon becomes the site's icon with a
   dot, written when the global is saved. Off by default. See
   `docs/favicons.md`.
+
+### Upgrade notes
+
+- **The consent log needs a second migration.** A site with `consent` on and
+  its log enabled keeps logging every choice without it, but without the
+  banner it was made on, and reports a database error on each one. Find:
+  `config/core-web.php` has `'consent' => true` and `log.enabled` is not
+  false. Migrate: `php artisan vendor:publish
+  --tag=core-web-consent-snapshots-migration`, then deploy, which migrates.
+  Verify: after a choice on the site, `php artisan consent:show` lists a
+  banner fingerprint rather than "not recorded".
+- **Visitors are asked again when vendors change.** A choice now carries the
+  scope it was given on (the categories, vendors and cookie names), and a
+  change to it asks again, as raising `policy_version` did. Choices made
+  before this release carry no scope and stand until they expire or the
+  version is raised. Find: nothing to change. Verify: add a vendor locally,
+  reload, and the banner shows again.
 
 ## v0.31.0
 

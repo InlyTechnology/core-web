@@ -853,8 +853,9 @@ return [
     | the catalogue's entry. The site's session and CSRF cookies and the
     | consent cookie itself are always declared as necessary.
     |
-    | policy_version: raise it when the site adds a vendor or changes what it
-    | asks for, and every visitor is asked again.
+    | policy_version: raise it to ask every visitor again. Adding or removing
+    | a vendor, a category or a cookie asks again by itself; rewording a text
+    | does not.
     |
     | renew_after_days: a choice older than this is asked for again.
     |
@@ -870,9 +871,13 @@ return [
     | advanced loads them at once and lets them send cookieless pings.
     |
     | log: proof of consent, one row per choice in the site's own database,
-    | with a random consent id and no IP address or user. Publish the
-    | migration (--tag=core-web-consent-migration). Rows older than
-    | `retention_days` are deleted by `consent:prune` on `prune_schedule`.
+    | with a random consent id and no IP address or user. Each row names the
+    | fingerprint of the banner the visitor chose on, and `snapshot_table`
+    | keeps each banner once (its texts, categories, vendors and cookies), so
+    | `consent:show` and the CP's Consent log utility show what the visitor
+    | read. Publish the migrations (--tag=core-web-consent-migration). Rows
+    | older than `retention_days` are deleted by `consent:prune` on
+    | `prune_schedule`, and with them the banners no row names.
     |
     | sites: per-site overrides on a multisite install, keyed by site handle,
     | holding any key above but `log` and `cookie`: ['trucks' => ['vendors'
@@ -907,6 +912,7 @@ return [
             'enabled' => true,
             'connection' => null,
             'table' => 'core_web_consents',
+            'snapshot_table' => 'core_web_consent_snapshots',
             'retention_days' => 1825,
             'prune_schedule' => '17 3 * * *',
             'rate_limit' => 30,

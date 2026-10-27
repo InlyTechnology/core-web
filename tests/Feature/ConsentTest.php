@@ -6,7 +6,9 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inly\CoreWeb\Consent\Consent;
+use Inly\CoreWeb\Consent\ConsentSnapshot;
 use Inly\CoreWeb\Consent\ConsentVendors;
 use Inly\CoreWeb\Tests\TestCase;
 use InvalidArgumentException;
@@ -15,6 +17,7 @@ use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class ConsentTest extends TestCase
@@ -37,6 +40,7 @@ class ConsentTest extends TestCase
         parent::setUp();
 
         (require __DIR__.'/../../database/migrations/2026_10_23_000000_create_core_web_consents_table.php')->up();
+        (require __DIR__.'/../../database/migrations/2026_10_27_000000_add_core_web_consent_snapshots.php')->up();
     }
 
     public function test_a_site_block_naming_only_its_vendors_keeps_the_other_defaults(): void
@@ -253,7 +257,124 @@ class ConsentTest extends TestCase
         $this->assertSame('0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b', $row->consent_id);
         $this->assertSame('["statistics"]', $row->categories);
         $this->assertSame('other', $row->site);
-        $this->assertSame(['id', 'consent_id', 'site', 'action', 'categories', 'policy_version', 'created_at'], array_keys((array) $row));
+        $this->assertSame(['id', 'consent_id', 'site', 'action', 'categories', 'policy_version', 'created_at', 'fingerprint', 'locale'], array_keys((array) $row));
+    }
+
+    public function test_a_choice_names_the_banner_it_was_made_on_and_keeps_that_banner_once(): void
+    {
+        app()->setLocale(Site::current()->lang());
+        $fingerprint = Consent::script()['fingerprint'];
+        $choice = ['action' => 'accept_all', 'categories' => ['statistics', 'marketing'], 'version' => 1, 'site' => 'default', 'fingerprint' => $fingerprint];
+
+        $this->postJson('/!/core-web/consent', ['id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b'] + $choice)->assertNoContent();
+        $this->postJson('/!/core-web/consent', ['id' => '1b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b'] + $choice)->assertNoContent();
+
+        $this->assertSame([$fingerprint, $fingerprint], DB::table('core_web_consents')->pluck('fingerprint')->all());
+        $this->assertSame(1, DB::table('core_web_consent_snapshots')->count());
+
+        $banner = ConsentSnapshot::find($fingerprint);
+        $this->assertSame('Vi använder kakor', $banner['texts']['title']);
+        $this->assertSame('Neka alla', $banner['texts']['buttons']['reject_all']);
+        $this->assertSame(['bk_id'], array_column($banner['categories']['marketing'][1]['cookies'], 'name'));
+        $this->assertSame('sv_SE', DB::table('core_web_consents')->value('locale'));
+    }
+
+    public function test_a_choice_on_a_cached_banner_is_logged_under_its_own_fingerprint_without_replacing_today_s(): void
+    {
+        $this->postJson('/!/core-web/consent', [
+            'id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b',
+            'action' => 'reject_all',
+            'categories' => [],
+            'version' => 1,
+            'site' => 'default',
+            'fingerprint' => str_repeat('a', 64),
+        ])->assertNoContent();
+
+        $this->assertSame(str_repeat('a', 64), DB::table('core_web_consents')->value('fingerprint'));
+        $this->assertSame(0, DB::table('core_web_consent_snapshots')->count());
+    }
+
+    public function test_the_fingerprint_follows_the_texts_while_the_scope_follows_only_what_is_agreed_to(): void
+    {
+        $fingerprint = Consent::script()['fingerprint'];
+        $scope = Consent::script()['scope'];
+
+        app('translator')->addLines(['*.We use cookies' => 'Cookies, please'], 'en');
+
+        $this->assertNotSame($fingerprint, Consent::script()['fingerprint']);
+        $this->assertSame($scope, Consent::script()['scope']);
+
+        config(['core-web.consent.vendors' => ['google_analytics', 'hubspot']]);
+
+        $this->assertNotSame($scope, Consent::script()['scope']);
+    }
+
+    public function test_a_returning_choice_from_before_a_vendor_was_added_is_asked_for_again(): void
+    {
+        $html = Blade::render('<x-core-web::consent.head />');
+
+        $this->assertStringContainsString('read.s === undefined || read.s === settings.scope', $html);
+        $this->assertStringContainsString('\\u0022scope\\u0022:\\u0022'.ConsentSnapshot::scope().'\\u0022', $html);
+    }
+
+    public function test_consent_show_prints_a_visitor_s_choices_and_the_banner_as_json(): void
+    {
+        app()->setLocale(Site::current()->lang());
+        $fingerprint = Consent::script()['fingerprint'];
+        $this->postJson('/!/core-web/consent', ['id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b', 'action' => 'custom', 'categories' => ['statistics'], 'version' => 1, 'site' => 'default', 'fingerprint' => $fingerprint])->assertNoContent();
+
+        $this->artisan('consent:show', ['id' => '0B6F3A9E-7d1c-4e2a-9f3b-2c1d4e5f6a7b'])
+            ->expectsOutputToContain('Vi använder kakor')
+            ->expectsOutputToContain('bk_id')
+            ->assertSuccessful();
+        $this->artisan('consent:show', ['id' => '9b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b'])->assertFailed();
+        $this->artisan('consent:show')->expectsOutputToContain(substr($fingerprint, 0, 12))->assertSuccessful();
+    }
+
+    public function test_the_consent_log_utility_shows_and_exports_a_visitor_s_evidence_to_a_super_user_only(): void
+    {
+        app()->setLocale(Site::current()->lang());
+        $id = '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b';
+        $this->postJson('/!/core-web/consent', ['id' => $id, 'action' => 'accept_all', 'categories' => ['statistics', 'marketing'], 'version' => 1, 'site' => 'default', 'fingerprint' => Consent::script()['fingerprint']])->assertNoContent();
+
+        $this->actingAs(User::make()->id('consent-editor')->email('consent-editor@example.com'));
+        $this->assertNotSame(200, $this->get(cp_route('utilities.consent', ['id' => $id]))->getStatusCode());
+        $this->assertNotSame(200, $this->get(cp_route('utilities.consent.export', ['id' => $id]))->getStatusCode());
+
+        $this->actingAs(User::make()->id('consent-super')->email('consent-super@example.com')->makeSuper());
+        $html = $this->get(cp_route('utilities.consent', ['id' => $id]))->assertOk()->viewData('page')['props']['html'];
+        $this->assertStringContainsString('Vi använder kakor', $html);
+        $this->assertStringContainsString('<tbody v-pre>', $html);
+
+        $export = $this->get(cp_route('utilities.consent.export', ['id' => $id]))->assertOk();
+        $this->assertStringContainsString('attachment', (string) $export->headers->get('Content-Disposition'));
+        $this->assertSame($id, $export->json('consent_id'));
+        $this->assertSame(['statistics', 'marketing'], $export->json('choices.0.categories'));
+        $this->get(cp_route('utilities.consent.export', ['id' => '9b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b']))->assertNotFound();
+    }
+
+    public function test_prune_keeps_a_banner_while_a_choice_names_it(): void
+    {
+        DB::table('core_web_consent_snapshots')->insert([
+            ['fingerprint' => str_repeat('a', 64), 'site' => 'default', 'locale' => 'en_US', 'policy_version' => 1, 'content' => '{}', 'created_at' => now()->subDays(2000)],
+            ['fingerprint' => str_repeat('b', 64), 'site' => 'default', 'locale' => 'en_US', 'policy_version' => 1, 'content' => '{}', 'created_at' => now()->subDays(2000)],
+        ]);
+        DB::table('core_web_consents')->insert(['consent_id' => 'b', 'site' => 'default', 'action' => 'reject_all', 'categories' => '[]', 'policy_version' => 1, 'fingerprint' => str_repeat('b', 64), 'created_at' => now()->subDays(10)]);
+
+        $this->artisan('consent:prune')->assertSuccessful();
+
+        $this->assertSame([str_repeat('b', 64)], DB::table('core_web_consent_snapshots')->pluck('fingerprint')->all());
+    }
+
+    public function test_a_site_that_has_not_run_the_snapshots_migration_still_logs_the_choice(): void
+    {
+        Schema::drop('core_web_consent_snapshots');
+        Schema::drop('core_web_consents');
+        (require __DIR__.'/../../database/migrations/2026_10_23_000000_create_core_web_consents_table.php')->up();
+
+        $this->postJson('/!/core-web/consent', ['id' => '0b6f3a9e-7d1c-4e2a-9f3b-2c1d4e5f6a7b', 'action' => 'reject_all', 'categories' => [], 'version' => 1, 'site' => 'default', 'fingerprint' => Consent::script()['fingerprint']])->assertNoContent();
+
+        $this->assertSame(1, DB::table('core_web_consents')->count());
     }
 
     public function test_a_choice_from_another_origin_or_with_an_unknown_category_is_refused(): void

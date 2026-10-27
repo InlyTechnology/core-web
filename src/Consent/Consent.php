@@ -26,6 +26,8 @@ class Consent
             'cookies' => ConsentVendors::cookieNames(),
             'consentMode' => (bool) self::setting('google.consent_mode', true),
             'signals' => ConsentVendors::signals(),
+            'scope' => ConsentSnapshot::scope(),
+            'fingerprint' => ConsentSnapshot::fingerprint(ConsentSnapshot::content()),
             'site' => Site::current()->handle(),
             'log' => self::logs() ? route('core-web.consent.store', [], false) : null,
         ];
@@ -104,6 +106,38 @@ class Consent
             'title' => $text('consent_title'),
             'text' => $text('consent_text'),
             'policy_url' => $entry?->status() === 'published' ? $entry->url() : null,
+        ];
+    }
+
+    /**
+     * Every text the banner and its settings show, in the current locale: the banner renders these, and a consent
+     * snapshot stores them, so the proof is what the visitor read.
+     *
+     * @return array<string, mixed>
+     */
+    public static function texts(?string $policyUrl = null): array
+    {
+        $editorial = self::editorial();
+
+        return [
+            'title' => $editorial['title'] ?? (string) __('We use cookies'),
+            'text' => $editorial['text'] ?? (string) __('We use cookies to make the site work, and with your consent to understand how it is used and to show relevant marketing. You choose which, and can change your mind at any time.'),
+            'policy_url' => $policyUrl ?? $editorial['policy_url'] ?? self::setting('policy_url'),
+            'read_more' => (string) __('Read more about cookies'),
+            'settings_title' => (string) __('Cookie settings'),
+            'settings_text' => (string) __('Choose which cookies we may use. Necessary cookies are always on.'),
+            'buttons' => [
+                'settings' => (string) __('Settings'),
+                'reject_all' => (string) __('Reject all'),
+                'accept_all' => (string) __('Accept all'),
+                'save' => (string) __('Save choices'),
+            ],
+            'categories' => [
+                'necessary' => ['title' => (string) __('Necessary'), 'text' => (string) __('Needed for the site to work, such as remembering this choice. Always on.')],
+                'preferences' => ['title' => (string) __('Preferences'), 'text' => (string) __('Remember your settings, such as language.')],
+                'statistics' => ['title' => (string) __('Statistics'), 'text' => (string) __('Help us understand how the site is used, so we can improve it.')],
+                'marketing' => ['title' => (string) __('Marketing'), 'text' => (string) __('Used to show relevant ads and measure our campaigns, here and on other sites.')],
+            ],
         ];
     }
 

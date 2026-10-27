@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Consent;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -24,19 +25,57 @@ class ConsentController
             'categories.*' => ['string', Rule::in(array_diff(ConsentVendors::CATEGORIES, ['necessary']))],
             'version' => ['required', 'integer', 'min:1', 'max:100000'],
             'site' => ['required', 'string', Rule::in(Site::all()->map->handle()->values()->all())],
+            'fingerprint' => ['nullable', 'string', 'regex:/^[0-9a-f]{64}$/'],
         ]);
 
-        DB::connection(config('core-web.consent.log.connection'))
-            ->table((string) config('core-web.consent.log.table', 'core_web_consents'))
-            ->insert([
-                'consent_id' => strtolower($choice['id']),
-                'site' => $choice['site'],
-                'action' => $choice['action'],
-                'categories' => json_encode(array_values(array_unique($choice['categories']))),
-                'policy_version' => $choice['version'],
-                'created_at' => now(),
-            ]);
+        $row = [
+            'consent_id' => strtolower($choice['id']),
+            'site' => $choice['site'],
+            'action' => $choice['action'],
+            'categories' => json_encode(array_values(array_unique($choice['categories']))),
+            'policy_version' => $choice['version'],
+            'created_at' => now(),
+        ];
+        $table = DB::connection(config('core-web.consent.log.connection'))->table((string) config('core-web.consent.log.table', 'core_web_consents'));
+
+        try {
+            $table->insert(array_merge($row, $this->shown($choice['site'], $choice['fingerprint'] ?? null)));
+        } catch (QueryException $exception) {
+            // A site that has not run the snapshots migration yet still keeps the choice itself.
+            report($exception);
+            $table->insert($row);
+        }
 
         return response()->noContent();
+    }
+
+    /**
+     * The fingerprint and locale of the banner the visitor chose on. The page may be cached from before the banner
+     * changed, so only a fingerprint matching today's banner is stored as its snapshot; an older one was kept by
+     * the choices made while it was current. A page cached before fingerprints existed sends none, and the row
+     * claims none.
+     *
+     * @return array{fingerprint: string|null, locale: string}
+     */
+    private function shown(string $handle, ?string $fingerprint): array
+    {
+        $site = Site::current();
+        $locale = app()->getLocale();
+        Site::setCurrent($handle);
+        app()->setLocale(Site::current()->lang());
+
+        try {
+            $content = ConsentSnapshot::content();
+            $current = ConsentSnapshot::fingerprint($content);
+
+            if ($fingerprint === $current) {
+                ConsentSnapshot::store($content);
+            }
+
+            return ['fingerprint' => $fingerprint, 'locale' => $content['locale']];
+        } finally {
+            Site::setCurrent($site->handle());
+            app()->setLocale($locale);
+        }
     }
 }

@@ -27,13 +27,15 @@ const setCookie = (value) => {
 }
 
 const readChoice = () => {
-    const { cookie, version, renewAfterDays } = settings()
+    const { cookie, version, scope, renewAfterDays } = settings()
     const match = cookies().match(new RegExp(`(?:^|; )${cookie}=([^;]*)`))
     if (!match) return null
 
     try {
         const choice = JSON.parse(decodeURIComponent(match[1]))
         if (choice.v !== version || !Array.isArray(choice.c)) return null
+        // A choice made before the scope existed has none and stands until it is renewed or the version is raised.
+        if (choice.s !== undefined && choice.s !== scope) return null
         if (Date.now() - choice.t * 1000 > renewAfterDays * 864e5) return null
 
         return choice
@@ -150,7 +152,7 @@ const log = (choice, action) => {
         keepalive: true,
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v }),
+        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v, fingerprint: settings().fingerprint }),
     }).catch(() => {})
 }
 
@@ -190,6 +192,7 @@ const choose = (categories, action) => {
     const next = {
         id: current?.id ?? uuid(),
         v: settings().version,
+        s: settings().scope,
         c: optional.filter((category) => categories.includes(category)),
         t: Math.floor(Date.now() / 1000),
     }

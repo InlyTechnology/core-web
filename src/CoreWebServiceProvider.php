@@ -33,7 +33,9 @@ use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
 use Inly\CoreWeb\Consent\Consent;
+use Inly\CoreWeb\Consent\ConsentUtilityController;
 use Inly\CoreWeb\Consent\PruneConsentsCommand;
+use Inly\CoreWeb\Consent\ShowConsentCommand;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -98,6 +100,7 @@ use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
+use Statamic\Facades\Utility;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -279,7 +282,11 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
-        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_23_000000_create_core_web_consents_table.php' => database_path('migrations/2026_10_23_000000_create_core_web_consents_table.php')], 'core-web-consent-migration');
+        $this->publishesMigrations(collect(['2026_10_23_000000_create_core_web_consents_table.php', '2026_10_27_000000_add_core_web_consent_snapshots.php'])
+            ->mapWithKeys(fn (string $file): array => [__DIR__.'/../database/migrations/'.$file => database_path('migrations/'.$file)])
+            ->all(), 'core-web-consent-migration');
+        // A site that published the consent log before snapshots publishes only this one.
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_27_000000_add_core_web_consent_snapshots.php' => database_path('migrations/2026_10_27_000000_add_core_web_consent_snapshots.php')], 'core-web-consent-snapshots-migration');
         // Under the driver's own names, so --force replaces copies the site published from the driver.
         $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
@@ -600,7 +607,16 @@ class CoreWebServiceProvider extends ServiceProvider
         RateLimiter::for('core-web.consent', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.consent.log.rate_limit', 30)))
             ->by('consent|'.sha1(ClientAddress::key($request))));
         $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
-        $this->commands([PruneConsentsCommand::class]);
+        $this->commands([PruneConsentsCommand::class, ShowConsentCommand::class]);
+
+        Utility::extend(function (): void {
+            Utility::register('consent')
+                ->view('core-web::utilities.consent', fn (Request $request): array => ConsentUtilityController::data($request))
+                ->title(__('Consent log'))
+                ->icon('security-lock')
+                ->description(__('Find a visitor\'s recorded cookie consent and the banner they chose on, as proof of consent.'))
+                ->routes(fn ($router) => $router->get('export', [ConsentUtilityController::class, 'export'])->name('export'));
+        });
 
         if (is_string($cron = config('core-web.consent.log.prune_schedule')) && $cron !== '') {
             $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('consent:prune')
