@@ -1,0 +1,170 @@
+title: Button
+fields:
+  -
+    handle: label
+    field:
+      type: text
+      display: Label
+      localizable: true
+      width: 66
+      antlers: false
+  -
+    handle: show_controls
+    field:
+      type: revealer
+      mode: toggle
+      display: 'Show controls'
+      instructions: 'Reveal the link, style, icon and advanced settings for this button.'
+      width: 34
+  -
+    handle: style
+    field:
+      type: button_group
+      display: Style
+      options:
+        primary: Primary
+        secondary: Secondary
+      default: primary
+      width: 50
+      if:
+        show_controls: 'equals true'
+  -
+    handle: link_type
+    field:
+      type: button_group
+      display: 'Link type'
+      instructions: 'Entry for a page on this site. URL only for another website.'
+      ai_instructions: "A page on this website is never a URL: `entry` with the page's Statamic id. `url` only for another website."
+      options:
+        entry: Entry
+        url: URL
+        email: Email
+        tel: Phone
+        asset: Asset
+      default: entry
+      localizable: true
+      if:
+        show_controls: 'equals true'
+  -
+    handle: entry
+    field:
+      type: entries
+      display: Entry
+      max_items: 1
+      localizable: true
+      validate:
+        - 'required_if:{this}.link_type,entry'
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals entry'
+  -
+    handle: query_string
+    field:
+      type: text
+      display: 'Query / anchor'
+      instructions: "Optional suffix for the entry's address: a query string (filter=x) or an anchor (#contact)."
+      localizable: true
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals entry'
+  -
+    handle: url
+    field:
+      type: text
+      display: URL
+      input_type: url
+      instructions: "Another website's address, starting with https://."
+      localizable: true
+      validate:
+        - nullable
+        - 'regex:~^(https?://|mailto:|tel:|/|#)~i'
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals url'
+  -
+    handle: email
+    field:
+      type: text
+      display: Email
+      input_type: email
+      localizable: true
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals email'
+  -
+    handle: tel
+    field:
+      type: text
+      display: Phone
+      input_type: tel
+      localizable: true
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals tel'
+  -
+    handle: asset
+    field:
+      type: assets
+      display: Asset
+      container: assets
+      max_files: 1
+      localizable: true
+      if:
+        show_controls: 'equals true'
+        link_type: 'equals asset'
+  -
+    handle: icon_left
+    field:
+      type: text
+      display: 'Icon left'
+      instructions: "Icon name from the site's icon set, e.g. `arrow-right`."
+      width: 50
+      if:
+        show_controls: 'equals true'
+  -
+    handle: icon_right
+    field:
+      type: text
+      display: 'Icon right'
+      instructions: "Icon name from the site's icon set, e.g. `arrow-right`."
+      width: 50
+      if:
+        show_controls: 'equals true'
+  -
+    handle: target_blank
+    field:
+      type: toggle
+      display: 'Open in a new tab'
+      width: 33
+      if:
+        show_controls: 'equals true'
+  -
+    handle: attr_title
+    field:
+      type: text
+      display: Title
+      instructions: 'Shown on hover.'
+      width: 33
+      if:
+        show_controls: 'equals true'
+  -
+    handle: attr_aria
+    field:
+      type: text
+      display: 'Screen reader label'
+      instructions: 'Only when the label alone does not say where the link goes.'
+      width: 33
+      if:
+        show_controls: 'equals true'
+  -
+    handle: tracker_event
+    field:
+      type: text
+      display: 'Tracker event'
+      instructions: "An event name sent to the site's tracker on click: letters, digits, _ and -."
+      validate:
+        - nullable
+        - 'regex:/^[A-Za-z0-9_-]+$/'
+      ai_fillable: false
+      if:
+        show_controls: 'equals true'

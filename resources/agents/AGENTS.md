@@ -152,6 +152,17 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   from it on request. Never generated icon files, a `public/favicon.ico`, a hand-written manifest or Peak Tools'
   favicon fields beside it.
 
+## Buttons (`buttons`)
+
+- **Buttons are the `core-web::button` / `core-web::buttons` fieldsets**, rendered with
+  `<x-core-web::buttons :buttons="..." />` or resolved with `Buttons::resolve()`: never a site copy of the
+  button fieldset or a resolver of its own. Styles, link types, icons and the inline variant are `buttons`
+  config; a link to a Core object's page is a `buttons.core_links` entry naming its snapshot type.
+- **The look is the site's component** (`buttons.component`, `ui.button` by default), which gets `href`,
+  `variant`, `icon-left`, `icon-right` and `attrs` and applies `attrs` itself.
+- Override the fieldset (`resources/fieldsets/vendor/core-web/button.yaml`) only for a field config cannot
+  express; the override then owns every field.
+
 ## Statamic helpers
 
 - **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with

@@ -98,5 +98,11 @@
     "Rejected all": "Nekade alla",
     "Chose": "Valde själv",
     "Last": "Senast",
-    "Find a visitor's recorded cookie consent and the banner they chose on, as proof of consent.": "Hitta en besökares registrerade samtycke till kakor och bannern de valde i, som bevis på samtycket."
+    "Find a visitor's recorded cookie consent and the banner they chose on, as proof of consent.": "Hitta en besökares registrerade samtycke till kakor och bannern de valde i, som bevis på samtycket.",
+    "Images missing alt text": "Bilder utan alt-text",
+    "Counting": "Räknar",
+    "All clear": "Allt klart",
+    "Counting the images. Reload the page in a moment.": "Räknar bilderna. Ladda om sidan om en stund.",
+    "Every image in :container has alt text.": "Alla bilder i :container har alt-text.",
+    "Add alt text": "Lägg till alt-text"
 }

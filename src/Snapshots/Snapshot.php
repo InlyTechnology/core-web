@@ -396,6 +396,18 @@ final class Snapshot
     }
 
     /**
+     * The document's title as its listing names it, its id without one.
+     *
+     * @param  array<string, mixed>  $document
+     */
+    public function listingTitle(array $document, string $id): string
+    {
+        $title = $this->listingTitle === null ? null : ($this->listingTitle)($document, $id);
+
+        return is_scalar($title) && (string) $title !== '' ? (string) $title : $id;
+    }
+
+    /**
      * @param  array<string, mixed>  $document
      * @return array{id: string, title: string, core_url: ?string}
      */

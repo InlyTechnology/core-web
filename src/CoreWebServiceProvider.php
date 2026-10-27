@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Inly\CoreWeb\Buttons\Buttons;
+use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
@@ -67,6 +69,7 @@ use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
@@ -86,8 +89,13 @@ use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
+use Inly\CoreWeb\Widgets\MissingAltTextWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Events\AssetDeleted;
+use Statamic\Events\AssetReuploaded;
+use Statamic\Events\AssetSaved;
+use Statamic\Events\AssetUploaded;
 use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
@@ -101,6 +109,7 @@ use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Facades\Utility;
+use Statamic\Fields\FieldsetRepository;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -133,6 +142,8 @@ use Statamic\StaticCaching\Cacher;
  * The `consent` feature is the site's own cookie banner and consent log.
  * The `seo` feature is the page head (`<x-core-web::seo.head>`), robots.txt,
  * the sitemaps, the editors' redirects and the page-not-found entry.
+ * The `buttons` feature is the button fieldset as the site configures it,
+ * with <x-core-web::buttons> resolving each row for the site's own button.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -180,6 +191,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('favicons')) {
                 $this->mergeGroupDefaults('favicons', []);
+            }
+
+            if (self::enabled('buttons')) {
+                $this->mergeGroupDefaults('buttons', ['styles', 'link_types', 'core_links']);
             }
 
             if (self::enabled('media')) {
@@ -335,6 +350,11 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('media')) {
             $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
             MediaDisks::registerDriver();
+            $this->loadViews();
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+            MissingAltTextWidget::register();
+            // Every change to a container's assets can change its count, so the next dashboard visit scans it again.
+            Event::listen([AssetSaved::class, AssetDeleted::class, AssetUploaded::class, AssetReuploaded::class], fn ($event) => MissingAltText::forget($event->asset->containerHandle()));
             // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
             Blade::anonymousComponentPath(__DIR__.'/../resources/components');
 
@@ -396,6 +416,10 @@ class CoreWebServiceProvider extends ServiceProvider
             }
         }
 
+        if (self::enabled('buttons')) {
+            $this->bootButtons();
+        }
+
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
             $this->commands([DoctorCommand::class]);
         }
@@ -433,6 +457,22 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->cron($cron)
                 ->withoutOverlapping()
                 ->runInBackground());
+        }
+    }
+
+    /** The button fieldset as the site configures it, unless the site keeps its own copy under resources/fieldsets/vendor/core-web. */
+    private function bootButtons(): void
+    {
+        $this->loadViews();
+
+        if (self::enabled('snapshots')) {
+            SnapshotPagesDictionary::register();
+        }
+
+        $fieldsets = $this->app->make(FieldsetRepository::class);
+
+        if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
+            $fieldsets->find('core-web::button')?->setContents(Buttons::fieldset());
         }
     }
 

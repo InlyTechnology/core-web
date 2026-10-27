@@ -30,6 +30,7 @@ One page per feature. Start with the [README](../README.md) for what the package
 - [Cookie consent](cookie-consent.md)
 - [SEO](seo.md)
 - [Favicons](favicons.md)
+- [Buttons](buttons.md)
 - [Statamic helpers](statamic-helpers.md)
 - [Checking a site's setup](checking-a-sites-setup.md)
 - [Agent instructions](agent-instructions.md)

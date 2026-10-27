@@ -88,6 +88,11 @@ return [
     | /favicon.ico, every size cut by the CDN (or Glide) from the one PNG on
     | the `favicons` global, whose blueprint imports core-web::favicons.
     |
+    | buttons: the core-web::button and core-web::buttons fieldsets as the
+    | `buttons` group below configures them, links to Core's pages among
+    | them, and <x-core-web::buttons> rendering each row with the site's own
+    | button component.
+    |
     */
 
     'features' => [
@@ -106,6 +111,7 @@ return [
         'consent' => false,
         'seo' => false,
         'favicons' => false,
+        'buttons' => false,
     ],
 
     /*
@@ -1020,5 +1026,50 @@ return [
             'color' => '#ff269e',
             'container' => 'favicons',
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Buttons
+    |--------------------------------------------------------------------------
+    |
+    | What the core-web::button fieldset offers editors, and how
+    | <x-core-web::buttons> renders a row of them (Inly\CoreWeb\Buttons\Buttons).
+    |
+    | styles: style key => label, the variants the site's button component
+    | draws. One style hides the field.
+    |
+    | inline: offer "Inline" beside "Button", a text link the site's
+    | component draws when it gets `inline`.
+    |
+    | link_types: which of entry, url, email, tel, sms and asset are offered.
+    |
+    | core_links: link types to pages the site builds from Core, each a field
+    | handle naming a snapshot that declares pages, or a Dictionary of the
+    | site's own whose items carry the page's `url`:
+    | 'brand' => ['display' => 'Brand', 'snapshot' => 'brands'].
+    |
+    | entries_across_sites: let an entry link pick another site's page; it
+    | keeps that site's host when it has one of its own. Otherwise a link
+    | names the page's localization on the current site.
+    |
+    | icons: false drops the two icon fields.
+    |
+    | asset_container: the container an asset link picks from.
+    |
+    | component: the site's button component <x-core-web::buttons> renders,
+    | given href, variant, icon-left, icon-right, attrs (and inline).
+    |
+    */
+
+    'buttons' => [
+        'styles' => ['primary' => 'Primary', 'secondary' => 'Secondary'],
+        'inline' => false,
+        'link_types' => ['entry', 'url', 'email', 'tel', 'asset'],
+        'core_links' => [],
+        'entries_across_sites' => false,
+        'icons' => true,
+        'asset_container' => 'assets',
+        'component' => 'ui.button',
     ],
 ];
