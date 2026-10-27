@@ -17,16 +17,17 @@ final class BlockChanges
     /**
      * @param  list<mixed>  $sets  the field's current value
      * @param  list<mixed>  $changes
+     * @param  list<string>|null  $types  the set types the field offers, or null for any
      * @return list<array<string, mixed>>
      *
      * @throws ValidationException keyed `block_changes.{field}.{index}`
      */
-    public static function apply(string $field, array $sets, array $changes): array
+    public static function apply(string $field, array $sets, array $changes, ?array $types = null): array
     {
         $sets = array_values(array_filter($sets, 'is_array'));
 
         foreach (array_values($changes) as $index => $change) {
-            $result = is_array($change) ? self::one($sets, $change) : __('core-web::drafts.block_change_shape');
+            $result = is_array($change) ? self::one($sets, $change, $types) : __('core-web::drafts.block_change_shape');
 
             if (is_string($result)) {
                 throw ValidationException::withMessages(["block_changes.{$field}.{$index}" => $result]);
@@ -41,9 +42,10 @@ final class BlockChanges
     /**
      * @param  list<array<string, mixed>>  $sets
      * @param  array<string, mixed>  $change
+     * @param  list<string>|null  $types
      * @return list<array<string, mixed>>|string the sets, or what is wrong with the change
      */
-    private static function one(array $sets, array $change): array|string
+    private static function one(array $sets, array $change, ?array $types): array|string
     {
         $op = $change['op'] ?? null;
 
@@ -51,13 +53,20 @@ final class BlockChanges
             return __('core-web::drafts.block_change_op', ['ops' => implode(', ', self::OPS)]);
         }
 
-        if ($op === 'insert') {
-            $set = $change['block'] ?? null;
+        if (in_array($op, ['insert', 'replace'], true)) {
+            $block = $change['block'] ?? null;
 
-            if (! is_array($set) || blank($set['type'] ?? null)) {
-                return __('core-web::drafts.block_change_insert');
+            if (! is_array($block) || array_is_list($block) || ! is_string($block['type'] ?? null) || $block['type'] === '') {
+                return __("core-web::drafts.block_change_{$op}");
             }
 
+            if ($types !== null && ! in_array($block['type'], $types, true)) {
+                return __('core-web::drafts.block_change_type', ['type' => $block['type'], 'types' => implode(', ', $types)]);
+            }
+        }
+
+        if ($op === 'insert') {
+            $set = $change['block'];
             unset($set['id']);
 
             return self::place($sets, $set, $change);
@@ -70,12 +79,10 @@ final class BlockChanges
         }
 
         return match ($op) {
-            'update' => is_array($change['fields'] ?? null) && $change['fields'] !== []
+            'update' => is_array($change['fields'] ?? null) && $change['fields'] !== [] && ! array_is_list($change['fields'])
                 ? self::put($sets, $at, [...$sets[$at], ...array_diff_key($change['fields'], ['id' => true, 'type' => true])])
                 : __('core-web::drafts.block_change_update'),
-            'replace' => is_array($change['block'] ?? null) && filled($change['block']['type'] ?? null)
-                ? self::put($sets, $at, [...$change['block'], 'id' => $sets[$at]['id']])
-                : __('core-web::drafts.block_change_replace'),
+            'replace' => self::put($sets, $at, [...$change['block'], 'id' => $sets[$at]['id']]),
             'move' => self::place(self::without($sets, $at), $sets[$at], $change),
             'remove' => self::without($sets, $at),
         };

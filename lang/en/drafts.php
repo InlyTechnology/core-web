@@ -44,6 +44,7 @@ return [
     'block_change_insert' => 'An insert needs the new block, with its type, in block.',
     'block_change_update' => 'An update needs the fields it changes in fields.',
     'block_change_replace' => 'A replace needs the whole new block, with its type, in block.',
+    'block_change_type' => '`:type` is not a block this page builder offers. It offers: :types.',
     'block_change_id' => 'Name the block by its id from the current draft.',
     'block_change_unknown' => 'The draft has no block with id :id. Read the current draft again.',
     'block_change_two_places' => 'Name one place, before or after, not both.',

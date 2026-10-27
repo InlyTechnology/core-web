@@ -61,8 +61,10 @@ The field's whole value that comes out goes through the normaliser and the
 blueprint's validation like a field sent whole, so a normaliser takes a
 stored set as it is (`StoredValues` does). A field is either sent whole in
 `fields` or changed here, never both; a new entry has no sets to change. A
-change that cannot apply (an unknown id, a set without a type) refuses the
-whole draft, keyed `block_changes.{field}.{index}`. The answer names the
+change that cannot apply (an unknown id, a type the field does not offer)
+refuses the whole draft, keyed `block_changes.{field}.{index}`; an error in
+the value that comes out is keyed like a field sent whole,
+`fields.{field}.{index}`, by the set's place after the changes. The answer names the
 fields it changed this way in `block_changes`, also on a dry run, which a
 source checks before relying on it: a site on an older core-web ignores the
 key.

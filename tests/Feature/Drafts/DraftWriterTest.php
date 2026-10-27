@@ -397,6 +397,9 @@ class DraftWriterTest extends TestCase
         yield 'an unknown op' => [['page_builder' => [['op' => 'swap', 'id' => 'a']]], 'block_changes.page_builder.0'];
         yield 'an unknown set' => [['page_builder' => [['op' => 'update', 'id' => 'z', 'fields' => ['heading' => 'X']]]], 'block_changes.page_builder.0'];
         yield 'a set without a type' => [['page_builder' => [['op' => 'remove', 'id' => 'a'], ['op' => 'insert', 'block' => ['heading' => 'X']]]], 'block_changes.page_builder.1'];
+        yield 'a type that is not a string' => [['page_builder' => [['op' => 'replace', 'id' => 'a', 'block' => ['type' => ['text']]]]], 'block_changes.page_builder.0'];
+        yield 'a type the builder does not offer' => [['page_builder' => [['op' => 'insert', 'block' => ['type' => 'gallery']]]], 'block_changes.page_builder.0'];
+        yield 'an update with a list of fields' => [['page_builder' => [['op' => 'update', 'id' => 'a', 'fields' => ['X']]]], 'block_changes.page_builder.0'];
         yield 'two places' => [['page_builder' => [['op' => 'move', 'id' => 'a', 'before' => 'b', 'after' => 'c']]], 'block_changes.page_builder.0'];
         yield 'a set placed by itself' => [['page_builder' => [['op' => 'move', 'id' => 'a', 'after' => 'a']]], 'block_changes.page_builder.0'];
         yield 'a removed set changed after' => [['page_builder' => [['op' => 'remove', 'id' => 'a'], ['op' => 'update', 'id' => 'a', 'fields' => ['heading' => 'X']]]], 'block_changes.page_builder.1'];

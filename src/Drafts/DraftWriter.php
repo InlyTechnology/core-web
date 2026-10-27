@@ -214,7 +214,7 @@ class DraftWriter
                 throw ValidationException::withMessages(["block_changes.{$handle}" => __('core-web::drafts.block_changes_shape')]);
             }
 
-            $fields[$handle] = BlockChanges::apply($handle, (array) ($draft[$handle] ?? []), $list);
+            $fields[$handle] = BlockChanges::apply($handle, (array) ($draft[$handle] ?? []), $list, array_map('strval', $fieldtype->flattenedSetsConfig()->keys()->all()));
             $this->blockChanged[] = $handle;
         }
 
