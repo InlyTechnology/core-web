@@ -46,3 +46,9 @@ Until `icons.folder` names a folder that exists on the server, `site` holds
 Statamic's own icons, so a field naming it still opens (a named folder that
 is missing is logged as a warning). Commit the folder, so every environment
 has it.
+
+A site that only has the font (its SVGs not vendored) leaves `folder` unset:
+an icon is then a name typed in (`car`), drawn by the font, and
+`icons.reference` links a page to look names up beside the field, e.g.
+`'reference' => 'https://fontawesome.com/search?f=sharp&s=light'`. The
+buttons' icon fields do this; a blueprint's own is a text field.

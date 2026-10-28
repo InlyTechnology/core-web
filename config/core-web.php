@@ -1016,10 +1016,14 @@ return [
     | from it with `set: site`, the buttons' included. The stored value is the
     | file's name, so a site drawing its icons with a font keeps doing so.
     |
+    | reference: without a folder an icon is a name typed in; this page (the
+    | Font Awesome search, say) is linked beside the field to look one up.
+    |
     */
 
     'icons' => [
         'folder' => null,
+        'reference' => null,
     ],
 
     /*

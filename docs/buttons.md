@@ -80,7 +80,8 @@ site changes its options there rather than in a copy of the fieldset:
   site's icon set; a leading `fa-` is dropped.
 - The icon fields pick from the site's icons when `icons.folder` names them
   ([Statamic helpers](statamic-helpers.md#the-sites-icons)), and are text
-  fields otherwise.
+  fields otherwise, linking `icons.reference` (the Font Awesome search, say)
+  for looking a name up.
 - **asset_container**: where an asset link picks from.
 
 A site that truly needs a fieldset of its own keeps a copy at

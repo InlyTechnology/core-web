@@ -31,4 +31,14 @@ final class SiteIcons
 
         return $found;
     }
+
+    /** What an icon name field tells the editor: the name, and where to look one up when `icons.reference` names a page. */
+    public static function instructions(): string
+    {
+        $reference = config('core-web.icons.reference');
+
+        return is_string($reference) && preg_match('~^https://~i', $reference)
+            ? "An icon name from [the icon list]({$reference}), e.g. `car`."
+            : 'An icon name from the site\'s icon set, e.g. `car`.';
+    }
 }

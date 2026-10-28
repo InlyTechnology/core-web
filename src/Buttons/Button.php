@@ -192,7 +192,7 @@ final class Button
         if ($icons) {
             $icon = SiteIcons::register()
                 ? ['type' => 'icon', 'set' => SiteIcons::SET, 'mode' => 'compact']
-                : ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.'];
+                : ['type' => 'text', 'instructions' => SiteIcons::instructions()];
             $fields[] = self::field('icon_left', ['display' => 'Icon before'] + $icon + ['width' => 25, 'if' => $advanced]);
             $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }

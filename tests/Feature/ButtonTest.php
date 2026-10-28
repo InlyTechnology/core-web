@@ -111,6 +111,10 @@ class ButtonTest extends TestCase
 
         config(['core-web.icons.folder' => 'not-a-folder']);
         $this->assertFalse(SiteIcons::register());
+        config(['core-web.icons.reference' => 'https://fontawesome.com/search']);
+        $this->assertStringContainsString('(https://fontawesome.com/search)', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['instructions']);
+        config(['core-web.icons.reference' => 'javascript:alert(1)']);
+        $this->assertStringNotContainsString('javascript', SiteIcons::instructions());
         $this->assertTrue(Icon::sets()->has('site'));
         $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);
     }
