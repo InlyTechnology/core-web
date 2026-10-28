@@ -477,9 +477,12 @@ class CoreWebServiceProvider extends ServiceProvider
         // The tracker event field follows the seo global; the fieldset picks it up on the next request.
         Event::listen([GlobalVariablesSaved::class, GlobalSetDeleted::class], fn () => Seo::forgetTracker());
 
-        if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
-            $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
-        }
+        // After Statamic has booted: the fieldset reads the seo global, and a repository resolved earlier stays without its store.
+        Statamic::booted(function () use ($fieldsets): void {
+            if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
+                $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
+            }
+        });
 
         $this->commands([MigrateButtonsCommand::class]);
     }
