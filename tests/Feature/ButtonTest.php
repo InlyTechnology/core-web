@@ -7,6 +7,7 @@ use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
+use Inly\CoreWeb\Support\SiteIcons;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Dictionaries\BasicDictionary;
 use Statamic\Facades\Blueprint;
@@ -81,6 +82,12 @@ class ButtonTest extends TestCase
         $this->assertTrue($valid(['label' => 'Boka', 'link_type' => 'url', 'url' => 'https://example.com']));
     }
 
+    public function test_the_site_icon_set_is_there_from_boot_whatever_features_are_on(): void
+    {
+        $this->assertTrue(Icon::sets()->has('site'));
+        $this->assertNotEmpty(Icon::get('site')->names());
+    }
+
     public function test_icons_pick_from_the_sites_icon_set(): void
     {
         $icons = __DIR__.'/../fixtures/icons';
@@ -103,6 +110,8 @@ class ButtonTest extends TestCase
         $this->assertNull(Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => '<svg></svg>'])['icon_right']);
 
         config(['core-web.icons.folder' => 'not-a-folder']);
+        $this->assertFalse(SiteIcons::register());
+        $this->assertTrue(Icon::sets()->has('site'));
         $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);
     }
 

@@ -190,10 +190,9 @@ final class Button
         $icons = (bool) config('core-web.buttons.icons', true);
 
         if ($icons) {
-            $set = SiteIcons::register();
-            $icon = $set === null
-                ? ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.']
-                : ['type' => 'icon', 'set' => $set, 'mode' => 'compact'];
+            $icon = SiteIcons::register()
+                ? ['type' => 'icon', 'set' => SiteIcons::SET, 'mode' => 'compact']
+                : ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.'];
             $fields[] = self::field('icon_left', ['display' => 'Icon before'] + $icon + ['width' => 25, 'if' => $advanced]);
             $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }

@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Support;
 
+use Illuminate\Support\Facades\Log;
 use Statamic\Facades\Icon;
 
 /**
@@ -12,17 +13,22 @@ final class SiteIcons
 {
     public const SET = 'site';
 
-    /** Registers the folder and names the set, or null when the site names none. */
-    public static function register(): ?string
+    /**
+     * Registers the set, over Statamic's own icons while the folder is unset
+     * or missing, since a field naming `set: site` fails its whole screen on
+     * a set that does not exist. True when it holds the site's icons.
+     */
+    public static function register(): bool
     {
         $folder = config('core-web.icons.folder');
+        $found = is_string($folder) && is_dir($folder);
 
-        if (! is_string($folder) || ! is_dir($folder)) {
-            return null;
+        if (! $found && filled($folder)) {
+            Log::warning('core-web.icons.folder is not a folder on this server', ['folder' => $folder]);
         }
 
-        Icon::register(self::SET, $folder);
+        Icon::register(self::SET, $found ? $folder : statamic_path('resources/svg/icons'));
 
-        return self::SET;
+        return $found;
     }
 }

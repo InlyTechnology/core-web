@@ -1,7 +1,8 @@
 # Statamic helpers
 
 Always loaded, whatever features are on: the field-shape plumbing every site
-needs where Statamic has no single call for it. They are namespaced classes,
+needs where Statamic has no single call for it, and the site's icon set
+([below](#the-sites-icons)). They are namespaced classes,
 never global functions; a site that wants a short name wraps one in its own
 `app/helpers.php`.
 
@@ -40,3 +41,8 @@ with its own icon library, as SVGs or as a font. For Font Awesome, name the
 (`base_path('public/fonts/fontawesome/svgs/light')`); the SVGs are then only
 the picker's previews. A folder of just the icons the site uses keeps the
 picker short.
+
+Until `icons.folder` names a folder that exists on the server, `site` holds
+Statamic's own icons, so a field naming it still opens (a named folder that
+is missing is logged as a warning). Commit the folder, so every environment
+has it.
