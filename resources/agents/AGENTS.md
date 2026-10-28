@@ -155,8 +155,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 ## Buttons (`buttons`)
 
 - **Buttons are the `core-web::button` / `core-web::buttons` fieldsets**, each resolved with
-  `Button::resolve()`: never a site copy of the button fieldset or a resolver of its own. Styles, link types, icons and the inline variant are `buttons`
-  config; a link to a Core object's page is a `buttons.core_links` entry naming its snapshot type.
+  `Button::resolve()`: never a site copy of the button fieldset or a resolver of its own. Variants, link types, icons and the inline type are `buttons`
+  config; a link to a Core object's page is a `buttons.core_links` entry naming its snapshot type. A site
+  switching from the agency base's fieldset runs `php artisan buttons:migrate` once (`style` becomes `variant`).
 - **The look is the site's**: its button component takes the row (`<x-ui.button :button="$set['cta']" />`),
   resolves it, renders nothing when `resolve()` returns null, and merges `attrs` onto its `<a>`; its row
   component (`<x-buttons>`) loops a `buttons` field through it.

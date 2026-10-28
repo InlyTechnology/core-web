@@ -31,7 +31,7 @@ final class Button
     /** @var array{0: string, 1: array<string, array{display: string, snapshot: ?string, dictionary: ?string}>}|null the last config read, so a page of buttons warns once */
     private static ?array $coreLinks = null;
 
-    private const RESERVED = ['label', 'show_controls', 'button_type', 'style', 'link_type', 'entry', 'query_string', 'url', 'email', 'tel', 'sms', 'asset', 'icon_left', 'icon_right', 'target_blank', 'attr_title', 'attr_aria', 'tracker_event'];
+    private const RESERVED = ['label', 'show_controls', 'button_type', 'variant', 'style', 'link_type', 'entry', 'query_string', 'url', 'email', 'tel', 'sms', 'asset', 'icon_left', 'icon_right', 'target_blank', 'attr_title', 'attr_aria', 'tracker_event'];
 
     /** @return array<string, string> variant key => label */
     public static function variants(): array
@@ -126,7 +126,7 @@ final class Button
         }
 
         if (count($variants) > 1) {
-            $fields[] = self::field('style', ['type' => 'button_group', 'display' => 'Style', 'options' => $variants, 'default' => array_key_first($variants), 'width' => 50, 'if' => $inline ? $controls + ['button_type' => 'equals button'] : $controls]);
+            $fields[] = self::field('variant', ['type' => 'button_group', 'display' => 'Style', 'options' => $variants, 'default' => array_key_first($variants), 'width' => 50, 'if' => $inline ? $controls + ['button_type' => 'equals button'] : $controls]);
         }
 
         $core = self::coreLinks();
@@ -207,7 +207,7 @@ final class Button
         $text = fn (string $key): ?string => is_scalar($value = $read($key)) && trim((string) $value) !== '' ? trim((string) $value) : null;
         $types = self::linkTypes();
         $type = $text('link_type') ?? array_key_first($types);
-        $style = $text('style');
+        $style = $text('variant') ?? $text('style');
 
         $resolved = [
             'href' => '',

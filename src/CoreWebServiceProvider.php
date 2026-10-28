@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Buttons\Button;
+use Inly\CoreWeb\Buttons\MigrateButtonsCommand;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
@@ -474,6 +475,8 @@ class CoreWebServiceProvider extends ServiceProvider
         if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
             $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
         }
+
+        $this->commands([MigrateButtonsCommand::class]);
     }
 
     private function bootDrafts(): void

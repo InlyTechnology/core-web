@@ -45,8 +45,8 @@ class ButtonTest extends TestCase
         $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
 
         $this->assertSame(['button' => 'Button', 'inline' => 'Inline'], $fields['button_type']['options']);
-        $this->assertSame(['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'], $fields['style']['options']);
-        $this->assertSame('equals button', $fields['style']['if']['button_type']);
+        $this->assertSame(['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'], $fields['variant']['options']);
+        $this->assertSame('equals button', $fields['variant']['if']['button_type']);
         $this->assertSame(['entry' => 'Entry', 'brand' => 'Brand', 'campaign' => 'Campaign', 'url' => 'URL', 'sms' => 'SMS'], $fields['link_type']['options']);
         $this->assertSame(['type' => 'core_snapshot_pages', 'snapshot' => 'brands'], $fields['brand']['dictionary']);
         $this->assertSame('site_campaigns', $fields['campaign']['dictionary']);
@@ -137,13 +137,14 @@ class ButtonTest extends TestCase
 
     public function test_link_attributes_variant_and_icons(): void
     {
-        $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'style' => 'secondary', 'icon_right' => 'fa-arrow-right', 'target_blank' => true, 'attr_title' => 'Hover', 'attr_aria' => 'Read more about us']);
+        $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'variant' => 'secondary', 'icon_right' => 'fa-arrow-right', 'target_blank' => true, 'attr_title' => 'Hover', 'attr_aria' => 'Read more about us']);
 
         $this->assertSame('secondary', $button['variant']);
         $this->assertSame('arrow-right', $button['icon_right']);
         $this->assertSame(['target' => '_blank', 'rel' => 'noopener', 'title' => 'Hover', 'aria-label' => 'Read more about us'], $button['attrs']);
         $link = ['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com'];
-        $this->assertSame('primary', Button::resolve($link + ['style' => 'neon'])['variant']);
+        $this->assertSame('primary', Button::resolve($link + ['variant' => 'neon'])['variant']);
+        $this->assertSame('secondary', Button::resolve($link + ['style' => 'secondary'])['variant']);
         $this->assertFalse(Button::resolve($link + ['button_type' => 'inline'])['inline']);
 
         config(['core-web.buttons.inline' => true]);
@@ -193,6 +194,24 @@ class ButtonTest extends TestCase
 
         $this->assertSame(['a1' => 'Audi', 'v1' => 'Volvo'], $dictionary->options());
         $this->assertSame([], Dictionary::find(SnapshotPagesDictionary::HANDLE, ['snapshot' => 'unknown'])->options());
+    }
+
+    public function test_migrate_renames_style_to_variant_in_button_rows_only(): void
+    {
+        Entry::make()->collection('pages')->locale('default')->id('buttons')->slug('knappar')->data([
+            'cta' => ['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test', 'style' => 'secondary'],
+            'blocks' => [['type' => 'hero', 'style' => 'dark', 'buttons' => [['label' => 'B', 'link_type' => 'entry', 'style' => 'primary']]]],
+        ])->save();
+
+        $this->artisan('buttons:migrate', ['--dry-run' => true])->expectsOutputToContain('Would change 1 item.')->assertSuccessful();
+        $this->assertSame('secondary', Entry::find('buttons')->get('cta')['style']);
+
+        $this->artisan('buttons:migrate')->assertSuccessful();
+        $entry = Entry::find('buttons');
+        $this->assertSame(['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test', 'variant' => 'secondary'], $entry->get('cta'));
+        $this->assertSame('dark', $entry->get('blocks')[0]['style']);
+        $this->assertSame('primary', $entry->get('blocks')[0]['buttons'][0]['variant']);
+        $this->artisan('buttons:migrate')->expectsOutputToContain('Changed 0 items.')->assertSuccessful();
     }
 
     /** @param array<string, mixed> $row */

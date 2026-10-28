@@ -17,7 +17,7 @@ fields:
       instructions: 'Reveal the link, style, icon and advanced settings for this button.'
       width: 34
   -
-    handle: style
+    handle: variant
     field:
       type: button_group
       display: Style

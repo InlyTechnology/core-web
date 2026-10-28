@@ -23,10 +23,27 @@ fields:
 
 The button has a label, and behind **Show controls** a style, a link type and
 its field, two icons, opening in a new tab, a hover title, a screen reader
-label and a tracker event. Its handles are the agency base's (`label`, `style`,
+label and a tracker event. Its handles are the agency base's (`label`,
 `link_type`, `entry`, `query_string`, `url`, `email`, `tel`, `asset`,
 `icon_left`, `icon_right`, `target_blank`, `attr_title`, `attr_aria`,
-`tracker_event`), so a site's existing buttons read as before.
+`tracker_event`), except that the base's `style` is `variant`, so a site's
+existing buttons read as before once `buttons:migrate` has run (below).
+
+## Switching a site over
+
+Content saved with the agency base's fieldset names the variant `style`. Run
+once, when the feature is switched on:
+
+```bash
+php artisan buttons:migrate --dry-run   # what would change
+php artisan buttons:migrate
+```
+
+It renames `style` to `variant` in every button row of the site's entries and
+globals, a row being an array with a `link_type`, so another field named
+`style` is left alone. Until it has run, `resolve()` reads the old `style`,
+so the front end renders as before; only the CP shows those buttons with the
+default variant.
 
 What the fieldset offers is the `buttons` group of `config/core-web.php`, so a
 site changes its options there rather than in a copy of the fieldset:
@@ -47,8 +64,7 @@ site changes its options there rather than in a copy of the fieldset:
 ```
 
 - **variants**: the variants the site's component draws, key => label. One
-  variant hides the field. Editors see it as **Style**, and it is saved under
-  the agency base's `style` handle, so existing content keeps working.
+  variant hides the field. Editors see it as **Style**.
 - **inline**: adds **Type** (Button or Inline). The variant applies to a
   button only.
 - **link_types**: which of `entry`, `url`, `email`, `tel`, `sms` and `asset`
@@ -114,8 +130,8 @@ layout in its own markup.
 
 `resolve()` returns null for a row with no label, or whose link resolves to
 nothing (an entry since deleted or unpublished, a Core page no longer
-published). Otherwise it returns `href`, `label`, `variant` (the editor's
-style, a configured one, the first otherwise), `inline` (a text link, when
+published). Otherwise it returns `href`, `label`, `variant` (a configured
+one, the first otherwise), `inline` (a text link, when
 `buttons.inline` is on), `icon_left`, `icon_right`, `link_type` and `attrs`.
 `attrs` holds the link's attributes (`target`, `rel`, `title`, `aria-label`,
 `download`, the tracker's `onclick`): merging them onto the `<a>` in the

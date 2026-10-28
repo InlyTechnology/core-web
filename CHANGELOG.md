@@ -52,6 +52,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ### Upgrade notes
 
+- **A site switching on `buttons` renames its button variants.** The
+  `core-web::button` fieldset names the variant `variant`, where the agency
+  base's fieldset said `style`, so the CP shows saved buttons with the default
+  variant until the content is renamed (the front end reads the old `style`
+  meanwhile). Find: a site with `'buttons' => true` in `config/core-web.php`
+  whose content has button rows with `style:`. Migrate: `php artisan
+  buttons:migrate --dry-run`, then `php artisan buttons:migrate`, and commit
+  the content. Verify: a second `buttons:migrate` reports `Changed 0 items.`
 - **The consent log needs a second migration.** A site with `consent` on and
   its log enabled keeps logging every choice without it, but without the
   banner it was made on. Find:
