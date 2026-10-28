@@ -15,11 +15,12 @@
     },
     {
       "kind": "property",
-      "type": "string",
+      "type": "license_plate",
       "name": "plate",
       "label": "Registration number",
       "placeholder": "ABC 123",
       "required": true,
+      "country": "SE",
       "width": "1/2"
     },
     {
@@ -28,6 +29,8 @@
       "name": "mileage",
       "label": "Mileage",
       "description": "In kilometres.",
+      "min": 0,
+      "max": 2000000,
       "width": "1/2"
     },
     {
@@ -79,7 +82,9 @@
       "type": "date",
       "name": "preferred_date",
       "label": "Preferred time",
-      "withTime": true
+      "withTime": true,
+      "earliest": "today",
+      "latest": "today+60"
     },
     {
       "kind": "property",
@@ -124,7 +129,9 @@
       "name": "name",
       "label": "Name",
       "required": true,
-      "autocomplete": "name"
+      "autocomplete": "name",
+      "minLength": 2,
+      "maxLength": 80
     },
     {
       "kind": "property",
@@ -234,7 +241,7 @@
     "fields": [
       {
         "name": "plate",
-        "type": "string",
+        "type": "license_plate",
         "label": "Registration number",
         "placeholder": "ABC 123",
         "required": true,
@@ -248,6 +255,8 @@
         "label": "Mileage",
         "description": "In kilometres.",
         "required": false,
+        "min": 0,
+        "max": 2000000,
         "width": "1/2",
         "section": 0,
         "step": 0
@@ -306,6 +315,8 @@
         "label": "Preferred time",
         "required": false,
         "withTime": true,
+        "earliest": "today",
+        "latest": "today+60",
         "section": 0,
         "step": 0
       },
@@ -340,6 +351,8 @@
         "label": "Name",
         "required": true,
         "autocomplete": "name",
+        "minLength": 2,
+        "maxLength": 80,
         "section": 1,
         "step": 1
       },

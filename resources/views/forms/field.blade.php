@@ -47,7 +47,12 @@
             @elseif ($type === 'file' || $type === 'image')
                 <input type="file" id="{{ $id }}" wire:model="values.{{ $name }}" @if ($field['multiple'] ?? false) multiple @endif accept="{{ $field['accept'] ?? '' }}" @required($required)>
             @else
-                <input type="{{ $inputType }}" id="{{ $id }}" {{ $model }}="values.{{ $name }}" placeholder="{{ $field['placeholder'] ?? '' }}" autocomplete="{{ $field['autocomplete'] ?? '' }}" @required($required)>
+                <input type="{{ $inputType }}" id="{{ $id }}" {{ $model }}="values.{{ $name }}" placeholder="{{ $field['placeholder'] ?? '' }}" @required($required)
+                    @if ($type === 'license_plate') autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" @else autocomplete="{{ $field['autocomplete'] ?? '' }}" @endif
+                    @if (is_int($field['maxLength'] ?? null)) maxlength="{{ $field['maxLength'] }}" @endif
+                    @if (is_int($field['minLength'] ?? null)) minlength="{{ $field['minLength'] }}" @endif
+                    @if (is_numeric($field['min'] ?? null)) min="{{ $field['min'] }}" @endif
+                    @if (is_numeric($field['max'] ?? null)) max="{{ $field['max'] }}" @endif>
             @endif
         @endif
         @if (filled($field['description'] ?? null))
