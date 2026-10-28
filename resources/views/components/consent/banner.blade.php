@@ -78,10 +78,11 @@
                 <p>{{ __('Your consent id:') }} <code data-consent-id></code></p>
             </details>
 
+            @if ($policyUrl)
+                <p class="core-consent__policy"><a class="core-consent__link" href="{{ $policyUrl }}">{{ __('Read more') }}</a></p>
+            @endif
+
             <div class="core-consent__actions">
-                @if ($policyUrl)
-                    <a class="core-consent__link core-consent__policy" href="{{ $policyUrl }}">{{ $texts['read_more'] }}</a>
-                @endif
                 <button type="button" class="core-consent__button core-consent__button--outline" data-consent-save>{{ $texts['buttons']['save'] }}</button>
                 <button type="button" class="core-consent__button" data-consent-reject-all>{{ $texts['buttons']['reject_all'] }}</button>
                 <button type="button" class="core-consent__button" data-consent-accept-all>{{ $texts['buttons']['accept_all'] }}</button>

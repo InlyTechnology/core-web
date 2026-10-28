@@ -213,11 +213,6 @@
     flex: 0 1 auto;
 }
 
-.core-consent__actions > .core-consent__policy {
-    margin-right: auto;
-    align-self: center;
-}
-
 @media (max-width: 30rem) {
     .core-consent__actions > * {
         flex: 1 1 100%;
@@ -364,6 +359,10 @@
 
 .core-consent__about {
     margin-top: 16px;
+}
+
+.core-consent__policy {
+    margin: 16px 0 0;
 }
 
 .core-consent__about[hidden] {
