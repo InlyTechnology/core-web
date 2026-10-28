@@ -17,6 +17,7 @@ use Statamic\Facades\Entry as Entries;
 use Statamic\Facades\Icon as Icons;
 use Statamic\Facades\Site;
 use Statamic\Fields\Value;
+use Statamic\Fields\Values as FieldValues;
 use Throwable;
 
 /**
@@ -155,7 +156,7 @@ final class Button
                 'max_items' => 1,
                 'localizable' => true,
                 'select_across_sites' => (bool) config('core-web.buttons.entries_across_sites') ?: null,
-                'validate' => ['required_if:{this}.link_type,entry'],
+                'validate' => ['exclude_unless:{this}.link_type,entry', 'required_with:{this}.label'],
                 'width' => 66,
                 'if' => ['link_type' => 'equals entry'],
             ]));
@@ -169,7 +170,7 @@ final class Button
                 'dictionary' => $link['snapshot'] === null ? $link['dictionary'] : ['type' => SnapshotPagesDictionary::HANDLE, 'snapshot' => $link['snapshot']],
                 'max_items' => 1,
                 'localizable' => true,
-                'validate' => ["required_if:{this}.link_type,{$key}"],
+                'validate' => ["exclude_unless:{this}.link_type,{$key}", 'required_with:{this}.label'],
                 'if' => ['link_type' => "equals {$key}"],
             ]);
         }
@@ -188,7 +189,9 @@ final class Button
 
         $fields[] = self::field('show_controls', ['type' => 'revealer', 'mode' => 'button', 'display' => 'Advanced options', 'input_label' => 'Advanced options', 'hide_display' => true]);
 
-        if (config('core-web.buttons.icons', true)) {
+        $icons = (bool) config('core-web.buttons.icons', true);
+
+        if ($icons) {
             $set = self::iconSet();
             $icon = $set === null
                 ? ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.']
@@ -197,8 +200,8 @@ final class Button
             $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }
 
-        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => 25, 'if' => $advanced]);
-        $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'placeholder' => 'booking_click', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'width' => 25, 'if' => $advanced]);
+        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => $icons ? 25 : 50, 'if' => $advanced]);
+        $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'placeholder' => 'booking_click', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'width' => $icons ? 25 : 50, 'if' => $advanced]);
         $fields[] = self::field('attr_title', ['type' => 'text', 'display' => 'Title', 'instructions' => 'Shown on hover.', 'width' => 50, 'if' => $advanced]);
         $fields[] = self::field('attr_aria', ['type' => 'text', 'display' => 'Screen reader label', 'instructions' => 'Only when the label does not say where it goes.', 'width' => 50, 'if' => $advanced]);
 
@@ -411,25 +414,20 @@ final class Button
     }
 
     /**
-     * The Statamic icon set the icon fields pick from: `buttons.icon_set`, a
-     * folder of SVGs registered here, or the name of a set the site
-     * registered itself. Null keeps them text fields.
+     * The Statamic icon set the icon fields pick from: the folder of SVGs
+     * `buttons.icon_set` names, registered here, or null to keep them text
+     * fields. Registered at boot whether or not the site keeps its own copy
+     * of the fieldset, since an icon field's value is augmented through it.
      */
     public static function iconSet(): ?string
     {
-        $set = config('core-web.buttons.icon_set');
+        $folder = config('core-web.buttons.icon_set');
 
-        if (! is_string($set) || $set === '') {
+        if (! is_string($folder) || ! is_dir($folder)) {
             return null;
         }
 
-        if (! is_dir($set)) {
-            return Icons::sets()->has($set) ? $set : null;
-        }
-
-        if (! Icons::sets()->has(self::ICON_SET)) {
-            Icons::register(self::ICON_SET, $set);
-        }
+        Icons::register(self::ICON_SET, $folder);
 
         return self::ICON_SET;
     }
@@ -440,10 +438,15 @@ final class Button
      */
     private static function icon(mixed $row, string $key): ?string
     {
-        $value = is_array($row) || $row instanceof \ArrayAccess ? ($row[$key] ?? null) : null;
+        $value = match (true) {
+            $row instanceof FieldValues => $row->raw($key),
+            is_array($row) || $row instanceof \ArrayAccess => $row[$key] ?? null,
+            default => null,
+        };
         $value = $value instanceof Value ? $value->raw() : Values::unwrap($value);
 
-        return is_string($value) && trim($value) !== '' ? (preg_replace('/^fa-/', '', trim($value)) ?: null) : null;
+        // An augmented row carries the icon's SVG, from which no name can be read back.
+        return is_string($value) && trim($value) !== '' && ! str_starts_with(trim($value), '<') ? (preg_replace('/^fa-/', '', trim($value)) ?: null) : null;
     }
 
     /**

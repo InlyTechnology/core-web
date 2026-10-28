@@ -24,7 +24,8 @@ fields:
 The button shows its label, style, what it links to and the link's field
 (an entry has a **Suffix**: `?filter=x` or `#contact`, typed as it is
 added). Behind **Advanced options** are two icons, opening in a new tab, a
-tracker event, a hover title and a screen reader label. Its handles are the agency base's (`label`,
+tracker event, a hover title and a screen reader label. A button with a
+label needs its link; an empty one, label and all, saves as nothing. Its handles are the agency base's (`label`,
 `link_type`, `entry`, `query_string`, `url`, `email`, `tel`, `asset`,
 `icon_left`, `icon_right`, `target_blank`, `attr_title`, `attr_aria`,
 `tracker_event`), except that the base's `style` is `variant`, so a site's
@@ -77,8 +78,7 @@ site changes its options there rather than in a copy of the fieldset:
   its localization on the current site; a draft links nowhere.
 - **icons**: `false` drops the two icon fields. An icon is a name from the
   site's icon set; a leading `fa-` is dropped.
-- **icon_set**: a folder of SVGs, or the name of a Statamic icon set the site
-  registered, turns the icon fields into Statamic's icon picker, each icon
+- **icon_set**: a folder of SVGs turns the icon fields into Statamic's icon picker, each icon
   previewed. The value stays the file's name, which the site's own icon
   library draws, as SVGs or as a font: for Font Awesome, name the `svgs/<style>`
   folder of the copy committed with the site's font

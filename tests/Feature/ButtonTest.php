@@ -2,12 +2,14 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Dictionaries\BasicDictionary;
+use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
@@ -18,6 +20,7 @@ use Statamic\Facades\Site;
 use Statamic\Facades\YAML;
 use Statamic\Fields\Field;
 use Statamic\Fields\Value;
+use Statamic\Fields\Values;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class ButtonTest extends TestCase
@@ -60,6 +63,24 @@ class ButtonTest extends TestCase
         $this->assertFalse($fields->has('icon_left'));
     }
 
+    public function test_a_button_with_a_label_needs_its_link_and_an_empty_one_saves(): void
+    {
+        $valid = function (array $data): bool {
+            try {
+                Blueprint::make()->setContents(['fields' => [['import' => 'core-web::button']]])->fields()->addValues($data)->validator()->validate();
+
+                return true;
+            } catch (ValidationException) {
+                return false;
+            }
+        };
+
+        $this->assertTrue($valid([]));
+        $this->assertTrue($valid(['link_type' => 'entry']));
+        $this->assertFalse($valid(['label' => 'Boka', 'link_type' => 'entry']));
+        $this->assertTrue($valid(['label' => 'Boka', 'link_type' => 'url', 'url' => 'https://example.com']));
+    }
+
     public function test_icons_pick_from_the_sites_icon_set(): void
     {
         $icons = __DIR__.'/../fixtures/icons';
@@ -74,6 +95,12 @@ class ButtonTest extends TestCase
         $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => $value]);
 
         $this->assertSame('arrow-right', $button['icon_right']);
+
+        $field = (new Field('icon_right', $fields['icon_right']))->setValue('arrow-right');
+        $row = new Values(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => new Value('arrow-right', 'icon_right', $field->fieldtype())]);
+        $this->assertSame('arrow-right', Button::resolve($row)['icon_right']);
+        $this->assertSame('arrow-right', Button::resolve(new Value($row))['icon_right']);
+        $this->assertNull(Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => '<svg></svg>'])['icon_right']);
 
         config(['core-web.buttons.icon_set' => 'not-a-set']);
         $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);

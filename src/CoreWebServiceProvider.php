@@ -470,6 +470,7 @@ class CoreWebServiceProvider extends ServiceProvider
             SnapshotPagesDictionary::register();
         }
 
+        Button::iconSet();
         $fieldsets = $this->app->make(FieldsetRepository::class);
 
         if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {

@@ -41,7 +41,8 @@ fields:
       max_items: 1
       localizable: true
       validate:
-        - 'required_if:{this}.link_type,entry'
+        - 'exclude_unless:{this}.link_type,entry'
+        - 'required_with:{this}.label'
       width: 66
       if:
         link_type: 'equals entry'
