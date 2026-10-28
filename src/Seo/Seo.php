@@ -2,16 +2,20 @@
 
 namespace Inly\CoreWeb\Seo;
 
+use Illuminate\Support\Facades\Cache;
 use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Entries\Entry;
 use Statamic\Contracts\Taxonomies\Term;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 use Statamic\Structures\Page;
+use Throwable;
 
 /** The `seo` global as the head, the sitemaps and robots.txt read it, for the current site. */
 final class Seo
 {
+    private const TRACKER_CACHE_KEY = 'core-web.seo.has-tracker.';
+
     /** A value off the seo global in the given (or current) site, falling back to its origin. */
     public static function get(string $key, mixed $default = null, ?string $site = null): mixed
     {
@@ -44,6 +48,30 @@ final class Seo
         }
 
         return (bool) self::get("trackers_{$environment}", false);
+    }
+
+    /** Whether any site's seo global names a tracker a button's click event reaches (Tag Manager, gtag or Fathom), cached for an hour or until a global is saved, since content also arrives by deploy and import. */
+    public static function hasTracker(): bool
+    {
+        $handle = (string) config('core-web.seo.global', 'seo');
+
+        if ($handle === '') {
+            return false;
+        }
+
+        try {
+            return Cache::remember(self::TRACKER_CACHE_KEY.$handle, now()->addHour(), fn (): bool => (bool) GlobalSet::findByHandle($handle)?->localizations()->contains(
+                fn ($variables): bool => in_array($variables->value('tracker_type'), ['gtm', 'sgtm', 'gtag'], true) || (bool) $variables->value('use_fathom'),
+            ));
+        } catch (Throwable) {
+            // Read while the button fieldset is built at boot, before a fresh install has its content store.
+            return false;
+        }
+    }
+
+    public static function forgetTracker(): void
+    {
+        Cache::forget(self::TRACKER_CACHE_KEY.config('core-web.seo.global', 'seo'));
     }
 
     /** The entry's or term's own noindex choice. */

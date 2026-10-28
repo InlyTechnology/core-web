@@ -23,8 +23,9 @@ fields:
 
 The button shows its label, style, what it links to and the link's field
 (an entry has a **Suffix**: `?filter=x` or `#contact`, typed as it is
-added). Behind **Advanced options** are two icons, opening in a new tab, a
-tracker event, a hover title and a screen reader label. A button with a
+added). Behind **Advanced options** are opening in a new tab, a hover title,
+a screen reader label, the icons when `buttons.icons` is on and the tracker
+event when a tracker is set up (below). A button with a
 label needs its link; an empty one, label and all, saves as nothing. Its handles are the agency base's (`label`,
 `link_type`, `entry`, `query_string`, `url`, `email`, `tel`, `asset`,
 `icon_left`, `icon_right`, `target_blank`, `attr_title`, `attr_aria`,
@@ -158,3 +159,8 @@ Tag Manager, `gtag('event', …)` for Google Analytics, Fathom's
 `trackEvent` when `use_fathom` is on. Each call is guarded, since the consent
 banner may still hold the tag back, and the name keeps only letters, digits,
 `_` and `-`.
+
+The **Tracker event** field shows only while a site's `seo` global names Tag
+Manager, Google Analytics or Fathom, checked again after a global is saved
+and at least hourly. A value saved before the tracker was removed
+stays on the row and sends nothing.

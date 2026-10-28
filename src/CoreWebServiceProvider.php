@@ -77,6 +77,7 @@ use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Seo\NotFoundPage;
 use Inly\CoreWeb\Seo\RedirectMissingPages;
+use Inly\CoreWeb\Seo\Seo;
 use Inly\CoreWeb\Seo\Sitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
@@ -101,6 +102,7 @@ use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
 use Statamic\Events\RevisionSaving;
 use Statamic\Events\TermDeleted;
@@ -471,6 +473,9 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         $fieldsets = $this->app->make(FieldsetRepository::class);
+
+        // The tracker event field follows the seo global; the fieldset picks it up on the next request.
+        Event::listen([GlobalVariablesSaved::class, GlobalSetDeleted::class], fn () => Seo::forgetTracker());
 
         if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
             $fieldsets->find('core-web::button')?->setContents(Button::fieldset());

@@ -213,6 +213,21 @@ class ButtonTest extends TestCase
         $this->assertSame("window.gtag&&gtag('event','ctaalert1')", Button::resolve($row)['attrs']['onclick']);
     }
 
+    public function test_the_tracker_event_field_shows_only_once_the_seo_global_names_a_tracker(): void
+    {
+        $field = fn (): ?array => collect(Button::fieldset()['fields'])->firstWhere('handle', 'tracker_event');
+        $this->assertNull($field());
+
+        $seo = GlobalSet::make('seo');
+        $seo->save();
+        $seo->in('default')->data(['tracker_type' => 'none'])->save();
+        $this->assertNull($field());
+
+        $seo->in('default')->data(['tracker_type' => 'gtm'])->save();
+        $this->assertNotNull($field());
+        $this->assertSame(50, collect(Button::fieldset()['fields'])->firstWhere('handle', 'target_blank')['field']['width']);
+    }
+
     public function test_a_core_link_resolves_to_its_snapshot_documents_page(): void
     {
         $this->brands();

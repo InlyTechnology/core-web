@@ -197,8 +197,15 @@ final class Button
             $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }
 
-        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => $icons ? 25 : 50, 'if' => $advanced]);
-        $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'placeholder' => 'booking_click', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'width' => $icons ? 25 : 50, 'if' => $advanced]);
+        $tracker = Seo::hasTracker();
+        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => match (true) {
+            $icons && $tracker => 25,
+            $icons || $tracker => 50,
+            default => 100,
+        }, 'if' => $advanced]);
+        if ($tracker) {
+            $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'placeholder' => 'booking_click', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'width' => $icons ? 25 : 50, 'if' => $advanced]);
+        }
         $fields[] = self::field('attr_title', ['type' => 'text', 'display' => 'Title', 'instructions' => 'Shown on hover.', 'width' => 50, 'if' => $advanced]);
         $fields[] = self::field('attr_aria', ['type' => 'text', 'display' => 'Screen reader label', 'instructions' => 'Only when the label does not say where it goes.', 'width' => 50, 'if' => $advanced]);
 

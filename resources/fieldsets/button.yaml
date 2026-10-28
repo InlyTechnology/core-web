@@ -110,20 +110,7 @@ fields:
     field:
       type: toggle
       display: 'Open in a new tab'
-      width: 50
-      if:
-        show_controls: 'equals true'
-  -
-    handle: tracker_event
-    field:
-      type: text
-      display: 'Tracker event'
-      placeholder: booking_click
-      validate:
-        - nullable
-        - 'regex:/^[A-Za-z0-9_-]+$/'
-      ai_fillable: false
-      width: 50
+      width: 100
       if:
         show_controls: 'equals true'
   -
