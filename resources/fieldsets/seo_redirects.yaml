@@ -4,7 +4,7 @@ fields:
     handle: redirects
     field:
       type: grid
-      mode: stacked
+      mode: table
       display: Redirects
       instructions: 'Tried only when an address has no page. Write a pattern between #s to match many: #^/blog/.*#'
       add_row: 'Add redirect'
@@ -26,13 +26,11 @@ fields:
             max_items: 1
             mode: default
             display: 'New page'
-            width: 66
         -
           handle: external_url
           field:
             type: text
-            display: 'Or an external address'
-            width: 66
+            display: 'Or external address'
         -
           handle: response
           field:
@@ -42,4 +40,3 @@ fields:
               301: 'Permanent (301)'
               302: 'Temporary (302)'
             default: '301'
-            width: 33
