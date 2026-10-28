@@ -8,6 +8,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Readable proposals**: a proposal for a global, term or asset shows a
+  grid or replicator row by row (added, changed, removed), names pages by
+  title and URL instead of their entry ids, and shows Bard as text. The
+  `changed` lines a proposal returns to Core read the same way.
 - **Consent cookie page as a link**: the `core-web::consent` fieldset's
   Cookie page is a `link` field (`consent_policy_link`), so it can be an
   entry, a PDF from the `assets` container or an address. A page picked in

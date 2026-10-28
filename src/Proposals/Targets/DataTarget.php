@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Proposals\Targets;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Drafts\FieldConditions;
 use Inly\CoreWeb\Proposals\ProposalTarget;
+use Statamic\Facades\Entry;
 use Statamic\Fields\Blueprint;
 
 /**
@@ -112,14 +113,76 @@ abstract class DataTarget implements ProposalTarget
 
     public function outline(array $value): array
     {
+        $fields = $this->blueprint()?->fields()->all();
         $lines = [];
 
         foreach ($value as $handle => $v) {
-            $lines[(string) $handle] = is_scalar($v) || $v === null ? (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+            $field = $fields?->get((string) $handle);
+            $label = $field ? (string) __($field->display()) : (string) $handle;
+
+            // A grid or replicator reads row by row, so changing one redirect shows one row, not the whole list.
+            if (is_array($v) && $v !== [] && array_is_list($v) && $field?->type() !== 'bard' && collect($v)->every(fn (mixed $row) => is_array($row) && ! array_is_list($row))) {
+                foreach ($v as $index => $row) {
+                    $lines[$label.' › '.(filled($row['id'] ?? null) ? $row['id'] : '#'.($index + 1))] = self::row($row);
+                }
+
+                continue;
+            }
+
+            $lines[$label] = $field?->type() === 'bard' && is_array($v) ? self::text($v) : self::display($v);
         }
 
         ksort($lines);
 
         return $lines;
+    }
+
+    /** @param  array<string, mixed>  $row */
+    private static function row(array $row): string
+    {
+        return collect($row)
+            ->except(['id', '_id'])
+            ->map(fn (mixed $v, string $key) => $key.': '.self::display($v))
+            ->implode("\n");
+    }
+
+    /** A value as people read it: entry references by their page title, lists comma-separated. */
+    private static function display(mixed $v): string
+    {
+        return match (true) {
+            $v === null => '',
+            is_bool($v) => $v ? __('Yes') : __('No'),
+            is_string($v) => self::reference($v),
+            is_scalar($v) => (string) $v,
+            array_is_list($v) && collect($v)->every(fn (mixed $item) => is_scalar($item)) => implode(', ', array_map(fn (mixed $item) => is_string($item) ? self::reference($item) : (string) $item, $v)),
+            default => (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        };
+    }
+
+    private static function reference(string $v): string
+    {
+        $id = preg_match('~^(?:statamic://)?entry::(.+)$~', $v, $m) === 1 ? $m[1] : $v;
+
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id) !== 1 || ($entry = Entry::find($id)) === null) {
+            return $v;
+        }
+
+        $url = $entry->url();
+
+        return (string) $entry->value('title').($url ? " ({$url})" : '');
+    }
+
+    /** @param  array<mixed>  $nodes  Bard's stored ProseMirror nodes */
+    private static function text(array $nodes): string
+    {
+        $text = [];
+
+        array_walk_recursive($nodes, function (mixed $v, string|int $key) use (&$text): void {
+            if ($key === 'text' && is_string($v)) {
+                $text[] = $v;
+            }
+        });
+
+        return implode(' ', $text);
     }
 }
