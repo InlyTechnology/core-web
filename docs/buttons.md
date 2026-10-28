@@ -49,6 +49,9 @@ changes, so commit the content afterwards. Until it has run, `resolve()` reads t
 so the front end renders as before; only the CP shows those buttons with the
 default variant.
 
+A site whose buttons carry icons sets `buttons.icons` to `true`, or the icon
+fields are left out of the CP (their saved values stay and still render).
+
 What the fieldset offers is the `buttons` group of `config/core-web.php`, so a
 site changes its options there rather than in a copy of the fieldset:
 
@@ -76,10 +79,10 @@ site changes its options there rather than in a copy of the fieldset:
 - **entries_across_sites**: an entry link may pick another site's page, which
   keeps that site's host when it has one of its own. Otherwise an entry links
   its localization on the current site; a draft links nowhere.
-- **icons**: `false` drops the two icon fields. An icon is a name from the
-  site's icon set; a leading `fa-` is dropped.
-- An icon is a name typed in (`car`), which the site's button draws with its
-  icon library or font. `icons.reference` in `config/core-web.php` links a
+- **icons**: `true` adds an icon before and after the label, under
+  **Advanced options**; off by default. An icon is a name typed in (`car`;
+  a leading `fa-` is dropped), which the site's button draws with its icon
+  library or font. `icons.reference` in `config/core-web.php` links a
   page beside the field to look names up, per project:
   `'icons' => ['reference' => 'https://fontawesome.com/search?f=sharp&s=light']`.
 - **asset_container**: where an asset link picks from.

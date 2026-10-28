@@ -80,8 +80,10 @@ class ButtonTest extends TestCase
         $this->assertTrue($valid(['label' => 'Boka', 'link_type' => 'url', 'url' => 'https://example.com']));
     }
 
-    public function test_the_icon_fields_link_the_projects_icon_reference(): void
+    public function test_the_icon_fields_are_opt_in_and_link_the_projects_icon_reference(): void
     {
+        $this->assertNull(collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left'));
+        config(['core-web.buttons.icons' => true]);
         $instructions = fn (): string => collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['instructions'];
 
         config(['core-web.icons.reference' => 'https://fontawesome.com/search']);

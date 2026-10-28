@@ -186,7 +186,7 @@ final class Button
 
         $fields[] = self::field('show_controls', ['type' => 'revealer', 'mode' => 'button', 'display' => 'Advanced options', 'input_label' => 'Advanced options', 'hide_display' => true]);
 
-        $icons = (bool) config('core-web.buttons.icons', true);
+        $icons = (bool) config('core-web.buttons.icons', false);
 
         if ($icons) {
             $reference = config('core-web.icons.reference');

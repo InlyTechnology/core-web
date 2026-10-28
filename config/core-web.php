@@ -1069,7 +1069,8 @@ return [
     | keeps that site's host when it has one of its own. Otherwise a link
     | names the page's localization on the current site.
     |
-    | icons: false drops the two icon fields.
+    | icons: true adds an icon before and after the label, under Advanced
+    | options.
     |
     | The icon fields link `icons.reference` for looking a name up.
     |
@@ -1083,7 +1084,7 @@ return [
         'link_types' => ['entry', 'url', 'email', 'tel', 'asset'],
         'core_links' => [],
         'entries_across_sites' => false,
-        'icons' => true,
+        'icons' => false,
         'asset_container' => 'assets',
     ],
 ];
