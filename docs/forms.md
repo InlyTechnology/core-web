@@ -59,7 +59,15 @@ button. What the definition carries does the rest:
   them in a test.
 - **Validation**: `submit` checks the visible fields against the
   definition (required, email, url, number, date, the offered options, file
-  counts and sizes) before anything is sent; add rules with `extraRules()`.
+  counts and sizes, and the limits a field declares: `minLength` /
+  `maxLength`, `min` / `max`, a date's `earliest` / `latest`) before
+  anything is sent; add rules with `extraRules()`.
+- **Registration numbers**: a `license_plate` field is a text input a phone
+  types in capitals, with autofill and spellcheck off. It takes letters and
+  digits with spaces or dashes between them (up to 20 characters) and goes
+  to Core trimmed, in capitals, with runs of spaces made one; Core stores it
+  in its country's form and checks the country's own format when the form
+  asks for standard plates. Style it through `.core-form-field--license_plate`.
   Conditions are read as Core reads them: a field a condition hid reads
   blank to the fields after it, and a choice with no option left is hidden.
 - **Hidden fields** with a `source` are filled from the page the form was

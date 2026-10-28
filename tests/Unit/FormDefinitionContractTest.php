@@ -78,6 +78,40 @@ class FormDefinitionContractTest extends TestCase
         $this->assertArrayNotHasKey('values.utm_source', $definition->rules($values));
     }
 
+    public function test_a_registration_number_takes_a_plate_as_a_visitor_types_it(): void
+    {
+        $definition = self::definition();
+        $rules = fn (string $plate) => Validator::make(['values' => ['plate' => $plate]], ['values.plate' => $definition->rules(['plate' => $plate])['values.plate']]);
+
+        foreach (['ABC123', 'abc 123', ' abc  123 ', 'B-AB 1234'] as $plate) {
+            $this->assertTrue($rules($plate)->passes(), "Expected [{$plate}] to pass.");
+        }
+
+        foreach (['--', 'ABC_123', str_repeat('A', 21)] as $plate) {
+            $this->assertTrue($rules($plate)->fails(), "Expected [{$plate}] to fail.");
+        }
+
+        $this->assertSame('ABC 123', $definition->payload([...$definition->defaults(), 'plate' => ' abc  123 '])['plate']);
+    }
+
+    public function test_the_rules_hold_the_limits_a_field_declares(): void
+    {
+        $definition = self::definition();
+        $values = ['contact_method' => 'email', 'name' => 'A', 'mileage' => '-1', 'preferred_date' => now()->subDay()->toDateString()];
+        $errors = Validator::make(['values' => $values], $definition->rules($values))->errors();
+
+        foreach (['values.name', 'values.mileage', 'values.preferred_date'] as $key) {
+            $this->assertTrue($errors->has($key), "Expected an error on [{$key}].");
+        }
+
+        $values = ['contact_method' => 'email', 'name' => 'Ada', 'mileage' => '1200', 'preferred_date' => now()->addDays(60)->format('Y-m-d\TH:i')];
+        $errors = Validator::make(['values' => $values], $definition->rules($values))->errors();
+
+        foreach (['values.name', 'values.mileage', 'values.preferred_date'] as $key) {
+            $this->assertFalse($errors->has($key), "Expected no error on [{$key}].");
+        }
+    }
+
     public function test_the_payload_sends_visible_values_and_the_hidden_fields_core_fills(): void
     {
         $definition = self::definition();

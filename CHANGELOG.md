@@ -86,6 +86,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `consent.log.retention_days` to 1825 in `config/core-web.php` to keep five
   years. Verify: `php artisan config:show core-web.consent.log.retention_days`.
 
+## v0.33.0
+
+- **Registration numbers in `CoreForm`**: a `license_plate` field renders as
+  a capitals text input, is checked as Core checks a plate's shape and goes
+  trimmed and in capitals. It no longer logs as a type core-web does not
+  know. See `docs/forms.md`, Registration numbers.
+- **Field limits**: `minLength` / `maxLength`, `min` / `max` and a date's
+  `earliest` / `latest` are checked before an entry is sent and set on the
+  default markup's inputs. The definition contract copy is Core's current one.
+
 ## v0.32.0
 
 - **Block changes in a draft** (connector API v1.3): a draft of an existing
