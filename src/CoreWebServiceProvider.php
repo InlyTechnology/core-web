@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Inly\CoreWeb\Buttons\Buttons;
+use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
@@ -143,7 +143,7 @@ use Statamic\StaticCaching\Cacher;
  * The `seo` feature is the page head (`<x-core-web::seo.head>`), robots.txt,
  * the sitemaps, the editors' redirects and the page-not-found entry.
  * The `buttons` feature is the button fieldset as the site configures it,
- * with <x-core-web::buttons> resolving each row for the site's own button.
+ * with Button::resolve() turning one into what the site's button draws.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -472,7 +472,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $fieldsets = $this->app->make(FieldsetRepository::class);
 
         if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
-            $fieldsets->find('core-web::button')?->setContents(Buttons::fieldset());
+            $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
         }
     }
 

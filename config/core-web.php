@@ -90,8 +90,8 @@ return [
     |
     | buttons: the core-web::button and core-web::buttons fieldsets as the
     | `buttons` group below configures them, links to Core's pages among
-    | them, and <x-core-web::buttons> rendering each row with the site's own
-    | button component.
+    | them, and Inly\CoreWeb\Buttons\Button::resolve() turning one into what
+    | the site's own button component draws.
     |
     */
 
@@ -1033,8 +1033,9 @@ return [
     | Buttons
     |--------------------------------------------------------------------------
     |
-    | What the core-web::button fieldset offers editors, and how
-    | <x-core-web::buttons> renders a row of them (Inly\CoreWeb\Buttons\Buttons).
+    | What the core-web::button fieldset offers editors. The site renders a
+    | button, and a row of them, with its own components, each button
+    | resolved by Inly\CoreWeb\Buttons\Button::resolve().
     |
     | styles: style key => label, the variants the site's button component
     | draws. One style hides the field.
@@ -1057,9 +1058,6 @@ return [
     |
     | asset_container: the container an asset link picks from.
     |
-    | component: the site's button component <x-core-web::buttons> renders,
-    | given href, variant, icon-left, icon-right, attrs (and inline).
-    |
     */
 
     'buttons' => [
@@ -1070,6 +1068,5 @@ return [
         'entries_across_sites' => false,
         'icons' => true,
         'asset_container' => 'assets',
-        'component' => 'ui.button',
     ],
 ];

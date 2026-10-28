@@ -2,9 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\Facades\View as ViewFactory;
-use Inly\CoreWeb\Buttons\Buttons;
+use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
@@ -19,7 +17,7 @@ use Statamic\Facades\Site;
 use Statamic\Facades\YAML;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
-class ButtonsTest extends TestCase
+class ButtonTest extends TestCase
 {
     use PreventsSavingStacheItemsToDisk;
 
@@ -29,7 +27,6 @@ class ButtonsTest extends TestCase
     {
         parent::setUp();
 
-        ViewFactory::addLocation(__DIR__.'/../fixtures/views');
         config(['statamic.system.multisite' => true]);
         Collection::make('pages')->sites(['default', 'other'])->routes('{slug}')->save();
         Entry::make()->collection('pages')->locale('default')->id('about')->slug('om-oss')->save();
@@ -38,14 +35,14 @@ class ButtonsTest extends TestCase
 
     public function test_the_shipped_fieldset_is_what_the_default_config_builds(): void
     {
-        $this->assertSame(YAML::file(__DIR__.'/../../resources/fieldsets/button.yaml')->parse(), Buttons::fieldset());
-        $this->assertSame(Buttons::fieldset(), Fieldset::find('core-web::button')->contents());
+        $this->assertSame(YAML::file(__DIR__.'/../../resources/fieldsets/button.yaml')->parse(), Button::fieldset());
+        $this->assertSame(Button::fieldset(), Fieldset::find('core-web::button')->contents());
     }
 
     public function test_the_fieldset_follows_the_sites_config(): void
     {
         $this->configure();
-        $fields = collect(Buttons::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
+        $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
 
         $this->assertSame(['button' => 'Button', 'inline' => 'Inline'], $fields['button_type']['options']);
         $this->assertSame(['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'], $fields['style']['options']);
@@ -64,50 +61,60 @@ class ButtonsTest extends TestCase
     {
         config(['core-web.buttons.core_links' => ['url' => ['snapshot' => 'brands'], 'Bad key' => ['snapshot' => 'brands'], 'both' => ['snapshot' => 'a', 'dictionary' => 'b'], 'ok' => ['snapshot' => 'brands']]]);
 
-        $this->assertSame(['ok'], array_keys(Buttons::coreLinks()));
+        $this->assertSame(['ok'], array_keys(Button::coreLinks()));
     }
 
     public function test_an_entry_link_carries_its_suffix_and_a_raw_id_resolves(): void
     {
-        $button = Buttons::resolve(['label' => 'Om oss', 'link_type' => 'entry', 'entry' => ['about'], 'query_string' => '#team']);
+        $button = Button::resolve(['label' => 'Om oss', 'link_type' => 'entry', 'entry' => ['about'], 'query_string' => '#team']);
 
         $this->assertSame('/om-oss#team', $button['href']);
         $this->assertSame('Om oss', $button['label']);
-        $this->assertSame('primary', $button['style']);
+        $this->assertSame('primary', $button['variant']);
         $this->assertSame([], $button['attrs']);
-        $this->assertSame('/om-oss?filter=x', Buttons::resolve(['link_type' => 'entry', 'entry' => Entry::find('about'), 'query_string' => 'filter=x'])['href']);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'entry', 'entry' => ['gone']])['href']);
+        $this->assertSame('/om-oss?filter=x', $this->href(['link_type' => 'entry', 'entry' => Entry::find('about'), 'query_string' => 'filter=x']));
+        $this->assertSame('', $this->href(['link_type' => 'entry', 'entry' => ['gone']]));
+    }
+
+    public function test_a_button_that_would_render_nothing_resolves_to_null(): void
+    {
+        $this->assertNull(Button::resolve(null));
+        $this->assertNull(Button::resolve([]));
+        $this->assertNull(Button::resolve(['link_type' => 'url', 'url' => 'https://example.com']));
+        $this->assertNull(Button::resolve(['label' => 'Borta', 'link_type' => 'entry', 'entry' => ['gone']]));
+        $this->assertNotNull(Button::resolve(['label' => 'Om oss', 'link_type' => 'entry', 'entry' => ['about']]));
     }
 
     public function test_another_sites_entry_keeps_its_host(): void
     {
-        $this->assertSame('http://other.test/borta', Buttons::resolve(['link_type' => 'entry', 'entry' => ['elsewhere']])['href']);
+        $this->assertSame('http://other.test/borta', $this->href(['link_type' => 'entry', 'entry' => ['elsewhere']]));
     }
 
     public function test_the_other_link_types(): void
     {
         config(['core-web.buttons.link_types' => ['entry', 'url', 'email', 'tel', 'sms', 'asset']]);
 
-        $this->assertSame('https://example.com', Buttons::resolve(['link_type' => 'url', 'url' => ' https://example.com '])['href']);
-        $this->assertSame('mailto:hej@example.com', Buttons::resolve(['link_type' => 'email', 'email' => 'hej@example.com'])['href']);
-        $this->assertSame('tel:+46701234567', Buttons::resolve(['link_type' => 'tel', 'tel' => '+46 70-123 45 67'])['href']);
-        $this->assertSame('sms:0701234567', Buttons::resolve(['link_type' => 'sms', 'sms' => '070 123 45 67'])['href']);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'email'])['href']);
-        $this->assertSame('https://cdn.example.com/a.pdf', Buttons::resolve(['link_type' => 'asset', 'asset' => 'https://cdn.example.com/a.pdf'])['href']);
+        $this->assertSame('https://example.com', $this->href(['link_type' => 'url', 'url' => ' https://example.com ']));
+        $this->assertSame('mailto:hej@example.com', $this->href(['link_type' => 'email', 'email' => 'hej@example.com']));
+        $this->assertSame('tel:+46701234567', $this->href(['link_type' => 'tel', 'tel' => '+46 70-123 45 67']));
+        $this->assertSame('sms:0701234567', $this->href(['link_type' => 'sms', 'sms' => '070 123 45 67']));
+        $this->assertSame('', $this->href(['link_type' => 'email']));
+        $this->assertSame('https://cdn.example.com/a.pdf', $this->href(['link_type' => 'asset', 'asset' => 'https://cdn.example.com/a.pdf']));
+        $this->assertSame(['download' => ''], Button::resolve(['label' => 'PDF', 'link_type' => 'asset', 'asset' => 'https://cdn.example.com/a.pdf'])['attrs']);
     }
 
     public function test_an_address_a_browser_would_run_is_dropped(): void
     {
         foreach (['javascript:alert(1)', ' JavaScript:alert(1)', 'data:text/html,x', 'vbscript:x'] as $url) {
-            $this->assertSame('', Buttons::resolve(['link_type' => 'url', 'url' => $url])['href'], $url);
+            $this->assertSame('', $this->href(['link_type' => 'url', 'url' => $url]), $url);
         }
 
         foreach (['/kontakt', '#team', '?q=1', 'kontakt', '//cdn.example.com/a', 'mailto:a@example.com'] as $url) {
-            $this->assertSame($url, Buttons::resolve(['link_type' => 'url', 'url' => $url])['href'], $url);
+            $this->assertSame($url, $this->href(['link_type' => 'url', 'url' => $url]), $url);
         }
 
         config(['core-web.buttons.link_types' => ['tel']]);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'tel', 'tel' => 'ring oss'])['href']);
+        $this->assertSame('', $this->href(['link_type' => 'tel', 'tel' => 'ring oss']));
     }
 
     public function test_an_entry_links_its_page_on_the_current_site_and_never_a_draft(): void
@@ -115,31 +122,32 @@ class ButtonsTest extends TestCase
         Entry::make()->collection('pages')->locale('other')->origin('about')->id('about-other')->slug('about')->save();
         Entry::make()->collection('pages')->locale('default')->id('draft')->slug('utkast')->published(false)->save();
 
-        $this->assertSame('', Buttons::resolve(['link_type' => 'entry', 'entry' => ['draft']])['href']);
+        $this->assertSame('', $this->href(['link_type' => 'entry', 'entry' => ['draft']]));
 
         Site::setCurrent('other');
-        $this->assertSame('/about', Buttons::resolve(['link_type' => 'entry', 'entry' => ['about']])['href']);
+        $this->assertSame('/about', $this->href(['link_type' => 'entry', 'entry' => ['about']]));
     }
 
     public function test_a_snapshot_core_link_needs_the_snapshots_feature(): void
     {
         config(['core-web.features.snapshots' => false, 'core-web.buttons.core_links' => ['brand' => ['snapshot' => 'brands'], 'campaign' => ['dictionary' => 'site_campaigns']]]);
 
-        $this->assertSame(['campaign'], array_keys(Buttons::coreLinks()));
+        $this->assertSame(['campaign'], array_keys(Button::coreLinks()));
     }
 
-    public function test_link_attributes_style_and_icons(): void
+    public function test_link_attributes_variant_and_icons(): void
     {
-        $button = Buttons::resolve(['link_type' => 'url', 'url' => 'https://example.com', 'style' => 'secondary', 'icon_right' => 'fa-arrow-right', 'target_blank' => true, 'attr_title' => 'Hover', 'attr_aria' => 'Read more about us']);
+        $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'style' => 'secondary', 'icon_right' => 'fa-arrow-right', 'target_blank' => true, 'attr_title' => 'Hover', 'attr_aria' => 'Read more about us']);
 
-        $this->assertSame('secondary', $button['style']);
+        $this->assertSame('secondary', $button['variant']);
         $this->assertSame('arrow-right', $button['icon_right']);
         $this->assertSame(['target' => '_blank', 'rel' => 'noopener', 'title' => 'Hover', 'aria-label' => 'Read more about us'], $button['attrs']);
-        $this->assertSame('primary', Buttons::resolve(['style' => 'neon'])['style']);
-        $this->assertFalse(Buttons::resolve(['button_type' => 'inline'])['inline']);
+        $link = ['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com'];
+        $this->assertSame('primary', Button::resolve($link + ['style' => 'neon'])['variant']);
+        $this->assertFalse(Button::resolve($link + ['button_type' => 'inline'])['inline']);
 
         config(['core-web.buttons.inline' => true]);
-        $this->assertTrue(Buttons::resolve(['button_type' => 'inline'])['inline']);
+        $this->assertTrue(Button::resolve($link + ['button_type' => 'inline'])['inline']);
     }
 
     public function test_a_tracker_event_goes_to_the_sites_tracker_only_where_its_tags_render(): void
@@ -147,15 +155,15 @@ class ButtonsTest extends TestCase
         $seo = GlobalSet::make('seo');
         $seo->save();
         $seo->in('default')->data(['trackers_production' => true, 'tracker_type' => 'gtm'])->save();
-        $row = ['link_type' => 'url', 'url' => 'https://example.com', 'tracker_event' => "cta');alert(1)//"];
+        $row = ['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'tracker_event' => "cta');alert(1)//"];
 
-        $this->assertArrayNotHasKey('onclick', Buttons::resolve($row)['attrs']);
+        $this->assertArrayNotHasKey('onclick', Button::resolve($row)['attrs']);
 
         $this->app['env'] = 'production';
-        $this->assertSame("(window.dataLayer=window.dataLayer||[]).push({'event':'ctaalert1'})", Buttons::resolve($row)['attrs']['onclick']);
+        $this->assertSame("(window.dataLayer=window.dataLayer||[]).push({'event':'ctaalert1'})", Button::resolve($row)['attrs']['onclick']);
 
         $seo->in('default')->data(['trackers_production' => true, 'tracker_type' => 'gtag'])->save();
-        $this->assertSame("window.gtag&&gtag('event','ctaalert1')", Buttons::resolve($row)['attrs']['onclick']);
+        $this->assertSame("window.gtag&&gtag('event','ctaalert1')", Button::resolve($row)['attrs']['onclick']);
     }
 
     public function test_a_core_link_resolves_to_its_snapshot_documents_page(): void
@@ -163,9 +171,9 @@ class ButtonsTest extends TestCase
         $this->brands();
         config(['core-web.buttons.core_links' => ['brand' => ['display' => 'Brand', 'snapshot' => 'brands']]]);
 
-        $this->assertSame('/brands/volvo', Buttons::resolve(['link_type' => 'brand', 'brand' => 'v1'])['href']);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'brand', 'brand' => 'hidden'])['href']);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'brand', 'brand' => 'nope'])['href']);
+        $this->assertSame('/brands/volvo', $this->href(['link_type' => 'brand', 'brand' => 'v1']));
+        $this->assertSame('', $this->href(['link_type' => 'brand', 'brand' => 'hidden']));
+        $this->assertSame('', $this->href(['link_type' => 'brand', 'brand' => 'nope']));
     }
 
     public function test_a_core_link_resolves_through_a_sites_own_dictionary(): void
@@ -174,8 +182,8 @@ class ButtonsTest extends TestCase
         SiteCampaigns::register();
         config(['core-web.buttons.core_links' => ['campaign' => ['dictionary' => 'site_campaigns']]]);
 
-        $this->assertSame('/kampanjer/vinter', Buttons::resolve(['link_type' => 'campaign', 'campaign' => 'winter'])['href']);
-        $this->assertSame('', Buttons::resolve(['link_type' => 'campaign', 'campaign' => 'summer'])['href']);
+        $this->assertSame('/kampanjer/vinter', $this->href(['link_type' => 'campaign', 'campaign' => 'winter']));
+        $this->assertSame('', $this->href(['link_type' => 'campaign', 'campaign' => 'summer']));
     }
 
     public function test_the_snapshot_pages_dictionary_lists_the_documents_with_a_page_here(): void
@@ -187,26 +195,10 @@ class ButtonsTest extends TestCase
         $this->assertSame([], Dictionary::find(SnapshotPagesDictionary::HANDLE, ['snapshot' => 'unknown'])->options());
     }
 
-    public function test_the_component_renders_the_sites_button_for_each_row_that_links_somewhere(): void
+    /** @param array<string, mixed> $row */
+    private function href(array $row): string
     {
-        $html = Blade::render('<x-core-web::buttons :buttons="$buttons" align="center" />', ['buttons' => [
-            ['label' => 'Om oss', 'link_type' => 'entry', 'entry' => ['about'], 'icon_right' => 'arrow-right'],
-            ['label' => 'Gone', 'link_type' => 'entry', 'entry' => ['gone']],
-            ['link_type' => 'url', 'url' => 'https://example.com'],
-            ['label' => 'Ny flik', 'link_type' => 'url', 'url' => 'https://example.com', 'target_blank' => true, 'style' => 'secondary'],
-        ]]);
-
-        $this->assertStringContainsString('justify-content:center', $html);
-        $this->assertStringContainsString('<a href="/om-oss" data-variant="primary" data-inline="NULL" data-icon-right="arrow-right"', $html);
-        $this->assertStringContainsString('data-variant="secondary"', $html);
-        $this->assertStringContainsString('target="_blank" rel="noopener">Ny flik</a>', $html);
-        $this->assertStringNotContainsString('Gone', $html);
-        $this->assertSame(2, substr_count($html, '<a '));
-        $this->assertSame('', trim(Blade::render('<x-core-web::buttons :buttons="[]" />')));
-        $this->assertStringContainsString('<div class="flex gap-2">', Blade::render('<x-core-web::buttons :buttons="$buttons" class="flex gap-2" />', ['buttons' => [['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test']]]));
-
-        config(['core-web.buttons.inline' => true]);
-        $this->assertStringContainsString('data-inline="true"', Blade::render('<x-core-web::buttons :buttons="$buttons" />', ['buttons' => [['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test', 'button_type' => 'inline']]]));
+        return Button::resolve(['label' => 'A'] + $row)['href'] ?? '';
     }
 
     private function configure(): void
@@ -219,7 +211,6 @@ class ButtonsTest extends TestCase
             'entries_across_sites' => true,
             'icons' => false,
             'asset_container' => 'assets',
-            'component' => 'ui.button',
         ]]);
     }
 

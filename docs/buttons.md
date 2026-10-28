@@ -1,10 +1,10 @@
 # Buttons
 
 `features.buttons` is the agency's button: the `core-web::button` fieldset an
-editor fills in, `Inly\CoreWeb\Buttons\Buttons::resolve()` turning a row into
-what renders, and `<x-core-web::buttons>` drawing a `buttons` field's rows with
-the site's own button component. What a button looks like stays the site's:
-only its data and its links come from the package.
+editor fills in, and `Inly\CoreWeb\Buttons\Button::resolve()` turning one into
+what renders. What a button looks like, and how a row of them lays out, stays
+the site's: its own components draw them, and only the data and the links come
+from the package.
 
 ## The fieldsets
 
@@ -43,7 +43,6 @@ site changes its options there rather than in a copy of the fieldset:
         'campaign' => ['display' => 'Campaign', 'dictionary' => 'core_campaigns'],
     ],
     'entries_across_sites' => true,                     // pick another site's page
-    'component' => 'ui.button',
 ],
 ```
 
@@ -93,37 +92,35 @@ site) resolves to no link, and the button is not drawn.
 
 ## Rendering
 
-```blade
-<x-core-web::buttons :buttons="$set['buttons']" align="center" />
-<x-core-web::buttons :buttons="$set['buttons']" class="flex flex-wrap gap-3" />
-```
-
-Each row that links somewhere and has a label is drawn by the site's
-component (`buttons.component`, `ui.button` by default) as
+The site's own components draw the buttons. Its button component takes a row
+of the fieldset, resolves it, and renders nothing when the row would render
+nothing:
 
 ```blade
-<x-ui.button :href :variant :icon-left :icon-right :attrs>Label</x-ui.button>
-```
+{{-- resources/views/components/ui/button.blade.php --}}
+@props(['button' => null])
 
-with `:inline` too when `buttons.inline` is on. `attrs` holds the link's
-attributes (`target`, `rel`, `title`, `aria-label`, `download`, the tracker's
-`onclick`): the component merges them onto its `<a>`, so every caller gets
-them. Without a `class`, the row lays out with an inline flex style and
-`align` (`start`, `center`, `end`); with one, the class is the layout.
-
-A section's own button calls the resolver itself:
-
-```blade
-@php $button = \Inly\CoreWeb\Buttons\Buttons::resolve($set['cta']); @endphp
-@if ($button['href'] !== '' && $button['label'])
-    <x-ui.button :href="$button['href']" :variant="$button['style']" :attrs="$button['attrs']">{{ $button['label'] }}</x-ui.button>
+@if ($b = \Inly\CoreWeb\Buttons\Button::resolve($button))
+    <a href="{{ $b['href'] }}" {{ $attributes->merge($b['attrs'])->class(['btn', 'btn-'.$b['variant']]) }}>{{ $b['label'] }}</a>
 @endif
 ```
 
-`resolve()` returns `href` (empty when the link resolves to nothing), `label`,
-`style` (a configured one, the first otherwise), `inline`, `icon_left`,
-`icon_right`, `link_type` and `attrs`. A site whose views call
-`resolveButton()` keeps it as a one-line wrapper of `Buttons::resolve()`.
+A section then writes `<x-ui.button :button="$set['cta']" />` (a value from
+the view scope goes through `getValue()` first, since Blade escapes a bound
+`Value`), and the site's
+row component loops a `buttons` field through the same line, with the row's
+layout in its own markup.
+
+`resolve()` returns null for a row with no label, or whose link resolves to
+nothing (an entry since deleted or unpublished, a Core page no longer
+published). Otherwise it returns `href`, `label`, `variant` (the editor's
+style, a configured one, the first otherwise), `inline` (a text link, when
+`buttons.inline` is on), `icon_left`, `icon_right`, `link_type` and `attrs`.
+`attrs` holds the link's attributes (`target`, `rel`, `title`, `aria-label`,
+`download`, the tracker's `onclick`): merging them onto the `<a>` in the
+button component means every caller gets them. A site whose views call
+`resolveButton()` can keep it as a one-line wrapper of `Button::resolve()`,
+with its callers moved to the null return and the `variant` key.
 
 ## Tracker events
 

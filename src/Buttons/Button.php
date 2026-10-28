@@ -22,7 +22,7 @@ use Throwable;
  * and a row of it resolved to what a button renders: its address, label,
  * style and link attributes. The look stays the site's own component.
  */
-final class Buttons
+final class Button
 {
     /** The link types the fieldset knows, in the order the control panel offers them. */
     public const LINK_TYPES = ['entry' => 'Entry', 'url' => 'URL', 'email' => 'Email', 'tel' => 'Phone', 'sms' => 'SMS', 'asset' => 'Asset'];
@@ -193,13 +193,13 @@ final class Buttons
 
     /**
      * A row of the button fieldset (a grid row, a group, a set's values) as
-     * it renders. `href` is empty when the link resolves to nothing (an
-     * entry since deleted, a Core page no longer published): render no
-     * button then.
+     * it renders, or null when it renders nothing: no label, or a link that
+     * resolves to nothing (an entry since deleted, a Core page no longer
+     * published).
      *
-     * @return array{href: string, label: ?string, style: string, inline: bool, icon_left: ?string, icon_right: ?string, link_type: string, attrs: array<string, string>}
+     * @return array{href: string, label: string, variant: string, inline: bool, icon_left: ?string, icon_right: ?string, link_type: string, attrs: array<string, string>}|null
      */
-    public static function resolve(mixed $button): array
+    public static function resolve(mixed $button): ?array
     {
         $row = Values::unwrap($button);
         $styles = self::styles();
@@ -212,7 +212,7 @@ final class Buttons
         $resolved = [
             'href' => '',
             'label' => $text('label'),
-            'style' => $style !== null && isset($styles[$style]) ? $style : array_key_first($styles),
+            'variant' => $style !== null && isset($styles[$style]) ? $style : array_key_first($styles),
             'inline' => (bool) config('core-web.buttons.inline') && $text('button_type') === 'inline',
             'icon_left' => self::icon($text('icon_left')),
             'icon_right' => self::icon($text('icon_right')),
@@ -220,8 +220,8 @@ final class Buttons
             'attrs' => [],
         ];
 
-        if ($row === null || $row === []) {
-            return $resolved;
+        if ($row === null || $row === [] || $resolved['label'] === null) {
+            return null;
         }
 
         $href = match (true) {
@@ -236,6 +236,10 @@ final class Buttons
         };
         $resolved['href'] = self::safeHref($href);
 
+        if ($resolved['href'] === '') {
+            return null;
+        }
+
         $attrs = [];
 
         if ($read('target_blank')) {
@@ -243,7 +247,7 @@ final class Buttons
             $attrs['rel'] = 'noopener';
         }
 
-        if ($type === 'asset' && $resolved['href'] !== '') {
+        if ($type === 'asset') {
             $attrs['download'] = '';
         }
 

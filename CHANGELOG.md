@@ -9,11 +9,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 ## Unreleased
 
 - **`buttons` feature**: the `core-web::button` and `core-web::buttons`
-  fieldsets, `Buttons::resolve()` and `<x-core-web::buttons>`, in place of
-  the agency base's button fieldset and `resolveButton()`. Styles, link
+  fieldsets, and `Button::resolve()` (null when a button renders nothing),
+  in place of the agency base's button fieldset and `resolveButton()`. Styles, link
   types (sms included), an inline variant, icons, entries across sites and
   links to Core snapshot pages (`buttons.core_links`) are config; the site's
-  own component draws the button. See `docs/buttons.md`.
+  own `<x-ui.button>` and `<x-buttons>` draw them. See `docs/buttons.md`.
 - **`missing_alt_text` widget** (with `media`): images without alt text,
   counted by a queued scan, in place of Peak Tools' `images_missing_alt`.
   See `docs/media.md`.
