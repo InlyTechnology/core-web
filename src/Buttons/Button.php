@@ -14,7 +14,9 @@ use Statamic\Dictionaries\Item;
 use Statamic\Facades\Asset as AssetFacade;
 use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry as Entries;
+use Statamic\Facades\Icon as Icons;
 use Statamic\Facades\Site;
+use Statamic\Fields\Value;
 use Throwable;
 
 /**
@@ -30,6 +32,8 @@ final class Button
     /** Handles of the fieldset's own fields, which a Core link type may not take. */
     /** @var array{0: string, 1: array<string, array{display: string, snapshot: ?string, dictionary: ?string}>}|null the last config read, so a page of buttons warns once */
     private static ?array $coreLinks = null;
+
+    private const ICON_SET = 'core-web-buttons';
 
     private const RESERVED = ['label', 'show_controls', 'button_type', 'variant', 'style', 'link_type', 'entry', 'query_string', 'url', 'email', 'tel', 'sms', 'asset', 'icon_left', 'icon_right', 'target_blank', 'attr_title', 'attr_aria', 'tracker_event'];
 
@@ -112,33 +116,36 @@ final class Button
      */
     public static function fieldset(): array
     {
-        $controls = ['show_controls' => 'equals true'];
+        $advanced = ['show_controls' => 'equals true'];
         $inline = (bool) config('core-web.buttons.inline');
         $variants = self::variants();
         $types = self::linkTypes();
+        $styled = count($variants) > 1;
         $fields = [
-            self::field('label', ['type' => 'text', 'display' => 'Label', 'localizable' => true, 'width' => 66, 'antlers' => false]),
-            self::field('show_controls', ['type' => 'revealer', 'mode' => 'toggle', 'display' => 'Show controls', 'instructions' => 'Reveal the link, style, icon and advanced settings for this button.', 'width' => 34]),
+            self::field('label', ['type' => 'text', 'display' => 'Label', 'localizable' => true, 'width' => match (true) {
+                $inline && $styled => 50,
+                $inline || $styled => 66,
+                default => 100,
+            }, 'antlers' => false]),
         ];
 
         if ($inline) {
-            $fields[] = self::field('button_type', ['type' => 'button_group', 'display' => 'Type', 'instructions' => 'Inline renders a text link instead of a button.', 'options' => ['button' => 'Button', 'inline' => 'Inline'], 'default' => 'button', 'width' => 50, 'if' => $controls]);
+            $fields[] = self::field('button_type', ['type' => 'button_group', 'display' => 'Type', 'options' => ['button' => 'Button', 'inline' => 'Text link'], 'default' => 'button', 'width' => $styled ? 25 : 33]);
         }
 
-        if (count($variants) > 1) {
-            $fields[] = self::field('variant', ['type' => 'button_group', 'display' => 'Style', 'options' => $variants, 'default' => array_key_first($variants), 'width' => 50, 'if' => $inline ? $controls + ['button_type' => 'equals button'] : $controls]);
+        if ($styled) {
+            $fields[] = self::field('variant', array_filter(['type' => 'button_group', 'display' => 'Style', 'options' => $variants, 'default' => array_key_first($variants), 'width' => $inline ? 25 : 33, 'if' => $inline ? ['button_type' => 'equals button'] : null]));
         }
 
         $core = self::coreLinks();
         $fields[] = self::field('link_type', array_filter([
             'type' => 'button_group',
-            'display' => 'Link type',
+            'display' => 'Link to',
             'instructions' => $core === [] ? 'Entry for a page on this site. URL only for another website.' : 'Entry for a page in the CMS, '.implode(', ', array_column($core, 'display')).' for a page built from Core. URL only for another website.',
             'ai_instructions' => 'A page on this website is never a URL: `entry` with the page\'s Statamic id'.($core === [] ? '' : ', or '.implode(', ', array_map(fn (string $key) => "`{$key}`", array_keys($core))).' with the pick of a page built from Core').'. `url` only for another website.',
             'options' => $types,
             'default' => array_key_first($types),
             'localizable' => true,
-            'if' => $controls,
         ]));
 
         if (isset($types['entry'])) {
@@ -149,9 +156,10 @@ final class Button
                 'localizable' => true,
                 'select_across_sites' => (bool) config('core-web.buttons.entries_across_sites') ?: null,
                 'validate' => ['required_if:{this}.link_type,entry'],
-                'if' => $controls + ['link_type' => 'equals entry'],
+                'width' => 66,
+                'if' => ['link_type' => 'equals entry'],
             ]));
-            $fields[] = self::field('query_string', ['type' => 'text', 'display' => 'Query / anchor', 'instructions' => 'Optional suffix for the entry\'s address: a query string (filter=x) or an anchor (#contact).', 'localizable' => true, 'if' => $controls + ['link_type' => 'equals entry']]);
+            $fields[] = self::field('query_string', ['type' => 'text', 'display' => 'Suffix', 'placeholder' => '?filter=x or #contact', 'localizable' => true, 'width' => 33, 'if' => ['link_type' => 'equals entry']]);
         }
 
         foreach ($core as $key => $link) {
@@ -162,7 +170,7 @@ final class Button
                 'max_items' => 1,
                 'localizable' => true,
                 'validate' => ["required_if:{this}.link_type,{$key}"],
-                'if' => $controls + ['link_type' => "equals {$key}"],
+                'if' => ['link_type' => "equals {$key}"],
             ]);
         }
 
@@ -170,23 +178,29 @@ final class Button
 
         foreach ($inputs as $type => [$display, $input, $instructions]) {
             if (isset($types[$type])) {
-                $fields[] = self::field($type, array_filter(['type' => 'text', 'display' => $display, 'input_type' => $input, 'instructions' => $instructions, 'localizable' => true, 'validate' => $type === 'url' ? ['nullable', 'regex:~^(https?://|mailto:|tel:|/|#)~i'] : null, 'if' => $controls + ['link_type' => "equals {$type}"]]));
+                $fields[] = self::field($type, array_filter(['type' => 'text', 'display' => $display, 'input_type' => $input, 'instructions' => $instructions, 'localizable' => true, 'validate' => $type === 'url' ? ['nullable', 'regex:~^(https?://|mailto:|tel:|/|#)~i'] : null, 'if' => ['link_type' => "equals {$type}"]]));
             }
         }
 
         if (isset($types['asset'])) {
-            $fields[] = self::field('asset', ['type' => 'assets', 'display' => 'Asset', 'container' => (string) config('core-web.buttons.asset_container', 'assets'), 'max_files' => 1, 'localizable' => true, 'if' => $controls + ['link_type' => 'equals asset']]);
+            $fields[] = self::field('asset', ['type' => 'assets', 'display' => 'Asset', 'container' => (string) config('core-web.buttons.asset_container', 'assets'), 'max_files' => 1, 'localizable' => true, 'if' => ['link_type' => 'equals asset']]);
         }
+
+        $fields[] = self::field('show_controls', ['type' => 'revealer', 'mode' => 'button', 'display' => 'Advanced options', 'input_label' => 'Advanced options', 'hide_display' => true]);
 
         if (config('core-web.buttons.icons', true)) {
-            $fields[] = self::field('icon_left', ['type' => 'text', 'display' => 'Icon left', 'instructions' => 'Icon name from the site\'s icon set, e.g. `arrow-right`.', 'width' => 50, 'if' => $controls]);
-            $fields[] = self::field('icon_right', ['type' => 'text', 'display' => 'Icon right', 'instructions' => 'Icon name from the site\'s icon set, e.g. `arrow-right`.', 'width' => 50, 'if' => $controls]);
+            $set = self::iconSet();
+            $icon = $set === null
+                ? ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.']
+                : ['type' => 'icon', 'set' => $set, 'mode' => 'compact'];
+            $fields[] = self::field('icon_left', ['display' => 'Icon before'] + $icon + ['width' => 25, 'if' => $advanced]);
+            $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }
 
-        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => 33, 'if' => $controls]);
-        $fields[] = self::field('attr_title', ['type' => 'text', 'display' => 'Title', 'instructions' => 'Shown on hover.', 'width' => 33, 'if' => $controls]);
-        $fields[] = self::field('attr_aria', ['type' => 'text', 'display' => 'Screen reader label', 'instructions' => 'Only when the label alone does not say where the link goes.', 'width' => 33, 'if' => $controls]);
-        $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'instructions' => 'An event name sent to the site\'s tracker on click: letters, digits, _ and -.', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'if' => $controls]);
+        $fields[] = self::field('target_blank', ['type' => 'toggle', 'display' => 'Open in a new tab', 'width' => 25, 'if' => $advanced]);
+        $fields[] = self::field('tracker_event', ['type' => 'text', 'display' => 'Tracker event', 'placeholder' => 'booking_click', 'validate' => ['nullable', 'regex:/^[A-Za-z0-9_-]+$/'], 'ai_fillable' => false, 'width' => 25, 'if' => $advanced]);
+        $fields[] = self::field('attr_title', ['type' => 'text', 'display' => 'Title', 'instructions' => 'Shown on hover.', 'width' => 50, 'if' => $advanced]);
+        $fields[] = self::field('attr_aria', ['type' => 'text', 'display' => 'Screen reader label', 'instructions' => 'Only when the label does not say where it goes.', 'width' => 50, 'if' => $advanced]);
 
         return ['title' => 'Button', 'fields' => $fields];
     }
@@ -214,8 +228,8 @@ final class Button
             'label' => $text('label'),
             'variant' => $variant !== null && isset($variants[$variant]) ? $variant : array_key_first($variants),
             'inline' => (bool) config('core-web.buttons.inline') && $text('button_type') === 'inline',
-            'icon_left' => self::icon($text('icon_left')),
-            'icon_right' => self::icon($text('icon_right')),
+            'icon_left' => self::icon($row, 'icon_left'),
+            'icon_right' => self::icon($row, 'icon_right'),
             'link_type' => $type,
             'attrs' => [],
         ];
@@ -396,10 +410,40 @@ final class Button
         return $scheme === null && ! str_contains(strtok($href, '/?#') ?: '', ':') ? $href : '';
     }
 
-    /** `fa-arrow-right` and `arrow-right` name the same icon. */
-    private static function icon(?string $icon): ?string
+    /**
+     * The Statamic icon set the icon fields pick from: `buttons.icon_set`, a
+     * folder of SVGs registered here, or the name of a set the site
+     * registered itself. Null keeps them text fields.
+     */
+    public static function iconSet(): ?string
     {
-        return $icon === null ? null : (preg_replace('/^fa-/', '', $icon) ?: null);
+        $set = config('core-web.buttons.icon_set');
+
+        if (! is_string($set) || $set === '') {
+            return null;
+        }
+
+        if (! is_dir($set)) {
+            return Icons::sets()->has($set) ? $set : null;
+        }
+
+        if (! Icons::sets()->has(self::ICON_SET)) {
+            Icons::register(self::ICON_SET, $set);
+        }
+
+        return self::ICON_SET;
+    }
+
+    /**
+     * An icon field's name, never its augmented SVG; `fa-arrow-right` and
+     * `arrow-right` name the same icon.
+     */
+    private static function icon(mixed $row, string $key): ?string
+    {
+        $value = is_array($row) || $row instanceof \ArrayAccess ? ($row[$key] ?? null) : null;
+        $value = $value instanceof Value ? $value->raw() : Values::unwrap($value);
+
+        return is_string($value) && trim($value) !== '' ? (preg_replace('/^fa-/', '', trim($value)) ?: null) : null;
     }
 
     /**

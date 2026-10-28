@@ -1056,6 +1056,12 @@ return [
     |
     | icons: false drops the two icon fields.
     |
+    | icon_set: a folder of SVGs (resource_path('svg/icons'), or the
+    | svgs/light folder of a committed Font Awesome copy) or a Statamic icon
+    | set the site registered: the icon fields become Statamic's icon picker
+    | over it. Null keeps them text fields. Either way the stored value is
+    | the icon's name.
+    |
     | asset_container: the container an asset link picks from.
     |
     */
@@ -1067,6 +1073,7 @@ return [
         'core_links' => [],
         'entries_across_sites' => false,
         'icons' => true,
+        'icon_set' => null,
         'asset_container' => 'assets',
     ],
 ];

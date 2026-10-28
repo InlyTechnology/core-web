@@ -13,8 +13,11 @@ use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Icon;
 use Statamic\Facades\Site;
 use Statamic\Facades\YAML;
+use Statamic\Fields\Field;
+use Statamic\Fields\Value;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class ButtonTest extends TestCase
@@ -44,7 +47,7 @@ class ButtonTest extends TestCase
         $this->configure();
         $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
 
-        $this->assertSame(['button' => 'Button', 'inline' => 'Inline'], $fields['button_type']['options']);
+        $this->assertSame(['button' => 'Button', 'inline' => 'Text link'], $fields['button_type']['options']);
         $this->assertSame(['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'], $fields['variant']['options']);
         $this->assertSame('equals button', $fields['variant']['if']['button_type']);
         $this->assertSame(['entry' => 'Entry', 'brand' => 'Brand', 'campaign' => 'Campaign', 'url' => 'URL', 'sms' => 'SMS'], $fields['link_type']['options']);
@@ -55,6 +58,25 @@ class ButtonTest extends TestCase
         $this->assertFalse($fields->has('label_link'));
         $this->assertFalse($fields->has('email'));
         $this->assertFalse($fields->has('icon_left'));
+    }
+
+    public function test_icons_pick_from_the_sites_icon_set(): void
+    {
+        $icons = __DIR__.'/../fixtures/icons';
+        config(['core-web.buttons.icon_set' => $icons]);
+        $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
+
+        $this->assertSame('icon', $fields['icon_left']['type']);
+        $this->assertSame('core-web-buttons', $fields['icon_left']['set']);
+        $this->assertTrue(Icon::sets()->has('core-web-buttons'));
+
+        $value = new Value('arrow-right', 'icon_right', (new Field('icon_right', $fields['icon_right']))->fieldtype());
+        $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => $value]);
+
+        $this->assertSame('arrow-right', $button['icon_right']);
+
+        config(['core-web.buttons.icon_set' => 'not-a-set']);
+        $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);
     }
 
     public function test_a_core_link_that_would_take_a_fields_handle_is_left_out(): void

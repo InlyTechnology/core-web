@@ -9,14 +9,6 @@ fields:
       width: 66
       antlers: false
   -
-    handle: show_controls
-    field:
-      type: revealer
-      mode: toggle
-      display: 'Show controls'
-      instructions: 'Reveal the link, style, icon and advanced settings for this button.'
-      width: 34
-  -
     handle: variant
     field:
       type: button_group
@@ -25,14 +17,12 @@ fields:
         primary: Primary
         secondary: Secondary
       default: primary
-      width: 50
-      if:
-        show_controls: 'equals true'
+      width: 33
   -
     handle: link_type
     field:
       type: button_group
-      display: 'Link type'
+      display: 'Link to'
       instructions: 'Entry for a page on this site. URL only for another website.'
       ai_instructions: "A page on this website is never a URL: `entry` with the page's Statamic id. `url` only for another website."
       options:
@@ -43,8 +33,6 @@ fields:
         asset: Asset
       default: entry
       localizable: true
-      if:
-        show_controls: 'equals true'
   -
     handle: entry
     field:
@@ -54,18 +42,18 @@ fields:
       localizable: true
       validate:
         - 'required_if:{this}.link_type,entry'
+      width: 66
       if:
-        show_controls: 'equals true'
         link_type: 'equals entry'
   -
     handle: query_string
     field:
       type: text
-      display: 'Query / anchor'
-      instructions: "Optional suffix for the entry's address: a query string (filter=x) or an anchor (#contact)."
+      display: Suffix
+      placeholder: '?filter=x or #contact'
       localizable: true
+      width: 33
       if:
-        show_controls: 'equals true'
         link_type: 'equals entry'
   -
     handle: url
@@ -79,7 +67,6 @@ fields:
         - nullable
         - 'regex:~^(https?://|mailto:|tel:|/|#)~i'
       if:
-        show_controls: 'equals true'
         link_type: 'equals url'
   -
     handle: email
@@ -89,7 +76,6 @@ fields:
       input_type: email
       localizable: true
       if:
-        show_controls: 'equals true'
         link_type: 'equals email'
   -
     handle: tel
@@ -99,7 +85,6 @@ fields:
       input_type: tel
       localizable: true
       if:
-        show_controls: 'equals true'
         link_type: 'equals tel'
   -
     handle: asset
@@ -110,24 +95,31 @@ fields:
       max_files: 1
       localizable: true
       if:
-        show_controls: 'equals true'
         link_type: 'equals asset'
+  -
+    handle: show_controls
+    field:
+      type: revealer
+      mode: button
+      display: 'Advanced options'
+      input_label: 'Advanced options'
+      hide_display: true
   -
     handle: icon_left
     field:
+      display: 'Icon before'
       type: text
-      display: 'Icon left'
-      instructions: "Icon name from the site's icon set, e.g. `arrow-right`."
-      width: 50
+      instructions: "An icon name from the site's icon set, e.g. `arrow-right`."
+      width: 25
       if:
         show_controls: 'equals true'
   -
     handle: icon_right
     field:
+      display: 'Icon after'
       type: text
-      display: 'Icon right'
-      instructions: "Icon name from the site's icon set, e.g. `arrow-right`."
-      width: 50
+      instructions: "An icon name from the site's icon set, e.g. `arrow-right`."
+      width: 25
       if:
         show_controls: 'equals true'
   -
@@ -135,7 +127,20 @@ fields:
     field:
       type: toggle
       display: 'Open in a new tab'
-      width: 33
+      width: 25
+      if:
+        show_controls: 'equals true'
+  -
+    handle: tracker_event
+    field:
+      type: text
+      display: 'Tracker event'
+      placeholder: booking_click
+      validate:
+        - nullable
+        - 'regex:/^[A-Za-z0-9_-]+$/'
+      ai_fillable: false
+      width: 25
       if:
         show_controls: 'equals true'
   -
@@ -144,7 +149,7 @@ fields:
       type: text
       display: Title
       instructions: 'Shown on hover.'
-      width: 33
+      width: 50
       if:
         show_controls: 'equals true'
   -
@@ -152,19 +157,7 @@ fields:
     field:
       type: text
       display: 'Screen reader label'
-      instructions: 'Only when the label alone does not say where the link goes.'
-      width: 33
-      if:
-        show_controls: 'equals true'
-  -
-    handle: tracker_event
-    field:
-      type: text
-      display: 'Tracker event'
-      instructions: "An event name sent to the site's tracker on click: letters, digits, _ and -."
-      validate:
-        - nullable
-        - 'regex:/^[A-Za-z0-9_-]+$/'
-      ai_fillable: false
+      instructions: 'Only when the label does not say where it goes.'
+      width: 50
       if:
         show_controls: 'equals true'
