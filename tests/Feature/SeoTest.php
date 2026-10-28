@@ -255,10 +255,10 @@ class SeoTest extends TestCase
             ['url_old' => '/old-product', 'internal_url' => ['about'], 'response' => '302'],
         ]])->save();
 
-        $this->get('http://default.test/old-about?ref=mail')->assertStatus(301)->assertRedirect('http://default.test/about?ref=mail');
+        $this->get('http://default.test/old-about?ref=mail')->assertStatus(301)->assertRedirect('http://default.test/about?ref=mail')->assertHeader('Cache-Control', 'max-age=86400, public');
 
         Route::get('/old-product', fn () => throw new NotFoundHttpException);
-        $this->get('http://default.test/old-product')->assertStatus(302)->assertRedirect('http://default.test/about');
+        $this->assertStringContainsString('no-cache', $this->get('http://default.test/old-product')->assertStatus(302)->assertRedirect('http://default.test/about')->headers->get('Cache-Control'));
 
         $this->post('http://default.test/old-about')->assertNotFound();
     }

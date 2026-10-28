@@ -963,6 +963,9 @@ return [
     | site out of AI answers; AI training crawlers are always blocked. The
     | global's Robots field is added on top. `view` renders it.
     |
+    | redirects_max_age: seconds a browser keeps an editor's 301 (a day), so a
+    | corrected target reaches visitors; search engines read the status.
+    |
     | sitemap: /sitemap.xml at each site's address and the /sitemaps.xml
     | index, cached until an entry, term, tree or the global is saved.
     |
@@ -975,6 +978,7 @@ return [
     'seo' => [
         'global' => 'seo',
         'redirects_global' => 'redirects',
+        'redirects_max_age' => 86400,
         'social' => [
             'collections' => [],
             'hero' => [
