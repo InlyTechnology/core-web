@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftPerson;
 use Inly\CoreWeb\Drafts\DraftRefused;
+use Inly\CoreWeb\Proposals\Targets\DataTarget;
 use Inly\CoreWeb\Support\Fingerprint;
 use InvalidArgumentException;
 use Statamic\Contracts\Auth\User as UserContract;
@@ -226,6 +227,10 @@ class Proposals
      */
     public function changes(ProposalTarget $target, array $from, array $to): array
     {
+        if ($target instanceof DataTarget) {
+            return $target->changes($from, $to);
+        }
+
         $a = $target->outline($from);
         $b = $target->outline($to);
 
