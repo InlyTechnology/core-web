@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.33.0
 
 - **Registration numbers in `CoreForm`**: a `license_plate` field renders as
   a capitals text input, is checked as Core checks a plate's shape and goes
