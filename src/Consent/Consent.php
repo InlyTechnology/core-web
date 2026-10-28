@@ -2,9 +2,11 @@
 
 namespace Inly\CoreWeb\Consent;
 
+use Statamic\Facades\Asset;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Globals\Variables;
 
 /** What the banner, the declaration and the script in the page's head share. */
 class Consent
@@ -25,6 +27,10 @@ class Consent
             'categories' => array_values(array_diff(array_keys(ConsentVendors::byCategory()), ['necessary'])),
             'cookies' => ConsentVendors::cookieNames(),
             'consentMode' => (bool) self::setting('google.consent_mode', true),
+            'signals' => ConsentVendors::signals(),
+            'scope' => ConsentSnapshot::scope(),
+            'fingerprint' => self::logs() ? ConsentSnapshot::fingerprint(ConsentSnapshot::content()) : null,
+            'lang' => app()->getLocale(),
             'site' => Site::current()->handle(),
             'log' => self::logs() ? route('core-web.consent.store', [], false) : null,
         ];
@@ -94,15 +100,76 @@ class Consent
         $site = Site::current()->handle();
         $variables = is_string($handle) && $handle !== '' ? GlobalSet::find($handle)?->in($site) : null;
         $text = fn (string $key): ?string => is_string($value = $variables?->value($key)) && trim($value) !== '' ? trim($value) : null;
-        $page = $variables?->value('consent_policy_page');
-        $id = is_array($page) ? ($page[0] ?? null) : $page;
-        $entry = is_string($id) && $id !== '' ? Entry::find($id) : null;
-        $entry = $entry?->in($site);
 
         return [
             'title' => $text('consent_title'),
             'text' => $text('consent_text'),
-            'policy_url' => $entry?->status() === 'published' ? $entry->url() : null,
+            'policy_url' => $variables === null ? null : (self::policyLink($variables, $site) ?? self::policyPage($variables, $site)),
+        ];
+    }
+
+    /** The `consent_policy_link` field (a page, an asset or an address) as a URL, or null. */
+    private static function policyLink(Variables $variables, string $site): ?string
+    {
+        $raw = $variables->value('consent_policy_link');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        if (str_starts_with($raw, 'entry::')) {
+            $entry = Entry::find(substr($raw, 7))?->in($site);
+
+            return $entry?->status() === 'published' ? $entry->url() : null;
+        }
+
+        if (str_starts_with($raw, 'asset::')) {
+            return Asset::find(substr($raw, 7))?->url();
+        }
+
+        // An address an editor typed: only one a browser opens as a page.
+        return preg_match('~^(https?://|/(?!/))~i', trim($raw)) ? trim($raw) : null;
+    }
+
+    /** The cookie page of a global that still holds a `consent_policy_page` entries field. */
+    private static function policyPage(Variables $variables, string $site): ?string
+    {
+        $page = $variables->value('consent_policy_page');
+        $id = is_array($page) ? ($page[0] ?? null) : $page;
+        $entry = is_string($id) && $id !== '' ? Entry::find($id)?->in($site) : null;
+
+        return $entry?->status() === 'published' ? $entry->url() : null;
+    }
+
+    /**
+     * Every text the banner and its settings show, in the current locale: the banner renders these, and a consent
+     * snapshot stores them, so the proof is what the visitor read.
+     *
+     * @return array<string, mixed>
+     */
+    public static function texts(?string $policyUrl = null): array
+    {
+        $editorial = self::editorial();
+
+        return [
+            'title' => $editorial['title'] ?? (string) __('We use cookies'),
+            'text' => $editorial['text'] ?? (string) __('We use cookies to make the site work, and with your consent to understand how it is used and to show relevant marketing. You choose which, and can change your mind at any time.'),
+            'policy_url' => $policyUrl ?? $editorial['policy_url'] ?? self::setting('policy_url'),
+            'read_more' => (string) __('Read more about cookies'),
+            'settings_title' => (string) __('Cookie settings'),
+            'settings_text' => (string) __('Choose which cookies we may use. Necessary cookies are always on.'),
+            'buttons' => [
+                'settings' => (string) __('Settings'),
+                'reject_all' => (string) __('Reject all'),
+                'accept_all' => (string) __('Accept all'),
+                'save' => (string) __('Save choices'),
+            ],
+            'categories' => [
+                'necessary' => ['title' => (string) __('Necessary'), 'text' => (string) __('Needed for the site to work, such as remembering this choice. Always on.')],
+                'preferences' => ['title' => (string) __('Preferences'), 'text' => (string) __('Remember your settings, such as language.')],
+                'statistics' => ['title' => (string) __('Statistics'), 'text' => (string) __('Help us understand how the site is used, so we can improve it.')],
+                'marketing' => ['title' => (string) __('Marketing'), 'text' => (string) __('Used to show relevant ads and measure our campaigns, here and on other sites.')],
+            ],
         ];
     }
 

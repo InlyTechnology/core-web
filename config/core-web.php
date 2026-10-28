@@ -77,6 +77,22 @@ return [
     | until their category is granted, Google Consent Mode v2, the consent
     | log route and `consent:prune` with its schedule.
     |
+    | seo: the site's SEO (`seo`): the <x-core-web::seo.head> tags (title,
+    | description, robots, canonical, hreflang, Open Graph and its social
+    | card, JSON-LD, site verification, the Google tags), /robots.txt, the
+    | sitemaps, the redirects tried before a 404 and the not-found page an
+    | editor composes. Read from the `seo` and `redirects` globals, whose
+    | blueprints import the core-web::seo_* fieldsets.
+    |
+    | favicons: the <x-core-web::favicons.head> links, /site.webmanifest and
+    | /favicon.ico, every size cut by the CDN (or Glide) from the one PNG on
+    | the `favicons` global, whose blueprint imports core-web::favicons.
+    |
+    | buttons: the core-web::button and core-web::buttons fieldsets as the
+    | `buttons` group below configures them, links to Core's pages among
+    | them, and Inly\CoreWeb\Buttons\Button::resolve() turning one into what
+    | the site's own button component draws.
+    |
     */
 
     'features' => [
@@ -93,6 +109,9 @@ return [
         'media' => false,
         'cloud' => false,
         'consent' => false,
+        'seo' => false,
+        'favicons' => false,
+        'buttons' => false,
     ],
 
     /*
@@ -840,8 +859,9 @@ return [
     | the catalogue's entry. The site's session and CSRF cookies and the
     | consent cookie itself are always declared as necessary.
     |
-    | policy_version: raise it when the site adds a vendor or changes what it
-    | asks for, and every visitor is asked again.
+    | policy_version: raise it to ask every visitor again. Adding or removing
+    | a vendor, a category or a cookie asks again by itself; rewording a text
+    | does not.
     |
     | renew_after_days: a choice older than this is asked for again.
     |
@@ -857,9 +877,13 @@ return [
     | advanced loads them at once and lets them send cookieless pings.
     |
     | log: proof of consent, one row per choice in the site's own database,
-    | with a random consent id and no IP address or user. Publish the
-    | migration (--tag=core-web-consent-migration). Rows older than
-    | `retention_days` are deleted by `consent:prune` on `prune_schedule`.
+    | with a random consent id and no IP address or user. Each row names the
+    | fingerprint of the banner the visitor chose on, and `snapshot_table`
+    | keeps each banner once (its texts, categories, vendors and cookies), so
+    | `consent:show` and the CP's Consent log utility show what the visitor
+    | read. Publish the migrations (--tag=core-web-consent-migration). Rows
+    | older than `retention_days` are deleted by `consent:prune` on
+    | `prune_schedule`, and with them the banners no row names.
     |
     | sites: per-site overrides on a multisite install, keyed by site handle,
     | holding any key above but `log` and `cookie`: ['trucks' => ['vendors'
@@ -894,7 +918,8 @@ return [
             'enabled' => true,
             'connection' => null,
             'table' => 'core_web_consents',
-            'retention_days' => 1825,
+            'snapshot_table' => 'core_web_consent_snapshots',
+            'retention_days' => 1095,
             'prune_schedule' => '17 3 * * *',
             'rate_limit' => 30,
         ],
@@ -908,5 +933,162 @@ return [
             'show_mark' => true,
         ],
         'button' => 'bottom-left',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | SEO
+    |--------------------------------------------------------------------------
+    |
+    | What a site's pages tell search engines, social networks and crawlers.
+    | Editors set it on two globals, per site; this block holds what a
+    | developer decides, the same in every environment.
+    |
+    | global / redirects_global: the handles of the global sets whose
+    | blueprints import the core-web::seo_* fieldsets and
+    | core-web::seo_redirects. The field handles are Peak SEO's, so a site
+    | moving off it keeps its content.
+    |
+    | social: the card a page shares as (og:image and the description), when
+    | the entry's own SEO fields are empty. `collections` names, per
+    | collection handle, the fields an image and a summary come from and its
+    | og:type: ['articles' => ['image' => 'image', 'description' =>
+    | 'excerpt', 'type' => 'article']]. Without an image the card takes the
+    | first page-builder block's when it is `hero.set` (`hero.image_field`
+    | on it, `hero.field` the replicator), then the global's og_image.
+    | `image` is the size the CDN crops a card to.
+    |
+    | robots: /robots.txt. `ai_search` false also blocks the AI search and
+    | assistant agents (ChatGPT search, Perplexity, Claude), which take a
+    | site out of AI answers; AI training crawlers are always blocked. The
+    | global's Robots field is added on top. `view` renders it.
+    |
+    | redirects_max_age: seconds a browser keeps an editor's 301 (a day), so a
+    | corrected target reaches visitors; search engines read the status.
+    |
+    | sitemap: /sitemap.xml at each site's address and the /sitemaps.xml
+    | index, cached until an entry, term, tree or the global is saved.
+    |
+    | not_found: the page-not-found entry an editor picks on a global
+    | (`global`, field `field`), its fields handed to `views` (the site's
+    | errors/404 and its layout). Null `global` renders the views on their own.
+    |
+    */
+
+    'seo' => [
+        'global' => 'seo',
+        'redirects_global' => 'redirects',
+        'redirects_max_age' => 86400,
+        'social' => [
+            'collections' => [],
+            'hero' => [
+                'field' => 'page_builder',
+                'set' => 'hero',
+                'image_field' => 'image',
+            ],
+            'image' => [
+                'width' => 1200,
+                'height' => 630,
+                'format' => 'jpeg',
+            ],
+            'description_limit' => 157,
+        ],
+        'robots' => [
+            'enabled' => true,
+            'ai_search' => true,
+            'view' => 'core-web::seo.robots',
+        ],
+        'sitemap' => [
+            'enabled' => true,
+            'cache_minutes' => 60,
+        ],
+        'not_found' => [
+            'global' => 'configuration',
+            'field' => 'error_404_entry',
+            'views' => ['errors/404', 'layout'],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Icons
+    |--------------------------------------------------------------------------
+    |
+    | reference: an icon is a name typed in (`car`), drawn by the site's icon
+    | library or font; this page (the Font Awesome search, say) is linked
+    | beside every icon name field to look one up.
+    |
+    */
+
+    'icons' => [
+        'reference' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Favicons
+    |--------------------------------------------------------------------------
+    |
+    | global: the global whose blueprint imports core-web::favicons.
+    |
+    | cp_mark: the control panel's tab icon, the site's PNG with a dot in
+    | `color`, written to `container` as cp-favicon.png whenever the global
+    | is saved. Statamic shows it on Pro only; a site's own
+    | statamic.cp.custom_favicon_url wins. `enabled` false leaves Statamic's.
+    |
+    */
+
+    'favicons' => [
+        'global' => 'favicons',
+        'cp_mark' => [
+            'enabled' => true,
+            'color' => '#ff269e',
+            'container' => 'favicons',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Buttons
+    |--------------------------------------------------------------------------
+    |
+    | What the core-web::button fieldset offers editors. The site renders a
+    | button, and a row of them, with its own components, each button
+    | resolved by Inly\CoreWeb\Buttons\Button::resolve().
+    |
+    | variants: key => label, the variants the site's button component
+    | draws. One variant hides the field.
+    |
+    | inline: offer "Inline" beside "Button", a text link the site's
+    | component draws when it gets `inline`.
+    |
+    | link_types: which of entry, url, email, tel, sms and asset are offered.
+    |
+    | core_links: link types to pages the site builds from Core, each a field
+    | handle naming a snapshot that declares pages, or a Dictionary of the
+    | site's own whose items carry the page's `url`:
+    | 'brand' => ['display' => 'Brand', 'snapshot' => 'brands'].
+    |
+    | entries_across_sites: let an entry link pick another site's page; it
+    | keeps that site's host when it has one of its own. Otherwise a link
+    | names the page's localization on the current site.
+    |
+    | icons: true adds an icon before and after the label, under Advanced
+    | options.
+    |
+    | The icon fields link `icons.reference` for looking a name up.
+    |
+    | asset_container: the container an asset link picks from.
+    |
+    */
+
+    'buttons' => [
+        'variants' => ['primary' => 'Primary', 'secondary' => 'Secondary'],
+        'inline' => false,
+        'link_types' => ['entry', 'url', 'email', 'tel', 'asset'],
+        'core_links' => [],
+        'entries_across_sites' => false,
+        'icons' => false,
+        'asset_container' => 'assets',
     ],
 ];

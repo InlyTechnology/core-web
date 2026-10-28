@@ -4,10 +4,10 @@
  | head; this shows the banner until the visitor chooses, keeps the choice in a
  | first-party cookie, runs the scripts and embeds each category held back
  | (<script type="text/plain" data-consent="statistics">, <x-core-web::consent.gate>),
- | updates Consent Mode, and logs the choice as proof of consent. A category
- | taken back deletes its cookies and reloads the page, since a script that ran
- | cannot be stopped. Once chosen, a corner button reopens the settings.
- | window.CoreConsent opens the settings and answers has().
+ | updates Consent Mode and the vendors' own consent APIs, and logs the choice
+ | as proof of consent. A category taken back deletes its cookies and reloads
+ | the page, since a script that ran cannot be stopped. Once chosen, a corner
+ | button reopens the settings. window.CoreConsent opens the settings and answers has().
  */
 const settings = () => window.coreConsent || {}
 
@@ -26,20 +26,30 @@ const setCookie = (value) => {
     } catch {}
 }
 
-const readChoice = () => {
-    const { cookie, version, renewAfterDays } = settings()
-    const match = cookies().match(new RegExp(`(?:^|; )${cookie}=([^;]*)`))
+// The cookie as stored, valid or not, so a visitor asked again keeps their consent id and their earlier categories.
+const readStored = () => {
+    const match = cookies().match(new RegExp(`(?:^|; )${settings().cookie}=([^;]*)`))
     if (!match) return null
 
     try {
         const choice = JSON.parse(decodeURIComponent(match[1]))
-        if (choice.v !== version || !Array.isArray(choice.c)) return null
-        if (Date.now() - choice.t * 1000 > renewAfterDays * 864e5) return null
 
-        return choice
+        return choice && typeof choice === 'object' && Array.isArray(choice.c) ? choice : null
     } catch {
         return null
     }
+}
+
+const readChoice = () => {
+    const { version, scope, site, renewAfterDays } = settings()
+    const choice = readStored()
+    if (!choice || choice.v !== version) return null
+    // The scope is kept per site, since sites on one domain share the cookie. A choice made before the scope existed
+    // has none and stands until it is renewed or the version is raised.
+    if (choice.s !== undefined && (typeof choice.s !== 'object' || choice.s?.[site] !== scope)) return null
+    if (Date.now() - choice.t * 1000 > renewAfterDays * 864e5) return null
+
+    return choice
 }
 
 const uuid = () =>
@@ -127,6 +137,20 @@ const updateConsentMode = (choice) => {
     })
 }
 
+// The vendors with a consent API of their own (`signal` in the catalogue) hear the choice as Consent Mode does.
+const updateSignals = (choice) => {
+    const signals = settings().signals || []
+    const state = (category) => (choice.c.includes(category) ? 'granted' : 'denied')
+
+    if (signals.includes('uet')) {
+        window.uetq = window.uetq || []
+        window.uetq.push('consent', 'update', { ad_storage: state('marketing') })
+    }
+    if (signals.includes('clarity') && typeof window.clarity === 'function') {
+        window.clarity('consentv2', { ad_Storage: state('marketing'), analytics_Storage: state('statistics') })
+    }
+}
+
 const log = (choice, action) => {
     const url = settings().log
     if (!url) return
@@ -136,7 +160,7 @@ const log = (choice, action) => {
         keepalive: true,
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v }),
+        body: JSON.stringify({ id: choice.id, site: settings().site, action, categories: choice.c, version: choice.v, fingerprint: settings().fingerprint, lang: settings().lang }),
     }).catch(() => {})
 }
 
@@ -172,19 +196,22 @@ const listeners = []
 const OPTIONAL = ['preferences', 'statistics', 'marketing']
 
 const choose = (categories, action) => {
-    const optional = OPTIONAL
+    const stored = readStored()
+    const scopes = stored?.s && typeof stored.s === 'object' ? stored.s : {}
     const next = {
-        id: current?.id ?? uuid(),
+        id: current?.id ?? (/^[0-9a-f-]{36}$/i.test(stored?.id ?? '') ? stored.id : uuid()),
         v: settings().version,
-        c: optional.filter((category) => categories.includes(category)),
+        s: { ...scopes, [settings().site]: settings().scope },
+        c: OPTIONAL.filter((category) => categories.includes(category)),
         t: Math.floor(Date.now() / 1000),
     }
-    const withdrawn = (current?.c ?? []).filter((category) => !next.c.includes(category))
+    const withdrawn = (current?.c ?? stored?.c ?? []).filter((category) => !next.c.includes(category))
 
     writeChoice(next)
     current = next
     log(next, action)
     updateConsentMode(next)
+    updateSignals(next)
     hideBanner()
     closeDialog()
     showStatus(next)

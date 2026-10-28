@@ -361,6 +361,10 @@
     margin-top: 16px;
 }
 
+.core-consent__policy {
+    margin: 24px 0 0;
+}
+
 .core-consent__about[hidden] {
     display: none;
 }

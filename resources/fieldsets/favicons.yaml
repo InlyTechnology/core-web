@@ -1,0 +1,61 @@
+title: 'Favicons'
+fields:
+  -
+    handle: favicon
+    field:
+      type: assets
+      container: favicons
+      max_files: 1
+      mode: grid
+      display: 'Icon'
+      instructions: 'A square PNG, at least 512 × 512 px. Every size (the browser tab, home screens) is cut from it.'
+      validate:
+        - image
+        - mimes:png
+      localizable: false
+  -
+    handle: favicon_dark
+    field:
+      type: assets
+      container: favicons
+      max_files: 1
+      mode: grid
+      display: 'Icon in dark mode'
+      instructions: 'Optional. A square PNG shown in the tab when the browser is in dark mode. Safari, home screens and the app manifest keep the icon above.'
+      validate:
+        - image
+        - mimes:png
+      localizable: false
+  -
+    handle: favicon_svg
+    field:
+      type: assets
+      container: favicons
+      max_files: 1
+      mode: grid
+      display: 'Tab icon (SVG)'
+      instructions: 'Optional. Browsers that support SVG show this in the tab instead of the PNG.'
+      width: 50
+      validate:
+        - mimes:svg
+      localizable: false
+  -
+    handle: favicon_svg_dark
+    field:
+      type: assets
+      container: favicons
+      max_files: 1
+      mode: grid
+      display: 'Tab icon in dark mode (SVG)'
+      instructions: 'Optional. Shown instead of the SVG above when the browser is in dark mode.'
+      width: 50
+      validate:
+        - mimes:svg
+      localizable: false
+  -
+    handle: theme_color
+    field:
+      type: color
+      display: 'Theme colour'
+      instructions: 'Optional. Tints the browser bar on phones.'
+      localizable: false

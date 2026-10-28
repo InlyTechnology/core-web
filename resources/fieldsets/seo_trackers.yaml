@@ -1,0 +1,73 @@
+title: 'SEO: Trackers'
+fields:
+  -
+    handle: trackers_local
+    field:
+      type: toggle
+      display: 'Locally'
+      width: 33
+  -
+    handle: trackers_staging
+    field:
+      type: toggle
+      display: 'On staging'
+      width: 33
+  -
+    handle: trackers_production
+    field:
+      type: toggle
+      display: 'In production'
+      default: true
+      width: 33
+  -
+    handle: tracker_type
+    field:
+      type: button_group
+      display: Tracker
+      instructions: 'Held back until the visitor accepts statistics cookies when cookie consent is on.'
+      options:
+        none: None
+        gtag: 'Google Analytics'
+        gtm: 'Google Tag Manager'
+      default: none
+  -
+    handle: google_analytics
+    field:
+      type: text
+      display: 'Measurement ID'
+      placeholder: G-XXXXXXXXXX
+      width: 50
+      if:
+        tracker_type: 'equals gtag'
+  -
+    handle: anonymize_ip
+    field:
+      type: toggle
+      display: 'Anonymize IP'
+      default: true
+      width: 50
+      if:
+        tracker_type: 'equals gtag'
+  -
+    handle: google_tag_manager
+    field:
+      type: text
+      display: 'Container ID'
+      placeholder: GTM-XXXXXXX
+      width: 50
+      if:
+        tracker_type: 'equals gtm'
+  -
+    handle: use_google_site_verification
+    field:
+      type: toggle
+      display: 'Google site verification'
+      width: 50
+  -
+    handle: google_site_verification
+    field:
+      type: text
+      display: 'Verification code'
+      width: 50
+      if:
+        use_google_site_verification: 'equals true'

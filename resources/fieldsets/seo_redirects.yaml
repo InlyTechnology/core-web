@@ -1,0 +1,42 @@
+title: 'SEO: Redirects'
+fields:
+  -
+    handle: redirects
+    field:
+      type: grid
+      mode: table
+      display: Redirects
+      instructions: 'Tried only when an address has no page. Write a pattern between #s to match many: #^/blog/.*#'
+      add_row: 'Add redirect'
+      localizable: true
+      fields:
+        -
+          handle: url_old
+          field:
+            type: text
+            display: 'Old address'
+            placeholder: /old-url
+            validate:
+              - required
+              - 'regex:/^[\/#]/'
+        -
+          handle: internal_url
+          field:
+            type: entries
+            max_items: 1
+            mode: default
+            display: 'New page'
+        -
+          handle: external_url
+          field:
+            type: text
+            display: 'Or external address'
+        -
+          handle: response
+          field:
+            type: select
+            display: Type
+            options:
+              301: 'Permanent (301)'
+              302: 'Temporary (302)'
+            default: '301'

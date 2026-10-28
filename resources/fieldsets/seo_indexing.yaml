@@ -1,0 +1,16 @@
+title: 'SEO: Indexing'
+fields:
+  -
+    handle: noindex_production
+    field:
+      type: toggle
+      display: 'Noindex in production'
+      instructions: 'Keeps this site out of search, before launch say. Every other environment is always noindexed.'
+      localizable: true
+  -
+    handle: breadcrumbs
+    field:
+      type: toggle
+      display: 'Breadcrumbs for search'
+      instructions: 'Adds the breadcrumb trail as structured data (BreadcrumbList).'
+      localizable: true

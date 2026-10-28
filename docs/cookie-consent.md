@@ -4,13 +4,15 @@ A light consent tool in place of Cookiebot, for a site that needs no
 certified CMP (IAB TCF, as Google requires of sites that show its ads). It
 asks before any optional cookie is set, offers *Reject all* beside *Accept
 all* in the same style, lets the visitor change their mind from any page,
-re-asks after `renew_after_days` or when `policy_version` rises, and logs
-each choice. It wears Inly Core's look unless the site overrides it.
+re-asks after `renew_after_days`, when `policy_version` rises or when the
+site's vendors, categories or cookies change (each site on a shared domain
+keeps its own), and logs each choice with the banner
+it was made on. It wears Inly Core's look unless the site overrides it.
 
 What stays in the site: which vendors it loads, its cookie page and its
 texts (the strings are `__()` keys, so the site's `lang/*.json` rewords
 them, and editors can set the banner's own in the CP, below). It has no scanner: a vendor added to the site is added to
-`consent.vendors` in the same change, and `policy_version` raised.
+`consent.vendors` in the same change, and every visitor is asked again.
 
 ```php
 // config/core-web.php
@@ -24,8 +26,8 @@ return [
 ```
 
 A vendor is a key of the catalogue in `resources/consent/vendors.json`
-(Google Analytics and Ads, Meta Pixel, LinkedIn, HubSpot, Hotjar, Clarity,
-YouTube, Vimeo), or a definition of the site's own:
+(Google Analytics and Ads, Meta Pixel, LinkedIn, Microsoft Advertising,
+HubSpot, Hotjar, Clarity, YouTube, Vimeo), or a definition of the site's own:
 `'booking' => ['name' => 'Booking', 'category' => 'marketing', 'cookies' => [['name' => 'bk_id', 'purpose' => 'Keeps the booking.', 'days' => 30]]]`.
 A category no vendor uses is not asked for, and a site with only necessary
 cookies shows no banner and no settings link at all, so Tag Manager and held
@@ -42,8 +44,11 @@ whose blueprint imports the `core-web::consent` fieldset:
 - import: core-web::consent
 ```
 
-Editors then set the banner's title, its text and the cookie page (picked as
-an entry, so it follows a slug change) per site. A field left empty keeps
+Editors then set the banner's title, its text and the cookie page per site.
+The cookie page is a link: an entry (it follows a slug change), a file such
+as a PDF from the `assets` container, or an address (`https://` or a path).
+A cookie page picked in the earlier `consent_policy_page` field is still
+linked until the link is set. A field left empty keeps
 the default text, or `policy_url`; a non-empty `policy-url` attribute on the
 component still wins. A page with no version on the current site is not
 linked there. Saving the global must flush the cached pages, as the `all`
@@ -88,6 +93,19 @@ it.
   send cookieless pings under Consent Mode. Tags in the container that need
   marketing consent read Consent Mode's `ad_*` signals, and a
   `consent_update` event is pushed to the dataLayer on every choice.
+- **Vendors with a consent API of their own**: Microsoft Advertising (UET
+  Consent Mode, `ad_storage` from marketing) and Clarity (Consent API v2,
+  `ad_Storage` from marketing, `analytics_Storage` from statistics). Declare
+  `microsoft_uet` or `microsoft_clarity` and the head sets their denied
+  defaults before any tag, applies a returning visitor's choice, and every
+  choice updates them, so a tag loaded from Tag Manager or a held script
+  reads the same choice as Consent Mode. Both vendors expect the signal
+  from visitors in the EEA, UK and Switzerland; like Consent Mode, the
+  defaults are denied for every visitor. A site's own vendor definition
+  takes `'signal' => 'uet'` or `'clarity'` too. core-web does not send
+  Meta's `fbq('consent')`, which must come before the pixel's `init`: hold
+  the pixel under marketing, or in Tag Manager give its tag the additional
+  consent check `ad_storage`.
 - **Any other script**: `@consentScript('marketing') ... @endconsentScript`,
   or `<script type="text/plain" data-consent="marketing" data-src="https://js.hs-scripts.com/123.js" async></script>`
   for an external one. `data-consent` takes several categories, space
@@ -137,10 +155,38 @@ php artisan vendor:publish --tag=core-web-consent-migration
 php artisan migrate
 ```
 
+A site that published the log before snapshots publishes the second
+migration on its own: `--tag=core-web-consent-snapshots-migration`.
+
 Each choice posts to `/!/core-web/consent` (no session, rate limited per
 address by `log.rate_limit`, refused from another origin) and becomes one
 row: the visitor's random consent id (shown on the cookie declaration and under the dialog's consent details, so they
 can quote it), the site, the action, the categories and the policy version. No IP
-address, user agent or user. `consent:prune` deletes rows older than
-`log.retention_days` (five years) on `log.prune_schedule`. A site that keeps
-no log sets `log.enabled` to false.
+address, user agent or user. Each row also names the fingerprint of the
+banner the visitor chose on and its locale, and `log.snapshot_table` keeps
+each banner once under its fingerprint: every text, category, vendor and
+cookie, as the visitor read them. A page cached from an older banner sends
+that banner's fingerprint, which is kept only if someone chose on it while it
+was current; a banner shown before this release has no snapshot.
+`consent:prune` deletes rows older than `log.retention_days` (three years)
+on `log.prune_schedule`, and the banners no row names. A site
+that keeps no log sets `log.enabled` to false.
+
+The fingerprint covers what the banner itself draws. A `policy-url`
+attribute on the banner component is not in it; a site that pins its cookie
+page per site sets `policy_url` in `consent.sites` instead.
+
+## Showing consent
+
+The site has to be able to show that a visitor consented (GDPR art. 7(1)).
+
+- **One visitor**: they quote their consent id (in the dialog's consent
+  details). `php artisan consent:show <id>` prints every choice under it and
+  the banner each was made on, `--json` the whole evidence. In the control
+  panel, **Utilities > Consent log** finds the same by id and downloads it as
+  JSON; it is open to super users and roles given *access consent utility*.
+  A visitor is never found by name, email or address: none is stored.
+- **An audit**: `consent:show` without an id, and the utility, list how many
+  visitors accepted, rejected or chose on each banner. With the snapshots
+  (what each banner said) and the held scripts (nothing fires before
+  consent), that is the site's account of how it asks.
