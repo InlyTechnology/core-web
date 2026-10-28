@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.34.0
 
 - **Consent cookie page as a link**: the `core-web::consent` fieldset's
   Cookie page is a `link` field (`consent_policy_link`), so it can be an
