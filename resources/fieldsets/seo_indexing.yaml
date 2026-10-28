@@ -5,7 +5,8 @@ fields:
     field:
       type: toggle
       display: 'Noindex in production'
-      instructions: 'Keeps the whole live site out of search, before launch say. Every other environment is always noindexed.'
+      instructions: 'Keeps this site out of search, before launch say. Every other environment is always noindexed.'
+      localizable: true
   -
     handle: breadcrumbs
     field:

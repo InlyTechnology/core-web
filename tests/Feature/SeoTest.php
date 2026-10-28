@@ -18,6 +18,7 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Site;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 class SeoTest extends TestCase
@@ -116,6 +117,21 @@ class SeoTest extends TestCase
 
         $this->seo(['noindex_production' => true]);
         $this->assertFalse(Seo::indexesEnvironment());
+    }
+
+    public function test_each_site_has_its_own_noindex_in_production(): void
+    {
+        config(['statamic.system.multisite' => true]);
+        $this->production();
+        $set = GlobalSet::findByHandle('seo')->sites(['default' => null, 'other' => 'default']);
+        $set->save();
+        $set->in('other')->data(['noindex_production' => true])->save();
+
+        $this->assertTrue(Seo::indexesEnvironment());
+
+        Site::setCurrent('other');
+        $this->assertFalse(Seo::indexesEnvironment());
+        $this->assertTrue(collect(Fieldset::find('core-web::seo_indexing')->fields()->all())->get('noindex_production')->isLocalizable());
     }
 
     public function test_a_page_outside_the_cascade_passes_its_own_title_and_description(): void

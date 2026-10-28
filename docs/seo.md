@@ -48,7 +48,7 @@ component is passed wins over the entry's fields.
 - **Description**: `seo_description`, else the collection's field
   (`social.collections`, or a `collection_defaults` row).
 - **Robots**: only production is indexed, and only while the global's
-  `noindex_production` toggle is off; every other environment is noindexed
+  `noindex_production` toggle is off (each site has its own); every other environment is noindexed
   whatever it says. An entry or term is noindexed with its own `seo_noindex`.
   An error page (a 404, a 500) is always noindexed and has no canonical.
   Peak's `noindex_local`, `noindex_staging` and collection/taxonomy indexing
