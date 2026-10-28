@@ -8,11 +8,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **The site's icons as a Statamic icon set**: `icons.folder` names a folder
+  of SVGs (a committed Font Awesome `svgs/<style>` folder works), registered
+  as the icon set `site` for any icon field, the buttons' included. See
+  `docs/statamic-helpers.md`.
 - **`buttons` feature**: the `core-web::button` and `core-web::buttons`
   fieldsets, and `Button::resolve()` (null when a button renders nothing),
   in place of the agency base's button fieldset and `resolveButton()`. Variants, link
   types (sms included), an inline variant, icons (a picker over the site's
-  SVG folder with `buttons.icon_set`), entries across sites and
+  icons), entries across sites and
   links to Core snapshot pages (`buttons.core_links`) are config; the site's
   own `<x-ui.button>` and `<x-buttons>` draw them. See `docs/buttons.md`.
 - **`missing_alt_text` widget** (with `media`): images without alt text,

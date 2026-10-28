@@ -20,3 +20,23 @@ instead: `Statamic::tag('mount_url:news')` or `Collection::find('news')->url()`
 for a collection's URL, `$asset?->url()` for an asset's, and a global by its
 handle in a view the cascade renders (`$configuration->field`, already
 augmented; not inside a component or Livewire).
+
+## The site's icons
+
+`icons.folder` in `config/core-web.php` names a folder of the site's icons as
+SVGs, registered as the Statamic icon set `site` whatever features are on.
+Any icon field picks from it, each icon previewed:
+
+```yaml
+handle: icon
+field:
+  type: icon
+  set: site
+```
+
+The stored value is the file's name (`arrow-right`), which the site draws
+with its own icon library, as SVGs or as a font. For Font Awesome, name the
+`svgs/<style>` folder of the copy committed with the site's font
+(`base_path('public/fonts/fontawesome/svgs/light')`); the SVGs are then only
+the picker's previews. A folder of just the icons the site uses keeps the
+picker short.

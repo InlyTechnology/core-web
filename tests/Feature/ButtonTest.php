@@ -84,12 +84,12 @@ class ButtonTest extends TestCase
     public function test_icons_pick_from_the_sites_icon_set(): void
     {
         $icons = __DIR__.'/../fixtures/icons';
-        config(['core-web.buttons.icon_set' => $icons]);
+        config(['core-web.icons.folder' => $icons]);
         $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
 
         $this->assertSame('icon', $fields['icon_left']['type']);
-        $this->assertSame('core-web-buttons', $fields['icon_left']['set']);
-        $this->assertTrue(Icon::sets()->has('core-web-buttons'));
+        $this->assertSame('site', $fields['icon_left']['set']);
+        $this->assertTrue(Icon::sets()->has('site'));
 
         $value = new Value('arrow-right', 'icon_right', (new Field('icon_right', $fields['icon_right']))->fieldtype());
         $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => $value]);
@@ -102,7 +102,7 @@ class ButtonTest extends TestCase
         $this->assertSame('arrow-right', Button::resolve(new Value($row))['icon_right']);
         $this->assertNull(Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => '<svg></svg>'])['icon_right']);
 
-        config(['core-web.buttons.icon_set' => 'not-a-set']);
+        config(['core-web.icons.folder' => 'not-a-folder']);
         $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);
     }
 

@@ -1007,6 +1007,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Icons
+    |--------------------------------------------------------------------------
+    |
+    | folder: the site's icons as SVGs (resource_path('svg/icons'), or the
+    | svgs/light folder of a committed Font Awesome copy), registered as the
+    | Statamic icon set `site` whatever features are on: any icon field picks
+    | from it with `set: site`, the buttons' included. The stored value is the
+    | file's name, so a site drawing its icons with a font keeps doing so.
+    |
+    */
+
+    'icons' => [
+        'folder' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Favicons
     |--------------------------------------------------------------------------
     |
@@ -1056,10 +1073,8 @@ return [
     |
     | icons: false drops the two icon fields.
     |
-    | icon_set: a folder of SVGs (resource_path('svg/icons'), or the
-    | svgs/light folder of a committed Font Awesome copy): the icon fields
-    | become Statamic's icon picker over it. Null keeps them text fields. Either way the stored value is
-    | the icon's name.
+    | The icon fields pick from the site's icons when `icons.folder` names
+    | them, and are text fields otherwise.
     |
     | asset_container: the container an asset link picks from.
     |
@@ -1072,7 +1087,6 @@ return [
         'core_links' => [],
         'entries_across_sites' => false,
         'icons' => true,
-        'icon_set' => null,
         'asset_container' => 'assets',
     ],
 ];

@@ -170,6 +170,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   `Links` (`docs/statamic-helpers.md`), never a copy of them in the site; a site's short global helper only wraps one.
 - **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
   handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
+- **The site's icons are one folder of SVGs named in `icons.folder`**, the Statamic icon set `site`: an icon
+  field is `type: icon, set: site`, never a text field for an icon name or a set registered in the site's provider.
+  A site drawing Font Awesome as a font names the committed `svgs/<style>` folder; the SVGs are only the previews.
 
 ## Testing
 

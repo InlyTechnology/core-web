@@ -7,6 +7,7 @@ use Inly\CoreWeb\Seo\Seo;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Support\Links;
+use Inly\CoreWeb\Support\SiteIcons;
 use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Assets\Asset;
 use Statamic\Contracts\Entries\Entry;
@@ -14,7 +15,6 @@ use Statamic\Dictionaries\Item;
 use Statamic\Facades\Asset as AssetFacade;
 use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry as Entries;
-use Statamic\Facades\Icon as Icons;
 use Statamic\Facades\Site;
 use Statamic\Fields\Value;
 use Statamic\Fields\Values as FieldValues;
@@ -33,8 +33,6 @@ final class Button
     /** Handles of the fieldset's own fields, which a Core link type may not take. */
     /** @var array{0: string, 1: array<string, array{display: string, snapshot: ?string, dictionary: ?string}>}|null the last config read, so a page of buttons warns once */
     private static ?array $coreLinks = null;
-
-    private const ICON_SET = 'core-web-buttons';
 
     private const RESERVED = ['label', 'show_controls', 'button_type', 'variant', 'style', 'link_type', 'entry', 'query_string', 'url', 'email', 'tel', 'sms', 'asset', 'icon_left', 'icon_right', 'target_blank', 'attr_title', 'attr_aria', 'tracker_event'];
 
@@ -192,7 +190,7 @@ final class Button
         $icons = (bool) config('core-web.buttons.icons', true);
 
         if ($icons) {
-            $set = self::iconSet();
+            $set = SiteIcons::register();
             $icon = $set === null
                 ? ['type' => 'text', 'instructions' => 'An icon name from the site\'s icon set, e.g. `arrow-right`.']
                 : ['type' => 'icon', 'set' => $set, 'mode' => 'compact'];
@@ -411,25 +409,6 @@ final class Button
 
         // No scheme and no leading slash: a relative path such as `kontakt`, unless a colon makes it one a browser would run.
         return $scheme === null && ! str_contains(strtok($href, '/?#') ?: '', ':') ? $href : '';
-    }
-
-    /**
-     * The Statamic icon set the icon fields pick from: the folder of SVGs
-     * `buttons.icon_set` names, registered here, or null to keep them text
-     * fields. Registered at boot whether or not the site keeps its own copy
-     * of the fieldset, since an icon field's value is augmented through it.
-     */
-    public static function iconSet(): ?string
-    {
-        $folder = config('core-web.buttons.icon_set');
-
-        if (! is_string($folder) || ! is_dir($folder)) {
-            return null;
-        }
-
-        Icons::register(self::ICON_SET, $folder);
-
-        return self::ICON_SET;
     }
 
     /**

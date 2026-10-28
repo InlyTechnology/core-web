@@ -88,6 +88,7 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
+use Inly\CoreWeb\Support\SiteIcons;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use Inly\CoreWeb\Widgets\MissingAltTextWidget;
@@ -295,6 +296,7 @@ class CoreWebServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
+        SiteIcons::register();
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
@@ -470,7 +472,6 @@ class CoreWebServiceProvider extends ServiceProvider
             SnapshotPagesDictionary::register();
         }
 
-        Button::iconSet();
         $fieldsets = $this->app->make(FieldsetRepository::class);
 
         if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
