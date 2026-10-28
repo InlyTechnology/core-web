@@ -207,12 +207,12 @@ final class Button
         $text = fn (string $key): ?string => is_scalar($value = $read($key)) && trim((string) $value) !== '' ? trim((string) $value) : null;
         $types = self::linkTypes();
         $type = $text('link_type') ?? array_key_first($types);
-        $style = $text('variant') ?? $text('style');
+        $variant = $text('variant') ?? $text('style');
 
         $resolved = [
             'href' => '',
             'label' => $text('label'),
-            'variant' => $style !== null && isset($variants[$style]) ? $style : array_key_first($variants),
+            'variant' => $variant !== null && isset($variants[$variant]) ? $variant : array_key_first($variants),
             'inline' => (bool) config('core-web.buttons.inline') && $text('button_type') === 'inline',
             'icon_left' => self::icon($text('icon_left')),
             'icon_right' => self::icon($text('icon_right')),

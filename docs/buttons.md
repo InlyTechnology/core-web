@@ -40,8 +40,10 @@ php artisan buttons:migrate
 ```
 
 It renames `style` to `variant` in every button row of the site's entries and
-globals, a row being an array with a `link_type`, so another field named
-`style` is left alone. Until it has run, `resolve()` reads the old `style`,
+globals, a row being an array whose `link_type` is one the button offers, so
+another field named `style` is left alone; `--dry-run` names each row. The
+command is there once `features.buttons` is on. It saves each entry it
+changes, so commit the content afterwards. Until it has run, `resolve()` reads the old `style`,
 so the front end renders as before; only the CP shows those buttons with the
 default variant.
 

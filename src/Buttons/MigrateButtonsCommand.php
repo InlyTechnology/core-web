@@ -9,8 +9,8 @@ use Statamic\Globals\Variables;
 
 /**
  * Renames the agency base's `style` handle to `variant` in every button row
- * of the site's entries and globals. A row is a button when it has a
- * `link_type`, so another field named `style` is left as it is.
+ * of the site's entries and globals. A row is a button when its `link_type`
+ * is one the button offers, so another field named `style` is left as it is.
  */
 class MigrateButtonsCommand extends Command
 {
@@ -42,13 +42,14 @@ class MigrateButtonsCommand extends Command
     private function migrate(object $item, string $name, bool $dry): int
     {
         $rows = 0;
-        $data = self::rename($item->data()->all(), $rows);
+        $paths = [];
+        $data = self::rename($item->data()->all(), $rows, $paths);
 
         if ($rows === 0) {
             return 0;
         }
 
-        $this->line("{$name}: {$rows} ".($rows === 1 ? 'button' : 'buttons'));
+        $this->line("{$name}: ".implode(', ', $paths));
 
         if (! $dry) {
             $item->data($data)->save();
@@ -59,19 +60,23 @@ class MigrateButtonsCommand extends Command
 
     /**
      * @param  array<mixed>  $data
+     * @param  list<string>  $paths
      * @return array<mixed>
      */
-    public static function rename(array $data, int &$rows = 0): array
+    public static function rename(array $data, int &$rows = 0, array &$paths = [], string $path = ''): array
     {
-        if (array_key_exists('link_type', $data) && array_key_exists('style', $data) && ! array_key_exists('variant', $data)) {
+        $types = ['entry', 'url', 'email', 'tel', 'sms', 'asset', ...array_keys(Button::coreLinks())];
+
+        if (in_array($data['link_type'] ?? null, $types, true) && array_key_exists('style', $data) && ! array_key_exists('variant', $data)) {
             $data['variant'] = $data['style'];
             unset($data['style']);
             $rows++;
+            $paths[] = $path === '' ? '(top level)' : $path;
         }
 
         foreach ($data as $key => $value) {
             if (is_array($value)) {
-                $data[$key] = self::rename($value, $rows);
+                $data[$key] = self::rename($value, $rows, $paths, $path === '' ? (string) $key : "{$path}.{$key}");
             }
         }
 

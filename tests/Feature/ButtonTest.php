@@ -200,16 +200,18 @@ class ButtonTest extends TestCase
     {
         Entry::make()->collection('pages')->locale('default')->id('buttons')->slug('knappar')->data([
             'cta' => ['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test', 'style' => 'secondary'],
+            'card' => ['link_type' => 'phone', 'style' => 'flat'],
             'blocks' => [['type' => 'hero', 'style' => 'dark', 'buttons' => [['label' => 'B', 'link_type' => 'entry', 'style' => 'primary']]]],
         ])->save();
 
-        $this->artisan('buttons:migrate', ['--dry-run' => true])->expectsOutputToContain('Would change 1 item.')->assertSuccessful();
+        $this->artisan('buttons:migrate', ['--dry-run' => true])->expectsOutputToContain('cta, blocks.0.buttons.0')->expectsOutputToContain('Would change 1 item.')->assertSuccessful();
         $this->assertSame('secondary', Entry::find('buttons')->get('cta')['style']);
 
         $this->artisan('buttons:migrate')->assertSuccessful();
         $entry = Entry::find('buttons');
         $this->assertSame(['label' => 'A', 'link_type' => 'url', 'url' => 'https://a.test', 'variant' => 'secondary'], $entry->get('cta'));
         $this->assertSame('dark', $entry->get('blocks')[0]['style']);
+        $this->assertSame('flat', $entry->get('card')['style']);
         $this->assertSame('primary', $entry->get('blocks')[0]['buttons'][0]['variant']);
         $this->artisan('buttons:migrate')->expectsOutputToContain('Changed 0 items.')->assertSuccessful();
     }
