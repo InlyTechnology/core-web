@@ -106,7 +106,9 @@ The redirects global (`seo.redirects_global`, blueprint importing
 address, 301 or 302. It is asked only when a front-end request would 404, so
 a live page always wins. An exact path matches first (written encoded or
 not), then a pattern between `#`s (`#^/blog/.*$#`); the target is fixed, a
-captured group is not put into it. The query string is kept. A route of the
+captured group is not put into it. The query string is kept. A 301 is
+cached by browsers for a day (`seo.redirects_max_age`), so a corrected
+target reaches visitors; a 302 is not cached. A route of the
 site's own that throws Statamic's `NotFoundHttpException` is redirected too.
 
 ## Page not found

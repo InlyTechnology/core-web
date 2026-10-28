@@ -30,7 +30,14 @@ final class RedirectMissingPages
             return null;
         }
 
-        return redirect()->away(self::withQuery($redirect['to'], (string) $request->getQueryString()), $redirect['status']);
+        $response = redirect()->away(self::withQuery($redirect['to'], (string) $request->getQueryString()), $redirect['status']);
+
+        // A 301 without Cache-Control is kept by browsers indefinitely, so an editor's corrected target would never reach them.
+        if ((int) $redirect['status'] === 301) {
+            $response->setPublic()->setMaxAge((int) config('core-web.seo.redirects_max_age', 86400));
+        }
+
+        return $response;
     }
 
     private static function withQuery(string $to, string $query): string
