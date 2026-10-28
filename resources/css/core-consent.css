@@ -58,7 +58,7 @@
 .core-consent__fab {
     position: fixed;
     z-index: 2147482999;
-    bottom: 16px;
+    bottom: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -69,16 +69,17 @@
     border-radius: 999px;
     background: var(--core-consent-background);
     color: var(--core-consent-accent);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
+    /* The banner's and dialog's double frame: a translucent ring around the bordered button. */
+    box-shadow: 0 0 0 6px var(--core-consent-frame), 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     cursor: pointer;
 }
 
 .core-consent__fab--bottom-left {
-    left: 16px;
+    left: 22px;
 }
 
 .core-consent__fab--bottom-right {
-    right: 16px;
+    right: 22px;
 }
 
 .core-consent__fab[hidden] {
