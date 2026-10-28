@@ -110,7 +110,7 @@ fields:
     field:
       display: 'Icon before'
       type: text
-      instructions: "An icon name from the site's icon set, e.g. `car`."
+      instructions: 'An icon name, e.g. `car`.'
       width: 25
       if:
         show_controls: 'equals true'
@@ -119,7 +119,7 @@ fields:
     field:
       display: 'Icon after'
       type: text
-      instructions: "An icon name from the site's icon set, e.g. `car`."
+      instructions: 'An icon name, e.g. `car`.'
       width: 25
       if:
         show_controls: 'equals true'

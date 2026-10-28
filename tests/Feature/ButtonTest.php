@@ -7,7 +7,6 @@ use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
-use Inly\CoreWeb\Support\SiteIcons;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Dictionaries\BasicDictionary;
 use Statamic\Facades\Blueprint;
@@ -16,7 +15,6 @@ use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\GlobalSet;
-use Statamic\Facades\Icon;
 use Statamic\Facades\Site;
 use Statamic\Facades\YAML;
 use Statamic\Fields\Field;
@@ -82,41 +80,25 @@ class ButtonTest extends TestCase
         $this->assertTrue($valid(['label' => 'Boka', 'link_type' => 'url', 'url' => 'https://example.com']));
     }
 
-    public function test_the_site_icon_set_is_there_from_boot_whatever_features_are_on(): void
+    public function test_the_icon_fields_link_the_projects_icon_reference(): void
     {
-        $this->assertTrue(Icon::sets()->has('site'));
-        $this->assertNotEmpty(Icon::get('site')->names());
+        $instructions = fn (): string => collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['instructions'];
+
+        config(['core-web.icons.reference' => 'https://fontawesome.com/search']);
+        $this->assertStringContainsString('(https://fontawesome.com/search)', $instructions());
+
+        config(['core-web.icons.reference' => 'javascript:alert(1)']);
+        $this->assertStringNotContainsString('javascript', $instructions());
     }
 
-    public function test_icons_pick_from_the_sites_icon_set(): void
+    public function test_an_icon_fields_name_is_read_not_its_augmented_svg(): void
     {
-        $icons = __DIR__.'/../fixtures/icons';
-        config(['core-web.icons.folder' => $icons]);
-        $fields = collect(Button::fieldset()['fields'])->keyBy('handle')->map(fn (array $field) => $field['field']);
-
-        $this->assertSame('icon', $fields['icon_left']['type']);
-        $this->assertSame('site', $fields['icon_left']['set']);
-        $this->assertTrue(Icon::sets()->has('site'));
-
-        $value = new Value('arrow-right', 'icon_right', (new Field('icon_right', $fields['icon_right']))->fieldtype());
-        $button = Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => $value]);
-
-        $this->assertSame('arrow-right', $button['icon_right']);
-
-        $field = (new Field('icon_right', $fields['icon_right']))->setValue('arrow-right');
+        $field = (new Field('icon_right', ['type' => 'icon']))->setValue('arrow-right');
         $row = new Values(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => new Value('arrow-right', 'icon_right', $field->fieldtype())]);
+
         $this->assertSame('arrow-right', Button::resolve($row)['icon_right']);
         $this->assertSame('arrow-right', Button::resolve(new Value($row))['icon_right']);
         $this->assertNull(Button::resolve(['label' => 'A', 'link_type' => 'url', 'url' => 'https://example.com', 'icon_right' => '<svg></svg>'])['icon_right']);
-
-        config(['core-web.icons.folder' => 'not-a-folder']);
-        $this->assertFalse(SiteIcons::register());
-        config(['core-web.icons.reference' => 'https://fontawesome.com/search']);
-        $this->assertStringContainsString('(https://fontawesome.com/search)', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['instructions']);
-        config(['core-web.icons.reference' => 'javascript:alert(1)']);
-        $this->assertStringNotContainsString('javascript', SiteIcons::instructions());
-        $this->assertTrue(Icon::sets()->has('site'));
-        $this->assertSame('text', collect(Button::fieldset()['fields'])->firstWhere('handle', 'icon_left')['field']['type']);
     }
 
     public function test_a_core_link_that_would_take_a_fields_handle_is_left_out(): void

@@ -78,10 +78,10 @@ site changes its options there rather than in a copy of the fieldset:
   its localization on the current site; a draft links nowhere.
 - **icons**: `false` drops the two icon fields. An icon is a name from the
   site's icon set; a leading `fa-` is dropped.
-- The icon fields pick from the site's icons when `icons.folder` names them
-  ([Statamic helpers](statamic-helpers.md#the-sites-icons)), and are text
-  fields otherwise, linking `icons.reference` (the Font Awesome search, say)
-  for looking a name up.
+- An icon is a name typed in (`car`), which the site's button draws with its
+  icon library or font. `icons.reference` in `config/core-web.php` links a
+  page beside the field to look names up, per project:
+  `'icons' => ['reference' => 'https://fontawesome.com/search?f=sharp&s=light']`.
 - **asset_container**: where an asset link picks from.
 
 A site that truly needs a fieldset of its own keeps a copy at

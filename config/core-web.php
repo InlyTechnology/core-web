@@ -1010,19 +1010,13 @@ return [
     | Icons
     |--------------------------------------------------------------------------
     |
-    | folder: the site's icons as SVGs (resource_path('svg/icons'), or the
-    | svgs/light folder of a committed Font Awesome copy), registered as the
-    | Statamic icon set `site` whatever features are on: any icon field picks
-    | from it with `set: site`, the buttons' included. The stored value is the
-    | file's name, so a site drawing its icons with a font keeps doing so.
-    |
-    | reference: without a folder an icon is a name typed in; this page (the
-    | Font Awesome search, say) is linked beside the field to look one up.
+    | reference: an icon is a name typed in (`car`), drawn by the site's icon
+    | library or font; this page (the Font Awesome search, say) is linked
+    | beside every icon name field to look one up.
     |
     */
 
     'icons' => [
-        'folder' => null,
         'reference' => null,
     ],
 
@@ -1077,8 +1071,7 @@ return [
     |
     | icons: false drops the two icon fields.
     |
-    | The icon fields pick from the site's icons when `icons.folder` names
-    | them, and are text fields otherwise.
+    | The icon fields link `icons.reference` for looking a name up.
     |
     | asset_container: the container an asset link picks from.
     |

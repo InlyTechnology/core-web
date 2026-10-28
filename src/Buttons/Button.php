@@ -7,7 +7,6 @@ use Inly\CoreWeb\Seo\Seo;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Support\Links;
-use Inly\CoreWeb\Support\SiteIcons;
 use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Assets\Asset;
 use Statamic\Contracts\Entries\Entry;
@@ -190,9 +189,10 @@ final class Button
         $icons = (bool) config('core-web.buttons.icons', true);
 
         if ($icons) {
-            $icon = SiteIcons::register()
-                ? ['type' => 'icon', 'set' => SiteIcons::SET, 'mode' => 'compact']
-                : ['type' => 'text', 'instructions' => SiteIcons::instructions()];
+            $reference = config('core-web.icons.reference');
+            $icon = ['type' => 'text', 'instructions' => is_string($reference) && preg_match('~^https://~i', $reference)
+                ? "An icon name from [the icon list]({$reference}), e.g. `car`."
+                : 'An icon name, e.g. `car`.'];
             $fields[] = self::field('icon_left', ['display' => 'Icon before'] + $icon + ['width' => 25, 'if' => $advanced]);
             $fields[] = self::field('icon_right', ['display' => 'Icon after'] + $icon + ['width' => 25, 'if' => $advanced]);
         }
