@@ -2,9 +2,11 @@
 
 namespace Inly\CoreWeb\Consent;
 
+use Statamic\Facades\Asset;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Globals\Variables;
 
 /** What the banner, the declaration and the script in the page's head share. */
 class Consent
@@ -98,16 +100,45 @@ class Consent
         $site = Site::current()->handle();
         $variables = is_string($handle) && $handle !== '' ? GlobalSet::find($handle)?->in($site) : null;
         $text = fn (string $key): ?string => is_string($value = $variables?->value($key)) && trim($value) !== '' ? trim($value) : null;
-        $page = $variables?->value('consent_policy_page');
-        $id = is_array($page) ? ($page[0] ?? null) : $page;
-        $entry = is_string($id) && $id !== '' ? Entry::find($id) : null;
-        $entry = $entry?->in($site);
 
         return [
             'title' => $text('consent_title'),
             'text' => $text('consent_text'),
-            'policy_url' => $entry?->status() === 'published' ? $entry->url() : null,
+            'policy_url' => $variables === null ? null : (self::policyLink($variables, $site) ?? self::policyPage($variables, $site)),
         ];
+    }
+
+    /** The `consent_policy_link` field (a page, an asset or an address) as a URL, or null. */
+    private static function policyLink(Variables $variables, string $site): ?string
+    {
+        $raw = $variables->value('consent_policy_link');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        if (str_starts_with($raw, 'entry::')) {
+            $entry = Entry::find(substr($raw, 7))?->in($site);
+
+            return $entry?->status() === 'published' ? $entry->url() : null;
+        }
+
+        if (str_starts_with($raw, 'asset::')) {
+            return Asset::find(substr($raw, 7))?->url();
+        }
+
+        // An address an editor typed: only one a browser opens as a page.
+        return preg_match('~^(https?://|/(?!/))~i', trim($raw)) ? trim($raw) : null;
+    }
+
+    /** The cookie page of a global that still holds a `consent_policy_page` entries field. */
+    private static function policyPage(Variables $variables, string $site): ?string
+    {
+        $page = $variables->value('consent_policy_page');
+        $id = is_array($page) ? ($page[0] ?? null) : $page;
+        $entry = is_string($id) && $id !== '' ? Entry::find($id)?->in($site) : null;
+
+        return $entry?->status() === 'published' ? $entry->url() : null;
     }
 
     /**

@@ -8,6 +8,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Consent cookie page as a link**: the `core-web::consent` fieldset's
+  Cookie page is a `link` field (`consent_policy_link`), so it can be an
+  entry, a PDF from the `assets` container or an address. A page picked in
+  `consent_policy_page` is still read. The settings dialog links it under
+  the consent details. See `docs/cookie-consent.md`.
 - **`buttons` feature**: the `core-web::button` and `core-web::buttons`
   fieldsets, and `Button::resolve()` (null when a button renders nothing),
   in place of the agency base's button fieldset and `resolveButton()`. Variants, link

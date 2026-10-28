@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Inly\CoreWeb\Consent\Consent;
 use Inly\CoreWeb\Consent\ConsentSnapshot;
@@ -13,6 +14,7 @@ use Inly\CoreWeb\Consent\ConsentUtilityController;
 use Inly\CoreWeb\Consent\ConsentVendors;
 use Inly\CoreWeb\Tests\TestCase;
 use InvalidArgumentException;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
@@ -152,7 +154,7 @@ class ConsentTest extends TestCase
         Entry::make()->id('cookies')->collection('pages')->locale('default')->slug('kakor')->data(['title' => 'Kakor'])->save();
         $set = GlobalSet::make('configuration')->title('Configuration');
         $set->save();
-        $set->in('default')->data(['consent_title' => 'Kakor här', 'consent_text' => 'Vi frågar först.', 'consent_policy_page' => ['cookies']])->save();
+        $set->in('default')->data(['consent_title' => 'Kakor här', 'consent_text' => 'Vi frågar först.', 'consent_policy_link' => 'entry::cookies'])->save();
         config(['core-web.consent.global' => 'configuration', 'core-web.consent.policy_url' => '/fallback']);
 
         $html = Blade::render('<x-core-web::consent.banner />');
@@ -161,7 +163,37 @@ class ConsentTest extends TestCase
         $this->assertStringContainsString('Vi frågar först.', $html);
         $this->assertStringContainsString('href="/kakor"', $html);
         $this->assertStringContainsString('href="/override"', Blade::render('<x-core-web::consent.banner policy-url="/override" />'));
-        $this->assertSame(['consent_title', 'consent_text', 'consent_policy_page'], Fieldset::find('core-web::consent')->fields()->all()->keys()->all());
+        $this->assertSame(['consent_title', 'consent_text', 'consent_policy_link'], Fieldset::find('core-web::consent')->fields()->all()->keys()->all());
+    }
+
+    public function test_the_cookie_page_can_be_an_address_a_file_or_a_page_picked_in_the_earlier_field(): void
+    {
+        Collection::make('pages')->routes('/{slug}')->save();
+        Entry::make()->id('cookies')->collection('pages')->locale('default')->slug('kakor')->data(['title' => 'Kakor'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->save();
+        config(['core-web.consent.global' => 'configuration']);
+        $url = function (array $data) use ($set): ?string {
+            $set->in('default')->data($data)->save();
+
+            return Consent::editorial()['policy_url'];
+        };
+
+        $this->assertSame('https://example.com/kakor', $url(['consent_policy_link' => 'https://example.com/kakor']));
+        $this->assertSame('/kakpolicy', $url(['consent_policy_link' => '/kakpolicy']));
+        $this->assertNull($url(['consent_policy_link' => 'javascript:alert(1)']));
+        $this->assertNull($url(['consent_policy_link' => '//evil.example']));
+        $this->assertSame('/kakor', $url(['consent_policy_page' => ['cookies']]));
+        $this->assertSame('/kakor', $url(['consent_policy_link' => 'entry::cookies']));
+        $this->assertNull($url(['consent_policy_link' => 'entry::gone']));
+
+        $scratch = sys_get_temp_dir().'/core-web-consent-'.uniqid();
+        File::ensureDirectoryExists($scratch);
+        File::put($scratch.'/kakor.pdf', '%PDF');
+        config(['filesystems.disks.consent-assets' => ['driver' => 'local', 'root' => $scratch, 'url' => '/files']]);
+        AssetContainer::make('assets')->disk('consent-assets')->save();
+        $this->assertSame('/files/kakor.pdf', $url(['consent_policy_link' => 'asset::assets::kakor.pdf']));
+        File::deleteDirectory($scratch);
     }
 
     public function test_a_cookie_page_missing_on_the_current_site_falls_back_to_policy_url(): void

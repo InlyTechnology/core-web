@@ -44,8 +44,11 @@ whose blueprint imports the `core-web::consent` fieldset:
 - import: core-web::consent
 ```
 
-Editors then set the banner's title, its text and the cookie page (picked as
-an entry, so it follows a slug change) per site. A field left empty keeps
+Editors then set the banner's title, its text and the cookie page per site.
+The cookie page is a link: an entry (it follows a slug change), a file such
+as a PDF from the `assets` container, or an address (`https://` or a path).
+A cookie page picked in the earlier `consent_policy_page` field is still
+linked until the link is set. A field left empty keeps
 the default text, or `policy_url`; a non-empty `policy-url` attribute on the
 component still wins. A page with no version on the current site is not
 linked there. Saving the global must flush the cached pages, as the `all`
