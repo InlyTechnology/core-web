@@ -33,12 +33,12 @@ final class Button
 
     private const RESERVED = ['label', 'show_controls', 'button_type', 'style', 'link_type', 'entry', 'query_string', 'url', 'email', 'tel', 'sms', 'asset', 'icon_left', 'icon_right', 'target_blank', 'attr_title', 'attr_aria', 'tracker_event'];
 
-    /** @return array<string, string> style key => label */
-    public static function styles(): array
+    /** @return array<string, string> variant key => label */
+    public static function variants(): array
     {
-        $styles = array_filter((array) config('core-web.buttons.styles'), fn ($label, $key) => is_string($key) && $key !== '' && is_string($label), ARRAY_FILTER_USE_BOTH);
+        $variants = array_filter((array) config('core-web.buttons.variants'), fn ($label, $key) => is_string($key) && $key !== '' && is_string($label), ARRAY_FILTER_USE_BOTH);
 
-        return $styles === [] ? ['primary' => 'Primary'] : $styles;
+        return $variants === [] ? ['primary' => 'Primary'] : $variants;
     }
 
     /**
@@ -114,7 +114,7 @@ final class Button
     {
         $controls = ['show_controls' => 'equals true'];
         $inline = (bool) config('core-web.buttons.inline');
-        $styles = self::styles();
+        $variants = self::variants();
         $types = self::linkTypes();
         $fields = [
             self::field('label', ['type' => 'text', 'display' => 'Label', 'localizable' => true, 'width' => 66, 'antlers' => false]),
@@ -125,8 +125,8 @@ final class Button
             $fields[] = self::field('button_type', ['type' => 'button_group', 'display' => 'Type', 'instructions' => 'Inline renders a text link instead of a button.', 'options' => ['button' => 'Button', 'inline' => 'Inline'], 'default' => 'button', 'width' => 50, 'if' => $controls]);
         }
 
-        if (count($styles) > 1) {
-            $fields[] = self::field('style', ['type' => 'button_group', 'display' => 'Style', 'options' => $styles, 'default' => array_key_first($styles), 'width' => 50, 'if' => $inline ? $controls + ['button_type' => 'equals button'] : $controls]);
+        if (count($variants) > 1) {
+            $fields[] = self::field('style', ['type' => 'button_group', 'display' => 'Style', 'options' => $variants, 'default' => array_key_first($variants), 'width' => 50, 'if' => $inline ? $controls + ['button_type' => 'equals button'] : $controls]);
         }
 
         $core = self::coreLinks();
@@ -202,7 +202,7 @@ final class Button
     public static function resolve(mixed $button): ?array
     {
         $row = Values::unwrap($button);
-        $styles = self::styles();
+        $variants = self::variants();
         $read = fn (string $key): mixed => Values::unwrap(is_array($row) || $row instanceof \ArrayAccess ? ($row[$key] ?? null) : null);
         $text = fn (string $key): ?string => is_scalar($value = $read($key)) && trim((string) $value) !== '' ? trim((string) $value) : null;
         $types = self::linkTypes();
@@ -212,7 +212,7 @@ final class Button
         $resolved = [
             'href' => '',
             'label' => $text('label'),
-            'variant' => $style !== null && isset($styles[$style]) ? $style : array_key_first($styles),
+            'variant' => $style !== null && isset($variants[$style]) ? $style : array_key_first($variants),
             'inline' => (bool) config('core-web.buttons.inline') && $text('button_type') === 'inline',
             'icon_left' => self::icon($text('icon_left')),
             'icon_right' => self::icon($text('icon_right')),

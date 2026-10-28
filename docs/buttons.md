@@ -35,7 +35,7 @@ site changes its options there rather than in a copy of the fieldset:
 'features' => ['buttons' => true, 'snapshots' => true],
 
 'buttons' => [
-    'styles' => ['primary' => 'Primary', 'secondary' => 'Secondary', 'cta' => 'Call to action'],
+    'variants' => ['primary' => 'Primary', 'secondary' => 'Secondary', 'cta' => 'Call to action'],
     'inline' => true,                                   // "Inline": a text link instead of a button
     'link_types' => ['entry', 'url', 'email', 'tel', 'sms', 'asset'],
     'core_links' => [
@@ -46,10 +46,11 @@ site changes its options there rather than in a copy of the fieldset:
 ],
 ```
 
-- **styles**: the variants the site's component draws, key => label. One style
-  hides the field.
-- **inline**: adds **Type** (Button or Inline). The style applies to a button
-  only.
+- **variants**: the variants the site's component draws, key => label. One
+  variant hides the field. Editors see it as **Style**, and it is saved under
+  the agency base's `style` handle, so existing content keeps working.
+- **inline**: adds **Type** (Button or Inline). The variant applies to a
+  button only.
 - **link_types**: which of `entry`, `url`, `email`, `tel`, `sms` and `asset`
   are offered. `sms` is off by default.
 - **entries_across_sites**: an entry link may pick another site's page, which

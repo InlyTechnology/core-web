@@ -1037,8 +1037,8 @@ return [
     | button, and a row of them, with its own components, each button
     | resolved by Inly\CoreWeb\Buttons\Button::resolve().
     |
-    | styles: style key => label, the variants the site's button component
-    | draws. One style hides the field.
+    | variants: key => label, the variants the site's button component
+    | draws. One variant hides the field.
     |
     | inline: offer "Inline" beside "Button", a text link the site's
     | component draws when it gets `inline`.
@@ -1061,7 +1061,7 @@ return [
     */
 
     'buttons' => [
-        'styles' => ['primary' => 'Primary', 'secondary' => 'Secondary'],
+        'variants' => ['primary' => 'Primary', 'secondary' => 'Secondary'],
         'inline' => false,
         'link_types' => ['entry', 'url', 'email', 'tel', 'asset'],
         'core_links' => [],

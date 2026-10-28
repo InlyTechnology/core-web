@@ -194,7 +194,7 @@ class CoreWebServiceProvider extends ServiceProvider
             }
 
             if (self::enabled('buttons')) {
-                $this->mergeGroupDefaults('buttons', ['styles', 'link_types', 'core_links']);
+                $this->mergeGroupDefaults('buttons', ['variants', 'link_types', 'core_links']);
             }
 
             if (self::enabled('media')) {

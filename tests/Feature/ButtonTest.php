@@ -204,7 +204,7 @@ class ButtonTest extends TestCase
     private function configure(): void
     {
         config(['core-web.buttons' => [
-            'styles' => ['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'],
+            'variants' => ['primary' => 'Primary', 'cta' => 'Call to action', 'ghost' => 'Ghost'],
             'inline' => true,
             'link_types' => ['sms', 'entry', 'url'],
             'core_links' => ['brand' => ['display' => 'Brand', 'snapshot' => 'brands'], 'campaign' => ['display' => 'Campaign', 'dictionary' => 'site_campaigns']],
