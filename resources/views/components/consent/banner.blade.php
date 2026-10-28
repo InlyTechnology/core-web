@@ -62,7 +62,7 @@
                                 <li>
                                     <strong>{{ $vendor['name'] }}</strong>
                                     @if (! empty($vendor['policy_url']))
-                                        <a class="core-consent__link" href="{{ $vendor['policy_url'] }}" target="_blank" rel="noopener">{{ __('Privacy policy') }}</a>
+                                        <a class="core-consent__link" href="{{ $vendor['policy_url'] }}" target="_blank" rel="noopener" aria-label="{{ __(':name privacy policy', ['name' => $vendor['name']]) }}">{{ __('Privacy policy') }}</a>
                                     @endif
                                     <span class="core-consent__cookies">{{ collect($vendor['cookies'])->pluck('name')->implode(', ') }}</span>
                                 </li>
@@ -79,6 +79,9 @@
             </details>
 
             <div class="core-consent__actions">
+                @if ($policyUrl)
+                    <a class="core-consent__link core-consent__policy" href="{{ $policyUrl }}">{{ $texts['read_more'] }}</a>
+                @endif
                 <button type="button" class="core-consent__button core-consent__button--outline" data-consent-save>{{ $texts['buttons']['save'] }}</button>
                 <button type="button" class="core-consent__button" data-consent-reject-all>{{ $texts['buttons']['reject_all'] }}</button>
                 <button type="button" class="core-consent__button" data-consent-accept-all>{{ $texts['buttons']['accept_all'] }}</button>

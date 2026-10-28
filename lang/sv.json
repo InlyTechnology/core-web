@@ -30,6 +30,7 @@
     "Needed for the site to work, such as remembering this choice. Always on.": "Behövs för att webbplatsen ska fungera, till exempel för att komma ihåg det här valet. Alltid på.",
     "Preferences": "Inställningar",
     "Privacy policy": "Integritetspolicy",
+    ":name privacy policy": ":name integritetspolicy",
     "Provider": "Leverantör",
     "Purpose": "Syfte",
     "Read more about cookies": "Läs mer om kakor",
