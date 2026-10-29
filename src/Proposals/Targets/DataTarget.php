@@ -2,13 +2,18 @@
 
 namespace Inly\CoreWeb\Proposals\Targets;
 
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Drafts\FieldConditions;
+use Inly\CoreWeb\Proposals\Moves;
 use Inly\CoreWeb\Proposals\ProposalTarget;
 use Inly\CoreWeb\Support\Fingerprint;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 use Statamic\Fields\Blueprint;
+use Statamic\Fields\Field;
+use Statamic\Fieldtypes\Grid;
+use Statamic\Fieldtypes\Replicator;
 
 /**
  * Values held against a blueprint (a global's variables, a term, an asset's
@@ -129,19 +134,19 @@ abstract class DataTarget implements ProposalTarget
                 continue;
             }
 
-            // A grid or replicator reads row by row, so changing one redirect shows one row, not the whole list.
-            if (is_array($v) && $v !== [] && array_is_list($v) && collect($v)->every(fn (mixed $row) => is_array($row) && ! array_is_list($row))) {
-                $entryFields = collect((array) ($field?->config()['fields'] ?? []))->filter(fn (mixed $sub) => ($sub['field']['type'] ?? null) === 'entries')->pluck('handle')->all();
-                $ids = array_map(fn (array $row) => is_scalar($row['id'] ?? null) && filled($row['id']) ? (string) $row['id'] : null, $v);
-                // Rows key by their id only when every row has one of its own; otherwise by position, so no row hides another.
-                $byId = ! in_array(null, $ids, true) && count(array_unique($ids)) === count($ids);
+            // An empty grid has no rows to list; emptying one shows as its rows removed.
+            if (in_array($type, ['grid', 'replicator'], true) && blank($v)) {
+                continue;
+            }
 
-                foreach ($v as $index => $row) {
-                    $lines[$handle.' › '.($byId ? $ids[$index] : '#'.($index + 1))] = self::row($row, $entryFields);
+            // A grid or replicator reads row by row, so changing one redirect shows one row, not the whole list.
+            if (($rows = self::rows($field, $v)) !== null) {
+                foreach ($rows['rows'] as $key => $cells) {
+                    $lines[$handle.' › '.$key] = collect($cells)->map(fn (string $cell, string $column) => $column.': '.$cell)->implode("\n");
                 }
 
-                if ($byId) {
-                    $lines[$handle.' › '.self::ORDER] = implode(', ', $ids);
+                if ($rows['order'] !== null) {
+                    $lines[$handle.' › '.self::ORDER] = $rows['order'];
                 }
 
                 continue;
@@ -157,6 +162,17 @@ abstract class DataTarget implements ProposalTarget
 
     public function changes(array $from, array $to): array
     {
+        return $this->diff($from, $to)[0];
+    }
+
+    /**
+     * @param  array<string, mixed>  $from
+     * @param  array<string, mixed>  $to
+     * @return array{0: array<string, array{from: ?string, to: ?string}>, 1: list<string>} the changes, and the keys shown raw
+     */
+    private function diff(array $from, array $to): array
+    {
+        $raw = [];
         $a = $this->outline($from);
         $b = $this->outline($to);
         $changes = [];
@@ -167,15 +183,14 @@ abstract class DataTarget implements ProposalTarget
             }
         }
 
-        $order = fn (string $key) => str_ends_with($key, ' › '.self::ORDER);
-        $shown = array_keys(array_filter($changes, fn (array $change, string $key) => ! $order($key), ARRAY_FILTER_USE_BOTH));
+        $fields = $this->blueprint()?->fields()->all();
 
         foreach (array_keys($from + $to) as $handle) {
             $handle = (string) $handle;
             $orderKey = $handle.' › '.self::ORDER;
 
-            // Rows added or removed move the rest anyway: the order line only says something when the same rows changed places.
-            if (isset($changes[$orderKey]) && collect($shown)->contains(fn (string $key) => str_starts_with($key, $handle.' › '))) {
+            // Rows added or removed shift the rest anyway: the order line only says something when rows that stay changed places.
+            if (isset($changes[$orderKey]) && Moves::moved(array_keys(self::rows($fields?->get($handle), $from[$handle] ?? null)['rows'] ?? []), array_keys(self::rows($fields?->get($handle), $to[$handle] ?? null)['rows'] ?? [])) === []) {
                 unset($changes[$orderKey]);
             }
 
@@ -184,12 +199,177 @@ abstract class DataTarget implements ProposalTarget
             // A change the readable lines cannot show (a Bard link, a set's values) is shown raw, so nothing is applied unseen.
             if (! $visible && Fingerprint::of([$from[$handle] ?? null]) !== Fingerprint::of([$to[$handle] ?? null])) {
                 $changes[$handle] = ['from' => self::raw($from[$handle] ?? null), 'to' => self::raw($to[$handle] ?? null)];
+                $raw[] = $handle;
             }
         }
 
         ksort($changes);
 
-        return $changes;
+        return [$changes, $raw];
+    }
+
+    /**
+     * The changes as the CP shows them: one group per field, a grid's rows as a table of their fields, each cell before and after.
+     *
+     * @param  array<string, mixed>  $from
+     * @param  array<string, mixed>  $to
+     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved'|'origin', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
+     */
+    public function review(array $from, array $to): array
+    {
+        $fields = $this->blueprint()?->fields()->all();
+        [$changes, $raw] = $this->diff($from, $to);
+        $groups = [];
+
+        foreach ($changes as $key => $change) {
+            [$handle, $row] = array_pad(explode(' › ', $key, 2), 2, null);
+            $field = $fields?->get($handle);
+            $label = $field?->display() ?: Str::headline($handle);
+
+            if ($row === null) {
+                $groups[$handle] ??= ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => in_array($handle, $raw, true)];
+            } elseif (($groups[$handle]['kind'] ?? null) !== 'rows') {
+                $groups[$handle] = self::rowGroup($field, $label, $from[$handle] ?? null, $to[$handle] ?? null);
+            }
+        }
+
+        return array_values($groups);
+    }
+
+    /**
+     * A grid's rows in their proposed order, removed rows where they stood, each marked moved only when rows that stay changed places around it.
+     *
+     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved'|'origin', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
+     */
+    private static function rowGroup(?Field $field, string $label, mixed $from, mixed $to): array
+    {
+        $old = self::rows($field, $from) ?? ['rows' => [], 'order' => null];
+        $new = self::rows($field, $to) ?? ['rows' => [], 'order' => null];
+        $moved = $old['order'] !== null && $new['order'] !== null ? Moves::moved(array_keys($old['rows']), array_keys($new['rows'])) : [];
+
+        // A removed or moved row shows where it stood: after the last row before it that stays in place.
+        $removedAfter = [];
+        $previous = '';
+
+        foreach (array_keys($old['rows']) as $key) {
+            if (array_key_exists($key, $new['rows']) && ! in_array((string) $key, $moved, true)) {
+                $previous = (string) $key;
+            } else {
+                $removedAfter[$previous][] = [(string) $key, array_key_exists($key, $new['rows'])];
+            }
+        }
+
+        $order = $removedAfter[''] ?? [];
+
+        foreach (array_keys($new['rows']) as $key) {
+            $order = [...$order, [(string) $key, false], ...($removedAfter[(string) $key] ?? [])];
+        }
+
+        $group = ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0]];
+
+        foreach ($order as [$key, $isOrigin]) {
+            if ($isOrigin) {
+                $cells = [];
+
+                foreach ($old['rows'][$key] as $column => $value) {
+                    $group['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline((string) $column);
+                    $cells[$column] = ['from' => $value, 'to' => null];
+                }
+
+                $group['rows'][] = ['status' => 'origin', 'moved' => false, 'cells' => $cells];
+
+                continue;
+            }
+
+            $before = $old['rows'][$key] ?? null;
+            $after = $new['rows'][$key] ?? null;
+            $isMoved = in_array($key, $moved, true);
+            $status = match (true) {
+                $before === null => 'added',
+                $after === null => 'removed',
+                $before !== $after => 'changed',
+                $isMoved => 'moved',
+                default => null,
+            };
+
+            if ($status === null) {
+                continue;
+            }
+
+            $cells = [];
+
+            foreach (array_keys(($before ?? []) + ($after ?? [])) as $column) {
+                $group['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline((string) $column);
+                $cells[$column] = ['from' => $before[$column] ?? null, 'to' => $after[$column] ?? null];
+            }
+
+            $group['counts'][$status]++;
+
+            if ($isMoved && $status !== 'moved') {
+                $group['counts']['moved']++;
+            }
+
+            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'cells' => $cells];
+        }
+
+        return $group;
+    }
+
+    /**
+     * A grid's or replicator's rows, each as its fields read for people, keyed by row id when every row has its own, otherwise by position.
+     *
+     * @return array{rows: array<string, array<string, string>>, order: ?string}|null null when the value is not a list of rows
+     */
+    private static function rows(?Field $field, mixed $v): ?array
+    {
+        if (! is_array($v) || $v === [] || ! array_is_list($v) || ! collect($v)->every(fn (mixed $row) => is_array($row) && ! array_is_list($row))) {
+            return null;
+        }
+
+        $entryFields = array_keys(array_filter(self::subfields($field), fn (array $sub) => $sub['type'] === 'entries'));
+        $ids = array_map(fn (array $row) => is_scalar($row['id'] ?? null) && filled($row['id']) ? (string) $row['id'] : null, $v);
+        // Rows key by their id only when every row has one of its own; otherwise by position, so no row hides another.
+        $byId = ! in_array(null, $ids, true) && count(array_unique($ids)) === count($ids);
+        $rows = [];
+
+        foreach ($v as $index => $row) {
+            $rows[$byId ? $ids[$index] : '#'.($index + 1)] = collect($row)
+                ->except(['id', '_id', 'enabled'])
+                ->mapWithKeys(fn (mixed $value, string|int $column) => [(string) $column => self::display($value, in_array((string) $column, $entryFields, true))])
+                ->all();
+        }
+
+        return ['rows' => $rows, 'order' => $byId ? implode(', ', $ids) : null];
+    }
+
+    /**
+     * A grid's fields, or every set's fields of a replicator, imports resolved.
+     *
+     * @return array<string, array{label: string, type: string}>
+     */
+    private static function subfields(?Field $field): array
+    {
+        if ($field === null) {
+            return [];
+        }
+
+        return Blink::once('core-web-proposal-subfields-'.md5($field->handle().json_encode($field->config())), function () use ($field): array {
+            $fieldtype = $field->fieldtype();
+            $fields = match (true) {
+                $fieldtype instanceof Grid => [$fieldtype->fields()],
+                $fieldtype instanceof Replicator => array_map(fn (string $set) => $fieldtype->fields($set), collect($fieldtype->flattenedSetsConfig())->keys()->all()),
+                default => [],
+            };
+            $out = $fieldtype instanceof Replicator ? ['type' => ['label' => __('Set'), 'type' => 'text']] : [];
+
+            foreach ($fields as $set) {
+                foreach ($set->all() as $handle => $sub) {
+                    $out[(string) $handle] ??= ['label' => (string) ($sub->display() ?: Str::headline((string) $handle)), 'type' => (string) $sub->type()];
+                }
+            }
+
+            return $out;
+        });
     }
 
     private const ORDER = 'order';
@@ -197,18 +377,6 @@ abstract class DataTarget implements ProposalTarget
     private static function raw(mixed $v): ?string
     {
         return $v === null ? null : (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @param  list<string>  $entryFields  the row's fields that hold entries
-     */
-    private static function row(array $row, array $entryFields): string
-    {
-        return collect($row)
-            ->except(['id', '_id'])
-            ->map(fn (mixed $v, string|int $key) => $key.': '.self::display($v, in_array((string) $key, $entryFields, true)))
-            ->implode("\n");
     }
 
     /** A value as people read it: entry references by their page title, lists comma-separated. */

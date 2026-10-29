@@ -6,6 +6,20 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Proposals read as tables and trees**: the CP page for a proposal shows
+  what changes in the shape it has. Plain fields of a global, term or
+  asset share one Field / Now / Proposed table. A grid or replicator is a
+  table of its rows in their proposed order, removed rows where they
+  stood, each marked added, changed, removed or moved, with columns named
+  by their field labels and the old and new value of each changed cell. A
+  navigation or page tree shows the proposed tree, with branches marked
+  added, removed, renamed or moved. A row or branch counts as moved only
+  when it changed places, not when others were added or removed around
+  it, and it also shows struck through in red where it stood. The order
+  line a proposal returns to Core appears only when rows changed places.
+
 ## v0.35.0
 
 - **Readable proposals**: a proposal for a global, term or asset shows a
