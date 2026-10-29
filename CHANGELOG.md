@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## v0.34.0
+## Unreleased
 
 - **Readable proposals**: a proposal for a global, term or asset shows a
   grid or replicator row by row (added, changed, removed), names pages by
@@ -15,6 +15,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   cannot show (a Bard link, a set's values) falls back to raw JSON. The
   `changed` lines a proposal returns to Core read the same way, keyed by
   field handle (`redirects › {row id}`).
+
+## v0.34.0
+
 - **Consent cookie page as a link**: the `core-web::consent` fieldset's
   Cookie page is a `link` field (`consent_policy_link`), so it can be an
   entry, a PDF from the `assets` container or an address. A page picked in
