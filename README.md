@@ -75,6 +75,8 @@ One page per feature, in [`docs/`](docs):
 - [Mail sender](docs/mail-sender.md)
 - [Laravel Cloud](docs/laravel-cloud.md)
 - [Cookie consent](docs/cookie-consent.md)
+- [SEO](docs/seo.md)
+- [Favicons](docs/favicons.md)
 - [Statamic helpers](docs/statamic-helpers.md)
 - [Checking a site's setup](docs/checking-a-sites-setup.md)
 - [Agent instructions](docs/agent-instructions.md)

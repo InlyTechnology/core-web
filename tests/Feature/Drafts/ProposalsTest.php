@@ -333,6 +333,72 @@ class ProposalsTest extends TestCase
         ProposalTargets::resolve('nav:missing:default');
     }
 
+    public function test_a_grid_change_reads_row_by_row_with_page_titles(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'phone', 'field' => ['type' => 'text', 'validate' => ['required']]],
+            ['handle' => 'redirects', 'field' => ['type' => 'grid', 'display' => 'Redirects', 'fields' => [
+                ['handle' => 'url_old', 'field' => ['type' => 'text']],
+                ['handle' => 'internal_url', 'field' => ['type' => 'entries', 'max_items' => 1]],
+            ]]],
+        ]])->save();
+        GlobalSet::find('settings')->in('default')->data(['phone' => '123', 'redirects' => [
+            ['id' => 'r-old', 'url_old' => '/old', 'internal_url' => $this->pages['about']],
+            ['id' => 'r-keep', 'url_old' => '/keep', 'internal_url' => $this->pages['team']],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+
+        $changes = $this->proposals()->changes($target, $target->current(), ['phone' => '123', 'redirects' => [
+            ['id' => 'r-keep', 'url_old' => '/keep', 'internal_url' => $this->pages['team']],
+            ['id' => 'r-new', 'url_old' => '/new', 'internal_url' => $this->pages['contact']],
+        ]]);
+
+        $this->assertEquals([
+            'redirects › r-new' => ['from' => null, 'to' => "url_old: /new\ninternal_url: Contact (/contact)"],
+            'redirects › r-old' => ['from' => "url_old: /old\ninternal_url: About (/about)", 'to' => null],
+        ], $changes);
+
+        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '123', 'redirects' => [
+            ['id' => 'r-new', 'url_old' => '/new', 'internal_url' => [$this->pages['contact']]],
+        ]], Proposals::base($target));
+
+        $this->actingAs($this->user('eva@example.com'))->get(cp_route('core-web.proposals.show', $result['id']))
+            ->assertOk()
+            ->assertSee('redirects › r-new')
+            ->assertSee('Contact (/contact)')
+            ->assertSee('Added')
+            ->assertSee('Removed')
+            ->assertDontSee($this->pages['contact']);
+    }
+
+    public function test_a_change_the_readable_lines_cannot_show_is_shown_raw(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'phone', 'field' => ['type' => 'text']],
+            ['handle' => 'intro', 'field' => ['type' => 'bard']],
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [['handle' => 'url', 'field' => ['type' => 'text']]]]],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+        $link = fn (string $href) => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Hel'], ['type' => 'text', 'text' => 'lo', 'marks' => [['type' => 'link', 'attrs' => ['href' => $href]]]]]]];
+        $rows = [['id' => 'a', 'url' => '/a'], ['id' => 'b', 'url' => '/b']];
+
+        $changes = $this->proposals()->changes($target, ['intro' => $link('/one'), 'rows' => $rows], ['intro' => $link('https://evil.example'), 'rows' => array_reverse($rows)]);
+
+        $this->assertSame(['intro', 'rows › order'], array_keys($changes));
+        $this->assertStringContainsString('https://evil.example', $changes['intro']['to']);
+        $this->assertSame(['from' => 'a, b', 'to' => 'b, a'], $changes['rows › order']);
+        $this->assertSame('Hello', $target->outline(['intro' => $link('/one')])['intro']);
+    }
+
+    public function test_rows_without_their_own_ids_are_compared_by_position(): void
+    {
+        $target = GlobalTarget::make('settings', 'default');
+
+        $changes = $this->proposals()->changes($target, ['rows' => [['id' => 'x', 'url' => '/a'], ['id' => 'x', 'url' => '/b']]], ['rows' => [['id' => 'x', 'url' => '/a'], ['id' => 'x', 'url' => '/c']]]);
+
+        $this->assertSame(['rows › #2' => ['from' => 'url: /b', 'to' => 'url: /c']], $changes);
+    }
+
     public function test_an_editor_reviews_and_applies_a_proposal_in_the_cp(): void
     {
         $target = NavTarget::make('main', 'default');

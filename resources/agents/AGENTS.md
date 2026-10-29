@@ -137,12 +137,41 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
 - A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
 
+## SEO (`seo`)
+
+- **The head is `<x-core-web::seo.head :page="$page ?? null" />`**, robots.txt, the sitemaps, the redirects and
+  the page-not-found entry are the feature's routes and hooks: never Peak SEO beside it (boot fails), a
+  `public/robots.txt`, a sitemap route or a social-card class of the site's own.
+- **SEO fields come from the `core-web::seo_*` fieldsets**; a site's own schema (its Organization, a block's
+  FAQPage) stays in its views, and markup for the head goes in `@push('core-web.seo')`.
+- **A collection's social card is a row in `seo.social.collections`**, not code.
+
+## Favicons (`favicons`)
+
+- **Icons are one PNG on the `favicons` global**, rendered by `<x-core-web::favicons.head />`; every size is cut
+  from it on request. Never generated icon files, a `public/favicon.ico`, a hand-written manifest or Peak Tools'
+  favicon fields beside it.
+
+## Buttons (`buttons`)
+
+- **Buttons are the `core-web::button` / `core-web::buttons` fieldsets**, each resolved with
+  `Button::resolve()`: never a site copy of the button fieldset or a resolver of its own. Variants, link types, icons and the inline type are `buttons`
+  config; a link to a Core object's page is a `buttons.core_links` entry naming its snapshot type. A site
+  switching from the agency base's fieldset runs `php artisan buttons:migrate` once (`style` becomes `variant`).
+- **The look is the site's**: its button component takes the row (`<x-ui.button :button="$set['cta']" />`),
+  resolves it, renders nothing when `resolve()` returns null, and merges `attrs` onto its `<a>`; its row
+  component (`<x-buttons>`) loops a `buttons` field through it.
+- Override the fieldset (`resources/fieldsets/vendor/core-web/button.yaml`) only for a field config cannot
+  express; the override then owns every field.
+
 ## Statamic helpers
 
 - **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with
   `Links` (`docs/statamic-helpers.md`), never a copy of them in the site; a site's short global helper only wraps one.
 - **Native Statamic first**: a tag, a modifier or the object's own method (`mount_url`, `->url()`, a global by its
   handle in a view) before a helper, and a new helper only where Statamic has no single call for it.
+- **An icon is a name typed in** (`car`), drawn by the site's own icon library or font. `icons.reference` links the
+  page to look one up (the Font Awesome search); never a picker or SVG set of the site's own for it.
 
 ## Testing
 

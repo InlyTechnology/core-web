@@ -1,0 +1,68 @@
+title: 'SEO: Sitemap'
+fields:
+  -
+    handle: use_sitemap
+    field:
+      type: toggle
+      display: Sitemap
+      instructions: 'Serves /sitemap.xml.'
+      default: true
+      localizable: true
+  -
+    handle: sitemap_collections
+    field:
+      type: collections
+      mode: select
+      display: Collections
+      default:
+        - pages
+      always_save: true
+      width: 50
+      localizable: true
+      if:
+        use_sitemap: 'equals true'
+  -
+    handle: sitemap_taxonomies
+    field:
+      type: taxonomies
+      mode: select
+      display: Taxonomies
+      always_save: true
+      width: 50
+      localizable: true
+      if:
+        use_sitemap: 'equals true'
+  -
+    handle: sitemap_collection_taxonomies
+    field:
+      type: grid
+      mode: stacked
+      display: 'Taxonomy pages per collection'
+      instructions: "Lists a taxonomy's term pages under a collection, as /blog/tags/news."
+      add_row: 'Add taxonomy'
+      always_save: true
+      localizable: true
+      if:
+        use_sitemap: 'equals true'
+      fields:
+        -
+          handle: taxonomy
+          field:
+            type: taxonomies
+            max_items: 1
+            mode: select
+            display: Taxonomy
+            width: 50
+        -
+          handle: collections
+          field:
+            type: collections
+            mode: select
+            display: Collections
+            width: 50
+  -
+    handle: robots
+    field:
+      type: textarea
+      display: 'Robots rules'
+      instructions: 'Rules of your own at the top of /robots.txt. The AI crawler rules and the sitemaps are added for you.'

@@ -27,10 +27,10 @@
         <div class="space-y-1 text-sm">
             <div><strong>{{ __('Change to') }}:</strong> <span v-pre>{{ $proposal['label'] }}</span>
                 @if ($targetUrl)
-                    <a href="{{ $targetUrl }}" class="text-blue-600 underline">{{ __('Open') }}</a>
+                    <a href="{{ $targetUrl }}" class="ms-2 text-blue-600 underline">{{ __('Open') }}</a>
                 @endif
             </div>
-            <div><strong>{{ __('Proposed by') }}:</strong> <span v-pre>{{ $proposal['by']['name'] ?? $proposal['by']['email'] ?? '' }}</span>, {{ $proposal['created_at'] }}</div>
+            <div><strong>{{ __('Proposed by') }}:</strong> <span v-pre>{{ $proposal['by']['name'] ?? $proposal['by']['email'] ?? '' }}</span>, {{ $proposedAt }}</div>
             @if (filled($proposal['message']))
                 <div v-pre>{{ $proposal['message'] }}</div>
             @endif
@@ -46,10 +46,10 @@
     </ui-card>
 
     <ui-card-panel heading="{{ __('What changes') }}">
-        <table class="data-table w-full">
+        <table class="data-table w-full table-fixed">
             <thead>
                 <tr>
-                    <th class="text-start">{{ __('Where') }}</th>
+                    <th class="w-1/4 text-start">{{ __('Where') }}</th>
                     @if ($before)
                         <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
                     @endif
@@ -58,12 +58,19 @@
             </thead>
             <tbody>
                 @foreach ($changes as $where => $change)
-                    <tr>
-                        <td class="font-mono text-xs" v-pre>{{ $where }}</td>
+                    <tr class="align-top">
+                        <td class="text-sm">
+                            <span class="break-words" v-pre>{{ $where }}</span>
+                            @if ($before && $change['from'] === null)
+                                <ui-badge size="sm" color="green" text="{{ __('Added') }}"></ui-badge>
+                            @elseif ($change['to'] === null)
+                                <ui-badge size="sm" color="red" text="{{ __('Removed') }}"></ui-badge>
+                            @endif
+                        </td>
                         @if ($before)
-                            <td><pre class="whitespace-pre-wrap text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</pre></td>
+                            <td><div class="whitespace-pre-wrap break-words text-xs text-red-700 dark:text-red-400" v-pre>{{ $change['from'] ?? '' }}</div></td>
                         @endif
-                        <td><pre class="whitespace-pre-wrap text-xs text-green-700 dark:text-green-400" v-pre>{{ $change['to'] ?? '' }}</pre></td>
+                        <td><div class="whitespace-pre-wrap break-words text-xs text-green-700 dark:text-green-400" v-pre>{{ $change['to'] ?? '' }}</div></td>
                     </tr>
                 @endforeach
             </tbody>

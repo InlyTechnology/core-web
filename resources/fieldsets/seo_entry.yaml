@@ -1,0 +1,143 @@
+title: 'SEO: Entry'
+fields:
+  -
+    handle: seo_title
+    field:
+      type: text
+      display: 'Page title'
+      instructions: 'Replaces the whole title. Leave empty for the title and the site name.'
+      character_limit: 70
+      listable: hidden
+      localizable: true
+  -
+    handle: seo_description
+    field:
+      type: textarea
+      display: 'Meta description'
+      character_limit: 160
+      listable: hidden
+      localizable: true
+  -
+    handle: seo_noindex
+    field:
+      type: button_group
+      display: Indexing
+      instructions: 'Noindex keeps the page out of search and out of the sitemap.'
+      options:
+        index: Index
+        noindex: Noindex
+      default: index
+      width: 50
+      listable: hidden
+      localizable: true
+  -
+    handle: seo_nofollow
+    field:
+      type: toggle
+      display: 'No-follow'
+      instructions: 'Asks search engines not to follow the links on this page.'
+      width: 50
+      listable: hidden
+      localizable: true
+  -
+    handle: seo_canonical_type
+    field:
+      type: button_group
+      display: 'Canonical address'
+      options:
+        entry: 'This page'
+        current: 'Another page'
+        external: 'Another site'
+      default: entry
+      listable: hidden
+      localizable: true
+  -
+    handle: seo_canonical_current
+    field:
+      type: entries
+      max_items: 1
+      mode: default
+      display: 'Original page'
+      listable: hidden
+      localizable: true
+      validate:
+        - 'required_if:seo_canonical_type,current'
+      if:
+        seo_canonical_type: 'equals current'
+  -
+    handle: seo_canonical_external
+    field:
+      type: text
+      input_type: url
+      display: 'Original address'
+      listable: hidden
+      localizable: true
+      validate:
+        - 'required_if:seo_canonical_type,external'
+      if:
+        seo_canonical_type: 'equals external'
+  -
+    handle: og_title
+    field:
+      type: text
+      display: 'Social title'
+      instructions: 'Defaults to the page title.'
+      listable: hidden
+      localizable: true
+  -
+    handle: og_description
+    field:
+      type: textarea
+      display: 'Social description'
+      instructions: 'Defaults to the meta description.'
+      listable: hidden
+      localizable: true
+  -
+    handle: og_image
+    field:
+      type: assets
+      container: social_images
+      max_files: 1
+      mode: grid
+      display: 'Social image'
+      instructions: '1200 × 630 px, cropped around the focal point. Defaults to the page image.'
+      width: 50
+      listable: hidden
+      localizable: true
+  -
+    handle: sitemap_change_frequency
+    field:
+      type: select
+      display: 'Change frequency'
+      options:
+        always: Always
+        hourly: Hourly
+        daily: Daily
+        weekly: Weekly
+        monthly: Monthly
+        yearly: Yearly
+        never: Never
+      default: weekly
+      clearable: false
+      width: 50
+      listable: hidden
+      localizable: true
+  -
+    handle: sitemap_priority
+    field:
+      type: text
+      display: 'Sitemap priority'
+      instructions: 'From 0.0 to 1.0.'
+      default: '0.5'
+      width: 50
+      listable: hidden
+      localizable: true
+  -
+    handle: schema_jsonld
+    field:
+      type: code
+      mode: javascript
+      display: 'Structured data'
+      instructions: 'JSON-LD for this page, without the script tag.'
+      listable: hidden
+      localizable: true

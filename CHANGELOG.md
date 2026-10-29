@@ -6,6 +6,103 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## v0.34.0
+
+- **Readable proposals**: a proposal for a global, term or asset shows a
+  grid or replicator row by row (added, changed, removed), names pages by
+  title and URL instead of their entry ids, and shows Bard as text. A row
+  that only moved shows as an order line, and a change the readable lines
+  cannot show (a Bard link, a set's values) falls back to raw JSON. The
+  `changed` lines a proposal returns to Core read the same way, keyed by
+  field handle (`redirects › {row id}`).
+- **Consent cookie page as a link**: the `core-web::consent` fieldset's
+  Cookie page is a `link` field (`consent_policy_link`), so it can be an
+  entry, a PDF from the `assets` container or an address. A page picked in
+  `consent_policy_page` is still read. The settings dialog links it under
+  the consent details. See `docs/cookie-consent.md`.
+- **`buttons` feature**: the `core-web::button` and `core-web::buttons`
+  fieldsets, and `Button::resolve()` (null when a button renders nothing),
+  in place of the agency base's button fieldset and `resolveButton()`. Variants, link
+  types (sms included), an inline variant, opt-in icons (a name, with
+  `icons.reference` linked to look one up), entries across sites and
+  links to Core snapshot pages (`buttons.core_links`) are config; the site's
+  own `<x-ui.button>` and `<x-buttons>` draw them. See `docs/buttons.md`.
+- **`missing_alt_text` widget** (with `media`): images without alt text,
+  counted by a queued scan, in place of Peak Tools' `images_missing_alt`.
+  See `docs/media.md`.
+- `Snapshot::listingTitle()` names a document in pickers (the Core link
+  dictionary); a snapshot overrides it for a better label.
+
+- **Proof of what a visitor consented to**: each consent row names the
+  fingerprint and locale of the banner it was made on, and each banner is
+  kept once with every text, vendor and cookie. `php artisan consent:show
+  <id>` and the control panel's **Consent log** utility show a visitor's
+  choices with that banner, export them as JSON, and list the totals per
+  banner. Adding or removing a vendor, category or cookie now asks every
+  visitor again by itself. See `docs/cookie-consent.md`.
+- **Consent signals for Microsoft Advertising and Clarity**: a site that
+  declares `microsoft_uet` (new in the catalogue) or `microsoft_clarity`
+  gets their consent APIs' denied defaults in the head, and every choice
+  updates them beside Consent Mode. Nothing changes for a site declaring
+  neither.
+- **`seo` feature, in place of Peak SEO**: `<x-core-web::seo.head>` renders
+  the title, description, robots, canonical, hreflang, Open Graph, JSON-LD
+  and the Google tags (held by the `consent` feature until statistics is
+  granted); `/robots.txt` blocks AI training crawlers and lists the
+  sitemaps; `/sitemap.xml` per site and the `/sitemaps.xml` index; the
+  redirects global answers front-end 404s; the page-not-found entry fills
+  `errors/404`. The `core-web::seo_*` fieldsets keep Peak SEO's field
+  handles, so content carries over; only production is indexed (one global
+  toggle and one per entry). Off by default; Peak SEO must be removed
+  before it is switched on. See `docs/seo.md`.
+- **`favicons` feature, in place of Peak Tools' favicons**:
+  `<x-core-web::favicons.head>`, `/site.webmanifest` and `/favicon.ico`,
+  every size cut by the CDN (or Glide) from one PNG on the `favicons`
+  global, with an optional dark PNG and SVGs for light and dark tabs. On
+  Statamic Pro the control panel's tab icon becomes the site's icon with a
+  dot, written when the global is saved. Off by default. See
+  `docs/favicons.md`.
+
+### Upgrade notes
+
+- **A site switching on `buttons` renames its button variants.** The
+  `core-web::button` fieldset names the variant `variant`, where the agency
+  base's fieldset said `style`, so the CP shows saved buttons with the default
+  variant until the content is renamed (the front end reads the old `style`
+  meanwhile). Find: a site with `'buttons' => true` in `config/core-web.php`
+  whose content has button rows with `style:`. Migrate: `php artisan
+  buttons:migrate --dry-run`, then `php artisan buttons:migrate`, and commit
+  the content. Verify: a second `buttons:migrate` reports `Changed 0 items.`
+- **The consent log needs a second migration.** A site with `consent` on and
+  its log enabled keeps logging every choice without it, but without the
+  banner it was made on. Find:
+  `config/core-web.php` has `'consent' => true` and `log.enabled` is not
+  false. Migrate: `php artisan vendor:publish
+  --tag=core-web-consent-snapshots-migration`, then deploy, which migrates.
+  Verify: after a choice on the site, `php artisan consent:show` lists a
+  banner fingerprint rather than "not recorded".
+- **Visitors are asked again when vendors change.** A choice now carries the
+  scope it was given on (the categories, vendors and cookie names), and a
+  change to it asks again, as raising `policy_version` did. Choices made
+  before this release carry no scope and stand until they expire or the
+  version is raised. Find: nothing to change. Verify: add a vendor locally,
+  reload, and the banner shows again.
+- **The consent log is kept three years, not five.** `consent.log.retention_days`
+  defaults to 1095, so the next `consent:prune` deletes choices older than
+  that. Find: a site that relies on the five-year default. Migrate: set
+  `consent.log.retention_days` to 1825 in `config/core-web.php` to keep five
+  years. Verify: `php artisan config:show core-web.consent.log.retention_days`.
+
+## v0.33.0
+
+- **Registration numbers in `CoreForm`**: a `license_plate` field renders as
+  a capitals text input, is checked as Core checks a plate's shape and goes
+  trimmed and in capitals. It no longer logs as a type core-web does not
+  know. See `docs/forms.md`, Registration numbers.
+- **Field limits**: `minLength` / `maxLength`, `min` / `max` and a date's
+  `earliest` / `latest` are checked before an entry is sent and set on the
+  default markup's inputs. The definition contract copy is Core's current one.
+
 ## v0.32.0
 
 - **Block changes in a draft** (connector API v1.3): a draft of an existing

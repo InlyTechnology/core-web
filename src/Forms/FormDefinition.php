@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Forms;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
@@ -18,7 +19,7 @@ final class FormDefinition
     public const VERSION = 1;
 
     /** Field types this class knows; any other renders as a text input and is logged. */
-    public const TYPES = ['string', 'text', 'number', 'boolean', 'email', 'url', 'phone', 'date', 'enum', 'multi_enum', 'file', 'image'];
+    public const TYPES = ['string', 'text', 'number', 'boolean', 'email', 'url', 'phone', 'date', 'license_plate', 'enum', 'multi_enum', 'file', 'image'];
 
     /**
      * The keys of a definition field this class and the default markup know:
@@ -27,7 +28,7 @@ final class FormDefinition
     public const KEYS = [
         'name', 'type', 'label', 'description', 'placeholder', 'required', 'hidden', 'source', 'default', 'options',
         'autocomplete', 'display', 'accept', 'maxKb', 'multiple', 'maxFiles', 'minFiles', 'slots', 'maxSide', 'capture',
-        'withTime', 'width', 'visibleWhen', 'section', 'step',
+        'withTime', 'minLength', 'maxLength', 'min', 'max', 'earliest', 'latest', 'width', 'visibleWhen', 'section', 'step',
     ];
 
     /** The privacy box Core adds to a form whose notice is a checkbox. */
@@ -262,8 +263,10 @@ final class FormDefinition
             match (self::typeOf($field)) {
                 'email' => $rules[$key] = [$presence, 'string', 'email', 'max:255'],
                 'url' => $rules[$key] = [$presence, 'string', 'max:2048', 'url:http,https'],
-                'number' => $rules[$key] = [$presence, 'numeric'],
-                'date' => $rules[$key] = [$presence, 'date'],
+                'number' => $rules[$key] = [$presence, 'numeric', ...self::bound('min', $field['min'] ?? null), ...self::bound('max', $field['max'] ?? null)],
+                'date' => $rules[$key] = [$presence, 'date', ...self::window($field)],
+                // Core's shape check, read with the spacing a visitor types; the country's own format is Core's to check.
+                'license_plate' => $rules[$key] = [$presence, 'string', 'max:20', 'regex:/^\s*[\p{L}\p{N}]+(?:[\s-]+[\p{L}\p{N}]+)*\s*$/u'],
                 // Core requires a tick only of a consent box; the definition cannot tell one from a plain checkbox but
                 // for the privacy box, so Core's 422 names an unticked consent box.
                 'boolean' => $rules[$key] = $name === self::PRIVACY_FIELD && $required ? ['accepted'] : [$presence, 'boolean'],
@@ -276,8 +279,8 @@ final class FormDefinition
                     $rules[$key] = [$presence, 'array', ...self::fileCount($field, $required)],
                     $rules[$key.'.*'] = ['file', ...(is_int($field['maxKb'] ?? null) ? ['max:'.$field['maxKb']] : []), ...(self::typeOf($field) === 'image' ? ['image'] : [])],
                 ],
-                'text' => $rules[$key] = [$presence, 'string'],
-                default => $rules[$key] = [$presence, 'string', 'max:255'],
+                'text' => $rules[$key] = [$presence, 'string', ...self::length($field, null)],
+                default => $rules[$key] = [$presence, 'string', ...self::length($field, 255)],
             };
         }
 
@@ -322,6 +325,7 @@ final class FormDefinition
             $payload[$name] = match (self::typeOf($field)) {
                 'boolean' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
                 'number' => is_numeric($value) ? $value + 0 : $value,
+                'license_plate' => is_string($value) ? self::plate($value) : $value,
                 default => $value,
             };
         }
@@ -347,6 +351,59 @@ final class FormDefinition
         };
 
         return is_scalar($value) && (string) $value !== '' ? (string) $value : null;
+    }
+
+    /** `abc  123 ` goes as `ABC 123`: Core stores it in its country's form, but refuses a run of separators. */
+    private static function plate(string $value): string
+    {
+        return mb_strtoupper((string) preg_replace('/\s+/u', ' ', trim($value)));
+    }
+
+    /** @return list<string> a string field's `minLength` / `maxLength`, `$cap` when it declares no maximum */
+    private static function length(array $field, ?int $cap): array
+    {
+        $max = is_int($field['maxLength'] ?? null) ? $field['maxLength'] : $cap;
+
+        return [...self::bound('min', $field['minLength'] ?? null), ...self::bound('max', $max)];
+    }
+
+    /** @return list<string> */
+    private static function bound(string $rule, mixed $limit): array
+    {
+        return is_int($limit) || is_float($limit) ? [$rule.':'.$limit] : [];
+    }
+
+    /**
+     * A date field's window as Core declares it (`today`, `today+N` /
+     * `today-N` days, or a `YYYY-MM-DD` date), read on the site's own day;
+     * the last day is whole, so a time on it still passes.
+     *
+     * @return list<string>
+     */
+    private static function window(array $field): array
+    {
+        $earliest = self::day($field['earliest'] ?? null);
+        $latest = self::day($field['latest'] ?? null);
+
+        return [
+            ...($earliest ? ['after_or_equal:'.$earliest->toDateString()] : []),
+            ...($latest ? ['before:'.$latest->addDay()->toDateString()] : []),
+        ];
+    }
+
+    private static function day(mixed $bound): ?CarbonImmutable
+    {
+        if (! is_string($bound)) {
+            return null;
+        }
+
+        if (preg_match('/^today(?:([+-])(\d+))?$/', $bound, $match) === 1) {
+            $days = (int) ($match[2] ?? 0);
+
+            return CarbonImmutable::today()->addDays(($match[1] ?? '+') === '-' ? -$days : $days);
+        }
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $bound) === 1 ? CarbonImmutable::parse($bound)->startOfDay() : null;
     }
 
     /** @return list<string> */

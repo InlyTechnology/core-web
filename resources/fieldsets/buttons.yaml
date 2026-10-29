@@ -1,0 +1,15 @@
+title: Buttons
+fields:
+  -
+    handle: buttons
+    field:
+      type: grid
+      mode: stacked
+      display: Buttons
+      reorderable: true
+      add_row: 'Add button'
+      localizable: true
+      replicator_preview: false
+      fields:
+        -
+          import: 'core-web::button'

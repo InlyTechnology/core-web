@@ -13,10 +13,9 @@ fields:
       display: 'Cookie banner text'
       instructions: 'Leave empty for the default text.'
   -
-    handle: consent_policy_page
+    handle: consent_policy_link
     field:
-      type: entries
-      max_items: 1
-      mode: default
+      type: link
+      container: assets
       display: 'Cookie page'
-      instructions: 'The page the banner links to for more about cookies.'
+      instructions: 'A page, a file (a PDF) or an address the banner links to for more about cookies.'

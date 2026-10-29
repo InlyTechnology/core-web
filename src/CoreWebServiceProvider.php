@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Inly\CoreWeb\Buttons\Button;
+use Inly\CoreWeb\Buttons\MigrateButtonsCommand;
+use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Chat\ChatController;
 use Inly\CoreWeb\Chat\ChatSession;
 use Inly\CoreWeb\Checks\ContentCheckCommand;
@@ -33,7 +36,9 @@ use Inly\CoreWeb\CmsSignIn\ReconcileCmsUsersCommand;
 use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\CmsSignIn\SsoUserProvider;
 use Inly\CoreWeb\Consent\Consent;
+use Inly\CoreWeb\Consent\ConsentUtilityController;
 use Inly\CoreWeb\Consent\PruneConsentsCommand;
+use Inly\CoreWeb\Consent\ShowConsentCommand;
 use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
@@ -58,16 +63,22 @@ use Inly\CoreWeb\Drafts\FieldsHash;
 use Inly\CoreWeb\Drafts\KeepDraftProvenance;
 use Inly\CoreWeb\Drafts\StatamicContentSchema;
 use Inly\CoreWeb\Drafts\StoredValues;
+use Inly\CoreWeb\Favicons\CpFavicon;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
+use Inly\CoreWeb\Seo\NotFoundPage;
+use Inly\CoreWeb\Seo\RedirectMissingPages;
+use Inly\CoreWeb\Seo\Seo;
+use Inly\CoreWeb\Seo\Sitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemapsTag;
 use Inly\CoreWeb\Snapshots\PullSnapshotsCommand;
@@ -82,13 +93,28 @@ use Inly\CoreWeb\Widgets\ConsentStatsWidget;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
 use Inly\CoreWeb\Widgets\DraftsWidget;
+use Inly\CoreWeb\Widgets\MissingAltTextWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Events\AssetDeleted;
+use Statamic\Events\AssetReuploaded;
+use Statamic\Events\AssetSaved;
+use Statamic\Events\AssetUploaded;
+use Statamic\Events\CollectionSaved;
+use Statamic\Events\CollectionTreeSaved;
+use Statamic\Events\EntryDeleted;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\GlobalSetDeleted;
+use Statamic\Events\GlobalVariablesSaved;
 use Statamic\Events\RevisionSaving;
+use Statamic\Events\TermDeleted;
+use Statamic\Events\TermSaved;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
+use Statamic\Facades\Utility;
+use Statamic\Fields\FieldsetRepository;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 
@@ -119,6 +145,10 @@ use Statamic\StaticCaching\Cacher;
  * The `cloud` feature runs the site on Laravel Cloud, its content in the
  * database, with `content:import` and `core-web:deploy`.
  * The `consent` feature is the site's own cookie banner and consent log.
+ * The `seo` feature is the page head (`<x-core-web::seo.head>`), robots.txt,
+ * the sitemaps, the editors' redirects and the page-not-found entry.
+ * The `buttons` feature is the button fieldset as the site configures it,
+ * with Button::resolve() turning one into what the site's button draws.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -157,6 +187,19 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('consent')) {
                 $this->mergeGroupDefaults('consent', ['vendors', 'sites']);
+            }
+
+            if (self::enabled('seo')) {
+                $this->mergeGroupDefaults('seo', []);
+                $this->mergeSocialDefaults();
+            }
+
+            if (self::enabled('favicons')) {
+                $this->mergeGroupDefaults('favicons', []);
+            }
+
+            if (self::enabled('buttons')) {
+                $this->mergeGroupDefaults('buttons', ['variants', 'link_types', 'core_links']);
             }
 
             if (self::enabled('media')) {
@@ -238,13 +281,32 @@ class CoreWebServiceProvider extends ServiceProvider
         config(["core-web.{$key}" => array_replace($defaults, $site)]);
     }
 
+    /** The social card's `hero` and `image` keep their other defaults when a site sets only one key; a null hero is off. */
+    private function mergeSocialDefaults(): void
+    {
+        $defaults = (array) (require __DIR__.'/../config/core-web.php')['seo']['social'];
+        $social = (array) config('core-web.seo.social');
+
+        foreach (['hero', 'image'] as $group) {
+            if (is_array($social[$group] ?? null)) {
+                $social[$group] = array_replace($defaults[$group], $social[$group]);
+            }
+        }
+
+        config(['core-web.seo.social' => $social]);
+    }
+
     public function boot(): void
     {
         $this->publishes([__DIR__.'/../config/core-web.php' => config_path('core-web.php')], 'core-web-config');
         $this->publishesMigrations([__DIR__.'/../database/migrations' => database_path('migrations')], 'core-web-migrations');
         // Its own tag: re-publishing the combined one copies an already published migration again under today's date.
         $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php' => database_path('migrations/2026_10_20_000000_create_core_web_sync_tokens_table.php')], 'core-web-sync-tokens-migration');
-        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_23_000000_create_core_web_consents_table.php' => database_path('migrations/2026_10_23_000000_create_core_web_consents_table.php')], 'core-web-consent-migration');
+        $this->publishesMigrations(collect(['2026_10_23_000000_create_core_web_consents_table.php', '2026_10_27_000000_add_core_web_consent_snapshots.php'])
+            ->mapWithKeys(fn (string $file): array => [__DIR__.'/../database/migrations/'.$file => database_path('migrations/'.$file)])
+            ->all(), 'core-web-consent-migration');
+        // A site that published the consent log before snapshots publishes only this one.
+        $this->publishesMigrations([__DIR__.'/../database/migrations/2026_10_27_000000_add_core_web_consent_snapshots.php' => database_path('migrations/2026_10_27_000000_add_core_web_consent_snapshots.php')], 'core-web-consent-snapshots-migration');
         // Under the driver's own names, so --force replaces copies the site published from the driver.
         $this->publishes(collect(glob(__DIR__.'/../database/cloud-migrations/*.php'))->mapWithKeys(fn (string $file): array => [$file => database_path('migrations/'.basename($file))])->all(), 'core-web-cloud-migrations');
 
@@ -293,6 +355,11 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('media')) {
             $this->app->bind(UrlScheme::class, fn ($app) => $app->make((string) $app['config']->get('core-web.media.cdn.scheme')));
             MediaDisks::registerDriver();
+            $this->loadViews();
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+            MissingAltTextWidget::register();
+            // Every change to a container's assets can change its count, so the next dashboard visit scans it again.
+            Event::listen([AssetSaved::class, AssetDeleted::class, AssetUploaded::class, AssetReuploaded::class], fn ($event) => MissingAltText::forget($event->asset->containerHandle()));
             // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
             Blade::anonymousComponentPath(__DIR__.'/../resources/components');
 
@@ -341,6 +408,23 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootConsent();
         }
 
+        if (self::enabled('seo')) {
+            $this->bootSeo();
+        }
+
+        if (self::enabled('favicons')) {
+            $this->loadViews();
+            $this->loadRoutesFrom(__DIR__.'/../routes/favicons.php');
+
+            if (config('core-web.favicons.cp_mark.enabled')) {
+                CpFavicon::register();
+            }
+        }
+
+        if (self::enabled('buttons')) {
+            $this->bootButtons();
+        }
+
         if ($this->app->runningInConsole() && collect(array_keys((array) config('core-web.features')))->contains(fn (string $feature): bool => self::enabled($feature))) {
             $this->commands([DoctorCommand::class]);
         }
@@ -379,6 +463,30 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    /** The button fieldset as the site configures it, unless the site keeps its own copy under resources/fieldsets/vendor/core-web. */
+    private function bootButtons(): void
+    {
+        $this->loadViews();
+
+        if (self::enabled('snapshots')) {
+            SnapshotPagesDictionary::register();
+        }
+
+        $fieldsets = $this->app->make(FieldsetRepository::class);
+
+        // The tracker event field follows the seo global; the fieldset picks it up on the next request.
+        Event::listen([GlobalVariablesSaved::class, GlobalSetDeleted::class], fn () => Seo::forgetTracker());
+
+        // After Statamic has booted: the fieldset reads the seo global, and a repository resolved earlier stays without its store.
+        Statamic::booted(function () use ($fieldsets): void {
+            if (! file_exists($fieldsets->overriddenNamespacedFieldsetPath('core-web::button'))) {
+                $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
+            }
+        });
+
+        $this->commands([MigrateButtonsCommand::class]);
     }
 
     private function bootDrafts(): void
@@ -554,14 +662,42 @@ class CoreWebServiceProvider extends ServiceProvider
         RateLimiter::for('core-web.consent', fn (Request $request) => Limit::perMinute(max(1, (int) config('core-web.consent.log.rate_limit', 30)))
             ->by('consent|'.sha1(ClientAddress::key($request))));
         $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
-        $this->commands([PruneConsentsCommand::class]);
+        $this->commands([PruneConsentsCommand::class, ShowConsentCommand::class]);
         ConsentStatsWidget::register();
+
+        Utility::extend(function (): void {
+            Utility::register('consent')
+                ->view('core-web::utilities.consent', fn (Request $request): array => ConsentUtilityController::data($request))
+                ->title(__('Consent log'))
+                ->icon('security-lock')
+                ->description(__('Find a visitor\'s recorded cookie consent and the banner they chose on, as proof of consent.'))
+                ->routes(fn ($router) => $router->get('export', [ConsentUtilityController::class, 'export'])->name('export'));
+        });
 
         if (is_string($cron = config('core-web.consent.log.prune_schedule')) && $cron !== '') {
             $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('consent:prune')
                 ->cron($cron)
                 ->withoutOverlapping());
         }
+    }
+
+    private function bootSeo(): void
+    {
+        // Peak SEO registers the same routes later in the boot, so its robots.txt and sitemaps would win over these.
+        if (class_exists('Studio1902\PeakSeo\ServiceProvider')) {
+            throw new LogicException('core-web.features.seo replaces Peak SEO: remove studio1902/statamic-peak-seo (composer remove) before switching it on.');
+        }
+
+        $this->loadViews();
+        $this->loadRoutesFrom(__DIR__.'/../routes/seo.php');
+
+        if (filled(config('core-web.seo.not_found.global'))) {
+            NotFoundPage::register();
+        }
+
+        RedirectMissingPages::register();
+
+        Event::listen([EntrySaved::class, EntryDeleted::class, TermSaved::class, TermDeleted::class, CollectionSaved::class, CollectionTreeSaved::class, GlobalVariablesSaved::class], fn () => Sitemaps::flush());
     }
 
     private function bootForms(): void

@@ -56,29 +56,32 @@
 }
 
 .core-consent__fab {
+    /* Core AI's launcher: a filled, rounded square in the corner, here in the accent. */
     position: fixed;
     z-index: 2147482999;
-    bottom: 16px;
+    bottom: 20px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    box-sizing: border-box;
+    width: 48px;
+    height: 48px;
     padding: 0;
-    border: 1px solid var(--core-consent-border);
-    border-radius: 999px;
-    background: var(--core-consent-background);
-    color: var(--core-consent-accent);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
+    border: 0;
+    border-radius: 12px;
+    background: var(--core-consent-accent);
+    color: var(--core-consent-accent-foreground);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     cursor: pointer;
+    transition: filter 150ms;
 }
 
 .core-consent__fab--bottom-left {
-    left: 16px;
+    left: 20px;
 }
 
 .core-consent__fab--bottom-right {
-    right: 16px;
+    right: 20px;
 }
 
 .core-consent__fab[hidden] {
@@ -86,12 +89,17 @@
 }
 
 .core-consent__fab svg {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
 }
 
 .core-consent__fab:hover {
-    filter: brightness(0.96);
+    filter: brightness(0.92);
+}
+
+.core-consent__fab:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--core-consent-accent) 45%, var(--core-consent-background));
+    outline-offset: 2px;
 }
 
 @media print {
@@ -359,6 +367,10 @@
 
 .core-consent__about {
     margin-top: 16px;
+}
+
+.core-consent__policy {
+    margin: 24px 0 0;
 }
 
 .core-consent__about[hidden] {

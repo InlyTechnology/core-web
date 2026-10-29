@@ -223,6 +223,24 @@ environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
   `php artisan media:sync push --force`, on the Cloud credentials like any
   other key.
 
+## Images missing alt text
+
+With `media` on, the control panel has a `missing_alt_text` dashboard widget
+in place of Peak Tools' `images_missing_alt`. List it in
+`config/statamic/cp.php`:
+
+```php
+'widgets' => [
+    ['type' => 'missing_alt_text', 'container' => 'assets', 'limit' => 5, 'width' => 50],
+],
+```
+
+It counts the images (SVGs included) in the container whose `alt` is blank
+and links the newest to their edit screen. The count comes from a queued scan,
+so the first view says it is counting; the result is cached until an asset in
+the container is saved, uploaded, reuploaded or deleted. `field` names another
+meta field than `alt`, `title` the widget's heading.
+
 ## Commands
 
 - **`media:sync push|pull [--disk=] [--dry-run] [--overwrite]`** copies each

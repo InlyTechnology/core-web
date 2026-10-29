@@ -15,8 +15,11 @@ class ConsentVendors
     /** @var list<string> */
     public const CATEGORIES = ['necessary', 'preferences', 'statistics', 'marketing'];
 
+    /** @var list<string> */
+    public const SIGNALS = ['uet', 'clarity'];
+
     /**
-     * @return array<string, array{name: string, category: string, policy_url?: string, cookies: list<array{name: string, purpose: string, days?: int|null, minutes?: int}>}>
+     * @return array<string, array{name: string, category: string, policy_url?: string, signal?: string, cookies: list<array{name: string, purpose: string, days?: int|null, minutes?: int}>}>
      */
     public static function catalogue(): array
     {
@@ -28,7 +31,7 @@ class ConsentVendors
     /**
      * The site's vendors, its own necessary cookies first.
      *
-     * @return array<string, array{name: string, category: string, policy_url?: string, cookies: list<array{name: string, purpose: string, days?: int|null, minutes?: int}>}>
+     * @return array<string, array{name: string, category: string, policy_url?: string, signal?: string, cookies: list<array{name: string, purpose: string, days?: int|null, minutes?: int}>}>
      */
     public static function declared(): array
     {
@@ -86,6 +89,20 @@ class ConsentVendors
         }
 
         return $names;
+    }
+
+    /**
+     * The consent APIs of the declared vendors (`signal` in the catalogue), which hear the visitor's choice beside
+     * Consent Mode, so a tag holding no category of its own (one in Tag Manager) still reads it.
+     *
+     * @return list<string>
+     */
+    public static function signals(): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            fn (array $vendor): ?string => isset($vendor['signal']) && in_array($vendor['signal'], self::SIGNALS, true) ? $vendor['signal'] : null,
+            array_values(self::declared()),
+        ))));
     }
 
     /** @return array{name: string, category: string, cookies: list<array{name: string, purpose: string, days?: int|null}>} */
