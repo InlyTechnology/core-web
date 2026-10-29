@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.36.0
 
 - **Clearer machine sign-in page**: the page that approves `content:login`
   lists the machine's name, where and when it asked, and its code as
