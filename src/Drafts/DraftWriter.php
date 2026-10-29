@@ -54,6 +54,9 @@ class DraftWriter
     /** @var list<string> the page builders this write made from block changes, which its answer names so a source knows they were applied */
     private array $blockChanged = [];
 
+    /** @var list<string> `container::path` of the files a dry run's push uploads before it writes, which count as there */
+    private array $arriving = [];
+
     /** The normaliser of this write: the site's, or the one its source passed. */
     private DraftValueNormaliser $normaliser;
 
@@ -68,7 +71,7 @@ class DraftWriter
 
     /**
      * @param  DraftAuthor|Closure(): DraftAuthor  $author  a closure is called only once the request names an entry it may draft, so a refusal about the request comes before one about its author
-     * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, block_changes?: ?array<string, list<mixed>>, base_hash?: ?string}  $request
+     * @param  array{collection: string, entry_id?: ?string, id?: ?string, site?: ?string, parent_id?: ?string, blueprint?: ?string, dry_run?: bool, fields: array<string, mixed>, block_changes?: ?array<string, list<mixed>>, base_hash?: ?string, arriving_assets?: list<string>}  $request
      * @return array<string, mixed>
      *
      * @throws DraftRefused|ValidationException
@@ -77,6 +80,7 @@ class DraftWriter
     {
         $this->normaliser = $values ?? $this->values;
         $this->dryRun = (bool) ($request['dry_run'] ?? false);
+        $this->arriving = $this->dryRun ? array_values((array) ($request['arriving_assets'] ?? [])) : [];
         $this->blockChanged = [];
 
         if (! DraftableCollections::writable((string) $request['collection'])) {
@@ -608,7 +612,8 @@ class DraftWriter
         $normalised['ignored'] = array_values(array_unique([...$normalised['ignored'], ...$sentHidden]));
         $normalised['images_needed'] = self::outside($normalised['images_needed'], $hidden);
 
-        $this->validate($fields, $normalised['images_needed'], $collection, $site, $entry);
+        $arriving = self::outside(RequiredAssets::arriving($blueprint->fields(), $all, $this->arriving), $hidden);
+        $this->validate($fields, [...$normalised['images_needed'], ...$arriving], $collection, $site, $entry);
 
         $processed = Arr::only($fields->process()->values()->all(), array_keys($sent));
 
