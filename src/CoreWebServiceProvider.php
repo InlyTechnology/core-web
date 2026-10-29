@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Buttons\Button;
+use Inly\CoreWeb\Buttons\CoreLinkType;
 use Inly\CoreWeb\Buttons\MigrateButtonsCommand;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Chat\ChatController;
@@ -485,6 +486,8 @@ class CoreWebServiceProvider extends ServiceProvider
                 $fieldsets->find('core-web::button')?->setContents(Button::fieldset());
             }
         });
+
+        CoreLinkType::register();
 
         $this->commands([MigrateButtonsCommand::class]);
     }
