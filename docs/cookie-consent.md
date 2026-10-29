@@ -190,3 +190,25 @@ The site has to be able to show that a visitor consented (GDPR art. 7(1)).
   visitors accepted, rejected or chose on each banner. With the snapshots
   (what each banner said) and the held scripts (nothing fires before
   consent), that is the site's account of how it asks.
+
+## Dashboard widget
+
+With the log on, the `consent_stats` widget shows how visitors answered the
+banner over the last `days`: how many choices were made, the share that
+accepted all, chose some or rejected all, and the share that allowed each
+category the site asks for. It counts choices, not visitors: one who changes
+their mind counts once per choice.
+
+```php
+// config/statamic/cp.php
+'widgets' => [
+    ['type' => 'consent_stats', 'days' => 30, 'width' => 50],
+],
+```
+
+Options: `days` (30, at most 365), `site` (one site's choices; every site by
+default), `title` (`Cookie consent` by default, through `__()`), and
+Statamic's own `width` and `can`. On every dashboard visit it counts the
+window's choices per action in the database and reads the categories of
+those that were not a rejection, a thousand rows at a time. Until the log's
+migration has run, it says so instead.

@@ -14,7 +14,29 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   it uploads anything, and the check now counts the files it is about to
   upload as there. See `docs/content-push.md`.
 
-## v0.34.0
+## v0.36.0
+
+- **Clearer machine sign-in page**: the page that approves `content:login`
+  lists the machine's name, where and when it asked, and its code as
+  separate rows, says what the machine will be able to do as a short list
+  (pushing only for a person who may push, on a site that takes pushes), and
+  puts Deny and Approve next to the warning. Its text no longer runs together:
+  a CP component marked `v-pre` is never rendered, so text from elsewhere
+  sits in plain elements now, here and on the tokens page and alt-text
+  widget.
+- **Proposals read as tables and trees**: the CP page for a proposal shows
+  what changes in the shape it has. Plain fields of a global, term or
+  asset share one Field / Now / Proposed table. A grid or replicator is a
+  table of its rows in their proposed order, removed rows where they
+  stood, each marked added, changed, removed or moved, with columns named
+  by their field labels and the old and new value of each changed cell. A
+  navigation or page tree shows the proposed tree, with branches marked
+  added, removed, renamed or moved. A row or branch counts as moved only
+  when it changed places, not when others were added or removed around
+  it, and it also shows struck through in red where it stood. The order
+  line a proposal returns to Core appears only when rows changed places.
+
+## v0.35.0
 
 - **Readable proposals**: a proposal for a global, term or asset shows a
   grid or replicator row by row (added, changed, removed), names pages by
@@ -23,6 +45,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   cannot show (a Bard link, a set's values) falls back to raw JSON. The
   `changed` lines a proposal returns to Core read the same way, keyed by
   field handle (`redirects › {row id}`).
+- **`core_drafts` widget** (with `drafts`): the drafts Core AI or a
+  content push wrote and the open proposals, newest first, each with a
+  Review link, so editors see what is waiting. See `docs/features.md`.
+- **`consent_stats` widget** (with `consent` and its log): how visitors
+  answered the banner over the last `days`, the share accepting all,
+  choosing some or rejecting all, and per category. See
+  `docs/cookie-consent.md`, Dashboard widget.
+
+## v0.34.0
+
 - **Consent cookie page as a link**: the `core-web::consent` fieldset's
   Cookie page is a `link` field (`consent_policy_link`), so it can be an
   entry, a PDF from the `assets` container or an address. A page picked in

@@ -30,7 +30,8 @@ class SyncCpController
             'ip' => $pending['ip'] ?? null,
             'started' => isset($pending['started_at']) ? Carbon::createFromTimestamp($pending['started_at'])->diffForHumans() : null,
             'unknown' => $code !== '' && $pending === null,
-            'site' => rtrim((string) config('app.url'), '/'),
+            'site' => parse_url((string) config('app.url'), PHP_URL_HOST) ?: rtrim((string) config('app.url'), '/'),
+            'push' => filter_var(config('core-web.content_sync.push', true), FILTER_VALIDATE_BOOLEAN) && AuthenticateSyncToken::mayPush(User::current()),
         ]));
     }
 
