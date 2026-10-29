@@ -6,6 +6,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Proposals\Targets\DataTarget;
+use Inly\CoreWeb\Proposals\Targets\TreeTarget;
 use Statamic\Facades\User;
 
 /** The CP's Proposals: the open ones, each with what it changes, applied or discarded by an editor who may edit its target, and the applied ones that can still be undone. */
@@ -40,8 +41,9 @@ class ProposalsController
 
         return view('core-web::proposals.show', [
             'proposal' => $proposals->describe($proposal),
-            'changes' => $target instanceof DataTarget ? [] : $proposals->changes($target, $from, $proposal->value),
+            'changes' => $target instanceof DataTarget || $target instanceof TreeTarget ? [] : $proposals->changes($target, $from, $proposal->value),
             'groups' => $target instanceof DataTarget ? $target->review($from, $proposal->value) : null,
+            'tree' => $target instanceof TreeTarget ? $target->review($from, $proposal->value) : null,
             'before' => $proposal->open() || $proposal->replaced !== null,
             'targetUrl' => $target->cpUrl(),
             'proposedAt' => $proposal->createdAt->setTimezone(config('app.timezone'))->format('Y-m-d H:i'),

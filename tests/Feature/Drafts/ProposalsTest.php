@@ -366,19 +366,18 @@ class ProposalsTest extends TestCase
             'kind' => 'rows',
             'columns' => ['url_old' => 'Old address', 'internal_url' => 'Internal Url'],
             'rows' => [
-                ['status' => 'changed', 'cells' => ['url_old' => ['from' => '/edit', 'to' => '/edit'], 'internal_url' => ['from' => 'Team (/about/team)', 'to' => 'About (/about)']]],
-                ['status' => 'added', 'cells' => ['url_old' => ['from' => null, 'to' => '/new'], 'internal_url' => ['from' => null, 'to' => 'Contact (/contact)']]],
-                ['status' => 'removed', 'cells' => ['url_old' => ['from' => '/old', 'to' => null], 'internal_url' => ['from' => 'About (/about)', 'to' => null]]],
+                ['status' => 'removed', 'moved' => false, 'cells' => ['url_old' => ['from' => '/old', 'to' => null], 'internal_url' => ['from' => 'About (/about)', 'to' => null]]],
+                ['status' => 'added', 'moved' => false, 'cells' => ['url_old' => ['from' => null, 'to' => '/new'], 'internal_url' => ['from' => null, 'to' => 'Contact (/contact)']]],
+                ['status' => 'changed', 'moved' => false, 'cells' => ['url_old' => ['from' => '/edit', 'to' => '/edit'], 'internal_url' => ['from' => 'Team (/about/team)', 'to' => 'About (/about)']]],
             ],
-            'counts' => ['added' => 1, 'changed' => 1, 'removed' => 1],
-            'reordered' => false,
+            'counts' => ['added' => 1, 'changed' => 1, 'removed' => 1, 'moved' => 0],
         ]], $target->review($target->current(), $proposed));
 
         $result = $this->proposals()->propose($this->author(), $target, $proposed, Proposals::base($target));
 
         $this->actingAs($this->user('eva@example.com'))->get(cp_route('core-web.proposals.show', $result['id']))
             ->assertOk()
-            ->assertSeeInOrder(['Redirects', '1 added · 1 changed · 1 removed', 'Old address', 'Internal Url', 'Changed', 'Team (/about/team)', 'About (/about)', 'Added', '/new', 'Contact (/contact)', 'Removed', '/old'])
+            ->assertSeeInOrder(['Redirects', '1 added · 1 changed · 1 removed', 'Old address', 'Internal Url', 'Removed', '/old', 'Added', '/new', 'Contact (/contact)', 'Changed', 'Team (/about/team)', 'About (/about)'])
             ->assertDontSee('redirects › ')
             ->assertDontSee($this->pages['contact']);
     }
@@ -421,7 +420,7 @@ class ProposalsTest extends TestCase
         $review = $target->review(['rows' => [['id' => 'a', 'url' => '/a']]], ['rows' => []]);
 
         $this->assertSame('rows', $review[0]['kind']);
-        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 1], $review[0]['counts']);
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 1, 'moved' => 0], $review[0]['counts']);
         $this->assertSame(['rows › a' => ['from' => 'url: /a', 'to' => null]], $this->proposals()->changes($target, ['rows' => [['id' => 'a', 'url' => '/a']]], ['rows' => []]));
     }
 
@@ -437,8 +436,57 @@ class ProposalsTest extends TestCase
         $review = $target->review(['count' => 5, 'rows' => $rows], ['count' => '5', 'rows' => array_reverse($rows)]);
 
         $this->assertSame(['label' => 'Count', 'kind' => 'value', 'from' => '5', 'to' => '"5"', 'raw' => true], $review[0]);
-        $this->assertSame([], $review[1]['rows']);
-        $this->assertTrue($review[1]['reordered']);
+        $this->assertSame([['status' => 'moved', 'moved' => true, 'cells' => ['url' => ['from' => '/b', 'to' => '/b']]]], $review[1]['rows']);
+        $this->assertSame(1, $review[1]['counts']['moved']);
+    }
+
+    public function test_only_rows_that_change_places_are_marked_moved(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [['handle' => 'url', 'field' => ['type' => 'text']]]]],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+        $row = fn (string $id) => ['id' => $id, 'url' => '/'.$id];
+
+        $inserted = $target->review(['rows' => [$row('a'), $row('b'), $row('c')]], ['rows' => [$row('new'), $row('a'), $row('c')]]);
+
+        $this->assertSame(['added' => 1, 'changed' => 0, 'removed' => 1, 'moved' => 0], $inserted[0]['counts']);
+        $this->assertSame(['added', 'removed'], array_column($inserted[0]['rows'], 'status'));
+        $this->assertArrayNotHasKey('rows › order', $this->proposals()->changes($target, ['rows' => [$row('a'), $row('b')]], ['rows' => [$row('new'), $row('a')]]));
+
+        $moved = $target->review(['rows' => [$row('a'), $row('b'), $row('c'), $row('d')]], ['rows' => [$row('a'), $row('c'), $row('d'), $row('new'), $row('b')]]);
+
+        $this->assertSame([['added', false], ['moved', true]], array_map(fn (array $r) => [$r['status'], $r['moved']], $moved[0]['rows']));
+        $this->assertSame(['/new', '/b'], array_map(fn (array $r) => $r['cells']['url']['to'], $moved[0]['rows']));
+        $this->assertArrayHasKey('rows › order', $this->proposals()->changes($target, ['rows' => [$row('a'), $row('b'), $row('c')]], ['rows' => [$row('a'), $row('c'), $row('new'), $row('b')]]));
+    }
+
+    public function test_a_nested_menu_change_reads_as_the_proposed_tree(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $branch = fn (string $page, array $children = []) => array_filter(['entry' => $this->pages[$page], 'children' => $children]);
+        $from = [$branch('about', [$branch('team'), $branch('contact')]), ['id' => 'shop', 'url' => 'https://example.com', 'title' => 'Shop']];
+        $to = [$branch('about', [$branch('contact'), $branch('team')]), ['id' => 'shop', 'url' => 'https://shop.example.com', 'title' => 'Shop'], $branch('home')];
+
+        $review = $target->review($from, $to);
+
+        $this->assertSame([
+            [0, 'About', null, false, null],
+            [1, 'Contact', null, true, null],
+            [1, 'Team', null, false, null],
+            [0, 'Shop', 'changed', false, 'Shop (https://example.com)'],
+            [0, 'Home', 'added', false, null],
+        ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved'], $row['was']], $review['rows']));
+        $this->assertSame(['added' => 1, 'changed' => 1, 'removed' => 0, 'moved' => 1], $review['counts']);
+
+        $moved = $target->review($from, [$branch('about', [$branch('contact')]), $branch('team')]);
+
+        $this->assertSame([
+            [0, 'About', null, false],
+            [1, 'Contact', null, false],
+            [0, 'Shop', 'removed', false],
+            [0, 'Team', null, true],
+        ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved']], $moved['rows']));
     }
 
     public function test_a_replicator_reads_its_sets_field_labels(): void
@@ -631,7 +679,7 @@ class ProposalsTest extends TestCase
         $this->actingAs($editor)->post(cp_route('core-web.proposals.apply', $result['id']));
 
         $this->actingAs($editor)->get(cp_route('core-web.proposals.index'))->assertOk()->assertSee('Recently applied')->assertSee(cp_route('core-web.proposals.undo', $result['id']));
-        $this->actingAs($editor)->get(cp_route('core-web.proposals.show', $result['id']))->assertOk()->assertSee('Undo')->assertSee('Before');
+        $this->actingAs($editor)->get(cp_route('core-web.proposals.show', $result['id']))->assertOk()->assertSee('Undo')->assertSeeInOrder(['About', 'Removed', 'Team', 'Added']);
 
         $this->actingAs($editor)->post(cp_route('core-web.proposals.undo', $result['id']))->assertRedirect(cp_route('core-web.proposals.index'));
 

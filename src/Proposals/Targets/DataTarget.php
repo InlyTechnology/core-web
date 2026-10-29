@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Proposals\Targets;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Drafts\FieldConditions;
+use Inly\CoreWeb\Proposals\Moves;
 use Inly\CoreWeb\Proposals\ProposalTarget;
 use Inly\CoreWeb\Support\Fingerprint;
 use Statamic\Facades\Blink;
@@ -182,15 +183,14 @@ abstract class DataTarget implements ProposalTarget
             }
         }
 
-        $order = fn (string $key) => str_ends_with($key, ' › '.self::ORDER);
-        $shown = array_keys(array_filter($changes, fn (array $change, string $key) => ! $order($key), ARRAY_FILTER_USE_BOTH));
+        $fields = $this->blueprint()?->fields()->all();
 
         foreach (array_keys($from + $to) as $handle) {
             $handle = (string) $handle;
             $orderKey = $handle.' › '.self::ORDER;
 
-            // Rows added or removed move the rest anyway: the order line only says something when the same rows changed places.
-            if (isset($changes[$orderKey]) && collect($shown)->contains(fn (string $key) => str_starts_with($key, $handle.' › '))) {
+            // Rows added or removed shift the rest anyway: the order line only says something when rows that stay changed places.
+            if (isset($changes[$orderKey]) && Moves::moved(array_keys(self::rows($fields?->get($handle), $from[$handle] ?? null)['rows'] ?? []), array_keys(self::rows($fields?->get($handle), $to[$handle] ?? null)['rows'] ?? [])) === []) {
                 unset($changes[$orderKey]);
             }
 
@@ -213,14 +213,13 @@ abstract class DataTarget implements ProposalTarget
      *
      * @param  array<string, mixed>  $from
      * @param  array<string, mixed>  $to
-     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed', cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>, reordered: bool}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
+     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
      */
     public function review(array $from, array $to): array
     {
         $fields = $this->blueprint()?->fields()->all();
         [$changes, $raw] = $this->diff($from, $to);
         $groups = [];
-        $read = [];
 
         foreach ($changes as $key => $change) {
             [$handle, $row] = array_pad(explode(' › ', $key, 2), 2, null);
@@ -228,43 +227,79 @@ abstract class DataTarget implements ProposalTarget
             $label = $field?->display() ?: Str::headline($handle);
 
             if ($row === null) {
-                $groups[$handle] = ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => in_array($handle, $raw, true)];
-
-                continue;
+                $groups[$handle] ??= ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => in_array($handle, $raw, true)];
+            } elseif (($groups[$handle]['kind'] ?? null) !== 'rows') {
+                $groups[$handle] = self::rowGroup($field, $label, $from[$handle] ?? null, $to[$handle] ?? null);
             }
-
-            if (($groups[$handle]['kind'] ?? null) === 'value') {
-                unset($groups[$handle]);
-            }
-
-            $groups[$handle] ??= ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0], 'reordered' => false];
-
-            if ($row === self::ORDER) {
-                $groups[$handle]['reordered'] = true;
-
-                continue;
-            }
-
-            $read[$handle] ??= [self::rows($field, $from[$handle] ?? null)['rows'] ?? [], self::rows($field, $to[$handle] ?? null)['rows'] ?? []];
-            $old = $read[$handle][0][$row] ?? null;
-            $new = $read[$handle][1][$row] ?? null;
-            $status = match (true) {
-                $old === null => 'added',
-                $new === null => 'removed',
-                default => 'changed',
-            };
-            $cells = [];
-
-            foreach (array_keys(($old ?? []) + ($new ?? [])) as $column) {
-                $groups[$handle]['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline($column);
-                $cells[$column] = ['from' => $old[$column] ?? null, 'to' => $new[$column] ?? null];
-            }
-
-            $groups[$handle]['counts'][$status]++;
-            $groups[$handle]['rows'][] = ['status' => $status, 'cells' => $cells];
         }
 
         return array_values($groups);
+    }
+
+    /**
+     * A grid's rows in their proposed order, removed rows where they stood, each marked moved only when rows that stay changed places around it.
+     *
+     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
+     */
+    private static function rowGroup(?Field $field, string $label, mixed $from, mixed $to): array
+    {
+        $old = self::rows($field, $from) ?? ['rows' => [], 'order' => null];
+        $new = self::rows($field, $to) ?? ['rows' => [], 'order' => null];
+        $moved = $old['order'] !== null && $new['order'] !== null ? Moves::moved(array_keys($old['rows']), array_keys($new['rows'])) : [];
+
+        // Each removed row follows the last row before it that stays, so it shows where it stood.
+        $removedAfter = [];
+        $previous = '';
+
+        foreach (array_keys($old['rows']) as $key) {
+            if (array_key_exists($key, $new['rows'])) {
+                $previous = (string) $key;
+            } else {
+                $removedAfter[$previous][] = (string) $key;
+            }
+        }
+
+        $order = $removedAfter[''] ?? [];
+
+        foreach (array_keys($new['rows']) as $key) {
+            $order = [...$order, (string) $key, ...($removedAfter[(string) $key] ?? [])];
+        }
+
+        $group = ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0]];
+
+        foreach ($order as $key) {
+            $before = $old['rows'][$key] ?? null;
+            $after = $new['rows'][$key] ?? null;
+            $isMoved = in_array($key, $moved, true);
+            $status = match (true) {
+                $before === null => 'added',
+                $after === null => 'removed',
+                $before !== $after => 'changed',
+                $isMoved => 'moved',
+                default => null,
+            };
+
+            if ($status === null) {
+                continue;
+            }
+
+            $cells = [];
+
+            foreach (array_keys(($before ?? []) + ($after ?? [])) as $column) {
+                $group['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline((string) $column);
+                $cells[$column] = ['from' => $before[$column] ?? null, 'to' => $after[$column] ?? null];
+            }
+
+            $group['counts'][$status]++;
+
+            if ($isMoved && $status !== 'moved') {
+                $group['counts']['moved']++;
+            }
+
+            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'cells' => $cells];
+        }
+
+        return $group;
     }
 
     /**

@@ -8,15 +8,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
-- **Readable proposals**: the CP page for a proposal to a global, term or
-  asset shows each changed field on its own. A grid or replicator is a
-  table of its rows (added, changed, removed, with a count per kind and a
-  note when only the order changed), columns named by their field labels,
-  and a changed row shows the old and new value of each cell. Pages read
-  by title and URL instead of entry ids, and Bard as text. A change the
-  readable view cannot show (a Bard link, a set's values) falls back to
-  raw JSON. The `changed` lines a proposal returns to Core read the same
-  way, keyed by field handle (`redirects › {row id}`).
+- **Readable proposals**: the CP page for a proposal shows what changes
+  in the shape it has. Plain fields of a global, term or asset share one
+  Field / Now / Proposed table. A grid or replicator is a table of its
+  rows in their proposed order, removed rows where they stood, each
+  marked added, changed, removed or moved, with columns named by their
+  field labels and the old and new value of each changed cell. A
+  navigation or page tree shows the proposed tree, with branches marked
+  added, removed, renamed or moved. A row or branch counts as moved only
+  when it changed places, not when others were added or removed around
+  it. Pages read by title and URL instead of entry ids, and Bard as
+  text. A change the readable view cannot show (a Bard link, a set's
+  values) falls back to raw JSON. The `changed` lines a proposal returns
+  to Core read the same way, keyed by field handle (`redirects › {row
+  id}`), with an `order` line only when rows changed places.
 
 ## v0.34.0
 

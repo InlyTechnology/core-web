@@ -46,84 +46,129 @@
         </div>
     </ui-card>
 
+    @php
+        $summarize = fn (array $counts) => $before ? collect([
+            __(':count added', ['count' => $counts['added']]) => $counts['added'],
+            __(':count changed', ['count' => $counts['changed']]) => $counts['changed'],
+            __(':count removed', ['count' => $counts['removed']]) => $counts['removed'],
+            __(':count moved', ['count' => $counts['moved']]) => $counts['moved'],
+        ])->filter()->keys()->implode(' · ') : '';
+        $lines = fn (?string $text) => nl2br(e($text ?? ''));
+    @endphp
+
     @if ($groups !== null)
-        @forelse ($groups as $group)
-            @if ($group['kind'] === 'rows')
-                @php
-                    $summary = collect([
-                        __(':count added', ['count' => $group['counts']['added']]) => $group['counts']['added'],
-                        __(':count changed', ['count' => $group['counts']['changed']]) => $group['counts']['changed'],
-                        __(':count removed', ['count' => $group['counts']['removed']]) => $group['counts']['removed'],
-                    ])->filter()->keys();
-                    if ($group['reordered']) {
-                        $summary->push(__('order changed'));
-                    }
-                @endphp
-                <ui-card-panel heading="{{ e($group['label']) }}" subheading="{{ $before ? $summary->implode(' · ') : '' }}" class="mb-6">
-                    @if ($group['rows'] !== [])
-                        <table class="data-table w-full table-fixed">
-                            <thead>
-                                <tr>
+        @php
+            $values = array_values(array_filter($groups, fn (array $group) => $group['kind'] === 'value'));
+            $grids = array_values(array_filter($groups, fn (array $group) => $group['kind'] === 'rows'));
+        @endphp
+        @if ($values !== [])
+            <ui-card-panel heading="{{ __('Fields') }}" class="mb-6">
+                <table class="data-table w-full table-fixed">
+                    <thead>
+                        <tr>
+                            <th class="w-1/5 text-start">{{ __('Field') }}</th>
+                            @if ($before)
+                                <th class="text-start">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</th>
+                            @endif
+                            <th class="text-start">{{ __('Proposed') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($values as $group)
+                            <tr class="align-top">
+                                <td class="text-sm font-medium" v-pre>{{ $group['label'] }}</td>
+                                @foreach ($before ? ['from', 'to'] : ['to'] as $side)
+                                    <td class="break-words text-sm" v-pre>
+                                        <div @class(['text-red-700 dark:text-red-400' => $side === 'from', 'text-green-700 dark:text-green-400' => $side === 'to'])>
+                                            @if ($group['raw'] && $group[$side] !== null)
+                                                <pre class="whitespace-pre-wrap font-mono text-xs">{{ $group[$side] }}</pre>
+                                            @elseif ($group[$side] === null || $group[$side] === '')
+                                                <span class="text-gray-400">—</span>
+                                            @else
+                                                {!! $lines($group[$side]) !!}
+                                            @endif
+                                        </div>
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </ui-card-panel>
+        @endif
+
+        @foreach ($grids as $group)
+            <ui-card-panel heading="{{ e($group['label']) }}" subheading="{{ $summarize($group['counts']) }}" class="mb-6">
+                @if ($group['rows'] !== [])
+                    <table class="data-table w-full table-fixed">
+                        <thead>
+                            <tr>
+                                @if ($before)
+                                    <th class="w-28 text-start"></th>
+                                @endif
+                                @foreach ($group['columns'] as $label)
+                                    <th class="text-start" v-pre>{{ $label }}</th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($group['rows'] as $row)
+                                <tr class="align-top">
                                     @if ($before)
-                                        <th class="w-24 text-start"></th>
+                                        <td>@include('core-web::proposals.badges', ['row' => $row])</td>
                                     @endif
-                                    @foreach ($group['columns'] as $label)
-                                        <th class="text-start" v-pre>{{ $label }}</th>
+                                    @foreach (array_keys($group['columns']) as $column)
+                                        @php($cell = $row['cells'][$column] ?? ['from' => null, 'to' => null])
+                                        <td class="break-words text-sm" v-pre>
+                                            @if ($row['status'] === 'removed')
+                                                <span class="text-gray-500 line-through">{!! $lines($cell['from']) !!}</span>
+                                            @elseif ($row['status'] === 'changed' && $cell['from'] !== $cell['to'])
+                                                <div class="text-red-700 line-through dark:text-red-400">{!! $lines($cell['from']) !!}</div>
+                                                <div class="text-green-700 dark:text-green-400">{!! $lines($cell['to']) !!}</div>
+                                            @else
+                                                {!! $lines($cell['to']) !!}
+                                            @endif
+                                        </td>
                                     @endforeach
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($group['rows'] as $row)
-                                    <tr class="align-top">
-                                        @if ($before)
-                                            <td>
-                                                @if ($row['status'] === 'added')
-                                                    <ui-badge size="sm" color="green" text="{{ __('Added') }}"></ui-badge>
-                                                @elseif ($row['status'] === 'removed')
-                                                    <ui-badge size="sm" color="red" text="{{ __('Removed') }}"></ui-badge>
-                                                @else
-                                                    <ui-badge size="sm" color="amber" text="{{ __('Changed') }}"></ui-badge>
-                                                @endif
-                                            </td>
-                                        @endif
-                                        @foreach (array_keys($group['columns']) as $column)
-                                            @php($cell = $row['cells'][$column] ?? ['from' => null, 'to' => null])
-                                            <td class="break-words text-sm" v-pre>
-                                                @if ($row['status'] === 'removed')
-                                                    <span class="text-gray-500 line-through">{{ $cell['from'] }}</span>
-                                                @elseif ($row['status'] === 'changed' && $cell['from'] !== $cell['to'])
-                                                    <div class="text-red-700 line-through dark:text-red-400">{{ $cell['from'] }}</div>
-                                                    <div class="text-green-700 dark:text-green-400">{{ $cell['to'] }}</div>
-                                                @else
-                                                    {{ $cell['to'] }}
-                                                @endif
-                                            </td>
-                                        @endforeach
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    @endif
-                </ui-card-panel>
-            @else
-                <ui-card-panel heading="{{ e($group['label']) }}" class="mb-6">
-                    <div @class(['grid gap-4', 'md:grid-cols-2' => $before])>
-                        @if ($before)
-                            <div>
-                                <div class="mb-1 text-xs text-gray-500">{{ $proposal['status'] === 'open' ? __('Now') : __('Before') }}</div>
-                                <div @class(['whitespace-pre-wrap break-words text-sm text-red-700 dark:text-red-400', 'font-mono text-xs' => $group['raw']]) v-pre>{{ $group['from'] ?? '—' }}</div>
-                            </div>
-                        @endif
-                        <div>
-                            <div class="mb-1 text-xs text-gray-500">{{ __('Proposed') }}</div>
-                            <div @class(['whitespace-pre-wrap break-words text-sm text-green-700 dark:text-green-400', 'font-mono text-xs' => $group['raw']]) v-pre>{{ $group['to'] ?? '—' }}</div>
-                        </div>
-                    </div>
-                </ui-card-panel>
-            @endif
-        @empty
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+            </ui-card-panel>
+        @endforeach
+
+        @if ($groups === [])
             <ui-card><ui-description>{{ __('Nothing changes.') }}</ui-description></ui-card>
-        @endforelse
+        @endif
+    @elseif ($tree !== null)
+        <ui-card-panel heading="{{ __('Proposed tree') }}" subheading="{{ $summarize($tree['counts']) }}">
+            <div class="divide-y divide-gray-100 dark:divide-gray-800">
+                @foreach ($tree['rows'] as $row)
+                    <div class="flex items-baseline gap-2 py-1.5 text-sm" style="padding-inline-start: {{ $row['depth'] * 1.75 }}rem">
+                        @if ($row['depth'] > 0)
+                            <span class="text-gray-300 dark:text-gray-600">└</span>
+                        @endif
+                        <span @class([
+                            'text-gray-500 line-through' => $row['status'] === 'removed',
+                            'text-green-700 dark:text-green-400' => in_array($row['status'], ['added', 'changed'], true),
+                            'text-gray-500 dark:text-gray-400' => $row['status'] === null && ! $row['moved'],
+                        ]) v-pre>
+                            @if ($row['was'] !== null)
+                                <span class="me-1 text-red-700 line-through dark:text-red-400">{{ $row['was'] }}</span>
+                            @endif
+                            {{ $row['label'] }}
+                        </span>
+                        @if ($row['url'] !== null)
+                            <span class="truncate text-xs text-gray-400" v-pre>{{ $row['url'] }}</span>
+                        @endif
+                        @if ($before)
+                            @include('core-web::proposals.badges', ['row' => $row])
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </ui-card-panel>
     @else
         <ui-card-panel heading="{{ __('What changes') }}">
             <table class="data-table w-full table-fixed">
