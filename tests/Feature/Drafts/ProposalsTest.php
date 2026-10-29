@@ -558,6 +558,11 @@ class ProposalsTest extends TestCase
             [2, 'P', null, false],
             [0, 'C', null, true],
         ], $shape($target->review([$b('g', [$b('p', [$b('c')])]), $b('x')], [$b('x', [$b('g', [$b('p')])]), $b('c')])));
+
+        $this->assertSame(['P', 'C'], array_column(array_values(array_filter($target->review(
+            [$b('a', [$b('p', [$b('c')]), $b('q'), $b('r')]), $b('x')],
+            [$b('x', [$b('a', [$b('q'), $b('r'), $b('p')])]), $b('c')],
+        )['rows'], fn (array $row) => $row['status'] === 'origin' && $row['depth'] > 1)), 'label'));
     }
 
     public function test_a_repeated_page_keeps_its_own_place(): void
@@ -572,6 +577,10 @@ class ProposalsTest extends TestCase
         );
 
         $this->assertSame(['added' => 1, 'changed' => 0, 'removed' => 0, 'moved' => 1], $review['counts']);
+
+        $kept = $target->review([$page('about', [$page('team')]), $page('home', [$page('team', [$page('contact')])])], [$page('team'), $page('about', [$page('team')])]);
+
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 2, 'moved' => 1], $kept['counts']);
 
         $swapped = $target->review([$link('Step #1'), $link('Step #2')], [$link('Step #2'), $link('Step #1')]);
 
