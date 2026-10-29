@@ -182,7 +182,7 @@ abstract class TreeTarget implements ProposalTarget
     {
         $this->entries = [];
         $old = $this->flatten($from);
-        $new = self::matchLinks($old, $this->flatten($to));
+        $new = self::pairRepeats($old, self::matchLinks($old, $this->flatten($to)));
         $oldChildren = self::byParent($old);
         $newChildren = self::byParent($new);
         $moved = [];
@@ -237,6 +237,11 @@ abstract class TreeTarget implements ProposalTarget
         $previous = '';
 
         foreach ($oldChildren[$parent] ?? [] as $key) {
+            // A branch that left a moved parent shows where it stood, under the parent's mark.
+            if ($parent !== '' && isset($moved[$parent]) && isset($new[$key]) && $new[$key]['parent'] !== $parent) {
+                continue;
+            }
+
             if (($new[$key]['parent'] ?? null) === $parent && ! isset($moved[$key])) {
                 $previous = $key;
             } else {
@@ -281,16 +286,16 @@ abstract class TreeTarget implements ProposalTarget
     private function emitRemoved(array $keys, int $depth, array $old, array $new, array $oldChildren, array &$rows): void
     {
         foreach ($keys as $key) {
-            // A moved branch leaves a mark where it stood; its children travel with it.
+            // A moved branch leaves a mark where it stood, with the children that left it; the rest travel with it.
             if (isset($new[$key])) {
                 $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'origin', 'moved' => false, 'was' => null, 'wasUrl' => null];
+                $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => isset($new[$child]) && $new[$child]['parent'] !== $key)), $depth + 1, $old, $new, $oldChildren, $rows);
 
                 continue;
             }
 
             $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null, 'wasUrl' => null];
-            // Children that live on elsewhere in the proposed tree show there; the rest go with their parent.
-            $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => ! isset($new[$child]))), $depth + 1, $old, $new, $oldChildren, $rows);
+            $this->emitRemoved($oldChildren[$key] ?? [], $depth + 1, $old, $new, $oldChildren, $rows);
         }
     }
 
@@ -336,6 +341,68 @@ abstract class TreeTarget implements ProposalTarget
 
         if ($rename === []) {
             return $new;
+        }
+
+        $out = [];
+
+        foreach ($new as $key => $branch) {
+            $branch['parent'] = $rename[$branch['parent']] ?? $branch['parent'];
+            $out[$rename[$key] ?? $key] = $branch;
+        }
+
+        return $out;
+    }
+
+    /**
+     * A page or link the tree holds more than once is the same branch where it keeps its parent, so a repeat that is dropped reads as removed, not as the other one moving.
+     *
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $old
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
+     * @return array<string, array{parent: string, label: string, url: ?string, sig: ?string}>
+     */
+    private static function pairRepeats(array $old, array $new): array
+    {
+        $base = fn (string $key) => preg_replace('/#\d+$/', '', $key);
+        $groups = [];
+
+        foreach ([...array_keys($old), ...array_keys($new)] as $key) {
+            $groups[$base((string) $key)][(string) $key] = true;
+        }
+
+        $groups = array_filter($groups, fn (array $keys) => count($keys) > 1);
+
+        if ($groups === []) {
+            return $new;
+        }
+
+        $free = array_map(fn (array $keys) => array_values(array_filter(array_keys($keys), fn (string $key) => isset($old[$key]))), $groups);
+        $rename = [];
+        $pending = [];
+
+        // Tree order: a parent is renamed before its children are compared to it.
+        foreach ($new as $key => $branch) {
+            $group = $base((string) $key);
+
+            if (! isset($groups[$group])) {
+                continue;
+            }
+
+            $parent = $rename[$branch['parent']] ?? $branch['parent'];
+            $same = array_search($parent, array_map(fn (string $candidate) => $old[$candidate]['parent'], $free[$group]), true);
+
+            if ($same === false) {
+                $pending[] = (string) $key;
+
+                continue;
+            }
+
+            $rename[(string) $key] = $free[$group][$same];
+            array_splice($free[$group], $same, 1);
+        }
+
+        foreach ($pending as $key) {
+            $group = $base($key);
+            $rename[$key] = array_shift($free[$group]) ?? $group.'#new'.count($rename);
         }
 
         $out = [];

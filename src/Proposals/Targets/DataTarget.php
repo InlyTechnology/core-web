@@ -255,23 +255,23 @@ abstract class DataTarget implements ProposalTarget
             if (array_key_exists($key, $new['rows']) && ! in_array((string) $key, $moved, true)) {
                 $previous = (string) $key;
             } else {
-                $removedAfter[$previous][] = array_key_exists($key, $new['rows']) ? 'origin:'.$key : (string) $key;
+                $removedAfter[$previous][] = [(string) $key, array_key_exists($key, $new['rows'])];
             }
         }
 
         $order = $removedAfter[''] ?? [];
 
         foreach (array_keys($new['rows']) as $key) {
-            $order = [...$order, (string) $key, ...($removedAfter[(string) $key] ?? [])];
+            $order = [...$order, [(string) $key, false], ...($removedAfter[(string) $key] ?? [])];
         }
 
         $group = ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0]];
 
-        foreach ($order as $key) {
-            if (str_starts_with($key, 'origin:')) {
+        foreach ($order as [$key, $isOrigin]) {
+            if ($isOrigin) {
                 $cells = [];
 
-                foreach ($old['rows'][substr($key, 7)] as $column => $value) {
+                foreach ($old['rows'][$key] as $column => $value) {
                     $group['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline((string) $column);
                     $cells[$column] = ['from' => $value, 'to' => null];
                 }

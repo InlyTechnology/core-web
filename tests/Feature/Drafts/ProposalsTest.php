@@ -518,8 +518,47 @@ class ProposalsTest extends TestCase
             [['entry' => $this->pages['about']], ['entry' => $this->pages['contact']]],
         );
 
-        $this->assertSame(1, $review['counts']['removed']);
-        $this->assertSame(['About', 'Contact'], array_values(array_unique(array_column($review['rows'], 'label'))));
+        $this->assertSame([
+            [0, 'About', null, false],
+            [1, 'Contact', 'removed', false],
+            [0, 'Contact', null, false],
+        ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved']], $review['rows']));
+    }
+
+    public function test_a_moved_branch_shows_where_it_stood_under_a_removed_or_moved_parent(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $b = fn (string $id, array $children = []) => array_filter(['id' => $id, 'title' => ucfirst($id), 'url' => '/'.$id, 'children' => $children]);
+        $shape = fn (array $review) => array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved']], $review['rows']);
+
+        $this->assertSame([
+            [0, 'P', 'removed', false],
+            [1, 'A', 'origin', false],
+            [1, 'C', 'removed', false],
+            [0, 'X', null, false],
+            [0, 'A', null, true],
+        ], $shape($target->review([$b('p', [$b('a'), $b('c')]), $b('x')], [$b('x'), $b('a')])));
+
+        $this->assertSame([
+            [0, 'P', 'origin', false],
+            [1, 'A', 'origin', false],
+            [0, 'X', null, false],
+            [0, 'Y', null, false],
+            [1, 'P', null, true],
+            [2, 'C', null, false],
+            [0, 'A', null, true],
+        ], $shape($target->review([$b('p', [$b('a'), $b('c')]), $b('x'), $b('y')], [$b('x'), $b('y', [$b('p', [$b('c')])]), $b('a')])));
+    }
+
+    public function test_a_grid_row_id_never_reads_as_a_moved_mark(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [['handle' => 'url', 'field' => ['type' => 'text']]]]],
+        ]])->save();
+
+        $review = GlobalTarget::make('settings', 'default')->review(['rows' => [['id' => 'a', 'url' => '/a']]], ['rows' => [['id' => 'a', 'url' => '/a'], ['id' => 'origin:zz', 'url' => '/z']]]);
+
+        $this->assertSame([['added', '/z']], array_map(fn (array $r) => [$r['status'], $r['cells']['url']['to']], $review[0]['rows']));
     }
 
     public function test_a_link_change_strikes_the_old_link_not_the_label(): void
