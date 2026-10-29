@@ -213,7 +213,7 @@ abstract class DataTarget implements ProposalTarget
      *
      * @param  array<string, mixed>  $from
      * @param  array<string, mixed>  $to
-     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, movedFrom: ?string, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
+     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved'|'origin', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
      */
     public function review(array $from, array $to): array
     {
@@ -239,7 +239,7 @@ abstract class DataTarget implements ProposalTarget
     /**
      * A grid's rows in their proposed order, removed rows where they stood, each marked moved only when rows that stay changed places around it.
      *
-     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, movedFrom: ?string, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
+     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved'|'origin', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
      */
     private static function rowGroup(?Field $field, string $label, mixed $from, mixed $to): array
     {
@@ -247,15 +247,15 @@ abstract class DataTarget implements ProposalTarget
         $new = self::rows($field, $to) ?? ['rows' => [], 'order' => null];
         $moved = $old['order'] !== null && $new['order'] !== null ? Moves::moved(array_keys($old['rows']), array_keys($new['rows'])) : [];
 
-        // Each removed row follows the last row before it that stays, so it shows where it stood.
+        // A removed or moved row shows where it stood: after the last row before it that stays in place.
         $removedAfter = [];
         $previous = '';
 
         foreach (array_keys($old['rows']) as $key) {
-            if (array_key_exists($key, $new['rows'])) {
+            if (array_key_exists($key, $new['rows']) && ! in_array((string) $key, $moved, true)) {
                 $previous = (string) $key;
             } else {
-                $removedAfter[$previous][] = (string) $key;
+                $removedAfter[$previous][] = array_key_exists($key, $new['rows']) ? 'origin:'.$key : (string) $key;
             }
         }
 
@@ -268,6 +268,19 @@ abstract class DataTarget implements ProposalTarget
         $group = ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0]];
 
         foreach ($order as $key) {
+            if (str_starts_with($key, 'origin:')) {
+                $cells = [];
+
+                foreach ($old['rows'][substr($key, 7)] as $column => $value) {
+                    $group['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline((string) $column);
+                    $cells[$column] = ['from' => $value, 'to' => null];
+                }
+
+                $group['rows'][] = ['status' => 'origin', 'moved' => false, 'cells' => $cells];
+
+                continue;
+            }
+
             $before = $old['rows'][$key] ?? null;
             $after = $new['rows'][$key] ?? null;
             $isMoved = in_array($key, $moved, true);
@@ -296,7 +309,7 @@ abstract class DataTarget implements ProposalTarget
                 $group['counts']['moved']++;
             }
 
-            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'movedFrom' => $isMoved ? __('position :position', ['position' => array_search((string) $key, array_map('strval', array_keys($old['rows'])), true) + 1]) : null, 'cells' => $cells];
+            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'cells' => $cells];
         }
 
         return $group;

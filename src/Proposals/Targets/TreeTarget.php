@@ -176,7 +176,7 @@ abstract class TreeTarget implements ProposalTarget
      *
      * @param  array<mixed>  $from
      * @param  array<mixed>  $to
-     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|null, moved: bool, movedFrom: ?string, was: ?string, wasUrl: ?string}>, counts: array<string, int>}
+     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|'origin'|null, moved: bool, was: ?string, wasUrl: ?string}>, counts: array<string, int>}
      */
     public function review(array $from, array $to): array
     {
@@ -202,20 +202,12 @@ abstract class TreeTarget implements ProposalTarget
             }
         }
 
-        // Where each moved branch stood: under another parent, or its place among the same siblings.
-        foreach (array_keys($moved) as $key) {
-            $parent = $old[$key]['parent'];
-            $moved[$key] = $parent !== $new[$key]['parent']
-                ? ($parent === '' ? __('top level') : __('under :parent', ['parent' => $old[$parent]['label']]))
-                : __('position :position', ['position' => array_search($key, $oldChildren[$parent] ?? [], true) + 1]);
-        }
-
         $rows = [];
         $this->emit('', 0, $old, $new, $oldChildren, $newChildren, $moved, $rows);
         $counts = ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0];
 
         foreach ($rows as $row) {
-            if ($row['status'] !== null) {
+            if (isset($counts[$row['status'] ?? ''])) {
                 $counts[$row['status']]++;
             }
 
@@ -235,19 +227,19 @@ abstract class TreeTarget implements ProposalTarget
      * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
      * @param  array<string, list<string>>  $oldChildren
      * @param  array<string, list<string>>  $newChildren
-     * @param  array<string, string>  $moved  where each moved branch stood
+     * @param  array<string, true>  $moved
      * @param  list<array<string, mixed>>  $rows
      */
     private function emit(string $parent, int $depth, array $old, array $new, array $oldChildren, array $newChildren, array $moved, array &$rows): void
     {
-        // A removed branch follows the last sibling before it that is still under this parent, so it shows where it stood.
+        // A removed or moved branch shows where it stood: after the last sibling before it that stays in place.
         $removedAfter = [];
         $previous = '';
 
         foreach ($oldChildren[$parent] ?? [] as $key) {
-            if (($new[$key]['parent'] ?? null) === $parent) {
+            if (($new[$key]['parent'] ?? null) === $parent && ! isset($moved[$key])) {
                 $previous = $key;
-            } elseif (! isset($new[$key])) {
+            } else {
                 $removedAfter[$previous][] = $key;
             }
         }
@@ -271,7 +263,6 @@ abstract class TreeTarget implements ProposalTarget
                 'url' => $now['url'],
                 'status' => $status,
                 'moved' => isset($moved[$key]),
-                'movedFrom' => $moved[$key] ?? null,
                 'was' => $renamed ? $was['label'] : null,
                 'wasUrl' => $relinked ? ($was['url'] ?? __('no link')) : null,
             ];
@@ -290,7 +281,14 @@ abstract class TreeTarget implements ProposalTarget
     private function emitRemoved(array $keys, int $depth, array $old, array $new, array $oldChildren, array &$rows): void
     {
         foreach ($keys as $key) {
-            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'movedFrom' => null, 'was' => null, 'wasUrl' => null];
+            // A moved branch leaves a mark where it stood; its children travel with it.
+            if (isset($new[$key])) {
+                $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'origin', 'moved' => false, 'was' => null, 'wasUrl' => null];
+
+                continue;
+            }
+
+            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null, 'wasUrl' => null];
             // Children that live on elsewhere in the proposed tree show there; the rest go with their parent.
             $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => ! isset($new[$child]))), $depth + 1, $old, $new, $oldChildren, $rows);
         }

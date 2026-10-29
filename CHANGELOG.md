@@ -17,7 +17,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   navigation or page tree shows the proposed tree, with branches marked
   added, removed, renamed or moved. A row or branch counts as moved only
   when it changed places, not when others were added or removed around
-  it. Pages read by title and URL instead of entry ids, and Bard as
+  it, and it also shows struck through in red where it stood. Pages read by title and URL instead of entry ids, and Bard as
   text. A change the readable view cannot show (a Bard link, a set's
   values) falls back to raw JSON. The `changed` lines a proposal returns
   to Core read the same way, keyed by field handle (`redirects › {row

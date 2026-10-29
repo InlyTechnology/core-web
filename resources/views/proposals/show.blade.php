@@ -124,6 +124,8 @@
                                         <td class="break-words text-sm" v-pre>
                                             @if ($row['status'] === 'removed')
                                                 <span class="text-gray-500 line-through">{!! $lines($cell['from']) !!}</span>
+                                            @elseif ($row['status'] === 'origin')
+                                                <span class="text-red-700 line-through dark:text-red-400">{!! $lines($cell['from']) !!}</span>
                                             @elseif ($row['status'] === 'changed' && $cell['from'] !== $cell['to'])
                                                 <div class="text-red-700 line-through dark:text-red-400">{!! $lines($cell['from']) !!}</div>
                                                 <div class="text-green-700 dark:text-green-400">{!! $lines($cell['to']) !!}</div>
@@ -156,6 +158,7 @@
                             @endif
                             <span @class([
                                 'text-gray-500 line-through' => $before && $row['status'] === 'removed',
+                                'text-red-700 line-through dark:text-red-400' => $row['status'] === 'origin',
                                 'text-green-700 dark:text-green-400' => $before && in_array($row['status'], ['added', 'changed'], true),
                                 'text-gray-500 dark:text-gray-400' => $before && $row['status'] === null && ! $row['moved'],
                             ]) v-pre>
