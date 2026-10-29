@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.35.0
 
 - **Readable proposals**: a proposal for a global, term or asset shows a
   grid or replicator row by row (added, changed, removed), names pages by
