@@ -89,8 +89,10 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
+use Inly\CoreWeb\Widgets\ConsentStatsWidget;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
+use Inly\CoreWeb\Widgets\DraftsWidget;
 use Inly\CoreWeb\Widgets\MissingAltTextWidget;
 use InvalidArgumentException;
 use LogicException;
@@ -492,7 +494,9 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
         $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+        DraftsWidget::register();
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');
 
@@ -659,6 +663,7 @@ class CoreWebServiceProvider extends ServiceProvider
             ->by('consent|'.sha1(ClientAddress::key($request))));
         $this->loadRoutesFrom(__DIR__.'/../routes/consent.php');
         $this->commands([PruneConsentsCommand::class, ShowConsentCommand::class]);
+        ConsentStatsWidget::register();
 
         Utility::extend(function (): void {
             Utility::register('consent')
