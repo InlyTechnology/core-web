@@ -11,19 +11,19 @@
                 <h2 class="text-lg font-medium" v-pre>{{ __('core-web::sync.allow', ['site' => $site]) }}</h2>
 
                 <dl class="space-y-3 text-sm" v-pre>
-                    <div class="flex gap-4">
-                        <dt class="w-32 shrink-0 text-gray-500 dark:text-gray-400">{{ __('core-web::sync.machine') }}</dt>
+                    <div class="gap-4 sm:flex">
+                        <dt class="shrink-0 text-gray-500 sm:w-32 dark:text-gray-400">{{ __('core-web::sync.machine') }}</dt>
                         <dd class="min-w-0">
                             <span class="font-mono" style="overflow-wrap: anywhere">{{ $machine }}</span>
                             <span class="block text-xs text-gray-500 dark:text-gray-400">{{ __('core-web::sync.machine_hint') }}</span>
                         </dd>
                     </div>
-                    <div class="flex gap-4">
-                        <dt class="w-32 shrink-0 text-gray-500 dark:text-gray-400">{{ __('core-web::sync.requested') }}</dt>
+                    <div class="gap-4 sm:flex">
+                        <dt class="shrink-0 text-gray-500 sm:w-32 dark:text-gray-400">{{ __('core-web::sync.requested') }}</dt>
                         <dd>{{ __('core-web::sync.requested_value', ['ip' => $ip ?? '?', 'ago' => $started ?? '?']) }}</dd>
                     </div>
-                    <div class="flex gap-4">
-                        <dt class="w-32 shrink-0 text-gray-500 dark:text-gray-400">{{ __('core-web::sync.code') }}</dt>
+                    <div class="gap-4 sm:flex">
+                        <dt class="shrink-0 text-gray-500 sm:w-32 dark:text-gray-400">{{ __('core-web::sync.code') }}</dt>
                         <dd>
                             <span class="font-mono font-semibold tracking-wider">{{ $code }}</span>
                             <span class="block text-xs text-gray-500 dark:text-gray-400">{{ __('core-web::sync.code_hint') }}</span>
