@@ -15,6 +15,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   cannot show (a Bard link, a set's values) falls back to raw JSON. The
   `changed` lines a proposal returns to Core read the same way, keyed by
   field handle (`redirects › {row id}`).
+- **`core_drafts` widget** (with `drafts`): the drafts Core AI or a
+  content push wrote and the open proposals, newest first, each with a
+  Review link, so editors see what is waiting. See `docs/features.md`.
+- **`consent_stats` widget** (with `consent` and its log): how visitors
+  answered the banner over the last `days`, the share accepting all,
+  choosing some or rejecting all, and per category. See
+  `docs/cookie-consent.md`, Dashboard widget.
 
 ## v0.34.0
 
