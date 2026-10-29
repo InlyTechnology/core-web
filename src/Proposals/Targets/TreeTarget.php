@@ -219,6 +219,9 @@ abstract class TreeTarget implements ProposalTarget
         return ['rows' => $rows, 'counts' => $counts];
     }
 
+    /** Joins a repeated branch's key to its number; it cannot occur in a title or url. */
+    private const REPEAT = "\x1F";
+
     /** @var array<string, array{label: string, url: ?string}|null> entries looked up during one review */
     private array $entries = [];
 
@@ -237,8 +240,8 @@ abstract class TreeTarget implements ProposalTarget
         $previous = '';
 
         foreach ($oldChildren[$parent] ?? [] as $key) {
-            // A branch that left a moved parent shows where it stood, under the parent's mark.
-            if ($parent !== '' && isset($moved[$parent]) && isset($new[$key]) && $new[$key]['parent'] !== $parent) {
+            // A branch that left a parent shown away from its old place shows where it stood, under the parent's mark.
+            if (! self::inPlace($parent, $old, $new, $moved) && isset($new[$key]) && $new[$key]['parent'] !== $parent) {
                 continue;
             }
 
@@ -289,7 +292,7 @@ abstract class TreeTarget implements ProposalTarget
             // A moved branch leaves a mark where it stood, with the children that left it; the rest travel with it.
             if (isset($new[$key])) {
                 $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'origin', 'moved' => false, 'was' => null, 'wasUrl' => null];
-                $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => isset($new[$child]) && $new[$child]['parent'] !== $key)), $depth + 1, $old, $new, $oldChildren, $rows);
+                $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => isset($new[$child]) && ($new[$child]['parent'] !== $key || self::hasLeaver($child, $new, $oldChildren)))), $depth + 1, $old, $new, $oldChildren, $rows);
 
                 continue;
             }
@@ -297,6 +300,41 @@ abstract class TreeTarget implements ProposalTarget
             $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null, 'wasUrl' => null];
             $this->emitRemoved($oldChildren[$key] ?? [], $depth + 1, $old, $new, $oldChildren, $rows);
         }
+    }
+
+    /**
+     * Whether a branch, and every branch above it, stands where it stood.
+     *
+     * @param  array<string, array{parent: string}>  $old
+     * @param  array<string, array{parent: string}>  $new
+     * @param  array<string, true>  $moved
+     */
+    private static function inPlace(string $key, array $old, array $new, array $moved): bool
+    {
+        for (; $key !== ''; $key = $old[$key]['parent']) {
+            if (! isset($old[$key], $new[$key]) || isset($moved[$key]) || $new[$key]['parent'] !== $old[$key]['parent']) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether a branch that travelled with its parent held a branch that left, so its old place is shown to mark where that one stood.
+     *
+     * @param  array<string, array{parent: string}>  $new
+     * @param  array<string, list<string>>  $oldChildren
+     */
+    private static function hasLeaver(string $key, array $new, array $oldChildren): bool
+    {
+        foreach ($oldChildren[$key] ?? [] as $child) {
+            if (isset($new[$child]) && ($new[$child]['parent'] !== $key || self::hasLeaver($child, $new, $oldChildren))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -362,7 +400,7 @@ abstract class TreeTarget implements ProposalTarget
      */
     private static function pairRepeats(array $old, array $new): array
     {
-        $base = fn (string $key) => preg_replace('/#\d+$/', '', $key);
+        $base = fn (string $key) => explode(self::REPEAT, $key)[0];
         $groups = [];
 
         foreach ([...array_keys($old), ...array_keys($new)] as $key) {
@@ -377,32 +415,45 @@ abstract class TreeTarget implements ProposalTarget
 
         $free = array_map(fn (array $keys) => array_values(array_filter(array_keys($keys), fn (string $key) => isset($old[$key]))), $groups);
         $rename = [];
-        $pending = [];
+        $levels = [];
 
-        // Tree order: a parent is renamed before its children are compared to it.
         foreach ($new as $key => $branch) {
-            $group = $base((string) $key);
+            $depth = 0;
 
-            if (! isset($groups[$group])) {
-                continue;
+            for ($at = $branch['parent']; $at !== '' && isset($new[$at]); $at = $new[$at]['parent']) {
+                $depth++;
             }
 
-            $parent = $rename[$branch['parent']] ?? $branch['parent'];
-            $same = array_search($parent, array_map(fn (string $candidate) => $old[$candidate]['parent'], $free[$group]), true);
-
-            if ($same === false) {
-                $pending[] = (string) $key;
-
-                continue;
+            if (isset($groups[$base((string) $key)])) {
+                $levels[$depth][] = (string) $key;
             }
-
-            $rename[(string) $key] = $free[$group][$same];
-            array_splice($free[$group], $same, 1);
         }
 
-        foreach ($pending as $key) {
-            $group = $base($key);
-            $rename[$key] = array_shift($free[$group]) ?? $group.'#new'.count($rename);
+        ksort($levels);
+
+        // Level by level, so every parent has its final key before its children are compared to it.
+        foreach ($levels as $keys) {
+            $pending = [];
+
+            foreach ($keys as $key) {
+                $group = $base($key);
+                $parent = $rename[$new[$key]['parent']] ?? $new[$key]['parent'];
+                $same = array_search($parent, array_map(fn (string $candidate) => $old[$candidate]['parent'], $free[$group]), true);
+
+                if ($same === false) {
+                    $pending[] = $key;
+
+                    continue;
+                }
+
+                $rename[$key] = $free[$group][$same];
+                array_splice($free[$group], $same, 1);
+            }
+
+            foreach ($pending as $key) {
+                $group = $base($key);
+                $rename[$key] = array_shift($free[$group]) ?? $group.self::REPEAT.'new'.count($rename);
+            }
         }
 
         $out = [];
@@ -441,7 +492,7 @@ abstract class TreeTarget implements ProposalTarget
                 default => 'link:'.$sig,
             };
             $seen[$base] = ($seen[$base] ?? 0) + 1;
-            $key = $seen[$base] === 1 ? $base : $base.'#'.$seen[$base];
+            $key = $seen[$base] === 1 ? $base : $base.self::REPEAT.$seen[$base];
 
             $flat[$key] = [
                 'parent' => $parent,

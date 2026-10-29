@@ -548,6 +548,34 @@ class ProposalsTest extends TestCase
             [2, 'C', null, false],
             [0, 'A', null, true],
         ], $shape($target->review([$b('p', [$b('a'), $b('c')]), $b('x'), $b('y')], [$b('x'), $b('y', [$b('p', [$b('c')])]), $b('a')])));
+
+        $this->assertSame([
+            [0, 'G', 'origin', false],
+            [1, 'P', 'origin', false],
+            [2, 'C', 'origin', false],
+            [0, 'X', null, false],
+            [1, 'G', null, true],
+            [2, 'P', null, false],
+            [0, 'C', null, true],
+        ], $shape($target->review([$b('g', [$b('p', [$b('c')])]), $b('x')], [$b('x', [$b('g', [$b('p')])]), $b('c')])));
+    }
+
+    public function test_a_repeated_page_keeps_its_own_place(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $page = fn (string $slug, array $children = []) => array_filter(['entry' => $this->pages[$slug], 'children' => $children]);
+        $link = fn (string $title) => ['url' => '/a', 'title' => $title];
+
+        $review = $target->review(
+            [$page('about', [$page('team', [$page('contact')])]), $page('team', [$page('contact')])],
+            [$page('home', [$page('team', [$page('contact')])]), $page('about', [$page('team', [$page('contact')])])],
+        );
+
+        $this->assertSame(['added' => 1, 'changed' => 0, 'removed' => 0, 'moved' => 1], $review['counts']);
+
+        $swapped = $target->review([$link('Step #1'), $link('Step #2')], [$link('Step #2'), $link('Step #1')]);
+
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 1], $swapped['counts']);
     }
 
     public function test_a_grid_row_id_never_reads_as_a_moved_mark(): void
