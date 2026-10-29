@@ -6,15 +6,20 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Readable proposals**: the CP page for a proposal to a global, term or
+  asset shows each changed field on its own. A grid or replicator is a
+  table of its rows (added, changed, removed, with a count per kind and a
+  note when only the order changed), columns named by their field labels,
+  and a changed row shows the old and new value of each cell. Pages read
+  by title and URL instead of entry ids, and Bard as text. A change the
+  readable view cannot show (a Bard link, a set's values) falls back to
+  raw JSON. The `changed` lines a proposal returns to Core read the same
+  way, keyed by field handle (`redirects › {row id}`).
+
 ## v0.34.0
 
-- **Readable proposals**: a proposal for a global, term or asset shows a
-  grid or replicator row by row (added, changed, removed), names pages by
-  title and URL instead of their entry ids, and shows Bard as text. A row
-  that only moved shows as an order line, and a change the readable lines
-  cannot show (a Bard link, a set's values) falls back to raw JSON. The
-  `changed` lines a proposal returns to Core read the same way, keyed by
-  field handle (`redirects › {row id}`).
 - **Consent cookie page as a link**: the `core-web::consent` fieldset's
   Cookie page is a `link` field (`consent_policy_link`), so it can be an
   entry, a PDF from the `assets` container or an address. A page picked in

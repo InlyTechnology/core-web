@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Proposals\Targets;
 
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Drafts\FieldConditions;
 use Inly\CoreWeb\Proposals\ProposalTarget;
@@ -9,6 +10,7 @@ use Inly\CoreWeb\Support\Fingerprint;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 use Statamic\Fields\Blueprint;
+use Statamic\Fields\Field;
 
 /**
  * Values held against a blueprint (a global's variables, a term, an asset's
@@ -130,18 +132,13 @@ abstract class DataTarget implements ProposalTarget
             }
 
             // A grid or replicator reads row by row, so changing one redirect shows one row, not the whole list.
-            if (is_array($v) && $v !== [] && array_is_list($v) && collect($v)->every(fn (mixed $row) => is_array($row) && ! array_is_list($row))) {
-                $entryFields = collect((array) ($field?->config()['fields'] ?? []))->filter(fn (mixed $sub) => ($sub['field']['type'] ?? null) === 'entries')->pluck('handle')->all();
-                $ids = array_map(fn (array $row) => is_scalar($row['id'] ?? null) && filled($row['id']) ? (string) $row['id'] : null, $v);
-                // Rows key by their id only when every row has one of its own; otherwise by position, so no row hides another.
-                $byId = ! in_array(null, $ids, true) && count(array_unique($ids)) === count($ids);
-
-                foreach ($v as $index => $row) {
-                    $lines[$handle.' › '.($byId ? $ids[$index] : '#'.($index + 1))] = self::row($row, $entryFields);
+            if (($rows = self::rows($field, $v)) !== null) {
+                foreach ($rows['rows'] as $key => $cells) {
+                    $lines[$handle.' › '.$key] = collect($cells)->map(fn (string $cell, string $column) => $column.': '.$cell)->implode("\n");
                 }
 
-                if ($byId) {
-                    $lines[$handle.' › '.self::ORDER] = implode(', ', $ids);
+                if ($rows['order'] !== null) {
+                    $lines[$handle.' › '.self::ORDER] = $rows['order'];
                 }
 
                 continue;
@@ -192,23 +189,100 @@ abstract class DataTarget implements ProposalTarget
         return $changes;
     }
 
+    /**
+     * The changes as the CP shows them: one group per field, a grid's rows as a table of their fields, each cell before and after.
+     *
+     * @param  array<string, mixed>  $from
+     * @param  array<string, mixed>  $to
+     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed', cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>, reordered: bool}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
+     */
+    public function review(array $from, array $to): array
+    {
+        $fields = $this->blueprint()?->fields()->all();
+        $before = $this->outline($from);
+        $groups = [];
+        $read = [];
+
+        foreach ($this->changes($from, $to) as $key => $change) {
+            [$handle, $row] = array_pad(explode(' › ', $key, 2), 2, null);
+            $field = $fields?->get($handle);
+            $label = $field?->display() ?: Str::headline($handle);
+
+            if ($row === null) {
+                $groups[$handle] = ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => ($before[$handle] ?? null) !== $change['from']];
+
+                continue;
+            }
+
+            $groups[$handle] ??= ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0], 'reordered' => false];
+
+            if ($row === self::ORDER) {
+                $groups[$handle]['reordered'] = true;
+
+                continue;
+            }
+
+            $read[$handle] ??= [self::rows($field, $from[$handle] ?? null)['rows'] ?? [], self::rows($field, $to[$handle] ?? null)['rows'] ?? []];
+            $old = $read[$handle][0][$row] ?? null;
+            $new = $read[$handle][1][$row] ?? null;
+            $status = match (true) {
+                $old === null => 'added',
+                $new === null => 'removed',
+                default => 'changed',
+            };
+            $cells = [];
+
+            foreach (array_keys(($old ?? []) + ($new ?? [])) as $column) {
+                $groups[$handle]['columns'][$column] ??= self::subfieldLabel($field, $column);
+                $cells[$column] = ['from' => $old[$column] ?? null, 'to' => $new[$column] ?? null];
+            }
+
+            $groups[$handle]['counts'][$status]++;
+            $groups[$handle]['rows'][] = ['status' => $status, 'cells' => $cells];
+        }
+
+        return array_values($groups);
+    }
+
+    /**
+     * A grid's or replicator's rows, each as its fields read for people, keyed by row id when every row has its own, otherwise by position.
+     *
+     * @return array{rows: array<string, array<string, string>>, order: ?string}|null null when the value is not a list of rows
+     */
+    private static function rows(?Field $field, mixed $v): ?array
+    {
+        if (! is_array($v) || $v === [] || ! array_is_list($v) || ! collect($v)->every(fn (mixed $row) => is_array($row) && ! array_is_list($row))) {
+            return null;
+        }
+
+        $entryFields = collect((array) ($field?->config()['fields'] ?? []))->filter(fn (mixed $sub) => ($sub['field']['type'] ?? null) === 'entries')->pluck('handle')->all();
+        $ids = array_map(fn (array $row) => is_scalar($row['id'] ?? null) && filled($row['id']) ? (string) $row['id'] : null, $v);
+        // Rows key by their id only when every row has one of its own; otherwise by position, so no row hides another.
+        $byId = ! in_array(null, $ids, true) && count(array_unique($ids)) === count($ids);
+        $rows = [];
+
+        foreach ($v as $index => $row) {
+            $rows[$byId ? $ids[$index] : '#'.($index + 1)] = collect($row)
+                ->except(['id', '_id'])
+                ->mapWithKeys(fn (mixed $value, string|int $column) => [(string) $column => self::display($value, in_array((string) $column, $entryFields, true))])
+                ->all();
+        }
+
+        return ['rows' => $rows, 'order' => $byId ? implode(', ', $ids) : null];
+    }
+
+    private static function subfieldLabel(?Field $field, string $handle): string
+    {
+        $sub = collect((array) ($field?->config()['fields'] ?? []))->firstWhere('handle', $handle);
+
+        return (string) ($sub['field']['display'] ?? '') ?: Str::headline($handle);
+    }
+
     private const ORDER = 'order';
 
     private static function raw(mixed $v): ?string
     {
         return $v === null ? null : (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @param  list<string>  $entryFields  the row's fields that hold entries
-     */
-    private static function row(array $row, array $entryFields): string
-    {
-        return collect($row)
-            ->except(['id', '_id'])
-            ->map(fn (mixed $v, string|int $key) => $key.': '.self::display($v, in_array((string) $key, $entryFields, true)))
-            ->implode("\n");
     }
 
     /** A value as people read it: entry references by their page title, lists comma-separated. */

@@ -338,36 +338,48 @@ class ProposalsTest extends TestCase
         Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
             ['handle' => 'phone', 'field' => ['type' => 'text', 'validate' => ['required']]],
             ['handle' => 'redirects', 'field' => ['type' => 'grid', 'display' => 'Redirects', 'fields' => [
-                ['handle' => 'url_old', 'field' => ['type' => 'text']],
+                ['handle' => 'url_old', 'field' => ['type' => 'text', 'display' => 'Old address']],
                 ['handle' => 'internal_url', 'field' => ['type' => 'entries', 'max_items' => 1]],
             ]]],
         ]])->save();
         GlobalSet::find('settings')->in('default')->data(['phone' => '123', 'redirects' => [
             ['id' => 'r-old', 'url_old' => '/old', 'internal_url' => $this->pages['about']],
             ['id' => 'r-keep', 'url_old' => '/keep', 'internal_url' => $this->pages['team']],
+            ['id' => 'r-edit', 'url_old' => '/edit', 'internal_url' => $this->pages['team']],
         ]])->save();
         $target = GlobalTarget::make('settings', 'default');
 
-        $changes = $this->proposals()->changes($target, $target->current(), ['phone' => '123', 'redirects' => [
+        $proposed = ['phone' => '123', 'redirects' => [
             ['id' => 'r-keep', 'url_old' => '/keep', 'internal_url' => $this->pages['team']],
             ['id' => 'r-new', 'url_old' => '/new', 'internal_url' => $this->pages['contact']],
-        ]]);
+            ['id' => 'r-edit', 'url_old' => '/edit', 'internal_url' => $this->pages['about']],
+        ]];
 
         $this->assertEquals([
+            'redirects › r-edit' => ['from' => "url_old: /edit\ninternal_url: Team (/about/team)", 'to' => "url_old: /edit\ninternal_url: About (/about)"],
             'redirects › r-new' => ['from' => null, 'to' => "url_old: /new\ninternal_url: Contact (/contact)"],
             'redirects › r-old' => ['from' => "url_old: /old\ninternal_url: About (/about)", 'to' => null],
-        ], $changes);
+        ], $this->proposals()->changes($target, $target->current(), $proposed));
 
-        $result = $this->proposals()->propose($this->author(), $target, ['phone' => '123', 'redirects' => [
-            ['id' => 'r-new', 'url_old' => '/new', 'internal_url' => [$this->pages['contact']]],
-        ]], Proposals::base($target));
+        $this->assertEquals([[
+            'label' => 'Redirects',
+            'kind' => 'rows',
+            'columns' => ['url_old' => 'Old address', 'internal_url' => 'Internal Url'],
+            'rows' => [
+                ['status' => 'changed', 'cells' => ['url_old' => ['from' => '/edit', 'to' => '/edit'], 'internal_url' => ['from' => 'Team (/about/team)', 'to' => 'About (/about)']]],
+                ['status' => 'added', 'cells' => ['url_old' => ['from' => null, 'to' => '/new'], 'internal_url' => ['from' => null, 'to' => 'Contact (/contact)']]],
+                ['status' => 'removed', 'cells' => ['url_old' => ['from' => '/old', 'to' => null], 'internal_url' => ['from' => 'About (/about)', 'to' => null]]],
+            ],
+            'counts' => ['added' => 1, 'changed' => 1, 'removed' => 1],
+            'reordered' => false,
+        ]], $target->review($target->current(), $proposed));
+
+        $result = $this->proposals()->propose($this->author(), $target, $proposed, Proposals::base($target));
 
         $this->actingAs($this->user('eva@example.com'))->get(cp_route('core-web.proposals.show', $result['id']))
             ->assertOk()
-            ->assertSee('redirects › r-new')
-            ->assertSee('Contact (/contact)')
-            ->assertSee('Added')
-            ->assertSee('Removed')
+            ->assertSeeInOrder(['Redirects', '1 added · 1 changed · 1 removed', 'Old address', 'Internal Url', 'Changed', 'Team (/about/team)', 'About (/about)', 'Added', '/new', 'Contact (/contact)', 'Removed', '/old'])
+            ->assertDontSee('redirects › ')
             ->assertDontSee($this->pages['contact']);
     }
 
