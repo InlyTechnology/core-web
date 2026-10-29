@@ -7,4 +7,7 @@
 @endif
 @if ($row['moved'])
     <ui-badge size="sm" color="blue" text="{{ __('Moved') }}"></ui-badge>
+    @if (filled($row['movedFrom'] ?? null))
+        <span class="text-xs text-blue-700 dark:text-blue-400" v-pre>{{ __('from :place', ['place' => $row['movedFrom']]) }}</span>
+    @endif
 @endif

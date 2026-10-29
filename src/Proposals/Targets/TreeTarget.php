@@ -176,7 +176,7 @@ abstract class TreeTarget implements ProposalTarget
      *
      * @param  array<mixed>  $from
      * @param  array<mixed>  $to
-     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|null, moved: bool, was: ?string, wasUrl: ?string}>, counts: array<string, int>}
+     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|null, moved: bool, movedFrom: ?string, was: ?string, wasUrl: ?string}>, counts: array<string, int>}
      */
     public function review(array $from, array $to): array
     {
@@ -200,6 +200,14 @@ abstract class TreeTarget implements ProposalTarget
             foreach (Moves::moved(array_values(array_filter($oldChildren[$parent] ?? [], fn (string $key) => isset($staying[$key]))), $stayed) as $key) {
                 $moved[$key] = true;
             }
+        }
+
+        // Where each moved branch stood: under another parent, or its place among the same siblings.
+        foreach (array_keys($moved) as $key) {
+            $parent = $old[$key]['parent'];
+            $moved[$key] = $parent !== $new[$key]['parent']
+                ? ($parent === '' ? __('top level') : __('under :parent', ['parent' => $old[$parent]['label']]))
+                : __('position :position', ['position' => array_search($key, $oldChildren[$parent] ?? [], true) + 1]);
         }
 
         $rows = [];
@@ -227,7 +235,7 @@ abstract class TreeTarget implements ProposalTarget
      * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
      * @param  array<string, list<string>>  $oldChildren
      * @param  array<string, list<string>>  $newChildren
-     * @param  array<string, true>  $moved
+     * @param  array<string, string>  $moved  where each moved branch stood
      * @param  list<array<string, mixed>>  $rows
      */
     private function emit(string $parent, int $depth, array $old, array $new, array $oldChildren, array $newChildren, array $moved, array &$rows): void
@@ -263,6 +271,7 @@ abstract class TreeTarget implements ProposalTarget
                 'url' => $now['url'],
                 'status' => $status,
                 'moved' => isset($moved[$key]),
+                'movedFrom' => $moved[$key] ?? null,
                 'was' => $renamed ? $was['label'] : null,
                 'wasUrl' => $relinked ? ($was['url'] ?? __('no link')) : null,
             ];
@@ -281,7 +290,7 @@ abstract class TreeTarget implements ProposalTarget
     private function emitRemoved(array $keys, int $depth, array $old, array $new, array $oldChildren, array &$rows): void
     {
         foreach ($keys as $key) {
-            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null, 'wasUrl' => null];
+            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'movedFrom' => null, 'was' => null, 'wasUrl' => null];
             // Children that live on elsewhere in the proposed tree show there; the rest go with their parent.
             $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => ! isset($new[$child]))), $depth + 1, $old, $new, $oldChildren, $rows);
         }

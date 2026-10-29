@@ -213,7 +213,7 @@ abstract class DataTarget implements ProposalTarget
      *
      * @param  array<string, mixed>  $from
      * @param  array<string, mixed>  $to
-     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
+     * @return list<array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, movedFrom: ?string, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}|array{label: string, kind: 'value', from: ?string, to: ?string, raw: bool}>
      */
     public function review(array $from, array $to): array
     {
@@ -239,7 +239,7 @@ abstract class DataTarget implements ProposalTarget
     /**
      * A grid's rows in their proposed order, removed rows where they stood, each marked moved only when rows that stay changed places around it.
      *
-     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
+     * @return array{label: string, kind: 'rows', columns: array<string, string>, rows: list<array{status: 'added'|'changed'|'removed'|'moved', moved: bool, movedFrom: ?string, cells: array<string, array{from: ?string, to: ?string}>}>, counts: array<string, int>}
      */
     private static function rowGroup(?Field $field, string $label, mixed $from, mixed $to): array
     {
@@ -296,7 +296,7 @@ abstract class DataTarget implements ProposalTarget
                 $group['counts']['moved']++;
             }
 
-            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'cells' => $cells];
+            $group['rows'][] = ['status' => $status, 'moved' => $isMoved, 'movedFrom' => $isMoved ? __('position :position', ['position' => array_search((string) $key, array_map('strval', array_keys($old['rows'])), true) + 1]) : null, 'cells' => $cells];
         }
 
         return $group;

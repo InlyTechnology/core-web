@@ -366,9 +366,9 @@ class ProposalsTest extends TestCase
             'kind' => 'rows',
             'columns' => ['url_old' => 'Old address', 'internal_url' => 'Internal Url'],
             'rows' => [
-                ['status' => 'removed', 'moved' => false, 'cells' => ['url_old' => ['from' => '/old', 'to' => null], 'internal_url' => ['from' => 'About (/about)', 'to' => null]]],
-                ['status' => 'added', 'moved' => false, 'cells' => ['url_old' => ['from' => null, 'to' => '/new'], 'internal_url' => ['from' => null, 'to' => 'Contact (/contact)']]],
-                ['status' => 'changed', 'moved' => false, 'cells' => ['url_old' => ['from' => '/edit', 'to' => '/edit'], 'internal_url' => ['from' => 'Team (/about/team)', 'to' => 'About (/about)']]],
+                ['status' => 'removed', 'moved' => false, 'movedFrom' => null, 'cells' => ['url_old' => ['from' => '/old', 'to' => null], 'internal_url' => ['from' => 'About (/about)', 'to' => null]]],
+                ['status' => 'added', 'moved' => false, 'movedFrom' => null, 'cells' => ['url_old' => ['from' => null, 'to' => '/new'], 'internal_url' => ['from' => null, 'to' => 'Contact (/contact)']]],
+                ['status' => 'changed', 'moved' => false, 'movedFrom' => null, 'cells' => ['url_old' => ['from' => '/edit', 'to' => '/edit'], 'internal_url' => ['from' => 'Team (/about/team)', 'to' => 'About (/about)']]],
             ],
             'counts' => ['added' => 1, 'changed' => 1, 'removed' => 1, 'moved' => 0],
         ]], $target->review($target->current(), $proposed));
@@ -436,7 +436,7 @@ class ProposalsTest extends TestCase
         $review = $target->review(['count' => 5, 'rows' => $rows], ['count' => '5', 'rows' => array_reverse($rows)]);
 
         $this->assertSame(['label' => 'Count', 'kind' => 'value', 'from' => '5', 'to' => '"5"', 'raw' => true], $review[0]);
-        $this->assertSame([['status' => 'moved', 'moved' => true, 'cells' => ['url' => ['from' => '/b', 'to' => '/b']]]], $review[1]['rows']);
+        $this->assertSame([['status' => 'moved', 'moved' => true, 'movedFrom' => 'position 2', 'cells' => ['url' => ['from' => '/b', 'to' => '/b']]]], $review[1]['rows']);
         $this->assertSame(1, $review[1]['counts']['moved']);
     }
 
@@ -487,6 +487,8 @@ class ProposalsTest extends TestCase
             [0, 'Shop', 'removed', false],
             [0, 'Team', null, true],
         ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved']], $moved['rows']));
+        $this->assertSame('under About', $moved['rows'][3]['movedFrom']);
+        $this->assertSame('position 2', $review['rows'][1]['movedFrom']);
     }
 
     public function test_a_menu_without_branch_ids_reads_unchanged_and_moves_its_links(): void
