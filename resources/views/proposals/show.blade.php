@@ -59,12 +59,14 @@
                         $summary->push(__('order changed'));
                     }
                 @endphp
-                <ui-card-panel heading="{{ $group['label'] }}" subheading="{{ $summary->implode(' · ') }}" class="mb-6">
+                <ui-card-panel heading="{{ e($group['label']) }}" subheading="{{ $before ? $summary->implode(' · ') : '' }}" class="mb-6">
                     @if ($group['rows'] !== [])
                         <table class="data-table w-full table-fixed">
                             <thead>
                                 <tr>
-                                    <th class="w-24 text-start"></th>
+                                    @if ($before)
+                                        <th class="w-24 text-start"></th>
+                                    @endif
                                     @foreach ($group['columns'] as $label)
                                         <th class="text-start" v-pre>{{ $label }}</th>
                                     @endforeach
@@ -73,15 +75,17 @@
                             <tbody>
                                 @foreach ($group['rows'] as $row)
                                     <tr class="align-top">
-                                        <td>
-                                            @if ($row['status'] === 'added')
-                                                <ui-badge size="sm" color="green" text="{{ __('Added') }}"></ui-badge>
-                                            @elseif ($row['status'] === 'removed')
-                                                <ui-badge size="sm" color="red" text="{{ __('Removed') }}"></ui-badge>
-                                            @else
-                                                <ui-badge size="sm" color="amber" text="{{ __('Changed') }}"></ui-badge>
-                                            @endif
-                                        </td>
+                                        @if ($before)
+                                            <td>
+                                                @if ($row['status'] === 'added')
+                                                    <ui-badge size="sm" color="green" text="{{ __('Added') }}"></ui-badge>
+                                                @elseif ($row['status'] === 'removed')
+                                                    <ui-badge size="sm" color="red" text="{{ __('Removed') }}"></ui-badge>
+                                                @else
+                                                    <ui-badge size="sm" color="amber" text="{{ __('Changed') }}"></ui-badge>
+                                                @endif
+                                            </td>
+                                        @endif
                                         @foreach (array_keys($group['columns']) as $column)
                                             @php($cell = $row['cells'][$column] ?? ['from' => null, 'to' => null])
                                             <td class="break-words text-sm" v-pre>
@@ -102,7 +106,7 @@
                     @endif
                 </ui-card-panel>
             @else
-                <ui-card-panel heading="{{ $group['label'] }}" class="mb-6">
+                <ui-card-panel heading="{{ e($group['label']) }}" class="mb-6">
                     <div @class(['grid gap-4', 'md:grid-cols-2' => $before])>
                         @if ($before)
                             <div>

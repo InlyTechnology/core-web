@@ -411,6 +411,58 @@ class ProposalsTest extends TestCase
         $this->assertSame(['rows › #2' => ['from' => 'url: /b', 'to' => 'url: /c']], $changes);
     }
 
+    public function test_emptying_a_grid_lists_its_rows_as_removed(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [['handle' => 'url', 'field' => ['type' => 'text']]]]],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+
+        $review = $target->review(['rows' => [['id' => 'a', 'url' => '/a']]], ['rows' => []]);
+
+        $this->assertSame('rows', $review[0]['kind']);
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 1], $review[0]['counts']);
+        $this->assertSame(['rows › a' => ['from' => 'url: /a', 'to' => null]], $this->proposals()->changes($target, ['rows' => [['id' => 'a', 'url' => '/a']]], ['rows' => []]));
+    }
+
+    public function test_the_review_marks_a_reorder_and_a_change_shown_raw(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'count', 'field' => ['type' => 'text', 'display' => 'Count']],
+            ['handle' => 'rows', 'field' => ['type' => 'grid', 'fields' => [['handle' => 'url', 'field' => ['type' => 'text']]]]],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+        $rows = [['id' => 'a', 'url' => '/a'], ['id' => 'b', 'url' => '/b']];
+
+        $review = $target->review(['count' => 5, 'rows' => $rows], ['count' => '5', 'rows' => array_reverse($rows)]);
+
+        $this->assertSame(['label' => 'Count', 'kind' => 'value', 'from' => '5', 'to' => '"5"', 'raw' => true], $review[0]);
+        $this->assertSame([], $review[1]['rows']);
+        $this->assertTrue($review[1]['reordered']);
+    }
+
+    public function test_a_replicator_reads_its_sets_field_labels(): void
+    {
+        Blueprint::make('settings')->setNamespace('globals')->setContents(['fields' => [
+            ['handle' => 'blocks', 'field' => ['type' => 'replicator', 'display' => '<img src=x onerror=alert(1)>', 'sets' => ['main' => ['sets' => [
+                'link' => ['fields' => [['handle' => 'page', 'field' => ['type' => 'entries', 'display' => 'Page']]]],
+            ]]]]],
+        ]])->save();
+        $target = GlobalTarget::make('settings', 'default');
+
+        $review = $target->review([], ['blocks' => [['id' => 'a', 'type' => 'link', 'enabled' => true, 'page' => [$this->pages['contact']]]]]);
+
+        $this->assertSame(['type' => 'Set', 'page' => 'Page'], $review[0]['columns']);
+        $this->assertSame('Contact (/contact)', $review[0]['rows'][0]['cells']['page']['to']);
+
+        $result = $this->proposals()->propose($this->author(), $target, ['blocks' => [['id' => 'a', 'type' => 'link', 'enabled' => true, 'page' => [$this->pages['contact']]]]], Proposals::base($target));
+
+        $this->actingAs($this->user('eva@example.com'))->get(cp_route('core-web.proposals.show', $result['id']))
+            ->assertOk()
+            ->assertSee('heading="&amp;lt;img', false)
+            ->assertDontSee('heading="&lt;img', false);
+    }
+
     public function test_an_editor_reviews_and_applies_a_proposal_in_the_cp(): void
     {
         $target = NavTarget::make('main', 'default');

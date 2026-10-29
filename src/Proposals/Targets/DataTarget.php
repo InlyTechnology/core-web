@@ -11,6 +11,8 @@ use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 use Statamic\Fields\Blueprint;
 use Statamic\Fields\Field;
+use Statamic\Fieldtypes\Grid;
+use Statamic\Fieldtypes\Replicator;
 
 /**
  * Values held against a blueprint (a global's variables, a term, an asset's
@@ -131,6 +133,11 @@ abstract class DataTarget implements ProposalTarget
                 continue;
             }
 
+            // An empty grid has no rows to list; emptying one shows as its rows removed.
+            if (in_array($type, ['grid', 'replicator'], true) && blank($v)) {
+                continue;
+            }
+
             // A grid or replicator reads row by row, so changing one redirect shows one row, not the whole list.
             if (($rows = self::rows($field, $v)) !== null) {
                 foreach ($rows['rows'] as $key => $cells) {
@@ -154,6 +161,17 @@ abstract class DataTarget implements ProposalTarget
 
     public function changes(array $from, array $to): array
     {
+        return $this->diff($from, $to)[0];
+    }
+
+    /**
+     * @param  array<string, mixed>  $from
+     * @param  array<string, mixed>  $to
+     * @return array{0: array<string, array{from: ?string, to: ?string}>, 1: list<string>} the changes, and the keys shown raw
+     */
+    private function diff(array $from, array $to): array
+    {
+        $raw = [];
         $a = $this->outline($from);
         $b = $this->outline($to);
         $changes = [];
@@ -181,12 +199,13 @@ abstract class DataTarget implements ProposalTarget
             // A change the readable lines cannot show (a Bard link, a set's values) is shown raw, so nothing is applied unseen.
             if (! $visible && Fingerprint::of([$from[$handle] ?? null]) !== Fingerprint::of([$to[$handle] ?? null])) {
                 $changes[$handle] = ['from' => self::raw($from[$handle] ?? null), 'to' => self::raw($to[$handle] ?? null)];
+                $raw[] = $handle;
             }
         }
 
         ksort($changes);
 
-        return $changes;
+        return [$changes, $raw];
     }
 
     /**
@@ -199,19 +218,23 @@ abstract class DataTarget implements ProposalTarget
     public function review(array $from, array $to): array
     {
         $fields = $this->blueprint()?->fields()->all();
-        $before = $this->outline($from);
+        [$changes, $raw] = $this->diff($from, $to);
         $groups = [];
         $read = [];
 
-        foreach ($this->changes($from, $to) as $key => $change) {
+        foreach ($changes as $key => $change) {
             [$handle, $row] = array_pad(explode(' › ', $key, 2), 2, null);
             $field = $fields?->get($handle);
             $label = $field?->display() ?: Str::headline($handle);
 
             if ($row === null) {
-                $groups[$handle] = ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => ($before[$handle] ?? null) !== $change['from']];
+                $groups[$handle] = ['label' => $label, 'kind' => 'value', 'from' => $change['from'], 'to' => $change['to'], 'raw' => in_array($handle, $raw, true)];
 
                 continue;
+            }
+
+            if (($groups[$handle]['kind'] ?? null) === 'value') {
+                unset($groups[$handle]);
             }
 
             $groups[$handle] ??= ['label' => $label, 'kind' => 'rows', 'columns' => [], 'rows' => [], 'counts' => ['added' => 0, 'changed' => 0, 'removed' => 0], 'reordered' => false];
@@ -233,7 +256,7 @@ abstract class DataTarget implements ProposalTarget
             $cells = [];
 
             foreach (array_keys(($old ?? []) + ($new ?? [])) as $column) {
-                $groups[$handle]['columns'][$column] ??= self::subfieldLabel($field, $column);
+                $groups[$handle]['columns'][$column] ??= self::subfields($field)[$column]['label'] ?? Str::headline($column);
                 $cells[$column] = ['from' => $old[$column] ?? null, 'to' => $new[$column] ?? null];
             }
 
@@ -255,7 +278,7 @@ abstract class DataTarget implements ProposalTarget
             return null;
         }
 
-        $entryFields = collect((array) ($field?->config()['fields'] ?? []))->filter(fn (mixed $sub) => ($sub['field']['type'] ?? null) === 'entries')->pluck('handle')->all();
+        $entryFields = array_keys(array_filter(self::subfields($field), fn (array $sub) => $sub['type'] === 'entries'));
         $ids = array_map(fn (array $row) => is_scalar($row['id'] ?? null) && filled($row['id']) ? (string) $row['id'] : null, $v);
         // Rows key by their id only when every row has one of its own; otherwise by position, so no row hides another.
         $byId = ! in_array(null, $ids, true) && count(array_unique($ids)) === count($ids);
@@ -263,7 +286,7 @@ abstract class DataTarget implements ProposalTarget
 
         foreach ($v as $index => $row) {
             $rows[$byId ? $ids[$index] : '#'.($index + 1)] = collect($row)
-                ->except(['id', '_id'])
+                ->except(['id', '_id', 'enabled'])
                 ->mapWithKeys(fn (mixed $value, string|int $column) => [(string) $column => self::display($value, in_array((string) $column, $entryFields, true))])
                 ->all();
         }
@@ -271,11 +294,34 @@ abstract class DataTarget implements ProposalTarget
         return ['rows' => $rows, 'order' => $byId ? implode(', ', $ids) : null];
     }
 
-    private static function subfieldLabel(?Field $field, string $handle): string
+    /**
+     * A grid's fields, or every set's fields of a replicator, imports resolved.
+     *
+     * @return array<string, array{label: string, type: string}>
+     */
+    private static function subfields(?Field $field): array
     {
-        $sub = collect((array) ($field?->config()['fields'] ?? []))->firstWhere('handle', $handle);
+        if ($field === null) {
+            return [];
+        }
 
-        return (string) ($sub['field']['display'] ?? '') ?: Str::headline($handle);
+        return Blink::once('core-web-proposal-subfields-'.md5($field->handle().json_encode($field->config())), function () use ($field): array {
+            $fieldtype = $field->fieldtype();
+            $fields = match (true) {
+                $fieldtype instanceof Grid => [$fieldtype->fields()],
+                $fieldtype instanceof Replicator => array_map(fn (string $set) => $fieldtype->fields($set), collect($fieldtype->flattenedSetsConfig())->keys()->all()),
+                default => [],
+            };
+            $out = $fieldtype instanceof Replicator ? ['type' => ['label' => __('Set'), 'type' => 'text']] : [];
+
+            foreach ($fields as $set) {
+                foreach ($set->all() as $handle => $sub) {
+                    $out[(string) $handle] ??= ['label' => (string) ($sub->display() ?: Str::headline((string) $handle)), 'type' => (string) $sub->type()];
+                }
+            }
+
+            return $out;
+        });
     }
 
     private const ORDER = 'order';
