@@ -119,6 +119,14 @@ A key is the field's handle, so it cannot be one of the button's own. A pick
 whose page is gone (Core no longer publishes it, or it has no page on this
 site) resolves to no link, and the button is not drawn.
 
+Every Statamic `link` field offers the same Core links too, beside Entry and
+URL, so a block's own link field can pick a campaign rather than typing its
+path. It stores `campaign::{pick}`, and the field augments to the page's
+address like any other link: `{{ $set['cta_link'] }}` or `->url()`. A value
+saved before (a URL, an entry) keeps working, so a site switches nothing in its
+blueprints. A pick whose page is gone augments to no URL, which a site's
+`linkUrl()`-style check already treats as no link.
+
 ## Rendering
 
 The site's own components draw the buttons. Its button component takes a row
