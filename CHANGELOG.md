@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Link fields pick Core's pages**: each `buttons.core_links` entry is now
+  also an option of Statamic's `link` fieldtype, beside Entry and URL, so any
+  link field can pick a campaign, brand or other page built from Core. The
+  link follows Core when the page's address changes, and a pick whose page
+  is gone links nowhere. Saved links are untouched. Docs: [Buttons](docs/buttons.md#links-to-cores-pages).
+
 ## v0.36.0
 
 - **Clearer machine sign-in page**: the page that approves `content:login`

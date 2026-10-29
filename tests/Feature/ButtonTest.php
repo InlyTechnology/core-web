@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Validation\ValidationException;
 use Inly\CoreWeb\Buttons\Button;
+use Inly\CoreWeb\Buttons\CoreLinkType;
 use Inly\CoreWeb\Buttons\SnapshotPagesDictionary;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
@@ -246,6 +247,28 @@ class ButtonTest extends TestCase
 
         $this->assertSame('/kampanjer/vinter', $this->href(['link_type' => 'campaign', 'campaign' => 'winter']));
         $this->assertSame('', $this->href(['link_type' => 'campaign', 'campaign' => 'summer']));
+    }
+
+    public function test_a_link_field_offers_the_core_links_and_resolves_them(): void
+    {
+        $this->brands();
+        Dictionary::swap(Dictionary::getFacadeRoot());
+        SiteCampaigns::register();
+        config(['core-web.buttons.core_links' => ['brand' => ['display' => 'Brand', 'snapshot' => 'brands'], 'campaign' => ['display' => 'Campaign', 'dictionary' => 'site_campaigns']]]);
+        CoreLinkType::register();
+        $link = fn (?string $value) => (new Field('cta_link', ['type' => 'link']))->setParent(Entry::find('about'))->setValue($value);
+
+        $types = $link(null)->fieldtype()->preload()['types'];
+        $this->assertSame('Campaign', $types['campaign']['title']);
+        $this->assertSame('dictionary', $types['campaign']['component']);
+        $this->assertSame('site_campaigns', $types['campaign']['config']['dictionary']);
+        $this->assertSame(['winter'], $link('campaign::winter')->fieldtype()->preload()['types']['campaign']['selected']);
+
+        $this->assertSame('/kampanjer/vinter', $link('campaign::winter')->augment()->value()->url());
+        $this->assertSame('/brands/volvo', $link('brand::v1')->augment()->value()->url());
+        $this->assertNull($link('campaign::summer')->augment()->value()->url(), 'a pick Core no longer publishes links nowhere');
+        $this->assertSame('/om-oss', $link('entry::about')->augment()->value()->url(), 'Statamic\'s own link types are untouched');
+        $this->assertSame('https://example.com', $link('https://example.com')->augment()->value()->url());
     }
 
     public function test_the_snapshot_pages_dictionary_lists_the_documents_with_a_page_here(): void
