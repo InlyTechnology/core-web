@@ -40,6 +40,7 @@ class ProposalsController
             'changes' => $proposals->changes($target, $proposal->open() ? $target->current() : ($proposal->replaced ?? []), $proposal->value),
             'before' => $proposal->open() || $proposal->replaced !== null,
             'targetUrl' => $target->cpUrl(),
+            'proposedAt' => $proposal->createdAt->setTimezone(config('app.timezone'))->format('Y-m-d H:i'),
             'title' => __('Proposal'),
         ]);
     }
