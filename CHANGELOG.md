@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now
   also an option of Statamic's `link` fieldtype, beside Entry and URL, so any
