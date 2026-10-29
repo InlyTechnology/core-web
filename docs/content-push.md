@@ -164,7 +164,9 @@ the path's extension must be the file's own and one the CP takes, the
 container's file rules apply as in the CP, and a file may be at most
 `content_sync.push_asset_bytes` (20 MB). An uploaded asset is on the site
 (and public, on a public container) as soon as it is stored, even when the
-files naming it are then refused.
+files naming it are then refused. The check before the upload counts
+the files the push is about to upload as there, so a required image field
+naming one passes.
 
 **Permissions.** Pushing needs the **Push content** permission (under Core
 Web) besides Pull content; a super user always may. Drafts and proposals

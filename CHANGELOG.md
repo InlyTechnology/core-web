@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **A push carries the images a block requires**: an image a required asset
+  field names (a hero slide's photo, say) and the push uploads no longer
+  refuses the file as missing its image. The push checks every file before
+  it uploads anything, and the check now counts the files it is about to
+  upload as there. See `docs/content-push.md`.
+
 ## v0.34.0
 
 - **Readable proposals**: a proposal for a global, term or asset shows a
