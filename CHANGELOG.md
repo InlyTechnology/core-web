@@ -8,6 +8,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Clearer machine sign-in page**: the page that approves `content:login`
+  lists the machine's name, where and when it asked, and its code as
+  separate rows, says what the machine will be able to do as a short list
+  (pushing only for a person who may push, on a site that takes pushes), and
+  puts Deny and Approve next to the warning. Its text no longer runs together:
+  a CP component marked `v-pre` is never rendered, so text from elsewhere
+  sits in plain elements now, here and on the tokens page and alt-text
+  widget.
 - **Proposals read as tables and trees**: the CP page for a proposal shows
   what changes in the shape it has. Plain fields of a global, term or
   asset share one Field / Now / Proposed table. A grid or replicator is a

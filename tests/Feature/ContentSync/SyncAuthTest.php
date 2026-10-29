@@ -80,7 +80,7 @@ class SyncAuthTest extends TestCase
 
         $ann = $this->cmsUser('ann@example.com', roles: ['editor']);
         $this->actingAs($ann)->get($device['verification_uri_complete'])->assertOk()
-            ->assertSee('calls itself “ann@laptop” to pull', false)->assertSee($device['user_code'])->assertSee('Requested from 127.0.0.1')
+            ->assertSee('ann@laptop')->assertSee($device['user_code'])->assertSee('127.0.0.1, ')->assertDontSee('<li>Push drafts', false)
             ->assertHeader('X-Frame-Options', 'DENY')->assertHeader('Content-Security-Policy', "frame-ancestors 'none'");
         $this->actingAs($ann)->post(cp_route('core-web.sync.approve'), ['code' => strtolower(str_replace('-', '', $device['user_code']))])->assertOk()->assertSee('Approved');
 
@@ -95,6 +95,17 @@ class SyncAuthTest extends TestCase
         $this->withToken($token['token'])->getJson('/!/core-web/sync/export?type=entries')->assertOk()->assertJsonPath('data', []);
         $this->assertSame(['ann@laptop'], array_map(fn ($record) => $record->machine, app(SyncTokens::class)->forUser($ann->id())));
         $this->assertStringNotContainsString($token['token'], json_encode(Storage::disk('local')->allFiles()).implode('', array_map(fn ($file) => Storage::disk('local')->get($file), Storage::disk('local')->allFiles())));
+    }
+
+    public function test_the_approval_page_lists_pushing_only_for_a_user_who_may_push(): void
+    {
+        $this->roles(['editor' => ['access cp', 'pull content', 'push content']]);
+        $device = $this->startLogin();
+
+        $this->actingAs($this->cmsUser('ann@example.com', roles: ['editor']))->get($device['verification_uri_complete'])->assertOk()->assertSee('<li>Push drafts', false);
+
+        config(['core-web.content_sync.push' => false]);
+        $this->actingAs($this->cmsUser('ann@example.com', roles: ['editor']))->get($device['verification_uri_complete'])->assertOk()->assertDontSee('<li>Push drafts', false);
     }
 
     public function test_a_denied_login_gets_no_token(): void

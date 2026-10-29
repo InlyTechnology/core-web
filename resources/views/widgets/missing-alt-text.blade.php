@@ -13,7 +13,7 @@
     @if (! $scanned)
         <ui-description class="flex-1 flex items-center justify-center">{{ __('Counting the images. Reload the page in a moment.') }}</ui-description>
     @elseif ($count === 0)
-        <ui-description class="flex-1 flex items-center justify-center" v-pre>{{ __('Every image in :container has alt text.', ['container' => $container]) }}</ui-description>
+        <ui-description class="flex-1 flex items-center justify-center"><span v-pre>{{ __('Every image in :container has alt text.', ['container' => $container]) }}</span></ui-description>
     @else
         <div class="px-4 py-3">
             @foreach ($assets as $asset)

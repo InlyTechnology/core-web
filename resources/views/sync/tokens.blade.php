@@ -7,7 +7,7 @@
 
     @if ($error !== null)
         <ui-card>
-            <ui-description v-pre>{{ __('core-web::sync.store_unavailable') }} {{ $error }}</ui-description>
+            <ui-description><span v-pre>{{ __('core-web::sync.store_unavailable') }} {{ $error }}</span></ui-description>
         </ui-card>
     @elseif ($tokens === [])
         <ui-card>
