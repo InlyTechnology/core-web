@@ -176,36 +176,34 @@ abstract class TreeTarget implements ProposalTarget
      *
      * @param  array<mixed>  $from
      * @param  array<mixed>  $to
-     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|null, moved: bool, was: ?string}>, counts: array<string, int>}
+     * @return array{rows: list<array{depth: int, label: string, url: ?string, status: 'added'|'removed'|'changed'|null, moved: bool, was: ?string, wasUrl: ?string}>, counts: array<string, int>}
      */
     public function review(array $from, array $to): array
     {
-        $old = [];
-        $new = [];
-        $this->flatten($from, '', $old);
-        $this->flatten($to, '', $new);
-
+        $this->entries = [];
+        $old = $this->flatten($from);
+        $new = self::matchLinks($old, $this->flatten($to));
+        $oldChildren = self::byParent($old);
+        $newChildren = self::byParent($new);
         $moved = [];
-        $parents = array_unique(['', ...array_keys($new)]);
 
-        foreach ($parents as $parent) {
-            $children = self::childrenOf($new, $parent);
-            $stayed = array_values(array_filter($children, fn (string $key) => ($old[$key]['parent'] ?? null) === $parent));
-            $before = array_values(array_filter(self::childrenOf($old, $parent), fn (string $key) => in_array($key, $stayed, true)));
+        foreach ($newChildren as $parent => $children) {
+            $stayed = array_values(array_filter($children, fn (string $key) => ($old[$key]['parent'] ?? null) === (string) $parent));
+            $staying = array_flip($stayed);
 
             foreach ($children as $key) {
-                if (isset($old[$key]) && $old[$key]['parent'] !== $parent) {
+                if (isset($old[$key]) && $old[$key]['parent'] !== (string) $parent) {
                     $moved[$key] = true;
                 }
             }
 
-            foreach (Moves::moved($before, $stayed) as $key) {
+            foreach (Moves::moved(array_values(array_filter($oldChildren[$parent] ?? [], fn (string $key) => isset($staying[$key]))), $stayed) as $key) {
                 $moved[$key] = true;
             }
         }
 
         $rows = [];
-        $this->emit('', 0, $old, $new, $moved, $rows);
+        $this->emit('', 0, $old, $new, $oldChildren, $newChildren, $moved, $rows);
         $counts = ['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0];
 
         foreach ($rows as $row) {
@@ -221,19 +219,24 @@ abstract class TreeTarget implements ProposalTarget
         return ['rows' => $rows, 'counts' => $counts];
     }
 
+    /** @var array<string, array{label: string, url: ?string}|null> entries looked up during one review */
+    private array $entries = [];
+
     /**
-     * @param  array<string, array{parent: string, label: string, url: ?string}>  $old
-     * @param  array<string, array{parent: string, label: string, url: ?string}>  $new
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $old
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
+     * @param  array<string, list<string>>  $oldChildren
+     * @param  array<string, list<string>>  $newChildren
      * @param  array<string, true>  $moved
      * @param  list<array<string, mixed>>  $rows
      */
-    private function emit(string $parent, int $depth, array $old, array $new, array $moved, array &$rows): void
+    private function emit(string $parent, int $depth, array $old, array $new, array $oldChildren, array $newChildren, array $moved, array &$rows): void
     {
         // A removed branch follows the last sibling before it that is still under this parent, so it shows where it stood.
         $removedAfter = [];
         $previous = '';
 
-        foreach (self::childrenOf($old, $parent) as $key) {
+        foreach ($oldChildren[$parent] ?? [] as $key) {
             if (($new[$key]['parent'] ?? null) === $parent) {
                 $previous = $key;
             } elseif (! isset($new[$key])) {
@@ -241,76 +244,155 @@ abstract class TreeTarget implements ProposalTarget
             }
         }
 
-        $this->emitRemoved($removedAfter[''] ?? [], $depth, $old, $new, $rows);
+        $this->emitRemoved($removedAfter[''] ?? [], $depth, $old, $new, $oldChildren, $rows);
 
-        foreach (self::childrenOf($new, $parent) as $key) {
+        foreach ($newChildren[$parent] ?? [] as $key) {
             $was = $old[$key] ?? null;
             $now = $new[$key];
+            $renamed = $was !== null && $was['label'] !== $now['label'];
+            $relinked = $was !== null && $was['url'] !== $now['url'];
             $status = match (true) {
                 $was === null => 'added',
-                $was['label'] !== $now['label'] || $was['url'] !== $now['url'] => 'changed',
+                $renamed || $relinked => 'changed',
                 default => null,
             };
 
-            $rows[] = ['depth' => $depth, 'label' => $now['label'], 'url' => $now['url'], 'status' => $status, 'moved' => isset($moved[$key]), 'was' => $status === 'changed' ? $was['label'].($was['url'] !== $now['url'] && $was['url'] !== null ? " ({$was['url']})" : '') : null];
-            $this->emit($key, $depth + 1, $old, $new, $moved, $rows);
-            $this->emitRemoved($removedAfter[$key] ?? [], $depth, $old, $new, $rows);
+            $rows[] = [
+                'depth' => $depth,
+                'label' => $now['label'],
+                'url' => $now['url'],
+                'status' => $status,
+                'moved' => isset($moved[$key]),
+                'was' => $renamed ? $was['label'] : null,
+                'wasUrl' => $relinked ? ($was['url'] ?? __('no link')) : null,
+            ];
+            $this->emit($key, $depth + 1, $old, $new, $oldChildren, $newChildren, $moved, $rows);
+            $this->emitRemoved($removedAfter[$key] ?? [], $depth, $old, $new, $oldChildren, $rows);
         }
     }
 
     /**
      * @param  list<string>  $keys
-     * @param  array<string, array{parent: string, label: string, url: ?string}>  $old
-     * @param  array<string, array{parent: string, label: string, url: ?string}>  $new
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $old
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
+     * @param  array<string, list<string>>  $oldChildren
      * @param  list<array<string, mixed>>  $rows
      */
-    private function emitRemoved(array $keys, int $depth, array $old, array $new, array &$rows): void
+    private function emitRemoved(array $keys, int $depth, array $old, array $new, array $oldChildren, array &$rows): void
     {
         foreach ($keys as $key) {
-            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null];
+            $rows[] = ['depth' => $depth, 'label' => $old[$key]['label'], 'url' => $old[$key]['url'], 'status' => 'removed', 'moved' => false, 'was' => null, 'wasUrl' => null];
             // Children that live on elsewhere in the proposed tree show there; the rest go with their parent.
-            $this->emitRemoved(array_values(array_filter(self::childrenOf($old, $key), fn (string $child) => ! isset($new[$child]))), $depth + 1, $old, $new, $rows);
+            $this->emitRemoved(array_values(array_filter($oldChildren[$key] ?? [], fn (string $child) => ! isset($new[$child]))), $depth + 1, $old, $new, $oldChildren, $rows);
         }
     }
 
     /**
      * @param  array<string, array{parent: string}>  $flat
-     * @return list<string>
+     * @return array<string, list<string>>
      */
-    private static function childrenOf(array $flat, string $parent): array
+    private static function byParent(array $flat): array
     {
-        return array_keys(array_filter($flat, fn (array $branch) => $branch['parent'] === $parent));
+        $children = [];
+
+        foreach ($flat as $key => $branch) {
+            $children[$branch['parent']][] = (string) $key;
+        }
+
+        return $children;
     }
 
     /**
-     * Every branch keyed by what it is (its entry, else its id, else its link), in tree order.
+     * A link branch the stored tree holds without an id gets one when a proposal is validated; it is the same branch when its link and title match.
+     *
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $old
+     * @param  array<string, array{parent: string, label: string, url: ?string, sig: ?string}>  $new
+     * @return array<string, array{parent: string, label: string, url: ?string, sig: ?string}>
+     */
+    private static function matchLinks(array $old, array $new): array
+    {
+        $unmatched = [];
+
+        foreach ($old as $key => $branch) {
+            if (str_starts_with((string) $key, 'link:') && ! isset($new[$key])) {
+                $unmatched[$branch['sig']][] = (string) $key;
+            }
+        }
+
+        $rename = [];
+
+        foreach ($new as $key => $branch) {
+            if (! isset($old[$key]) && $branch['sig'] !== null && ($unmatched[$branch['sig']] ?? []) !== []) {
+                $rename[$key] = array_shift($unmatched[$branch['sig']]);
+            }
+        }
+
+        if ($rename === []) {
+            return $new;
+        }
+
+        $out = [];
+
+        foreach ($new as $key => $branch) {
+            $branch['parent'] = $rename[$branch['parent']] ?? $branch['parent'];
+            $out[$rename[$key] ?? $key] = $branch;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every branch keyed by what it is (its entry, else its id, else its link and title), a repeat numbered so it keeps its own place, in tree order.
      *
      * @param  array<mixed>  $branches
-     * @param  array<string, array{parent: string, label: string, url: ?string}>  $flat
+     * @param  array<string, int>  $seen
+     * @return array<string, array{parent: string, label: string, url: ?string, sig: ?string}>
      */
-    private function flatten(array $branches, string $parent, array &$flat): void
+    private function flatten(array $branches, string $parent = '', array &$seen = []): array
     {
-        foreach (array_values($branches) as $index => $branch) {
+        $flat = [];
+
+        foreach ($branches as $branch) {
             if (! is_array($branch)) {
                 continue;
             }
 
-            $entry = filled($branch['entry'] ?? null) ? Entry::find((string) $branch['entry']) : null;
-            $key = match (true) {
-                filled($branch['entry'] ?? null) => 'entry:'.$branch['entry'],
-                filled($branch['id'] ?? null) => 'id:'.$branch['id'],
-                default => 'link:'.($branch['url'] ?? '').'|'.($branch['title'] ?? '').'|'.$parent.'|'.$index,
+            $text = fn (string $field) => is_scalar($branch[$field] ?? null) && filled($branch[$field]) ? (string) $branch[$field] : null;
+            $entry = $text('entry') === null ? null : $this->entry($text('entry'));
+            $url = $text('url');
+            $sig = $text('entry') === null ? ($url ?? '').'|'.($text('title') ?? '') : null;
+            $base = match (true) {
+                $text('entry') !== null => 'entry:'.$text('entry'),
+                $text('id') !== null => 'id:'.$text('id'),
+                default => 'link:'.$sig,
             };
+            $seen[$base] = ($seen[$base] ?? 0) + 1;
+            $key = $seen[$base] === 1 ? $base : $base.'#'.$seen[$base];
+
             $flat[$key] = [
                 'parent' => $parent,
-                'label' => (string) ($branch['title'] ?? $entry?->value('title') ?? $branch['url'] ?? ($branch['entry'] ?? '')),
-                'url' => $entry ? $entry->url() : (filled($branch['url'] ?? null) ? (string) $branch['url'] : null),
+                'label' => $text('title') ?? $entry['label'] ?? $url ?? ($text('entry') ?? ''),
+                'url' => $entry === null ? $url : $entry['url'],
+                'sig' => $sig,
             ];
 
             if (is_array($branch['children'] ?? null)) {
-                $this->flatten($branch['children'], $key, $flat);
+                $flat += $this->flatten($branch['children'], $key, $seen);
             }
         }
+
+        return $flat;
+    }
+
+    /** @return array{label: string, url: ?string}|null */
+    private function entry(string $id): ?array
+    {
+        if (! array_key_exists($id, $this->entries)) {
+            $entry = Entry::find($id);
+            $this->entries[$id] = $entry === null ? null : ['label' => (string) $entry->value('title'), 'url' => $entry->url()];
+        }
+
+        return $this->entries[$id];
     }
 
     public function outline(array $value): array

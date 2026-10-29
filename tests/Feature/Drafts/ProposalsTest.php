@@ -474,7 +474,7 @@ class ProposalsTest extends TestCase
             [0, 'About', null, false, null],
             [1, 'Contact', null, true, null],
             [1, 'Team', null, false, null],
-            [0, 'Shop', 'changed', false, 'Shop (https://example.com)'],
+            [0, 'Shop', 'changed', false, null],
             [0, 'Home', 'added', false, null],
         ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved'], $row['was']], $review['rows']));
         $this->assertSame(['added' => 1, 'changed' => 1, 'removed' => 0, 'moved' => 1], $review['counts']);
@@ -487,6 +487,52 @@ class ProposalsTest extends TestCase
             [0, 'Shop', 'removed', false],
             [0, 'Team', null, true],
         ], array_map(fn (array $row) => [$row['depth'], $row['label'], $row['status'], $row['moved']], $moved['rows']));
+    }
+
+    public function test_a_menu_without_branch_ids_reads_unchanged_and_moves_its_links(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $link = fn (string $title, array $children = []) => array_filter(['url' => '/'.strtolower($title), 'title' => $title, 'children' => $children]);
+        $from = [$link('Shop', [['entry' => $this->pages['contact']]]), $link('Blog'), $link('Blog')];
+
+        $same = $target->review($from, $target->validate($from));
+
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 0], $same['counts']);
+
+        $swapped = $target->review($from, $target->validate([$link('Blog'), $link('Shop', [['entry' => $this->pages['contact']]]), $link('Blog')]));
+
+        $this->assertSame(['added' => 0, 'changed' => 0, 'removed' => 0, 'moved' => 1], $swapped['counts']);
+    }
+
+    public function test_a_stored_tree_with_a_page_twice_shows_each_place(): void
+    {
+        $target = NavTarget::make('main', 'default');
+
+        $review = $target->review(
+            [['entry' => $this->pages['about'], 'children' => [['entry' => $this->pages['contact']]]], ['entry' => $this->pages['contact']]],
+            [['entry' => $this->pages['about']], ['entry' => $this->pages['contact']]],
+        );
+
+        $this->assertSame([['About', null], ['Contact', null], ['Contact', 'removed']], array_map(fn (array $row) => [$row['label'], $row['status']], [$review['rows'][0], $review['rows'][2], $review['rows'][1]]));
+        $this->assertSame(1, $review['counts']['removed']);
+    }
+
+    public function test_a_link_change_strikes_the_old_link_not_the_label(): void
+    {
+        $review = NavTarget::make('main', 'default')->review([['id' => 'a', 'title' => 'Shop']], [['id' => 'a', 'title' => 'Shop', 'url' => '/shop']]);
+
+        $this->assertSame(['changed', null, 'no link', '/shop'], [$review['rows'][0]['status'], $review['rows'][0]['was'], $review['rows'][0]['wasUrl'], $review['rows'][0]['url']]);
+    }
+
+    public function test_a_tree_label_renders_as_text(): void
+    {
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, [['url' => '/x', 'title' => '<b>{{ 1+1 }}</b> & co']], Proposals::base($target));
+
+        $this->actingAs($this->user('eva@example.com'))->get(cp_route('core-web.proposals.show', $result['id']))
+            ->assertOk()
+            ->assertSee('&lt;b&gt;{{ 1+1 }}&lt;/b&gt; &amp; co', false)
+            ->assertDontSee('<b>{{', false);
     }
 
     public function test_a_replicator_reads_its_sets_field_labels(): void

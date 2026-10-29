@@ -54,6 +54,8 @@
             __(':count moved', ['count' => $counts['moved']]) => $counts['moved'],
         ])->filter()->keys()->implode(' · ') : '';
         $lines = fn (?string $text) => nl2br(e($text ?? ''));
+        // Statamic renders a panel heading as HTML: angle brackets are escaped once more so a label stays text, the rest only once so an ampersand reads as one.
+        $heading = fn (string $label) => str_replace(['<', '>'], ['&lt;', '&gt;'], $label);
     @endphp
 
     @if ($groups !== null)
@@ -98,7 +100,7 @@
         @endif
 
         @foreach ($grids as $group)
-            <ui-card-panel heading="{{ e($group['label']) }}" subheading="{{ $summarize($group['counts']) }}" class="mb-6">
+            <ui-card-panel heading="{{ $heading($group['label']) }}" subheading="{{ $summarize($group['counts']) }}" class="mb-6">
                 @if ($group['rows'] !== [])
                     <table class="data-table w-full table-fixed">
                         <thead>
@@ -142,33 +144,40 @@
             <ui-card><ui-description>{{ __('Nothing changes.') }}</ui-description></ui-card>
         @endif
     @elseif ($tree !== null)
-        <ui-card-panel heading="{{ __('Proposed tree') }}" subheading="{{ $summarize($tree['counts']) }}">
-            <div class="divide-y divide-gray-100 dark:divide-gray-800">
-                @foreach ($tree['rows'] as $row)
-                    <div class="flex items-baseline gap-2 py-1.5 text-sm" style="padding-inline-start: {{ $row['depth'] * 1.75 }}rem">
-                        @if ($row['depth'] > 0)
-                            <span class="text-gray-300 dark:text-gray-600">└</span>
-                        @endif
-                        <span @class([
-                            'text-gray-500 line-through' => $row['status'] === 'removed',
-                            'text-green-700 dark:text-green-400' => in_array($row['status'], ['added', 'changed'], true),
-                            'text-gray-500 dark:text-gray-400' => $row['status'] === null && ! $row['moved'],
-                        ]) v-pre>
-                            @if ($row['was'] !== null)
-                                <span class="me-1 text-red-700 line-through dark:text-red-400">{{ $row['was'] }}</span>
+        @if ($before && array_sum($tree['counts']) === 0)
+            <ui-card><ui-description>{{ __('Nothing changes.') }}</ui-description></ui-card>
+        @else
+            <ui-card-panel heading="{{ __('Proposed tree') }}" subheading="{{ $summarize($tree['counts']) }}">
+                <div class="divide-y divide-gray-100 dark:divide-gray-800">
+                    @foreach ($tree['rows'] as $row)
+                        <div class="flex items-baseline gap-2 py-1.5 text-sm" style="padding-inline-start: {{ $row['depth'] * 1.75 }}rem">
+                            @if ($row['depth'] > 0)
+                                <span class="text-gray-300 dark:text-gray-600">└</span>
                             @endif
-                            {{ $row['label'] }}
-                        </span>
-                        @if ($row['url'] !== null)
-                            <span class="truncate text-xs text-gray-400" v-pre>{{ $row['url'] }}</span>
-                        @endif
-                        @if ($before)
-                            @include('core-web::proposals.badges', ['row' => $row])
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </ui-card-panel>
+                            <span @class([
+                                'text-gray-500 line-through' => $before && $row['status'] === 'removed',
+                                'text-green-700 dark:text-green-400' => $before && in_array($row['status'], ['added', 'changed'], true),
+                                'text-gray-500 dark:text-gray-400' => $before && $row['status'] === null && ! $row['moved'],
+                            ]) v-pre>
+                                @if ($row['was'] !== null)
+                                    <span class="me-1 text-red-700 line-through dark:text-red-400">{{ $row['was'] }}</span>
+                                @endif
+                                {{ $row['label'] }}
+                            </span>
+                            @if ($row['wasUrl'] !== null)
+                                <span class="truncate text-xs text-red-700 line-through dark:text-red-400" v-pre>{{ $row['wasUrl'] }}</span>
+                            @endif
+                            @if ($row['url'] !== null)
+                                <span class="truncate text-xs text-gray-400" v-pre>{{ $row['url'] }}</span>
+                            @endif
+                            @if ($before)
+                                @include('core-web::proposals.badges', ['row' => $row])
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </ui-card-panel>
+        @endif
     @else
         <ui-card-panel heading="{{ __('What changes') }}">
             <table class="data-table w-full table-fixed">
