@@ -63,6 +63,8 @@ final class TranslationBlueprint
     /** @param  array<string, array<string, mixed>>  $fields */
     private function seen(mixed $entry, array $fields): string
     {
+        // The form shows the working copy when there is one, and Statamic may resolve the blueprint on the published entry first.
+        $entry = $entry->hasWorkingCopy() ? $entry->fromWorkingCopy() : $entry;
         $seen = [];
 
         foreach ($fields as $handle => $shape) {

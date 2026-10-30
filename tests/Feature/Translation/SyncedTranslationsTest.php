@@ -284,6 +284,23 @@ class SyncedTranslationsTest extends TestCase
         $translation->set('page_builder', $blocks)->save();
 
         $this->assertArrayNotHasKey('heading', Entry::find($translation->id())->get('page_builder')[1]);
+        $this->assertNotContains('page_builder.vision.heading', SyncedTranslations::status(Entry::find($translation->id()))['untranslated']);
+    }
+
+    public function test_a_text_the_original_fills_in_later_reaches_the_translation(): void
+    {
+        $blocks = $this->blocks();
+        unset($blocks[1]['heading']);
+        $english = $this->english();
+        unset($english[1]['heading']);
+        $origin = Entry::make()->collection('pages')->locale('default')->slug('om')->data(['page_builder' => $blocks]);
+        $origin->save();
+        $translation = $origin->makeLocalization('other')->data(['page_builder' => $english]);
+        $translation->save();
+
+        Entry::find($origin->id())->set('page_builder', $this->blocks())->save();
+
+        $this->assertSame('Vår vision', Entry::find($translation->id())->get('page_builder')[1]['heading']);
     }
 
     public function test_a_form_opened_before_the_original_changed_its_blocks_still_saves(): void

@@ -23,6 +23,9 @@ final class SyncedTranslations
     /** The blocks a control panel form opened with, posted back so a save can tell what the editor changed. */
     public const SEEN = 'core_web_blocks_seen';
 
+    /** The source hash of a text the translation cleared on purpose. */
+    private const CLEARED = '-';
+
     public static function siteDefault(string $site): bool
     {
         return (config("core-web.translation.sites.{$site}") ?? 'own') === 'synced';
@@ -63,20 +66,31 @@ final class SyncedTranslations
                 continue;
             }
 
-            $aligned = Alignment::align($origin->value($handle), $translation->get($handle), $shape);
+            $aligned = Alignment::align($origin->value($handle), $translation->get($handle), $shape, $sources, $handle);
             $translation->set($handle, $aligned);
 
             $originTexts = Alignment::texts($origin->value($handle), $shape, $handle);
+            $texts = Alignment::texts($aligned, $shape, $handle);
 
-            foreach (Alignment::texts($aligned, $shape, $handle) as $path => $text) {
-                if (! array_key_exists($path, $originTexts) || $text === $originTexts[$path]) {
+            foreach ($originTexts as $path => $originText) {
+                $known = is_array($sources[$path] ?? null) ? $sources[$path] : null;
+
+                if (! array_key_exists($path, $texts)) {
+                    // A cleared text stays cleared, and remembers which version of the original it was cleared against.
+                    if ($known !== null) {
+                        $next[$path] = ($known['t'] ?? null) === self::CLEARED ? $known : ['o' => self::hash($originText), 't' => self::CLEARED];
+                    }
+
                     continue;
                 }
 
-                $known = $sources[$path] ?? null;
-                $next[$path] = is_array($known) && ($known['t'] ?? null) === self::hash($text)
+                if ($texts[$path] === $originText) {
+                    continue;
+                }
+
+                $next[$path] = $known !== null && ($known['t'] ?? null) === self::hash($texts[$path])
                     ? $known
-                    : ['o' => self::hash($originTexts[$path]), 't' => self::hash($text)];
+                    : ['o' => self::hash($originText), 't' => self::hash($texts[$path])];
             }
         }
 
@@ -111,7 +125,9 @@ final class SyncedTranslations
             $texts = Alignment::texts($own, $shape, $handle);
 
             foreach (Alignment::texts($original, $shape, $handle) as $path => $text) {
-                if (! array_key_exists($path, $texts) || $texts[$path] === $text) {
+                $cleared = ! array_key_exists($path, $texts) && ($sources[$path]['t'] ?? null) === self::CLEARED;
+
+                if (! $cleared && (! array_key_exists($path, $texts) || $texts[$path] === $text)) {
                     $status['untranslated'][] = $path;
                 } elseif (is_array($sources[$path] ?? null) && ($sources[$path]['o'] ?? null) !== self::hash($text)) {
                     $status['outdated'][] = $path;

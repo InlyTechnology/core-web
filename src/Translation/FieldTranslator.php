@@ -51,10 +51,66 @@ final class FieldTranslator
 
     private function bard(Bard $bard, mixed $source, mixed $current, Entry $translation, Entry $origin): array
     {
-        $nodes = $bard->preProcess($source);
+        $refs = [];
+        $nodes = $this->holdRefs($bard->preProcess($source), $refs);
 
+        return $this->restoreRefs($this->translateNodes($bard, $nodes, $current, $translation, $origin), $refs);
+    }
+
+    /**
+     * Swaps each `statamic://` link for a placeholder, since rendering a link
+     * to HTML resolves it to the entry's URL and it would no longer follow a
+     * rename once saved.
+     *
+     * @param  array<array-key, mixed>  $nodes
+     * @param  list<string>  $refs
+     * @return array<array-key, mixed>
+     */
+    private function holdRefs(array $nodes, array &$refs): array
+    {
+        foreach ($nodes as $key => $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+
+            if (($node['type'] ?? null) === 'link' && is_string($node['attrs']['href'] ?? null) && str_starts_with($node['attrs']['href'], 'statamic://')) {
+                $refs[] = $node['attrs']['href'];
+                $node['attrs']['href'] = '#core-web-ref-'.(count($refs) - 1);
+            }
+
+            $nodes[$key] = ($node['type'] ?? null) === 'set' ? $node : $this->holdRefs($node, $refs);
+        }
+
+        return $nodes;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $nodes
+     * @param  list<string>  $refs
+     * @return array<array-key, mixed>
+     */
+    private function restoreRefs(array $nodes, array $refs): array
+    {
+        foreach ($nodes as $key => $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+
+            if (($node['type'] ?? null) === 'link' && preg_match('/^#core-web-ref-(\d+)$/', (string) ($node['attrs']['href'] ?? ''), $match) && isset($refs[(int) $match[1]])) {
+                $node['attrs']['href'] = $refs[(int) $match[1]];
+            }
+
+            $nodes[$key] = ($node['type'] ?? null) === 'set' ? $node : $this->restoreRefs($node, $refs);
+        }
+
+        return $nodes;
+    }
+
+    /** @param  list<array<string, mixed>>  $nodes */
+    private function translateNodes(Bard $bard, array $nodes, mixed $current, Entry $translation, Entry $origin): array
+    {
         if ($bard->config('inline')) {
-            $html = (string) $bard->augment($source);
+            $html = (new Augmentor($bard))->withStatamicImageUrls()->renderProsemirrorToHtml(['type' => 'doc', 'content' => $nodes]);
 
             return $bard->preProcess($this->send(['html' => $html], $translation, $origin, null)['html']);
         }
@@ -63,7 +119,7 @@ final class FieldTranslator
 
         foreach ($nodes as $index => $node) {
             if (($node['type'] ?? null) !== 'set') {
-                $texts["n{$index}"] = (new Augmentor($bard))->renderProsemirrorToHtml(['type' => 'doc', 'content' => [$node]]);
+                $texts["n{$index}"] = (new Augmentor($bard))->withStatamicImageUrls()->renderProsemirrorToHtml(['type' => 'doc', 'content' => [$node]]);
             }
         }
 
@@ -109,11 +165,24 @@ final class FieldTranslator
             throw new FieldNotTranslatable(__('Inly Core does not let this site translate. Grant its app client "Translate content with AI".'));
         }
 
-        if ($response->failed()) {
-            throw new RuntimeException("Core translation failed [{$response->status()}]: ".$response->body());
+        // Core's own refusals (too much text, today's allowance used, an incomplete batch) say what to do.
+        if (in_array($response->status(), [422, 429, 502], true) && is_string($response->json('message'))) {
+            throw new FieldNotTranslatable($response->json('message'));
         }
 
-        return (array) $response->json('translations', []);
+        if ($response->failed()) {
+            throw new RuntimeException("Core translation failed [{$response->status()}].");
+        }
+
+        $translations = (array) $response->json('translations', []);
+
+        foreach (array_keys($texts) as $key) {
+            if (! is_string($translations[$key] ?? null)) {
+                throw new FieldNotTranslatable(__('The translation came back incomplete. Try again.'));
+            }
+        }
+
+        return $translations;
     }
 
     /**

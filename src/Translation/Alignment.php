@@ -13,9 +13,10 @@ final class Alignment
 {
     /**
      * @param  array<string, mixed>  $shape  a FieldShape with `sets` or `rows`
+     * @param  array<string, mixed>  $translated  the paths the translation has translated before, so a text it lacks there was cleared
      * @return list<array<string, mixed>>
      */
-    public static function align(mixed $origin, mixed $translation, array $shape): array
+    public static function align(mixed $origin, mixed $translation, array $shape, array $translated = [], string $prefix = ''): array
     {
         $ownRows = self::rows($translation);
         $own = [];
@@ -38,7 +39,7 @@ final class Alignment
                 $match = null;
             }
 
-            $aligned[] = self::alignFields($row, $match, self::fieldsOf($row, $shape));
+            $aligned[] = self::alignFields($row, $match, self::fieldsOf($row, $shape), $translated, $prefix.'.'.self::id($row, $index));
         }
 
         return $aligned;
@@ -104,16 +105,17 @@ final class Alignment
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>|null  $own
      * @param  array<string, mixed>  $fields
+     * @param  array<string, mixed>  $translated
      * @return array<string, mixed>
      */
-    private static function alignFields(array $row, ?array $own, array $fields): array
+    private static function alignFields(array $row, ?array $own, array $fields, array $translated, string $prefix): array
     {
         foreach ($fields as $handle => $field) {
             if ($field === 'text') {
-                // A text the translation's row lacks was cleared there, so the original's does not show through.
+                // Statamic stores a blank text as a missing key, so only a text translated before was cleared; any other shows the original's.
                 if ($own !== null && array_key_exists($handle, $own)) {
                     $row[$handle] = $own[$handle];
-                } elseif ($own !== null) {
+                } elseif ($own !== null && array_key_exists("{$prefix}.{$handle}", $translated)) {
                     unset($row[$handle]);
                 }
 
@@ -126,13 +128,13 @@ final class Alignment
 
             if (isset($field['group'])) {
                 $row[$handle] = is_array($row[$handle])
-                    ? self::alignFields($row[$handle], is_array($own[$handle] ?? null) ? $own[$handle] : null, $field['group'])
+                    ? self::alignFields($row[$handle], is_array($own[$handle] ?? null) ? $own[$handle] : null, $field['group'], $translated, "{$prefix}.{$handle}")
                     : $row[$handle];
 
                 continue;
             }
 
-            $row[$handle] = self::align($row[$handle], $own[$handle] ?? null, $field);
+            $row[$handle] = self::align($row[$handle], $own[$handle] ?? null, $field, $translated, "{$prefix}.{$handle}");
         }
 
         return $row;

@@ -101,7 +101,9 @@ and saves. Nothing is saved by the action itself.
 
 - The original's text is found through the row ids, so it works on a page
   that keeps its own blocks too; a block the original lacks translates the
-  field's current text.
+  field's current text. The rows are read as saved, so save a page with
+  newly added or moved blocks before translating their fields.
+- Links to entries and assets stay links to them, so they follow a rename.
 - A Bard field is translated paragraph by paragraph, and its sets stay as
   they are in the form.
 - Core makes the model call through its `POST /api/app/translations`

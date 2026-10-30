@@ -33,15 +33,10 @@ final class FollowsOriginal
 
         $submitted = Alignment::structure($value, $shape);
         $seen = json_decode((string) ($data[SyncedTranslations::SEEN] ?? ''), true)[$handle] ?? null;
-
-        if (is_array($seen)) {
-            return Alignment::matches($submitted, $seen)
-                || Alignment::matches($submitted, Alignment::structure($origin->value($handle), $shape));
-        }
-
         $current = $entry->hasWorkingCopy() ? $entry->fromWorkingCopy() : $entry;
 
-        return Alignment::matches($submitted, Alignment::structure($origin->value($handle), $shape))
+        return (is_array($seen) && Alignment::matches($submitted, $seen))
+            || Alignment::matches($submitted, Alignment::structure($origin->value($handle), $shape))
             || Alignment::matches($submitted, Alignment::structure($current->has($handle) ? $current->get($handle) : $origin->value($handle), $shape));
     }
 

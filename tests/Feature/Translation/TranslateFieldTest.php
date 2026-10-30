@@ -63,6 +63,7 @@ class TranslateFieldTest extends TestCase
             ['id' => 'hero', 'type' => 'hero', 'heading' => 'Familjeföretaget'],
             ['id' => 'text', 'type' => 'text', 'body' => [
                 ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Vi bygger bilar.']]],
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Kontakt', 'marks' => [['type' => 'link', 'attrs' => ['href' => 'statamic://entry::abc']]]]]],
                 ['type' => 'set', 'attrs' => ['id' => 'q1', 'values' => ['type' => 'quote', 'quote' => 'Citat']]],
             ]],
         ]]);
@@ -105,7 +106,8 @@ class TranslateFieldTest extends TestCase
             ->json('value');
 
         $this->assertSame('We build bilar.', $value[0]['content'][0]['text']);
-        $this->assertSame(['id' => 'q1', 'values' => ['type' => 'quote', 'quote' => 'Citat']], array_intersect_key($value[1]['attrs'], ['id' => 1, 'values' => 1]));
+        $this->assertSame('statamic://entry::abc', $value[1]['content'][0]['marks'][0]['attrs']['href'], 'An entry link keeps following the entry.');
+        $this->assertSame(['id' => 'q1', 'values' => ['type' => 'quote', 'quote' => 'Citat']], array_intersect_key($value[2]['attrs'], ['id' => 1, 'values' => 1]));
     }
 
     public function test_an_original_and_a_field_that_is_no_text_are_refused_with_a_reason(): void
