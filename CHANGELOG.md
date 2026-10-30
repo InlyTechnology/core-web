@@ -6,6 +6,23 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Translations that follow their original**: with `features.translation`
+  on and a site marked `synced` in `translation.sites`, a translation's
+  page builder (every replicator and grid) keeps the original's blocks,
+  order, images and settings, and owns only its texts. Saving the original
+  carries its blocks to its translations; a translation can switch to its
+  own blocks with a toggle in its sidebar. Texts changed in the original
+  since they were translated show as outdated there and in the new
+  `translation-sync` content check. Docs: [Translation](docs/translation.md).
+- **Translate with Core AI**: with `features.translation` on and the Core
+  client configured, text, textarea, markdown and Bard fields get a field
+  action that fills them with the original's text translated by Core. The
+  site's app client needs Core's "Translate content with AI" permission,
+  which needs an Inly Core release with the app translation endpoint.
+  Docs: [Translation](docs/translation.md#translating-a-field-with-core-ai).
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now
