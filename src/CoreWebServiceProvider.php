@@ -692,6 +692,8 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         $this->loadViews();
+        // The skip link's label.
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         $this->loadRoutesFrom(__DIR__.'/../routes/seo.php');
 
         if (filled(config('core-web.seo.not_found.global'))) {
