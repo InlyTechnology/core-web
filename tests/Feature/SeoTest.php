@@ -326,4 +326,21 @@ class SeoTest extends TestCase
         $this->assertContains('seo_canonical_type', Fieldset::find('core-web::seo_entry')->fields()->all()->keys()->all());
         $this->assertContains('sitemap_collections', Fieldset::find('core-web::seo_sitemap')->fields()->all()->keys()->all());
     }
+
+    public function test_the_skip_link_jumps_to_the_content_and_is_worded_in_the_site_s_language(): void
+    {
+        $html = Blade::render('<x-core-web::skip-link />');
+
+        $this->assertStringContainsString('<a href="#content" class="core-skip-link">Skip to content</a>', $html);
+
+        app()->setLocale('sv');
+        $this->assertStringContainsString('>Hoppa till innehållet</a>', Blade::render('<x-core-web::skip-link />'));
+    }
+
+    public function test_the_skip_link_takes_another_target_label_and_classes(): void
+    {
+        $html = Blade::render('<x-core-web::skip-link target="main" label="Till sidan" class="font-bold" />');
+
+        $this->assertStringContainsString('<a href="#main" class="core-skip-link font-bold">Till sidan</a>', $html);
+    }
 }

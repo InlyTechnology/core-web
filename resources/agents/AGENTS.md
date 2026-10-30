@@ -145,6 +145,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **SEO fields come from the `core-web::seo_*` fieldsets**; a site's own schema (its Organization, a block's
   FAQPage) stays in its views, and markup for the head goes in `@push('core-web.seo')`.
 - **A collection's social card is a row in `seo.social.collections`**, not code.
+- **The skip link is `<x-core-web::skip-link />`**, the first thing in `<body>`, pointing at the main content's
+  id (`target`, `content` by default); the site imports `core-skip-link.css`. Never drop it with Peak Tools.
 
 ## Favicons (`favicons`)
 

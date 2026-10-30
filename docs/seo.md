@@ -63,6 +63,28 @@ component is passed wins over the entry's fields.
 - **JSON-LD**: the entry's `schema_jsonld`, and a `BreadcrumbList` when
   `breadcrumbs` is on. The site's Organization schema stays in its layout.
 
+## The skip link
+
+The first thing in `<body>`: hidden until a keyboard user presses Tab, it
+jumps past the header and navigation to the page's content (WCAG 2.4.1,
+*Bypass Blocks*). It takes the place of Peak Tools' skip links.
+
+```blade
+<body>
+    <x-core-web::skip-link />          {{-- to #content; target="main" for another id --}}
+    ...
+    <main id="content">
+```
+
+```css
+@import '../../vendor/inly/core-web/resources/css/core-skip-link.css';
+```
+
+The label is *Skip to content* through `__()`, so a Swedish site reads
+*Hoppa till innehållet* and the site's `lang/*.json` can reword it, or pass
+`label`. The site's colours go in `--core-skip-link-background` and
+`--core-skip-link-foreground`, and its own classes merge in.
+
 ## Google tags
 
 `tracker_type` is `gtag` (Google Analytics, `google_analytics`) or `gtm`
@@ -152,6 +174,8 @@ All in one commit, since the site boots with neither both nor half:
 4. Remove the Peak redirects partial, `ErrorPage::handle404AsEntry()`, the
    robots override view, a generated `public/robots.txt` and the tests
    checking Peak's forked views.
+   Peak Tools' skip links become `<x-core-web::skip-link />` (above), and its
+   favicons the [favicons](favicons.md) feature.
 5. `composer remove studio1902/statamic-peak-seo`, then check `/robots.txt`,
    `/sitemap.xml`, a redirect, a 404 and the head of a page of each
    collection.
