@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\Translation;
 
 use Statamic\Contracts\Entries\Entry;
+use Statamic\Facades\Blink;
+use Statamic\Facades\Entry as Entries;
 
 /**
  * A translation that follows its original: its replicators and grids keep
@@ -17,6 +19,9 @@ final class SyncedTranslations
 
     /** Where a translation keeps, per text, the hashes of the original's text and its own when it was translated. */
     public const SOURCES = 'core_web_translation';
+
+    /** The blocks a control panel form opened with, posted back so a save can tell what the editor changed. */
+    public const SEEN = 'core_web_blocks_seen';
 
     public static function siteDefault(string $site): bool
     {
@@ -50,7 +55,7 @@ final class SyncedTranslations
     {
         $origin = $translation->origin();
         $before = $translation->data()->all();
-        $sources = (array) $translation->get(self::SOURCES, []);
+        $sources = (array) ($translation->get(self::SOURCES) ?? self::storedSources($translation));
         $next = [];
 
         foreach (self::fields($translation) as $handle => $shape) {
@@ -76,6 +81,10 @@ final class SyncedTranslations
         }
 
         $next === [] ? $translation->remove(self::SOURCES) : $translation->set(self::SOURCES, $next);
+
+        if ($translation->id() !== null) {
+            Blink::put(self::blinkKey($translation), $next);
+        }
 
         return $translation->data()->all() !== $before;
     }
@@ -111,6 +120,44 @@ final class SyncedTranslations
         }
 
         return $status;
+    }
+
+    /**
+     * Notes a translation's sources as its control panel request first sees
+     * them, before the save replaces its data with the blueprint's fields only.
+     */
+    public static function remember(Entry $translation): void
+    {
+        if ($translation->id() !== null && ! Blink::has(self::blinkKey($translation))) {
+            Blink::put(self::blinkKey($translation), $translation->get(self::SOURCES));
+        }
+    }
+
+    /**
+     * The control panel saves a translation with only its blueprint's fields,
+     * which drops the sources, so they are read back from what the request
+     * first saw, or from the stored entry.
+     *
+     * @return array<string, mixed>
+     */
+    private static function storedSources(Entry $translation): array
+    {
+        if ($translation->id() === null) {
+            return [];
+        }
+
+        if (Blink::has(self::blinkKey($translation))) {
+            return (array) Blink::get(self::blinkKey($translation));
+        }
+
+        $stored = Entries::find($translation->id());
+
+        return $stored === null || $stored === $translation ? [] : (array) $stored->get(self::SOURCES, []);
+    }
+
+    private static function blinkKey(Entry $translation): string
+    {
+        return 'core-web-translation-sources-'.$translation->id();
     }
 
     private static function hash(mixed $value): string

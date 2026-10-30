@@ -7,9 +7,9 @@ use Statamic\Facades\Entry;
 
 /**
  * The validation a synced field of a following translation gets: its blocks
- * stay the original's, or the translation's as they stand (a working copy
- * started before the original changed), unless the same save switches the
- * translation to its own blocks.
+ * stay the original's, or the ones the form opened with, unless the same save
+ * switches the translation to its own blocks. The form's own blocks pass even
+ * when the original changed after it opened, since the save realigns them.
  */
 final class FollowsOriginal
 {
@@ -19,8 +19,9 @@ final class FollowsOriginal
         [$id, $handle] = $parameters + [null, null];
         $entry = $id === null ? null : Entry::find($id);
         $origin = $entry?->origin();
+        $data = $validator->getData();
 
-        if ($entry === null || $origin === null || ($validator->getData()[SyncedTranslations::FIELD] ?? true) === false) {
+        if ($entry === null || $origin === null || ($data[SyncedTranslations::FIELD] ?? true) === false) {
             return true;
         }
 
@@ -30,11 +31,18 @@ final class FollowsOriginal
             return true;
         }
 
-        $current = $entry->hasWorkingCopy() ? $entry->fromWorkingCopy() : $entry;
         $submitted = Alignment::structure($value, $shape);
+        $seen = json_decode((string) ($data[SyncedTranslations::SEEN] ?? ''), true)[$handle] ?? null;
 
-        return $submitted === Alignment::structure($origin->value($handle), $shape)
-            || $submitted === Alignment::structure($current->has($handle) ? $current->get($handle) : $origin->value($handle), $shape);
+        if (is_array($seen)) {
+            return Alignment::matches($submitted, $seen)
+                || Alignment::matches($submitted, Alignment::structure($origin->value($handle), $shape));
+        }
+
+        $current = $entry->hasWorkingCopy() ? $entry->fromWorkingCopy() : $entry;
+
+        return Alignment::matches($submitted, Alignment::structure($origin->value($handle), $shape))
+            || Alignment::matches($submitted, Alignment::structure($current->has($handle) ? $current->get($handle) : $origin->value($handle), $shape));
     }
 
     public static function message(): string

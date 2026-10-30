@@ -33,6 +33,9 @@ Blocks and rows are matched by the ids Statamic stores on them, so a block
 the original moves keeps its translated texts. A block the original adds
 arrives in the translation with the original's texts, a block it removes
 leaves, and a block whose set type changes starts again from the original.
+Rows saved before Statamic stored ids are matched by position until the
+original's next save gives them ids. A text the translation clears stays
+cleared rather than showing the original's.
 
 ## Turning it on
 
@@ -60,12 +63,16 @@ share.
 ## Keeping it aligned
 
 - Saving an original carries its blocks and shared values to every
-  translation that follows it, saving each that changed.
+  translation that follows it, since Statamic saves an entry's
+  translations after it.
 - Saving a translation that follows aligns it first, so a working copy
   started before the original changed publishes on the original's blocks.
 - While a translation follows, its CP form refuses a save that adds,
   removes or moves a block, and says to switch the toggle off first. The
-  same save may switch it off and change the blocks.
+  same save may switch it off and change the blocks. A form opened before
+  the original changed its blocks still saves, on the original's blocks.
+- A non-text value changed in a following translation's form (an image, a
+  select) is replaced by the original's on save.
 - A field the translation still inherits is left alone: it shows the
   original's blocks and texts until an editor translates something in it.
 
@@ -76,6 +83,8 @@ translates (under the hidden `core_web_translation` key). The toggle's
 instructions say how many texts changed in the original since they were
 translated, and how many are not translated yet: still the original's text,
 or in a field the translation inherits. Translating a text again clears it.
+A text that reads the same in both languages (a name, a year) counts as not
+translated.
 
 With `checks` on, the `translation-sync` [content check](content-checks.md)
 lists both per translation, and finds blocks that drifted in where no save

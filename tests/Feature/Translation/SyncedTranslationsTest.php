@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Validator;
 use Inly\CoreWeb\Checks\ContentChecks;
 use Inly\CoreWeb\Tests\TestCase;
+use Inly\CoreWeb\Translation\Alignment;
 use Inly\CoreWeb\Translation\SyncedTranslations;
 use Inly\CoreWeb\Translation\TranslationBlueprint;
 use Statamic\Contracts\Entries\Entry as EntryContract;
@@ -207,8 +208,12 @@ class SyncedTranslationsTest extends TestCase
         $toggle = $blueprint->field(SyncedTranslations::FIELD);
         $this->assertSame('toggle', $toggle->type());
         $this->assertTrue($toggle->config()['default']);
-        $this->assertStringContainsString('1 texts changed in the original since they were translated.', $toggle->config()['instructions']);
-        $this->assertContains(TranslationBlueprint::RULE.':'.$translation->id().',page_builder', $blueprint->field('page_builder')->config()['validate']);
+        $this->assertStringContainsString('1 text changed in the original since it was translated.', $toggle->config()['instructions']);
+        $this->assertContains(TranslationBlueprint::RULE.':{id},page_builder', $blueprint->field('page_builder')->config()['validate']);
+        $this->assertSame(['page_builder' => [['id' => 'hero', 'type' => 'hero'], ['id' => 'vision', 'type' => 'cards', 'children' => ['items' => [['id' => 'v1'], ['id' => 'v2']]]]]], json_decode($blueprint->field(SyncedTranslations::SEEN)->defaultValue(), true));
+
+        (new TranslationBlueprint)->handle(new EntryBlueprintFound($blueprint, $translation));
+        $this->assertCount(1, array_keys($blueprint->field('page_builder')->config()['validate'], TranslationBlueprint::RULE.':{id},page_builder'), 'The rule is added once, whichever translation resolves the blueprint.');
     }
 
     public function test_an_original_gets_no_toggle(): void
@@ -234,5 +239,64 @@ class SyncedTranslationsTest extends TestCase
         $this->assertSame('entry:'.$translation->id(), $findings['page_builder']['subject']);
         $this->assertSame(['page_builder.hero.heading'], $findings['outdated']['details']['found']);
         $this->assertFalse($findings['outdated']['fixable']);
+    }
+
+    public function test_a_control_panel_save_keeps_what_each_text_was_translated_from(): void
+    {
+        [$origin, $translation] = $this->pageWithTranslation($this->english());
+        $origin->set('page_builder', $this->blocks('Ny rubrik'))->save();
+
+        $translation = Entry::find($translation->id());
+        $this->app->instance('request', Request::create('/cp/collections/pages/entries/'.$translation->id()));
+        (new TranslationBlueprint)->handle(new EntryBlueprintFound(Blueprint::find('collections.pages.page'), $translation));
+        $translation->data($translation->data()->except(SyncedTranslations::SOURCES)->put('title', 'About'))->save();
+
+        $this->assertSame(['page_builder.hero.heading'], SyncedTranslations::status(Entry::find($translation->id()))['outdated']);
+    }
+
+    public function test_rows_saved_without_ids_keep_their_texts_once_the_original_gets_ids(): void
+    {
+        $strip = fn (array $blocks) => array_map(fn (array $block) => array_diff_key($block, ['id' => 1]), $blocks);
+        $origin = Entry::make()->collection('pages')->locale('default')->slug('om')->data(['page_builder' => $strip($this->blocks())]);
+        $origin->save();
+        $translation = $origin->makeLocalization('other')->data(['page_builder' => $strip($this->english())]);
+        $translation->save();
+
+        Entry::find($origin->id())->set('page_builder', $this->blocks())->save();
+        $aligned = Entry::find($translation->id())->get('page_builder');
+
+        $this->assertSame(['hero', 'vision'], array_column($aligned, 'id'));
+        $this->assertSame('The family business', $aligned[0]['heading']);
+
+        $rule = TranslationBlueprint::RULE.':'.$translation->id().',page_builder';
+        $seen = json_encode(['page_builder' => [['id' => '#0', 'type' => 'hero'], ['id' => '#1', 'type' => 'cards', 'children' => ['items' => [['id' => '#0'], ['id' => '#1']]]]]]);
+        $cp = array_map(fn (array $block) => ['_id' => 'new-'.$block['type'], ...$block], $strip($this->english()));
+
+        $this->assertTrue(Validator::make(['page_builder' => $cp, SyncedTranslations::SEEN => $seen], ['page_builder' => [$rule]])->passes(), 'A form opened on rows without ids posts new ids for them.');
+    }
+
+    public function test_a_text_cleared_in_the_translation_stays_cleared(): void
+    {
+        [, $translation] = $this->pageWithTranslation($this->english());
+
+        $blocks = $translation->get('page_builder');
+        unset($blocks[1]['heading']);
+        $translation->set('page_builder', $blocks)->save();
+
+        $this->assertArrayNotHasKey('heading', Entry::find($translation->id())->get('page_builder')[1]);
+    }
+
+    public function test_a_form_opened_before_the_original_changed_its_blocks_still_saves(): void
+    {
+        [$origin, $translation] = $this->pageWithTranslation($this->english());
+        $seen = json_encode(['page_builder' => Alignment::structure($this->english(), SyncedTranslations::fields($translation)['page_builder'])]);
+
+        $origin->set('page_builder', [...$this->blocks(), ['id' => 'news', 'type' => 'hero', 'heading' => 'Nyheter']])->save();
+
+        $rule = TranslationBlueprint::RULE.':'.$translation->id().',page_builder';
+        $cp = array_map(fn (array $block) => ['_id' => $block['id'], ...array_diff_key($block, ['id' => 1])], $this->english());
+
+        $this->assertTrue(Validator::make(['page_builder' => $cp, SyncedTranslations::SEEN => $seen], ['page_builder' => [$rule]])->passes());
+        $this->assertTrue(Validator::make(['page_builder' => [...$cp, ['_id' => 'mine', 'type' => 'hero']], SyncedTranslations::SEEN => $seen], ['page_builder' => [$rule]])->fails());
     }
 }

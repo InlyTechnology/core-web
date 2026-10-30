@@ -8,7 +8,10 @@ use Statamic\Statamic;
 /**
  * In the control panel, a translation's blueprint gets the toggle that keeps
  * it following its original, with where it stands under it, and its synced
- * fields refuse a change to their blocks while it follows.
+ * fields refuse a change to their blocks while it follows. Statamic hands
+ * every entry of a collection the same blueprint object in a request, so
+ * the rule names no entry and the per-entry defaults are the first
+ * translation's; a control panel page resolves one translation.
  */
 final class TranslationBlueprint
 {
@@ -18,9 +21,11 @@ final class TranslationBlueprint
     {
         $entry = $event->entry;
 
-        if ($entry === null || ! $entry->hasOrigin() || $entry->origin() === null || ! Statamic::isCpRoute()) {
+        if ($entry === null || ! Statamic::isCpRoute() || ! $entry->hasOrigin() || $entry->origin() === null) {
             return;
         }
+
+        SyncedTranslations::remember($entry);
 
         $fields = FieldShape::synced($event->blueprint);
 
@@ -38,17 +43,33 @@ final class TranslationBlueprint
             'localizable' => true,
         ], 'sidebar');
 
-        if (! $follows || $entry->id() === null) {
-            return;
-        }
+        $event->blueprint->ensureField(SyncedTranslations::SEEN, [
+            'type' => 'hidden',
+            'default' => $this->seen($entry, $fields),
+            'localizable' => true,
+        ], 'sidebar');
 
         foreach (array_keys($fields) as $handle) {
+            $rule = self::RULE.':{id},'.$handle;
             $validate = $event->blueprint->field($handle)?->config()['validate'] ?? [];
             $validate = is_string($validate) ? explode('|', $validate) : (array) $validate;
-            $validate[] = self::RULE.':'.$entry->id().','.$handle;
 
-            $event->blueprint->ensureFieldHasConfig($handle, ['validate' => $validate]);
+            if (! in_array($rule, $validate, true)) {
+                $event->blueprint->ensureFieldHasConfig($handle, ['validate' => [...$validate, $rule]]);
+            }
         }
+    }
+
+    /** @param  array<string, array<string, mixed>>  $fields */
+    private function seen(mixed $entry, array $fields): string
+    {
+        $seen = [];
+
+        foreach ($fields as $handle => $shape) {
+            $seen[$handle] = Alignment::structure($entry->has($handle) ? $entry->get($handle) : $entry->origin()->value($handle), $shape);
+        }
+
+        return (string) json_encode($seen);
     }
 
     private function instructions(mixed $entry, bool $follows): string
@@ -60,12 +81,19 @@ final class TranslationBlueprint
         $status = SyncedTranslations::status($entry);
         $parts = [__('Blocks, their order, images and settings follow the original; only the texts are this translation\'s.')];
 
-        if ($status['outdated'] !== []) {
-            $parts[] = __(':count texts changed in the original since they were translated.', ['count' => count($status['outdated'])]);
+        $outdated = count($status['outdated']);
+        $untranslated = count($status['untranslated']);
+
+        if ($outdated > 0) {
+            $parts[] = $outdated === 1
+                ? __('1 text changed in the original since it was translated.')
+                : __(':count texts changed in the original since they were translated.', ['count' => $outdated]);
         }
 
-        if ($status['untranslated'] !== []) {
-            $parts[] = __(':count texts are not translated yet.', ['count' => count($status['untranslated'])]);
+        if ($untranslated > 0) {
+            $parts[] = $untranslated === 1
+                ? __('1 text is not translated yet.')
+                : __(':count texts are not translated yet.', ['count' => $untranslated]);
         }
 
         return implode(' ', $parts);

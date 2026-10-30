@@ -531,7 +531,6 @@ class CoreWebServiceProvider extends ServiceProvider
     {
         $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         Event::listen(EntrySaving::class, [AlignTranslations::class, 'saving']);
-        Event::listen(EntrySaved::class, [AlignTranslations::class, 'saved']);
         Event::listen(EntryBlueprintFound::class, TranslationBlueprint::class);
         Validator::extend(TranslationBlueprint::RULE, fn (...$arguments) => app(FollowsOriginal::class)->validate(...$arguments), FollowsOriginal::message());
     }

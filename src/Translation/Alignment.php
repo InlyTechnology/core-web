@@ -17,9 +17,10 @@ final class Alignment
      */
     public static function align(mixed $origin, mixed $translation, array $shape): array
     {
+        $ownRows = self::rows($translation);
         $own = [];
 
-        foreach (self::rows($translation) as $index => $row) {
+        foreach ($ownRows as $index => $row) {
             $own[self::id($row, $index)] = $row;
         }
 
@@ -27,6 +28,11 @@ final class Alignment
 
         foreach (self::rows($origin) as $index => $row) {
             $match = $own[self::id($row, $index)] ?? null;
+
+            // Content saved before its rows had ids is matched by position, once the original's rows get theirs.
+            if ($match === null && isset($ownRows[$index]) && ! self::hasId($ownRows[$index])) {
+                $match = $ownRows[$index];
+            }
 
             if ($match !== null && isset($shape['sets']) && ($match['type'] ?? null) !== ($row['type'] ?? null)) {
                 $match = null;
@@ -64,6 +70,20 @@ final class Alignment
     }
 
     /**
+     * Whether a structure has a reference's rows, in its order, all the way
+     * down. A reference row without a stored id matches whatever id stands at
+     * its position, since the control panel gives such a row a new id each
+     * time a page is opened.
+     *
+     * @param  list<mixed>  $structure
+     * @param  list<mixed>  $reference
+     */
+    public static function matches(array $structure, array $reference): bool
+    {
+        return $structure === self::adopt($reference, $structure);
+    }
+
+    /**
      * The translated texts a value holds, by path.
      *
      * @param  array<string, mixed>  $shape
@@ -90,8 +110,11 @@ final class Alignment
     {
         foreach ($fields as $handle => $field) {
             if ($field === 'text') {
+                // A text the translation's row lacks was cleared there, so the original's does not show through.
                 if ($own !== null && array_key_exists($handle, $own)) {
                     $row[$handle] = $own[$handle];
+                } elseif ($own !== null) {
+                    unset($row[$handle]);
                 }
 
                 continue;
@@ -181,6 +204,34 @@ final class Alignment
     private static function rows(mixed $value): array
     {
         return is_array($value) ? array_values(array_filter($value, 'is_array')) : [];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $reference
+     * @param  array<array-key, mixed>  $structure
+     * @return array<array-key, mixed>
+     */
+    private static function adopt(array $reference, array $structure): array
+    {
+        foreach ($reference as $key => $item) {
+            if (! is_array($item) || ! is_array($structure[$key] ?? null)) {
+                continue;
+            }
+
+            if (is_string($item['id'] ?? null) && str_starts_with($item['id'], '#') && isset($structure[$key]['id'])) {
+                $item['id'] = $structure[$key]['id'];
+            }
+
+            $reference[$key] = self::adopt($item, $structure[$key]);
+        }
+
+        return $reference;
+    }
+
+    /** @param  array<string, mixed>  $row */
+    private static function hasId(array $row): bool
+    {
+        return filled($row['id'] ?? $row['_id'] ?? null);
     }
 
     /** A row's id as stored (`id`) or as the control panel posts it (`_id`); its position when it has neither. */
