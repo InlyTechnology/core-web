@@ -92,6 +92,7 @@ use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Translation\AlignTranslations;
+use Inly\CoreWeb\Translation\FieldTranslator;
 use Inly\CoreWeb\Translation\FollowsOriginal;
 use Inly\CoreWeb\Translation\TranslationBlueprint;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
@@ -533,6 +534,20 @@ class CoreWebServiceProvider extends ServiceProvider
         Event::listen(EntrySaving::class, [AlignTranslations::class, 'saving']);
         Event::listen(EntryBlueprintFound::class, TranslationBlueprint::class);
         Validator::extend(TranslationBlueprint::RULE, fn (...$arguments) => app(FollowsOriginal::class)->validate(...$arguments), FollowsOriginal::message());
+
+        $this->app->bind(FieldTranslator::class, fn () => new FieldTranslator(CoreClient::fromConfig()));
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/translation-cp.php');
+
+        // A deferred script runs after the control panel's own and before Statamic starts, so the field action is there when fields render.
+        Statamic::booted(fn () => CoreClient::fromConfig()->configured() && Statamic::externalScript('data:text/javascript;base64,'.base64_encode(
+            'window.coreWebTranslate = '.json_encode([
+                'path' => 'core-web/translation/field',
+                'title' => __('Translate with Core AI'),
+                'working' => __('Translating…'),
+                'done' => __('Translated. Check the text, then save.'),
+                'failed' => __('The translation failed. Try again.'),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).";\n".file_get_contents(__DIR__.'/../resources/js/core-translate.js')
+        )));
     }
 
     private function bootChecks(): void

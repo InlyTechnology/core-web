@@ -90,3 +90,21 @@ With `checks` on, the `translation-sync` [content check](content-checks.md)
 lists both per translation, and finds blocks that drifted in where no save
 aligned them (an import, a file edited by hand). Fixing a drift writes a
 draft on the original's blocks.
+
+## Translating a field with Core AI
+
+With the [Core client](reading-core.md) configured, every text, textarea,
+markdown and Bard field on an entry's CP page has **Translate with Core AI**
+in its field actions. On a translation it fills the field with the
+original's text translated into the page's language; the editor checks it
+and saves. Nothing is saved by the action itself.
+
+- The original's text is found through the row ids, so it works on a page
+  that keeps its own blocks too; a block the original lacks translates the
+  field's current text.
+- A Bard field is translated paragraph by paragraph, and its sets stay as
+  they are in the form.
+- Core makes the model call through its `POST /api/app/translations`
+  endpoint, as the site's app client. The client needs the **Translate
+  content with AI** permission in Core; without it the editor is told what
+  to grant.
