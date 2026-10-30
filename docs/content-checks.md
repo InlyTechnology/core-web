@@ -12,6 +12,7 @@ widget and for sources (Core AI) to read without running a check.
 | `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
 | `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
 | `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
+| `translation-sync` | With `features.translation`, translations that follow their original but whose blocks drifted from it, and texts the original changed since they were translated or that are not translated yet (see [Translation](translation.md)) | A draft on the original's blocks; texts are left to an editor |
 
 ```php
 $checks = app(ContentChecks::class);

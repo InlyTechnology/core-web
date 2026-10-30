@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\CoreLinkType;
@@ -90,6 +91,9 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
+use Inly\CoreWeb\Translation\AlignTranslations;
+use Inly\CoreWeb\Translation\FollowsOriginal;
+use Inly\CoreWeb\Translation\TranslationBlueprint;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
@@ -103,8 +107,10 @@ use Statamic\Events\AssetSaved;
 use Statamic\Events\AssetUploaded;
 use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
+use Statamic\Events\EntryBlueprintFound;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\EntrySaving;
 use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
 use Statamic\Events\RevisionSaving;
@@ -150,6 +156,8 @@ use Statamic\StaticCaching\Cacher;
  * the sitemaps, the editors' redirects and the page-not-found entry.
  * The `buttons` feature is the button fieldset as the site configures it,
  * with Button::resolve() turning one into what the site's button draws.
+ * The `translation` feature keeps a translation's replicators and grids on
+ * its original's blocks, the translation owning only their texts.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -341,6 +349,10 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootForms();
         }
 
+        if (self::enabled('translation')) {
+            $this->bootTranslation();
+        }
+
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
         }
@@ -513,6 +525,15 @@ class CoreWebServiceProvider extends ServiceProvider
                 $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
             }
         });
+    }
+
+    private function bootTranslation(): void
+    {
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+        Event::listen(EntrySaving::class, [AlignTranslations::class, 'saving']);
+        Event::listen(EntrySaved::class, [AlignTranslations::class, 'saved']);
+        Event::listen(EntryBlueprintFound::class, TranslationBlueprint::class);
+        Validator::extend(TranslationBlueprint::RULE, fn (...$arguments) => app(FollowsOriginal::class)->validate(...$arguments), FollowsOriginal::message());
     }
 
     private function bootChecks(): void

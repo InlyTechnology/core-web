@@ -164,6 +164,15 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - Override the fieldset (`resources/fieldsets/vendor/core-web/button.yaml`) only for a field config cannot
   express; the override then owns every field.
 
+## Translation (`translation`)
+
+- **A translation that should keep its original's blocks follows it**: `translation.sites` marks the site
+  `synced`, and its replicators and grids then take the original's blocks, order and non-text values on every
+  save, owning only their texts. Never copy blocks between sites by hand or in a listener of the site's own.
+- **What is translated is the field's type** (`translation.translated`); a field that is text but must match the
+  original (an anchor, a code) says `translate: false`, a non-text field a translation owns says `translate: true`.
+- Blocks are matched by their stored ids: never strip or regenerate set and row ids in an import or migration.
+
 ## Statamic helpers
 
 - **Normalise a field's shape with `Inly\CoreWeb\Support\Values`**, an asset's meta with `Assets`, a link with

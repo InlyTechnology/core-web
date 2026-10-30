@@ -3,6 +3,7 @@
 use Inly\CoreWeb\Checks\Checks\DeadTargets;
 use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
 use Inly\CoreWeb\Checks\Checks\SeoGaps;
+use Inly\CoreWeb\Checks\Checks\TranslationSync;
 use Inly\CoreWeb\Media\CoreCdnScheme;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
@@ -88,6 +89,11 @@ return [
     | /favicon.ico, every size cut by the CDN (or Glide) from the one PNG on
     | the `favicons` global, whose blueprint imports core-web::favicons.
     |
+    | translation: translations that follow their original (`translation`):
+    | a translation's replicators and grids keep the original's blocks, order
+    | and shared values and own only their texts, which show as outdated when
+    | the original's change. Each translation can switch to its own blocks.
+    |
     | buttons: the core-web::button and core-web::buttons fieldsets as the
     | `buttons` group below configures them, links to Core's pages among
     | them, and Inly\CoreWeb\Buttons\Button::resolve() turning one into what
@@ -112,6 +118,7 @@ return [
         'seo' => false,
         'favicons' => false,
         'buttons' => false,
+        'translation' => false,
     ],
 
     /*
@@ -534,6 +541,7 @@ return [
             OwnUrlLinks::class,
             DeadTargets::class,
             SeoGaps::class,
+            TranslationSync::class,
         ],
         'collections' => null,
         'seo' => [
@@ -546,6 +554,27 @@ return [
         'schedule' => '30 3 * * *',
         'disk' => null,
         'path' => 'core-web/checks',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Translation
+    |--------------------------------------------------------------------------
+    |
+    | sites: per translation site, whether its translations follow their
+    | original by default (`synced`) or keep their own blocks (`own`, what
+    | Statamic does). A site left out keeps its own. An editor switches a
+    | single translation with its "Follow the original's blocks" toggle.
+    |
+    | translated: the field types a translation translates inside a block;
+    | every other field follows the original. A field's own `translate: true`
+    | or `translate: false` overrides its type.
+    |
+    */
+
+    'translation' => [
+        'sites' => [],
+        'translated' => ['text', 'textarea', 'markdown', 'bard'],
     ],
 
     /*
