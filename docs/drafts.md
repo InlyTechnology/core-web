@@ -111,9 +111,7 @@ against the blueprints as they are now (a block or field that went away is
 refused there), and the answer carries a `catalog_changed` warning with the
 current hash, so the AI reads the blocks again before its next draft:
 `{"data": {…}, "warnings": [{"code": "catalog_changed", "message": "…",
-"catalog_hash": "…"}]}`. The hash is kept between requests and dropped on
-every save of a blueprint, fieldset, collection, taxonomy or term, and on a
-stache clear.
+"catalog_hash": "…"}]}`.
 
 `Inly\CoreWeb\Drafts\StatamicContentSchema` reads it all from the
 blueprints and fieldsets, so a new block is in it the moment its fieldset

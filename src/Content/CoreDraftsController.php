@@ -35,7 +35,7 @@ class CoreDraftsController
 
         $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'block_changes', 'base_hash']));
 
-        return response()->json(array_filter(['data' => $result, 'warnings' => $warnings]), filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
+        return response()->json(['data' => $result, ...($warnings === [] ? [] : ['warnings' => $warnings])], filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
     }
 
     public function show(string $id, DraftWriter $writer): JsonResponse
