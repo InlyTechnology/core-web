@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\CoreLinkType;
@@ -90,6 +91,10 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
+use Inly\CoreWeb\Translation\AlignTranslations;
+use Inly\CoreWeb\Translation\FieldTranslator;
+use Inly\CoreWeb\Translation\FollowsOriginal;
+use Inly\CoreWeb\Translation\TranslationBlueprint;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
 use Inly\CoreWeb\Widgets\ContentChecksWidget;
 use Inly\CoreWeb\Widgets\CoreSnapshotWidget;
@@ -103,8 +108,10 @@ use Statamic\Events\AssetSaved;
 use Statamic\Events\AssetUploaded;
 use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
+use Statamic\Events\EntryBlueprintFound;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\EntrySaving;
 use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
 use Statamic\Events\RevisionSaving;
@@ -150,6 +157,8 @@ use Statamic\StaticCaching\Cacher;
  * the sitemaps, the editors' redirects and the page-not-found entry.
  * The `buttons` feature is the button fieldset as the site configures it,
  * with Button::resolve() turning one into what the site's button draws.
+ * The `translation` feature keeps a translation's replicators and grids on
+ * its original's blocks, the translation owning only their texts.
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
@@ -341,6 +350,10 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootForms();
         }
 
+        if (self::enabled('translation')) {
+            $this->bootTranslation();
+        }
+
         if (self::enabled('cp_link')) {
             CoreNavLink::register();
         }
@@ -513,6 +526,28 @@ class CoreWebServiceProvider extends ServiceProvider
                 $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
             }
         });
+    }
+
+    private function bootTranslation(): void
+    {
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+        Event::listen(EntrySaving::class, [AlignTranslations::class, 'saving']);
+        Event::listen(EntryBlueprintFound::class, TranslationBlueprint::class);
+        Validator::extend(TranslationBlueprint::RULE, fn (...$arguments) => app(FollowsOriginal::class)->validate(...$arguments), FollowsOriginal::message());
+
+        $this->app->bind(FieldTranslator::class, fn () => new FieldTranslator(CoreClient::fromConfig()));
+        Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/translation-cp.php');
+
+        // A deferred script runs after the control panel's own and before Statamic starts, so the field action is there when fields render.
+        Statamic::booted(fn () => CoreClient::fromConfig()->configured() && Statamic::externalScript('data:text/javascript;base64,'.base64_encode(
+            'window.coreWebTranslate = '.json_encode([
+                'path' => 'core-web/translation/field',
+                'title' => __('Translate with Core AI'),
+                'working' => __('Translating…'),
+                'done' => __('Translated. Check the text, then save.'),
+                'failed' => __('The translation failed. Try again.'),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).";\n".file_get_contents(__DIR__.'/../resources/js/core-translate.js')
+        )));
     }
 
     private function bootChecks(): void

@@ -77,6 +77,7 @@ One page per feature, in [`docs/`](docs):
 - [Cookie consent](docs/cookie-consent.md)
 - [SEO](docs/seo.md)
 - [Favicons](docs/favicons.md)
+- [Translation](docs/translation.md)
 - [Statamic helpers](docs/statamic-helpers.md)
 - [Checking a site's setup](docs/checking-a-sites-setup.md)
 - [Agent instructions](docs/agent-instructions.md)

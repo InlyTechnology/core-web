@@ -25,6 +25,7 @@ nothing.
 | SEO | `features.seo` | The `<x-core-web::seo.head>` component, `/robots.txt`, `/sitemap.xml` and `/sitemaps.xml`, the redirects middleware on front-end 404s, the page-not-found entry and the sitemap cache's flush on save; Peak SEO must be removed (see [SEO](seo.md)) |
 | Favicons | `features.favicons` | The `<x-core-web::favicons.head>` component, `/site.webmanifest` and `/favicon.ico`, every size cut from the `favicons` global's PNG by the CDN or Glide (see [Favicons](favicons.md)) |
 | Buttons | `features.buttons` | The `core-web::button` fieldset built from the `buttons` config, `Button::resolve()`, and with `features.snapshots` the `core_snapshot_pages` dictionary for links to Core's pages (see [Buttons](buttons.md)) |
+| Translation | `features.translation` | A translation that follows its original: its replicators and grids keep the original's blocks and own only their texts, with outdated texts shown in the CP and the `translation-sync` check (see [Translation](translation.md)) |
 | Content pull | `features.content_sync` | On the live site, the sync endpoints under `/!/core-web/sync` (`core-web.sync` middleware), the CP page that approves a machine and the **Tools → Content sync** page that lists and revokes them; on a checkout, `content:login`, `content:logout`, `content:pull`, `content:push` and `content:status` (see [Content pull](content-pull.md) and [Content push](content-push.md)) |
 
 The Core client (`CoreClient`, `client.*`) needs no switch: it is config and a
