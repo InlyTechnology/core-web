@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Content feed**: with `content.feed.enabled` on, core-web serves the Statamic
+  connector API's `content` endpoints. That covers every page of the drafted
+  collections (or of `content.feed.collections`), with its text, blocks, SEO,
+  working copy and stored fields. Each page lists, under `shows`, the Core
+  objects it picks through `core_snapshot_pages` or a Dictionary named in
+  `content.feed.dictionaries`. Saving or deleting a page pings Core. A site
+  with a feed of its own leaves it off. Docs: [Content feed](docs/content-feed.md).
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now

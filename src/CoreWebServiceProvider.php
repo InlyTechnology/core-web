@@ -44,6 +44,10 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
+use Inly\CoreWeb\Content\Feed\FeedCollections;
+use Inly\CoreWeb\Content\Feed\PageStatus;
+use Inly\CoreWeb\Content\Feed\PingPageJob;
+use Inly\CoreWeb\Content\Feed\StatamicPageStatus;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
 use Inly\CoreWeb\ContentSync\ContentLoginCommand;
@@ -227,6 +231,7 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->app->bind(CoreSigningKeys::class, fn () => CoreSigningKeys::fromConfig());
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
+        $this->app->bindIf(PageStatus::class, StatamicPageStatus::class);
 
         $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
         $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
@@ -333,8 +338,12 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         // Statamic connector API v1.2: Core reads the checks and proposes, where the site speaks the API.
-        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts'))) {
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || config('core-web.content.feed.enabled'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
+        }
+
+        if (self::enabled('content') && config('core-web.content.feed.enabled')) {
+            $this->bootContentFeed();
         }
 
         if (self::enabled('forms')) {
@@ -528,6 +537,18 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->runInBackground());
         }
+    }
+
+    /** Every save or delete of a served page tells Core, which reads the page back. */
+    private function bootContentFeed(): void
+    {
+        Event::listen([EntrySaved::class, EntryDeleted::class], function (EntrySaved|EntryDeleted $event): void {
+            if (! FeedCollections::serves($event->entry) || ! app(ContentPings::class)->enabled()) {
+                return;
+            }
+
+            PingPageJob::dispatch((string) $event->entry->id(), $event instanceof EntryDeleted ? 'deleted' : 'saved')->afterCommit();
+        });
     }
 
     private function bootContentSync(): void

@@ -390,6 +390,12 @@ final class Snapshot
         return $this;
     }
 
+    /** The lookup key in Core of the objects the documents are, as the listing names it; null without one. */
+    public function coreType(): ?string
+    {
+        return $this->listingCoreType;
+    }
+
     public function listed(): bool
     {
         return $this->listingTitle !== null;

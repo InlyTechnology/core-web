@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Inly\CoreWeb\Content\CoreBlocksController;
 use Inly\CoreWeb\Content\CoreChecksController;
+use Inly\CoreWeb\Content\CoreContentController;
 use Inly\CoreWeb\Content\CoreDraftsController;
 use Inly\CoreWeb\Content\CoreProposalsController;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
@@ -15,6 +16,14 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
     ->prefix(trim((string) config('core-web.content.prefix', 'api/core/v1'), '/'))
     ->name('core-web.content.')
     ->group(function (): void {
+        // The pages Core keeps a copy of, read by the Statamic connector's stock importer; a site with its own feed leaves it off.
+        if (config('core-web.content.feed.enabled')) {
+            Route::controller(CoreContentController::class)->group(function (): void {
+                Route::get('content', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('feed.index');
+                Route::get('content/{id}', 'show')->where('id', '[A-Za-z0-9_-]+')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('feed.show');
+            });
+        }
+
         if (CoreWebServiceProvider::enabled('checks')) {
             Route::controller(CoreChecksController::class)->group(function (): void {
                 Route::get('checks', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('checks.index');

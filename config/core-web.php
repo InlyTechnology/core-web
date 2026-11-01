@@ -359,9 +359,22 @@ return [
     |
     | key_cache_key: the cache key Core's key document is kept under.
     |
+    | feed: the pages Core keeps a copy of (`GET content`, docs/content-feed.md),
+    | for the Statamic connector's stock importer. Off by default: a site
+    | that serves a feed of its own leaves it off. `collections` names the
+    | collections served (none: the drafted ones); `dictionaries` names, by
+    | Dictionary handle, the Core object type a site's own Core-backed
+    | Dictionary picks, so the page lists it under `shows`. A pick from
+    | core_snapshot_pages needs no entry: its snapshot's listing names it.
+    |
     */
 
     'content' => [
+        'feed' => [
+            'enabled' => false,
+            'collections' => [],
+            'dictionaries' => [],
+        ],
         'connector_id' => env('CORE_CONTENT_CONNECTOR_ID', ''),
         'environment' => env('CORE_CONTENT_ENVIRONMENT'),
         'store' => null,
