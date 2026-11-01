@@ -108,6 +108,6 @@ and saves. Nothing is saved by the action itself.
   they are in the form.
 - Core makes the model call through its `TranslateTextsAction`
   (`POST /api/v1/actions/core/translate-texts/execute`), as the site's app
-  client, and holds it to the client's AI budget. The client needs the **Translate
-  content with AI** permission in Core; without it the editor is told what
-  to grant.
+  client, and holds it to the client's AI budget. The client needs the
+  **Translate content with AI** permission in Core, and Core needs AI
+  translation turned on; otherwise the editor is told what to check.

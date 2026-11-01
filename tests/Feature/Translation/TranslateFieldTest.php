@@ -129,7 +129,7 @@ class TranslateFieldTest extends TestCase
 
         $this->actingAs($this->editor())
             ->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
-            ->assertStatus(422)->assertJsonFragment(['message' => 'Inly Core does not let this site translate. Grant its app client "Translate content with AI".']);
+            ->assertStatus(422)->assertJsonFragment(['message' => 'Inly Core does not let this site translate. Grant its app client "Translate content with AI", or turn on AI translation in Core.']);
     }
 
     public function test_a_text_core_could_not_translate_is_reported_rather_than_written(): void
@@ -140,6 +140,38 @@ class TranslateFieldTest extends TestCase
         $this->actingAs($this->editor())
             ->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
             ->assertStatus(422)->assertJsonFragment(['message' => 'The translation came back incomplete. Try again.']);
+    }
+
+    public function test_core_s_refusals_reach_the_editor_with_their_reason(): void
+    {
+        $id = $this->translation();
+        $this->actingAs($this->editor());
+
+        $this->fakeCore(['core.test/api/v1/actions/core/translate-texts/execute' => Http::response(['success' => false, 'message' => 'Send at most 60000 characters to translate at a time.'], 422)]);
+        $this->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
+            ->assertStatus(422)->assertJsonFragment(['message' => 'Send at most 60000 characters to translate at a time.']);
+
+        $this->fakeCore(['core.test/api/v1/actions/core/translate-texts/execute' => Http::response(['message' => 'Too Many Attempts.'], 429)]);
+        $this->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
+            ->assertStatus(422)->assertJsonFragment(['message' => 'Too Many Attempts.']);
+    }
+
+    public function test_a_bard_node_with_no_words_is_kept_and_not_sent(): void
+    {
+        $id = $this->translation();
+        $origin = Entry::find($id)->origin();
+        $rows = $origin->get('page_builder');
+        array_unshift($rows[1]['body'], ['type' => 'paragraph']);
+        $origin->set('page_builder', $rows)->save();
+
+        $value = $this->actingAs($this->editor())
+            ->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'page_builder.1.body'])
+            ->assertOk()
+            ->json('value');
+
+        $this->assertSame('paragraph', $value[0]['type']);
+        $this->assertSame('We build bilar.', $value[1]['content'][0]['text']);
+        Http::assertSent(fn (Request $request) => ! collect($request['texts'] ?? [])->contains('key', 'n0'));
     }
 
     public function test_only_an_editor_of_the_entry_may_translate(): void

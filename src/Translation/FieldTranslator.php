@@ -118,12 +118,15 @@ final class FieldTranslator
         $texts = [];
 
         foreach ($nodes as $index => $node) {
-            if (($node['type'] ?? null) !== 'set') {
-                $texts["n{$index}"] = (new Augmentor($bard))->withStatamicImageUrls()->renderProsemirrorToHtml(['type' => 'doc', 'content' => [$node]]);
+            $html = ($node['type'] ?? null) === 'set' ? '' : (new Augmentor($bard))->withStatamicImageUrls()->renderProsemirrorToHtml(['type' => 'doc', 'content' => [$node]]);
+
+            // A node with no words (an empty paragraph, a rule, an image) stays as it is.
+            if (! blank(strip_tags($html))) {
+                $texts["n{$index}"] = $html;
             }
         }
 
-        $translated = $texts === [] ? [] : $this->send(array_filter($texts, 'filled'), $translation, $origin, null);
+        $translated = $texts === [] ? [] : $this->send($texts, $translation, $origin, null);
         $ownSets = collect(is_array($current) ? $current : [])->where('type', 'set')->keyBy(fn (array $node) => $node['attrs']['id'] ?? null);
         $result = [];
 
@@ -162,10 +165,10 @@ final class FieldTranslator
         ], timeout: 60);
 
         if ($response->status() === 403) {
-            throw new FieldNotTranslatable(__('Inly Core does not let this site translate. Grant its app client "Translate content with AI".'));
+            throw new FieldNotTranslatable(__('Inly Core does not let this site translate. Grant its app client "Translate content with AI", or turn on AI translation in Core.'));
         }
 
-        // Core's own refusals (too much text, the AI budget used up) say what to do.
+        // Core's 422 and 429 refusals say what to do.
         if (in_array($response->status(), [422, 429], true) && is_string($response->json('message'))) {
             throw new FieldNotTranslatable($response->json('message'));
         }
@@ -178,7 +181,7 @@ final class FieldTranslator
 
         // Core answers a text it could not translate with an empty string.
         foreach (array_keys($texts) as $key) {
-            if (! is_string($translations[$key] ?? null) || $translations[$key] === '') {
+            if (! is_string($translations[$key] ?? null) || blank($translations[$key])) {
                 throw new FieldNotTranslatable(__('The translation came back incomplete. Try again.'));
             }
         }
