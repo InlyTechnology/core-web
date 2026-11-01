@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\CoreLinkType;
 use Inly\CoreWeb\Buttons\MigrateButtonsCommand;
@@ -101,6 +102,7 @@ use Inly\CoreWeb\Widgets\DraftsWidget;
 use Inly\CoreWeb\Widgets\MissingAltTextWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\AssetDeleted;
 use Statamic\Events\AssetReuploaded;
 use Statamic\Events\AssetSaved;
@@ -109,12 +111,16 @@ use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\EntryScheduleReached;
 use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
+use Statamic\Events\RevisionDeleted;
+use Statamic\Events\RevisionSaved;
 use Statamic\Events\RevisionSaving;
 use Statamic\Events\TermDeleted;
 use Statamic\Events\TermSaved;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
@@ -122,6 +128,7 @@ use Statamic\Facades\Utility;
 use Statamic\Fields\FieldsetRepository;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
+use Throwable;
 
 /**
  * Dormant until a site switches a feature on (core-web.features): with every
@@ -542,13 +549,30 @@ class CoreWebServiceProvider extends ServiceProvider
     /** Every save or delete of a served page tells Core, which reads the page back. */
     private function bootContentFeed(): void
     {
-        Event::listen([EntrySaved::class, EntryDeleted::class], function (EntrySaved|EntryDeleted $event): void {
-            if (! FeedCollections::serves($event->entry) || ! app(ContentPings::class)->enabled()) {
-                return;
-            }
+        Event::listen([EntrySaved::class, EntryScheduleReached::class], fn (EntrySaved|EntryScheduleReached $event) => $this->pingPage($event->entry, 'saved'));
+        Event::listen(EntryDeleted::class, fn (EntryDeleted $event) => $this->pingPage($event->entry, 'deleted'));
+        // A working copy changes has_draft and fields without saving the entry.
+        Event::listen([RevisionSaved::class, RevisionDeleted::class], function (RevisionSaved|RevisionDeleted $event): void {
+            $key = (string) $event->revision->key();
 
-            PingPageJob::dispatch((string) $event->entry->id(), $event instanceof EntryDeleted ? 'deleted' : 'saved')->afterCommit();
+            if (str_starts_with($key, 'collections/') && ($entry = Entry::find(Str::afterLast($key, '/'))) !== null) {
+                $this->pingPage($entry, 'saved');
+            }
         });
+    }
+
+    private function pingPage(EntryContract $entry, string $action): void
+    {
+        if (! FeedCollections::serves($entry) || ! app(ContentPings::class)->enabled()) {
+            return;
+        }
+
+        // A ping that cannot be sent never fails the editor's save; the nightly full read catches up.
+        try {
+            PingPageJob::dispatch((string) $entry->id(), $action)->afterCommit();
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     private function bootContentSync(): void

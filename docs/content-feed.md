@@ -30,6 +30,20 @@ return [
 
 A site that already serves a feed of its own leaves `enabled` off until it removes that feed. Otherwise both send pings.
 
+## Paging
+
+`GET api/core/v1/content` returns `{data, next_cursor}`, oldest change first, then by id compared byte by byte.
+
+| Parameter | Value |
+| --- | --- |
+| `updated_since` | ISO 8601. Only pages changed at or after it |
+| `cursor` | The `next_cursor` of the previous page; the next page starts strictly after it. Anything else is refused with 422 |
+| `limit` | 1 to 200, default 100 |
+
+`next_cursor` is null on the last page. A page saved between two reads moves to the end, so a read that follows the
+cursor still sees it. `GET api/core/v1/content/{id}` returns `{data}`, or 404 with `error: not_found` for a page the
+feed does not serve.
+
 ## What a page projects
 
 Each page is one projection per locale. It carries the protocol's keys: `id`, `url`, `title`, `status`, `site`,
@@ -57,15 +71,16 @@ asset read.
 - **`seo`** reads Peak SEO's `seo_title`, `seo_description`, `seo_noindex`, `og_title` and `og_description`. The
   canonical address and the social image are null.
 - **`status`** is Statamic's own status. A site that hides pages by rules of its own, such as a page open only
-  between two dates, binds `Inly\CoreWeb\Content\Feed\PageStatus` to its own class. A page whose status changes
-  without a save is caught by Core's nightly full read.
+  between two dates, binds `Inly\CoreWeb\Content\Feed\PageStatus` to its own class. A scheduled page going live
+  pings Core; any other status change without a save is caught by Core's nightly full read.
 
 `content_hash` is SHA-256 over the projection without `updated_at`, `has_draft` and `content_hash`, so Core skips a
 write that changes nothing.
 
 ## Pings
 
-Saving or deleting a served page queues `PingPageJob`, after the save commits. It holds one job per page and action,
+Saving or deleting a served page, saving or discarding its working copy, and a scheduled page going live each queue
+`PingPageJob`, after the save commits. A ping that cannot be queued is reported and never fails the save. It holds one job per page and action,
 so a burst of saves sends one ping. Pings go to the connector named in `content.connector_id`, using the site's
 client token ([Website content](website-content.md)). Core reads the page back. A site without a queue worker sends
 each ping as part of the save.
