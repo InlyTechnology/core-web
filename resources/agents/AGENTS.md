@@ -173,7 +173,7 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   original (an anchor, a code) says `translate: false`, a non-text field a translation owns says `translate: true`.
 - Blocks are matched by their stored ids: never strip or regenerate set and row ids in an import or migration.
 - **Machine translation of a field is Core's**: the CP's "Translate with Core AI" field action calls Core's
-  `api/app/translations` as the site's client (permission "Translate content with AI"). Never call a model or
+  `TranslateTextsAction` (`core/translate-texts`) as the site's client (permission "Translate content with AI"). Never call a model or
   translation API from the site.
 
 ## Statamic helpers

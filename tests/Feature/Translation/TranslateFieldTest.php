@@ -45,7 +45,7 @@ class TranslateFieldTest extends TestCase
         ]])->save();
 
         $this->fakeCore([
-            'core.test/api/app/translations' => fn (Request $request) => Http::response(['translations' => collect($request['texts'])
+            'core.test/api/v1/actions/core/translate-texts/execute' => fn (Request $request) => Http::response(['success' => true, 'result' => collect($request['texts'])
                 ->mapWithKeys(fn (array $text) => [$text['key'] => str_replace(['Familjeföretaget', 'Vi bygger'], ['The family business', 'We build'], $text['text'])])]),
         ]);
     }
@@ -91,7 +91,7 @@ class TranslateFieldTest extends TestCase
             ->assertOk()
             ->assertExactJson(['value' => 'The family business']);
 
-        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/api/app/translations')
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/api/v1/actions/core/translate-texts/execute')
             && $request['source_locale'] === 'sv_SE' && $request['target_locale'] === 'en_GB'
             && $request['texts'] === [['key' => 'text', 'text' => 'Familjeföretaget']]);
     }
@@ -125,11 +125,21 @@ class TranslateFieldTest extends TestCase
     public function test_a_site_whose_client_may_not_translate_is_told_what_to_grant(): void
     {
         $id = $this->translation();
-        $this->fakeCore(['core.test/api/app/translations' => Http::response(['message' => 'Forbidden'], 403)]);
+        $this->fakeCore(['core.test/api/v1/actions/core/translate-texts/execute' => Http::response(['message' => 'Unauthorized'], 403)]);
 
         $this->actingAs($this->editor())
             ->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
             ->assertStatus(422)->assertJsonFragment(['message' => 'Inly Core does not let this site translate. Grant its app client "Translate content with AI".']);
+    }
+
+    public function test_a_text_core_could_not_translate_is_reported_rather_than_written(): void
+    {
+        $id = $this->translation();
+        $this->fakeCore(['core.test/api/v1/actions/core/translate-texts/execute' => Http::response(['success' => true, 'result' => ['text' => '']])]);
+
+        $this->actingAs($this->editor())
+            ->postJson(cp_route('core-web.translation.field'), ['entry' => $id, 'path' => 'title'])
+            ->assertStatus(422)->assertJsonFragment(['message' => 'The translation came back incomplete. Try again.']);
     }
 
     public function test_only_an_editor_of_the_entry_may_translate(): void

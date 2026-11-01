@@ -20,7 +20,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   client configured, text, textarea, markdown and Bard fields get a field
   action that fills them with the original's text translated by Core. The
   site's app client needs Core's "Translate content with AI" permission,
-  which needs an Inly Core release with the app translation endpoint.
+  which needs an Inly Core release with `TranslateTextsAction`.
   Docs: [Translation](docs/translation.md#translating-a-field-with-core-ai).
 
 ## v0.37.0

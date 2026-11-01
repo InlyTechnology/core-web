@@ -106,7 +106,8 @@ and saves. Nothing is saved by the action itself.
 - Links to entries and assets stay links to them, so they follow a rename.
 - A Bard field is translated paragraph by paragraph, and its sets stay as
   they are in the form.
-- Core makes the model call through its `POST /api/app/translations`
-  endpoint, as the site's app client. The client needs the **Translate
+- Core makes the model call through its `TranslateTextsAction`
+  (`POST /api/v1/actions/core/translate-texts/execute`), as the site's app
+  client, and holds it to the client's AI budget. The client needs the **Translate
   content with AI** permission in Core; without it the editor is told what
   to grant.

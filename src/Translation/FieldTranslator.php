@@ -14,12 +14,12 @@ use Statamic\Fieldtypes\Replicator;
 
 /**
  * Translates one field of a translation from its original's text through
- * Core's translation endpoint, in the shape the control panel's field holds.
+ * Core's TranslateTextsAction, in the shape the control panel's field holds.
  * A Bard field is translated node by node, so its sets stay where they are.
  */
 final class FieldTranslator
 {
-    public const ENDPOINT = 'api/app/translations';
+    public const ENDPOINT = 'api/v1/actions/core/translate-texts/execute';
 
     public function __construct(private readonly CoreClient $client) {}
 
@@ -165,8 +165,8 @@ final class FieldTranslator
             throw new FieldNotTranslatable(__('Inly Core does not let this site translate. Grant its app client "Translate content with AI".'));
         }
 
-        // Core's own refusals (too much text, today's allowance used, an incomplete batch) say what to do.
-        if (in_array($response->status(), [422, 429, 502], true) && is_string($response->json('message'))) {
+        // Core's own refusals (too much text, the AI budget used up) say what to do.
+        if (in_array($response->status(), [422, 429], true) && is_string($response->json('message'))) {
             throw new FieldNotTranslatable($response->json('message'));
         }
 
@@ -174,10 +174,11 @@ final class FieldTranslator
             throw new RuntimeException("Core translation failed [{$response->status()}].");
         }
 
-        $translations = (array) $response->json('translations', []);
+        $translations = (array) $response->json('result', []);
 
+        // Core answers a text it could not translate with an empty string.
         foreach (array_keys($texts) as $key) {
-            if (! is_string($translations[$key] ?? null)) {
+            if (! is_string($translations[$key] ?? null) || $translations[$key] === '') {
                 throw new FieldNotTranslatable(__('The translation came back incomplete. Try again.'));
             }
         }
