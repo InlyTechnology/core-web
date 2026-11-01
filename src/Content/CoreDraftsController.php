@@ -5,11 +5,10 @@ namespace Inly\CoreWeb\Content;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inly\CoreWeb\Drafts\ContentSchema;
-use Inly\CoreWeb\Drafts\DraftRefused;
 use Inly\CoreWeb\Drafts\DraftWriter;
 
 /**
- * Core AI's drafts of the site's entries (Statamic connector API v1.3): a new
+ * Core AI's drafts of the site's entries (Statamic connector API v1.4): a new
  * or updated draft written as the person's own CP user, the current draft of
  * an entry for Core to update, and the person's draft published when they ask
  * for it. A write is sealed for drafting, a publish for publishing.
@@ -32,11 +31,11 @@ class CoreDraftsController
             ...CoreAiAuthor::rules(),
         ]);
 
-        $this->assertSchema($schema, $request->input('catalog_hash'));
+        $warnings = $this->schemaWarnings($schema, $request->input('catalog_hash'));
 
         $result = $writer->write(fn () => CoreAiAuthor::from($request), $request->only(['collection', 'entry_id', 'site', 'parent_id', 'blueprint', 'dry_run', 'fields', 'block_changes', 'base_hash']));
 
-        return response()->json(['data' => $result], filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
+        return response()->json(array_filter(['data' => $result, 'warnings' => $warnings]), filled($request->input('entry_id')) || $request->boolean('dry_run') ? 200 : 201);
     }
 
     public function show(string $id, DraftWriter $writer): JsonResponse
@@ -57,16 +56,24 @@ class CoreDraftsController
         return response()->json(['data' => $writer->publish(fn () => CoreAiAuthor::from($request, 'publish'), $id)]);
     }
 
-    private function assertSchema(ContentSchema $schema, mixed $hash): void
+    /**
+     * A draft built on an older schema is still written: the writer checks it against the blueprints as they are now,
+     * so a block or field that went away is refused there, and the source is told to read the blocks again.
+     *
+     * @return list<array{code: string, message: string, catalog_hash: string}>
+     */
+    private function schemaWarnings(ContentSchema $schema, mixed $hash): array
     {
         if (blank($hash)) {
-            return;
+            return [];
         }
 
         $current = $schema->hash();
 
-        if (! hash_equals($current, (string) $hash)) {
-            throw DraftRefused::catalogChanged($current);
+        if (hash_equals($current, (string) $hash)) {
+            return [];
         }
+
+        return [['code' => 'catalog_changed', 'message' => __('core-web::drafts.catalog_changed_warning'), 'catalog_hash' => $current]];
     }
 }

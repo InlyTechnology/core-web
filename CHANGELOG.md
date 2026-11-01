@@ -6,6 +6,17 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **A changed catalog warns instead of refusing** (Statamic connector API
+  v1.4): a draft naming an older `catalog_hash` is written, checked against
+  the blueprints as they are now, and its answer carries a
+  `catalog_changed` entry under `warnings`. A Core that retried on the old
+  refusal keeps working; it simply never sees one. Docs: [Drafts](docs/drafts.md#content-schema).
+- **Recommendations for drafts**: `draft_recommend` on a field lists rules
+  the AI aims for without being held to them, read as the field's
+  `recommended` in the content schema. Docs: [Drafts](docs/drafts.md#content-schema).
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now

@@ -130,18 +130,20 @@ class CoreDraftsApiTest extends TestCase
             ->assertJsonPath('error', 'revisions_off');
     }
 
-    public function test_a_draft_against_an_older_schema_is_refused(): void
+    public function test_a_draft_against_an_older_schema_is_written_with_a_warning(): void
     {
         $current = app(ContentSchema::class)->hash();
 
         $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => $current, 'dry_run' => true, ...$this->actor()])
             ->assertOk()
-            ->assertJsonPath('data.dry_run', true);
+            ->assertJsonPath('data.dry_run', true)
+            ->assertJsonMissingPath('warnings');
 
-        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => 'old', 'dry_run' => true, ...$this->actor()])
-            ->assertConflict()
-            ->assertJsonPath('error', 'catalog_changed')
-            ->assertJsonPath('catalog_hash', $current);
+        $this->callSealed('POST', '/api/core/v1/drafts', 'website.draft', ['collection' => 'articles', 'fields' => ['title' => 'Nyhet'], 'catalog_hash' => 'old', ...$this->actor()])
+            ->assertCreated()
+            ->assertJsonStructure(['data' => ['entry_id']])
+            ->assertJsonPath('warnings.0.code', 'catalog_changed')
+            ->assertJsonPath('warnings.0.catalog_hash', $current);
     }
 
     public function test_block_changes_reach_the_draft_writer(): void

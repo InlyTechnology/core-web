@@ -382,6 +382,7 @@ class StatamicContentSchema implements ContentSchema
             'ai_instructions' => self::text($config['ai_instructions'] ?? null),
             'required' => (bool) ($config['required'] ?? false) || in_array('required', $validate, true),
             'validate' => $validate ?: null,
+            'recommended' => self::rules((array) ($config['draft_recommend'] ?? [])) ?: null,
             ...Arr::only($config, self::PASSED_CONFIG),
             'default' => $config['default'] ?? null,
             'options' => self::options($config),
