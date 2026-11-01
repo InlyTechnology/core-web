@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature\Content;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Drafts\ContentSchema;
 use Inly\CoreWeb\Drafts\DescribesStoredValue;
@@ -10,6 +11,7 @@ use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Dictionaries\BasicDictionary;
+use Statamic\Events\StacheCleared;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
@@ -241,6 +243,24 @@ class ContentSchemaTest extends TestCase
         Blink::flush();
 
         $this->assertNotSame($hash, app(ContentSchema::class)->hash());
+    }
+
+    public function test_the_hash_is_kept_between_requests_until_a_save_moves_it(): void
+    {
+        $hash = app(ContentSchema::class)->hash();
+        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+
+        $this->assertSame('kept', app(ContentSchema::class)->hash(), 'a draft does not rebuild the schema');
+        $this->assertSame($hash, app(ContentSchema::class)->describe()['catalog_hash'], 'a catalog read hands Core the current hash');
+        $this->assertSame($hash, Cache::get(StatamicContentSchema::HASH_CACHE_KEY), 'and keeps it');
+
+        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+        event(new StacheCleared);
+        $this->assertSame($hash, app(ContentSchema::class)->hash(), 'a stache clear on deploy drops it');
+
+        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+        Term::make()->taxonomy('tags')->inDefaultLocale()->slug('extra')->data(['title' => 'Extra'])->save();
+        $this->assertNotSame('kept', app(ContentSchema::class)->hash(), 'a term save drops it');
     }
 
     public function test_core_reads_the_schema_sealed_for_reading(): void

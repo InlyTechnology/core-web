@@ -6,6 +6,13 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Faster drafts**: the catalog fingerprint a draft is checked against is
+  kept between requests instead of rebuilt from every blueprint on each
+  draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
+  stache clear on deploy, drops it; a catalog read refreshes it.
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now
