@@ -121,12 +121,18 @@ class StatamicContentSchema implements ContentSchema
     public function hash(): string
     {
         // A draft only compares the hash, so it is not worth reading every blueprint for; the hour covers a blueprint edited on disk, which fires no event.
-        return Cache::remember(self::HASH_CACHE_KEY, now()->addHour(), fn () => $this->freshHash());
+        return Cache::remember(self::hashCacheKey(), now()->addHour(), fn () => $this->freshHash());
     }
 
     public static function forgetHash(): void
     {
-        Cache::forget(self::HASH_CACHE_KEY);
+        Cache::forget(self::hashCacheKey());
+    }
+
+    /** Scoped to this checkout, so two environments sharing a cache store never take each other's hash. */
+    public static function hashCacheKey(): string
+    {
+        return self::HASH_CACHE_KEY.':'.hash('xxh3', base_path().'|'.config('app.url'));
     }
 
     /** A catalog read has the schema built anyway, so it hands Core the current hash and keeps it for the drafts that follow. */
@@ -134,12 +140,12 @@ class StatamicContentSchema implements ContentSchema
     {
         $hash = $this->freshHash();
 
-        Cache::put(self::HASH_CACHE_KEY, $hash, now()->addHour());
+        Cache::put(self::hashCacheKey(), $hash, now()->addHour());
 
         return $hash;
     }
 
-    private function freshHash(): string
+    protected function freshHash(): string
     {
         return hash('sha256', json_encode([$this->guide(), array_values($this->collections())], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }

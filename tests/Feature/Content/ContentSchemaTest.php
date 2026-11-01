@@ -248,17 +248,17 @@ class ContentSchemaTest extends TestCase
     public function test_the_hash_is_kept_between_requests_until_a_save_moves_it(): void
     {
         $hash = app(ContentSchema::class)->hash();
-        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
 
         $this->assertSame('kept', app(ContentSchema::class)->hash(), 'a draft does not rebuild the schema');
         $this->assertSame($hash, app(ContentSchema::class)->describe()['catalog_hash'], 'a catalog read hands Core the current hash');
-        $this->assertSame($hash, Cache::get(StatamicContentSchema::HASH_CACHE_KEY), 'and keeps it');
+        $this->assertSame($hash, Cache::get(StatamicContentSchema::hashCacheKey()), 'and keeps it');
 
-        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
         event(new StacheCleared);
         $this->assertSame($hash, app(ContentSchema::class)->hash(), 'a stache clear on deploy drops it');
 
-        Cache::put(StatamicContentSchema::HASH_CACHE_KEY, 'kept');
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
         Term::make()->taxonomy('tags')->inDefaultLocale()->slug('extra')->data(['title' => 'Extra'])->save();
         $this->assertNotSame('kept', app(ContentSchema::class)->hash(), 'a term save drops it');
     }
