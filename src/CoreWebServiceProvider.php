@@ -101,13 +101,25 @@ use Statamic\Events\AssetDeleted;
 use Statamic\Events\AssetReuploaded;
 use Statamic\Events\AssetSaved;
 use Statamic\Events\AssetUploaded;
+use Statamic\Events\BlueprintDeleted;
+use Statamic\Events\BlueprintReset;
+use Statamic\Events\BlueprintSaved;
+use Statamic\Events\CollectionDeleted;
 use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\FieldsetDeleted;
+use Statamic\Events\FieldsetReset;
+use Statamic\Events\FieldsetSaved;
 use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
+use Statamic\Events\LocalizedTermDeleted;
+use Statamic\Events\LocalizedTermSaved;
 use Statamic\Events\RevisionSaving;
+use Statamic\Events\StacheCleared;
+use Statamic\Events\TaxonomyDeleted;
+use Statamic\Events\TaxonomySaved;
 use Statamic\Events\TermDeleted;
 use Statamic\Events\TermSaved;
 use Statamic\Facades\CP\Nav;
@@ -499,6 +511,13 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
         $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+        Event::listen([
+            BlueprintSaved::class, BlueprintDeleted::class, BlueprintReset::class,
+            FieldsetSaved::class, FieldsetDeleted::class, FieldsetReset::class,
+            CollectionSaved::class, CollectionDeleted::class, TaxonomySaved::class, TaxonomyDeleted::class,
+            TermSaved::class, TermDeleted::class, LocalizedTermSaved::class, LocalizedTermDeleted::class,
+            StacheCleared::class,
+        ], fn () => StatamicContentSchema::forgetHash());
         DraftsWidget::register();
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');

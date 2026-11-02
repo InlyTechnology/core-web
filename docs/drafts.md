@@ -108,7 +108,9 @@ block is used and a few entries that use it. `blocks/{collection}/{handle}`
 is one block in full, its nested fields included. Both carry
 `catalog_hash`: a draft naming an older one is refused (`catalog_changed`,
 with the current hash), so the AI never builds on blocks that changed under
-it.
+it. The hash is kept between requests, dropped on every save of a
+blueprint, fieldset, collection, taxonomy or term and on a stache clear, and
+refreshed by every `blocks` read.
 
 `Inly\CoreWeb\Drafts\StatamicContentSchema` reads it all from the
 blueprints and fieldsets, so a new block is in it the moment its fieldset
