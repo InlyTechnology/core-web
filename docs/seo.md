@@ -73,7 +73,9 @@ It points at `#main-content`, the id the agency layout gives its `<main>`;
 pass `target` for another id. When no element has that id, a click goes to
 the page's `<main>` instead, and in the local environment the browser
 console warns about the missing id, so a layout without either is caught
-while the site is built.
+while the site is built. The fallback and the warning are a small inline
+script, so a Content Security Policy without `'unsafe-inline'` blocks them
+and leaves the plain link.
 
 ```blade
 <body>

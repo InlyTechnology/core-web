@@ -20,6 +20,7 @@
 .core-skip-link:focus {
     transform: none;
     outline: 2px solid var(--core-skip-link-background, #1a1916);
+    box-shadow: 0 0 0 2px var(--core-skip-link-foreground, #ffffff);
     outline-offset: 2px;
 }
 

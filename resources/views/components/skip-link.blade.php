@@ -3,8 +3,13 @@
 <a href="#{{ $target }}" {{ $attributes->merge(['class' => 'core-skip-link']) }}>{{ $label ?? __('Skip to content') }}</a>
 <script>
     (() => {
-        const link = document.currentScript.previousElementSibling;
-        const id = decodeURIComponent(link.hash.slice(1));
+        const link = document.currentScript?.previousElementSibling;
+
+        if (! link) {
+            return;
+        }
+
+        const id = link.getAttribute('href').slice(1);
 
         link.addEventListener('click', (event) => {
             const main = document.getElementById(id) ? null : document.querySelector('main');
@@ -15,16 +20,18 @@
 
             event.preventDefault();
             main.hasAttribute('tabindex') || main.setAttribute('tabindex', '-1');
-            main.focus();
+            main.focus({ preventScroll: true });
             main.scrollIntoView();
         });
 @if (app()->isLocal())
 
-        document.addEventListener('DOMContentLoaded', () => {
+        const warn = () => {
             if (! document.getElementById(id)) {
                 console.warn(`core-web skip link: no element has the id "${id}"; ` + (document.querySelector('main') ? 'it falls back to <main>.' : 'it goes nowhere. Give the main content that id, or pass target.'));
             }
-        });
+        };
+
+        document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', warn) : warn();
 @endif
     })();
 </script>
