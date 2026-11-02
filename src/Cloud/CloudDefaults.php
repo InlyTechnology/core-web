@@ -56,6 +56,9 @@ final class CloudDefaults
     /** Marks the static cache store this class wrote, so it is written again for each build. */
     private const STATIC_CACHE_MARKER = 'core_web_release';
 
+    /** How long a statically cached page lives when the site set no expiry, in minutes (Statamic's unit). */
+    public const STATIC_CACHE_EXPIRY = 1440;
+
     /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
     public const PEAK_DISKS = ['favicons', 'social_images'];
 
@@ -86,6 +89,12 @@ final class CloudDefaults
         if (! $resolved) {
             foreach (self::DEFAULTS as $key => [$env, $value]) {
                 self::set($config, $key, $env, $value);
+            }
+
+            // Statamic keeps a `half` page forever by default, and every query string (an ad's click ids) caches a page of
+            // its own, so a shared store such as a Redis cache cluster fills until the next deploy clears it.
+            if ($config->get('statamic.static_caching.strategies.half.expiry') === null) {
+                $config->set('statamic.static_caching.strategies.half.expiry', (int) Env::get('STATAMIC_STATIC_CACHE_EXPIRY', self::STATIC_CACHE_EXPIRY));
             }
         }
 

@@ -6,6 +6,17 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Statically cached pages expire after a day on Laravel Cloud**: the
+  `cloud` feature sets the `half` strategy's `expiry` to 1440 minutes when
+  the site's `config/statamic/static_caching.php` leaves it `null`, as
+  Statamic's skeleton does. Kept forever, every query string an ad adds to a
+  landing page (`gclid`, `hsa_*`, `utm_*`) cached a copy of the page until
+  the next deploy, filling a Redis cache cluster to its limit.
+  `STATAMIC_STATIC_CACHE_EXPIRY` (minutes) overrides it; an expiry the site
+  set is kept. Docs: [Laravel Cloud](docs/laravel-cloud.md).
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now

@@ -13,6 +13,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
 | Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
+| How long a `half` page stays cached (`statamic.static_caching.strategies.half.expiry`), when the site's config leaves it `null` (Statamic's skeleton does) | 1440 minutes: forever, every query string an ad adds (`gclid`, `hsa_*`, `utm_*`) would keep a copy of its page until the next deploy | `STATAMIC_STATIC_CACHE_EXPIRY` (minutes); an expiry in the site's config is kept |
 | Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
 | Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |

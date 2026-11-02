@@ -120,6 +120,22 @@ class CloudTest extends TestCase
         }
     }
 
+    public function test_a_statically_cached_page_expires_after_a_day_unless_the_site_set_an_expiry(): void
+    {
+        config(['statamic.static_caching.strategies.half.expiry' => null]);
+        CloudDefaults::apply($this->app);
+        $this->assertSame(1440, config('statamic.static_caching.strategies.half.expiry'));
+
+        config(['statamic.static_caching.strategies.half.expiry' => 60]);
+        CloudDefaults::apply($this->app);
+        $this->assertSame(60, config('statamic.static_caching.strategies.half.expiry'), 'the site\'s own expiry is kept');
+
+        $this->setEnv('STATAMIC_STATIC_CACHE_EXPIRY', '10080');
+        config(['statamic.static_caching.strategies.half.expiry' => null]);
+        CloudDefaults::apply($this->app);
+        $this->assertSame(10080, config('statamic.static_caching.strategies.half.expiry'));
+    }
+
     public function test_livewire_uploads_wait_in_the_private_bucket(): void
     {
         $private = ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'fls-private', 'endpoint' => 'https://abc.r2.cloudflarestorage.com'];
