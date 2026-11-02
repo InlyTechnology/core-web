@@ -331,7 +331,7 @@ class SeoTest extends TestCase
     {
         $html = Blade::render('<x-core-web::skip-link />');
 
-        $this->assertStringContainsString('<a href="#content" class="core-skip-link">Skip to content</a>', $html);
+        $this->assertStringContainsString('<a href="#main-content" class="core-skip-link">Skip to content</a>', $html);
 
         app()->setLocale('sv');
         $this->assertStringContainsString('>Hoppa till innehållet</a>', Blade::render('<x-core-web::skip-link />'));
@@ -342,5 +342,16 @@ class SeoTest extends TestCase
         $html = Blade::render('<x-core-web::skip-link target="main" label="Till sidan" class="font-bold" />');
 
         $this->assertStringContainsString('<a href="#main" class="core-skip-link font-bold">Till sidan</a>', $html);
+    }
+
+    public function test_the_skip_link_falls_back_to_main_and_warns_about_a_missing_id_only_locally(): void
+    {
+        $html = Blade::render('<x-core-web::skip-link />');
+
+        $this->assertStringContainsString("document.querySelector('main')", $html);
+        $this->assertStringNotContainsString('console.warn', $html);
+
+        $this->app['env'] = 'local';
+        $this->assertStringContainsString('console.warn', Blade::render('<x-core-web::skip-link />'));
     }
 }

@@ -10,8 +10,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **Skip link**: `<x-core-web::skip-link />` (with `features.seo`) renders
   the link a keyboard user meets first, jumping past the header to the
-  page's content, worded through `__()` (*Hoppa till innehållet* in
-  Swedish) and styled by `resources/css/core-skip-link.css`. It replaces
+  page's content (`#main-content`, else the page's `<main>`), worded
+  through `__()` (*Hoppa till innehållet* in Swedish) and styled by `resources/css/core-skip-link.css`. It replaces
   Peak Tools' skip links on a site moving off Peak. Docs: [SEO](docs/seo.md#the-skip-link).
 
 ## v0.37.0
