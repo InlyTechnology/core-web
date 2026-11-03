@@ -79,6 +79,7 @@ use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
+use Inly\CoreWeb\Preview\PreviewContext;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Seo\NotFoundPage;
@@ -247,6 +248,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // Scoped: a read is kept for the rest of the request or job.
         $this->app->scoped(SnapshotStore::class, fn ($app) => new SnapshotStore(SnapshotStore::repository(), $app['log']));
         $this->app->scoped(SnapshotSitemaps::class);
+        $this->app->scoped(PreviewContext::class);
 
         // Not scoped: built from config each time, so configured() answers from the configuration of the moment.
         $this->app->bind(CoreClient::class, fn () => CoreClient::fromConfig());
@@ -359,8 +361,19 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootChecks();
         }
 
+        // Printed by the site's templates whether or not the preview is on; they print nothing outside a preview.
+        Blade::directive('coreField', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::field('.$expression.'); ?>');
+        Blade::directive('coreBlock', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::block('.$expression.'); ?>');
+
+        if (self::enabled('preview') && self::enabled('snapshots')) {
+            $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+            $this->loadRoutesFrom(__DIR__.'/../routes/preview.php');
+        }
+
         // Statamic connector API v1.2: Core reads the checks and proposes, where the site speaks the API.
-        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || config('core-web.content.feed.enabled'))) {
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || (self::enabled('preview') && self::enabled('snapshots')) || config('core-web.content.feed.enabled'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
         }
 

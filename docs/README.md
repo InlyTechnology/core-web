@@ -12,6 +12,7 @@ One page per feature. Start with the [README](../README.md) for what the package
 - [Ping contract](ping-contract.md)
 - [Sitemaps](sitemaps.md)
 - [Pages](pages.md)
+- [Object preview](object-preview.md)
 - [Control panel widget](control-panel-widget.md)
 - [Static cache](static-cache.md)
 - [Chat](chat.md)

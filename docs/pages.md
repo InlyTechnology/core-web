@@ -38,3 +38,7 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
 - `path($doc)` is the document's page path on the site, for links.
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
+
+A snapshot whose pages show Core records names its Core object with
+`->coreObject()`, so Core links each record to its page and previews it there
+(see [Object preview](object-preview.md)).

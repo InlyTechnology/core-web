@@ -49,6 +49,9 @@ final class SnapshotStore
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
+    /** @var array<string, array{documents: array<string, array<string, mixed>>, hidden: list<string>}> */
+    private array $previews = [];
+
     /** The source pin() is storing a copy from; null outside one. */
     private ?string $pinningFrom = null;
 
@@ -80,6 +83,44 @@ final class SnapshotStore
     }
 
     public function read(Snapshot $snapshot, ?string $partition = null): SnapshotRead
+    {
+        $read = $this->stored($snapshot, $partition);
+        $preview = $this->previews[self::memo($snapshot, $partition)] ?? null;
+
+        if ($preview === null) {
+            return $read;
+        }
+
+        $documents = array_diff_key($read->documents, array_flip($preview['hidden']));
+
+        return new SnapshotRead(array_replace($documents, $preview['documents']), $read->stale, $read->degraded);
+    }
+
+    /**
+     * Reads of the snapshot's partition show these documents over the stored
+     * ones while `$render` runs, and nothing of them is written: a preview of
+     * a record's unsaved values (Inly\CoreWeb\Preview).
+     *
+     * @template T
+     *
+     * @param  array<string, array<string, mixed>>  $documents  keyed by id
+     * @param  Closure(): T  $render
+     * @param  list<string>  $hidden  stored documents left out meanwhile, such as the record under its saved id
+     * @return T
+     */
+    public function previewing(Snapshot $snapshot, ?string $partition, array $documents, Closure $render, array $hidden = []): mixed
+    {
+        $memo = self::memo($snapshot, $partition);
+        $this->previews[$memo] = ['documents' => $documents, 'hidden' => $hidden];
+
+        try {
+            return $render();
+        } finally {
+            unset($this->previews[$memo]);
+        }
+    }
+
+    private function stored(Snapshot $snapshot, ?string $partition): SnapshotRead
     {
         $snapshot->assertPartition($partition);
         $memo = self::memo($snapshot, $partition);
