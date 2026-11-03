@@ -18,7 +18,9 @@ rather than change a live entry.
 - Values are validated against the blueprint, values their field conditions
   hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
   checks without saving.
-- `publish()` makes the draft live; `read()` returns it with who holds it.
+- `publish()` makes the draft live, whoever holds it, for an author allowed
+  to publish the entry, and records the publisher on the revision; `read()`
+  returns it with who holds it.
   Both writes take the author or a closure that makes one, called only once
   the request names an entry it may draft, so a refusal about the request
   (an unknown entry is `not_found`, 404) comes before one about the author.

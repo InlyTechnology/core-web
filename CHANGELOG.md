@@ -8,6 +8,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Publishing someone else's draft**: `DraftWriter::publish()`, and so
+  `POST drafts/{id}/publish`, publishes a draft whoever holds it, for an
+  author with the CMS `publish` permission on the entry, as the CP does. It
+  used to refuse with `held` unless the author held the draft, so a reviewer
+  in Core could not publish an editor's draft. The revision records who
+  published, with the publisher's message and provenance. Writing a draft
+  still never touches one someone else holds.
+  Docs: [Drafts](docs/drafts.md).
+
 - **Faster drafts**: the catalog fingerprint a draft is checked against is
   kept between requests instead of rebuilt from every blueprint on each
   draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
