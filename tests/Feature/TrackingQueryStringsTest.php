@@ -1,0 +1,56 @@
+<?php
+
+namespace Inly\CoreWeb\Tests\Feature;
+
+use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
+use Inly\CoreWeb\Tests\TestCase;
+
+/** The ad and analytics parameters core-web keeps out of the static cache's key. */
+class TrackingQueryStringsTest extends TestCase
+{
+    public function test_the_list_is_in_statamics_by_default(): void
+    {
+        $disallowed = config('statamic.static_caching.disallowed_query_strings');
+
+        foreach (['utm_source', 'gclid', 'fbclid', 'hsa_kw', '_hsenc'] as $parameter) {
+            $this->assertContains($parameter, $disallowed);
+        }
+    }
+
+    public function test_the_sites_own_list_is_kept_and_nothing_twice(): void
+    {
+        config([
+            'statamic.static_caching.disallowed_query_strings' => ['campaign_ref', 'gclid'],
+            'core-web.static_cache.tracking_query_strings' => ['gclid', 'fbclid'],
+        ]);
+
+        TrackingQueryStrings::apply(config());
+
+        $this->assertSame(['campaign_ref', 'gclid', 'fbclid'], config('statamic.static_caching.disallowed_query_strings'));
+    }
+
+    public function test_an_empty_list_adds_none(): void
+    {
+        config([
+            'statamic.static_caching.disallowed_query_strings' => ['campaign_ref'],
+            'core-web.static_cache.tracking_query_strings' => [],
+        ]);
+
+        TrackingQueryStrings::apply(config());
+
+        $this->assertSame(['campaign_ref'], config('statamic.static_caching.disallowed_query_strings'));
+    }
+
+    public function test_the_full_strategy_is_left_alone(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'full',
+            'statamic.static_caching.disallowed_query_strings' => [],
+            'core-web.static_cache.tracking_query_strings' => ['gclid'],
+        ]);
+
+        TrackingQueryStrings::apply(config());
+
+        $this->assertSame([], config('statamic.static_caching.disallowed_query_strings'));
+    }
+}
