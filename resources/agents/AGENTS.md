@@ -114,7 +114,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   in `content.feed.dictionaries`, and a status rule of its own binds `PageStatus`.
 - **What Core AI builds a draft from is read from the blueprints** (`blocks`, `StatamicContentSchema`): never a
   hand-written block list. Guide the AI in the blueprints (`instructions`, `ai_instructions`, `guide`; `ai_fillable`
-  and `draft_validate` only inform it unless the site's normaliser enforces them), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
+  and `draft_validate` only inform it unless the site's normaliser enforces them, `draft_recommend` for a size or
+  shape it aims for and may fall short of), a site fieldtype's stored shape in `drafts.schema.value_formats`, a Dictionary's keys with
   `DescribesStoredValue`; a `ContentSchema` subclass only for what none of these can say.
 - A site's own checks subclass `Inly\CoreWeb\Checks\Check` and are listed in `checks.checks`.
 

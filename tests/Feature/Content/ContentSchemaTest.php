@@ -51,7 +51,7 @@ class ContentSchemaTest extends TestCase
             'ai_instructions' => 'One per page, first.',
             'fields' => [
                 ['handle' => 'headline', 'field' => ['type' => 'text', 'validate' => ['required'], 'ai_instructions' => 'Short.']],
-                ['handle' => 'image', 'field' => ['type' => 'assets', 'container' => 'assets', 'max_files' => 1, 'draft_validate' => ['dimensions:min_width=1200']]],
+                ['handle' => 'image', 'field' => ['type' => 'assets', 'container' => 'assets', 'max_files' => 1, 'draft_validate' => ['dimensions:min_width=1200'], 'draft_recommend' => ['dimensions:min_width=2400,min_ratio=4/3']]],
                 ['handle' => 'show_cta', 'field' => ['type' => 'revealer']],
                 ['handle' => 'cta', 'field' => ['type' => 'text', 'if' => ['show_cta' => 'true', 'headline' => 'not empty']]],
                 ['handle' => 'brand', 'field' => ['type' => 'dictionary', 'dictionary' => 'schema_test_brands', 'max_items' => 1]],
@@ -161,6 +161,7 @@ class ContentSchemaTest extends TestCase
 
         $image = self::field($hero['fields'], 'image');
         $this->assertSame(['dimensions:min_width=1200'], $image['validate'], 'a rule only a draft is held to reads like any other');
+        $this->assertSame(['dimensions:min_width=2400,min_ratio=4/3'], $image['recommended'], 'a recommendation is listed apart from the rules');
         $this->assertSame(['container' => 'assets', 'images' => true], $image['assets']);
         $this->assertStringEndsWith('; one value', $image['value']);
 
