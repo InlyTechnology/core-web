@@ -33,6 +33,8 @@ return [
     'no_draft' => 'The site has no such entry to draft.',
     'catalog_changed_warning' => 'The blocks changed since you read them. The draft was saved against the blocks as they are now; read them again before the next draft.',
     'no_block' => 'The collection has no such block.',
+    'no_page' => 'The site serves no such page.',
+    'bad_cursor' => 'The cursor is not one this site handed out.',
     'schema_slug_rules' => 'Made from the title in the site\'s language, lowercase with hyphens; it is the last part of the URL (`route`), so it must be unique in the collection on its site.',
     'schema_date_rules' => 'The publish date. A date in the future keeps the entry hidden until that day (`date_behavior.future`).',
     'block_changes_shape' => 'block_changes names each page builder it changes, with its list of changes: `{ page_builder: [ { op, … }, … ] }`.',

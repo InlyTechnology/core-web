@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Content feed**: with `content.feed.enabled` on, core-web serves the Statamic
+  connector API's `content` endpoints. That covers every page of the drafted
+  collections (or of `content.feed.collections`), with its text, blocks, SEO,
+  working copy and stored fields. Each page lists, under `shows`, the Core
+  objects it picks through `core_snapshot_pages` or a Dictionary named in
+  `content.feed.dictionaries`. Saving or deleting a page pings Core. A site
+  with a feed of its own leaves it off. Docs: [Content feed](docs/content-feed.md).
 - **A changed catalog warns instead of refusing** (Statamic connector API
   v1.4): a draft naming an older `catalog_hash` is written, checked against
   the blueprints as they are now, and its answer carries a

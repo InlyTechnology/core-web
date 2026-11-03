@@ -19,6 +19,7 @@ One page per feature. Start with the [README](../README.md) for what the package
 - [Forms](forms.md)
 - [Media](media.md)
 - [Website content](website-content.md)
+- [Content feed](content-feed.md)
 - [Drafts](drafts.md)
 - [Content checks](content-checks.md)
 - [Control panel link](control-panel-link.md)

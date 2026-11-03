@@ -66,6 +66,7 @@ One page per feature, in [`docs/`](docs):
 - [Forms](docs/forms.md)
 - [Media](docs/media.md)
 - [Website content](docs/website-content.md)
+- [Content feed](docs/content-feed.md)
 - [Drafts](docs/drafts.md)
 - [Content checks](docs/content-checks.md)
 - [Control panel link](docs/control-panel-link.md)
