@@ -187,6 +187,35 @@ class CloudTest extends TestCase
         });
     }
 
+    public function test_the_static_cache_database_wins_over_the_connection_url(): void
+    {
+        $this->onRedis();
+        config(['database.redis.cache.url' => 'tcp://user:secret@cache.internal:6380/1']);
+        $this->setEnv('CORE_STATIC_CACHE_REDIS_DB', '2');
+
+        $this->withBuild(function (): void {
+            CloudDefaults::apply($this->app);
+            $connection = config('database.redis.'.CloudDefaults::STATIC_CACHE_CONNECTION);
+
+            $this->assertSame('2', $connection['database']);
+            $this->assertArrayNotHasKey('url', $connection);
+            $this->assertSame('cache.internal', $connection['host']);
+            $this->assertSame('secret', $connection['password']);
+        });
+    }
+
+    public function test_an_empty_static_cache_database_keeps_the_cache_connection_database(): void
+    {
+        $this->onRedis();
+        $this->setEnv('CORE_STATIC_CACHE_REDIS_DB', '');
+
+        $this->withBuild(function (): void {
+            CloudDefaults::apply($this->app);
+
+            $this->assertSame(1, config('database.redis.'.CloudDefaults::STATIC_CACHE_CONNECTION.'.database'));
+        });
+    }
+
     public function test_with_predis_the_pages_sit_in_the_redis_default_store(): void
     {
         $this->onRedis();

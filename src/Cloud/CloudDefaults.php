@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Env;
 use Livewire\Livewire;
 use LogicException;
@@ -220,10 +221,16 @@ final class CloudDefaults
             return null;
         }
 
+        // The static cache flushes its whole store (the deploy, the CP's Cache utility): FLUSHDB on that database. A
+        // database of its own is set over the connection's URL expanded, as a URL's database wins over the key.
+        $database = (string) Env::get('CORE_STATIC_CACHE_REDIS_DB', '');
+
+        if ($database !== '') {
+            $connection = [...(new ConfigurationUrlParser)->parseConfiguration($connection), 'database' => $database];
+        }
+
         $config->set('database.redis.'.self::STATIC_CACHE_CONNECTION, [
             ...$connection,
-            // The static cache flushes its whole store (the deploy, the CP's Cache utility): FLUSHDB on that database.
-            'database' => Env::get('CORE_STATIC_CACHE_REDIS_DB', $connection['database'] ?? null),
             'options' => [...(array) ($connection['options'] ?? []), 'compression' => $compression],
         ]);
 
