@@ -275,6 +275,36 @@ class DraftWriterTest extends TestCase
         $this->assertSame(['via' => 'test'], DraftProvenance::of($entry->latestRevision()));
     }
 
+    public function test_whoever_may_publish_publishes_a_working_copy_someone_else_holds(): void
+    {
+        $live = $this->article(['title' => 'Live', 'lead' => 'Lead']);
+        $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => ['title' => 'Ann\'s draft'], 'base_hash' => $this->base($live)]);
+        $reviewer = $this->user('eva@example.com');
+
+        $this->writer()->publish(new DraftAuthor($reviewer, 'Eva', DraftProvenance::make('test'), 'Reviewed'), $live->id());
+
+        $entry = Entry::find($live->id());
+
+        $this->assertSame('Ann\'s draft', $entry->get('title'));
+        $this->assertFalse($entry->hasWorkingCopy());
+        $this->assertSame((string) $reviewer->id(), (string) $entry->latestRevision()->user()->id());
+    }
+
+    public function test_someone_who_may_not_publish_never_publishes_a_draft_someone_else_holds(): void
+    {
+        $live = $this->article(['title' => 'Live', 'lead' => 'Lead']);
+        $this->writer()->write($this->author(), ['collection' => 'articles', 'entry_id' => $live->id(), 'fields' => ['title' => 'Ann\'s draft'], 'base_hash' => $this->base($live)]);
+
+        try {
+            $this->writer()->publish(new DraftAuthor($this->user('eva@example.com', super: false), 'Eva', DraftProvenance::make('test'), 'Reviewed'), $live->id());
+            $this->fail('A draft was published by someone who may not publish.');
+        } catch (DraftRefused $refused) {
+            $this->assertSame('not_permitted', $refused->error);
+        }
+
+        $this->assertSame('Live', Entry::find($live->id())->get('title'));
+    }
+
     public function test_an_entry_is_never_published_without_its_published_with_fields(): void
     {
         $author = $this->author();
