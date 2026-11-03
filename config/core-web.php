@@ -93,6 +93,11 @@ return [
     | them, and Inly\CoreWeb\Buttons\Button::resolve() turning one into what
     | the site's own button component draws.
     |
+    | preview: the records of Core the site serves a page for (`object-pages`)
+    | and Core's preview frame of one with unsaved values
+    | (/core-preview/object), with the @coreField and @coreBlock markers that
+    | let a click in the frame pick a field. Needs `snapshots` and `content`.
+    |
     */
 
     'features' => [
@@ -112,6 +117,7 @@ return [
         'seo' => false,
         'favicons' => false,
         'buttons' => false,
+        'preview' => false,
     ],
 
     /*
@@ -514,6 +520,23 @@ return [
             'guide_fieldset' => 'page_builder',
             'value_formats' => [],
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Object preview
+    |--------------------------------------------------------------------------
+    |
+    | The route Core frames a record's page with, with the person's unsaved
+    | values (features.preview, docs/object-preview.md). It is not sealed, so
+    | it is throttled; without an applied preview state it renders only a
+    | page the site serves publicly.
+    |
+    */
+
+    'preview' => [
+        'path' => 'core-preview/object',
+        'middleware' => ['throttle:60,1'],
     ],
 
     /*

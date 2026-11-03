@@ -8,6 +8,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Inly\CoreWeb\Preview\PreviewContext;
 use RuntimeException;
 
 /**
@@ -210,7 +211,7 @@ class CoreClient
             $response = $attempt($this->token());
         }
 
-        return $response;
+        return $this->previewAnswered($response);
     }
 
     /**
@@ -268,7 +269,7 @@ class CoreClient
             $response = $attempt($this->token());
         }
 
-        return $response;
+        return $this->previewAnswered($response);
     }
 
     /** @return array<string, mixed> */
@@ -289,11 +290,24 @@ class CoreClient
 
     protected function client(string $token): PendingRequest
     {
+        $preview = app()->resolved(PreviewContext::class) ? PreviewContext::current()->token() : null;
+
         return $this->http()
             ->withToken($token)
             ->acceptJson()
+            ->when($preview !== null, fn (PendingRequest $request) => $request->withHeaders(['X-Core-Preview' => $preview]))
             ->connectTimeout(5)
             ->timeout(30);
+    }
+
+    /** Notes whether Core applied a preview state the read carried (docs/object-preview.md). */
+    protected function previewAnswered(Response $response): Response
+    {
+        if (app()->resolved(PreviewContext::class)) {
+            PreviewContext::current()->answered($response->header('X-Core-Preview-Applied'));
+        }
+
+        return $response;
     }
 
     protected function http(): PendingRequest

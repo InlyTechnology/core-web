@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Object preview** (Statamic connector API v1.5 and v1.6): with
+  `features.preview` on, a snapshot whose pages show Core records names its
+  object with `->coreObject()`. Core then reads which records the site serves
+  a page for (`object-pages`) and frames a record's page beside its edit form
+  with the person's unsaved values (`/core-preview/object`), read from Core
+  with `X-Core-Preview` and rendered through the site's own route, never
+  cached. `@coreField('title', true)` and `@coreBlock($loop->index)` mark what
+  a click in that frame picks, and print nothing on any other page. Docs:
+  [Object preview](docs/object-preview.md).
+
 ## v0.38.0
 
 - **Skip link**: `<x-core-web::skip-link />` (with `features.seo`) renders

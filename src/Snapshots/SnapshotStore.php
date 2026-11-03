@@ -49,6 +49,9 @@ final class SnapshotStore
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
+    /** @var array<string, array<string, array<string, mixed>>> */
+    private array $previews = [];
+
     /** The source pin() is storing a copy from; null outside one. */
     private ?string $pinningFrom = null;
 
@@ -80,6 +83,37 @@ final class SnapshotStore
     }
 
     public function read(Snapshot $snapshot, ?string $partition = null): SnapshotRead
+    {
+        $read = $this->stored($snapshot, $partition);
+        $preview = $this->previews[self::memo($snapshot, $partition)] ?? null;
+
+        return $preview === null ? $read : new SnapshotRead(array_replace($read->documents, $preview), $read->stale, $read->degraded);
+    }
+
+    /**
+     * Reads of the snapshot's partition show these documents over the stored
+     * ones while `$render` runs, and nothing of them is written: a preview of
+     * a record's unsaved values (Inly\CoreWeb\Preview).
+     *
+     * @template T
+     *
+     * @param  array<string, array<string, mixed>>  $documents  keyed by id
+     * @param  Closure(): T  $render
+     * @return T
+     */
+    public function previewing(Snapshot $snapshot, ?string $partition, array $documents, Closure $render): mixed
+    {
+        $memo = self::memo($snapshot, $partition);
+        $this->previews[$memo] = $documents;
+
+        try {
+            return $render();
+        } finally {
+            unset($this->previews[$memo]);
+        }
+    }
+
+    private function stored(Snapshot $snapshot, ?string $partition): SnapshotRead
     {
         $snapshot->assertPartition($partition);
         $memo = self::memo($snapshot, $partition);

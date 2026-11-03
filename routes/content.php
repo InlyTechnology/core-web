@@ -8,8 +8,9 @@ use Inly\CoreWeb\Content\CoreDraftsController;
 use Inly\CoreWeb\Content\CoreProposalsController;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Preview\ObjectPagesController;
 
-// The Statamic connector API's content feed (v1), drafts (v1.1), checks and proposals (v1.2). Outside the `web`
+// The Statamic connector API's content feed (v1), drafts (v1.1), checks and proposals (v1.2), object pages (v1.5). Outside the `web`
 // group: no session, no CSRF, never behind the static cache. Reads are sealed for reading; a fix or a proposal makes only a draft or a
 // proposal an editor publishes, so it is sealed for drafting; only a publish is sealed for publishing.
 Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1']))
@@ -21,6 +22,14 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
             Route::controller(CoreContentController::class)->group(function (): void {
                 Route::get('content', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('feed.index');
                 Route::get('content/{id}', 'show')->where('id', '[A-Za-z0-9_-]+')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('feed.show');
+            });
+        }
+
+        // The Core records the site serves a page for (v1.5), from the snapshots that name their Core object.
+        if (CoreWebServiceProvider::enabled('preview')) {
+            Route::controller(ObjectPagesController::class)->group(function (): void {
+                Route::get('object-pages', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('object-pages.index');
+                Route::get('object-page', 'show')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('object-pages.show');
             });
         }
 
