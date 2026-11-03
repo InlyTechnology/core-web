@@ -49,35 +49,33 @@ final class ObjectPages
     /** @return array{type: string, id: string, pages: list<array{site: string, site_name: string, url: string}>}|null */
     public function find(string $type, string $id): ?array
     {
-        $snapshot = $this->snapshotFor($type);
-
-        if ($snapshot === null) {
-            return null;
-        }
-
         $pages = [];
+        $name = null;
 
-        foreach ($this->siteDocuments($snapshot) as [$site, $documentId, $document]) {
-            if ($snapshot->coreIdOf($document, $documentId) === $id) {
-                $pages[$site] ??= $this->address($snapshot, $document, $site);
+        // Every snapshot naming the object, as the list reads them all.
+        foreach ($this->snapshotsFor($type) as $snapshot) {
+            $name ??= (string) $snapshot->coreName();
+
+            foreach ($this->siteDocuments($snapshot) as [$site, $documentId, $document]) {
+                if ($snapshot->coreIdOf($document, $documentId) === $id) {
+                    $pages[$site] ??= $this->address($snapshot, $document, $site);
+                }
             }
         }
 
         $pages = array_values(array_filter($pages));
 
-        return $pages === [] ? null : ['type' => (string) $snapshot->coreName(), 'id' => $id, 'pages' => $pages];
+        return $pages === [] ? null : ['type' => (string) $name, 'id' => $id, 'pages' => $pages];
     }
 
-    /** The snapshot whose documents are Core's `$type`, when one has pages. */
-    public function snapshotFor(string $type): ?Snapshot
+    /**
+     * The snapshots whose documents are Core's `$type` and have pages.
+     *
+     * @return list<Snapshot>
+     */
+    public function snapshotsFor(string $type): array
     {
-        foreach ($this->snapshots() as $snapshot) {
-            if ($snapshot->namesCoreObject($type)) {
-                return $snapshot;
-            }
-        }
-
-        return null;
+        return array_values(array_filter($this->snapshots(), fn (Snapshot $snapshot): bool => $snapshot->namesCoreObject($type)));
     }
 
     /**
@@ -100,6 +98,24 @@ final class ObjectPages
         }
 
         return null;
+    }
+
+    /**
+     * The ids of the stored documents in the partition that are Core's record `$id`.
+     *
+     * @return list<string>
+     */
+    public function storedIds(Snapshot $snapshot, ?string $partition, string $id): array
+    {
+        $ids = [];
+
+        foreach ($this->store->read($snapshot, $partition)->documents as $documentId => $document) {
+            if ($snapshot->coreIdOf($document, (string) $documentId) === $id) {
+                $ids[] = (string) $documentId;
+            }
+        }
+
+        return $ids;
     }
 
     /** @return list<array{type: string, id: string, pages: list<array{site: string, site_name: string, url: string}>}> */

@@ -10,11 +10,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **Object preview** (Statamic connector API v1.5 and v1.6): with
   `features.preview` on, a snapshot whose pages show Core records names its
-  object with `->coreObject()`. Core then reads which records the site serves
-  a page for (`object-pages`) and frames a record's page beside its edit form
-  with the person's unsaved values (`/core-preview/object`), read from Core
-  with `X-Core-Preview` and rendered through the site's own route, never
-  cached. `@coreField('title', true)` and `@coreBlock($loop->index)` mark what
+  object with `->coreObject()`. Core then reads which records the site
+  serves a page for (`object-pages`) and frames a record's page beside its
+  edit form with the person's unsaved values (`/core-preview/object`), read
+  from Core with `X-Core-Preview` and rendered through the site's own route,
+  with nothing of it kept in the static cache, its nocache regions or cache
+  tags. `@coreField('title', true)` and `@coreBlock($loop->index)` mark what
   a click in that frame picks, and print nothing on any other page. Docs:
   [Object preview](docs/object-preview.md).
 

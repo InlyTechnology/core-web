@@ -49,7 +49,7 @@ final class SnapshotStore
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
-    /** @var array<string, array<string, array<string, mixed>>> */
+    /** @var array<string, array{documents: array<string, array<string, mixed>>, hidden: list<string>}> */
     private array $previews = [];
 
     /** The source pin() is storing a copy from; null outside one. */
@@ -87,7 +87,13 @@ final class SnapshotStore
         $read = $this->stored($snapshot, $partition);
         $preview = $this->previews[self::memo($snapshot, $partition)] ?? null;
 
-        return $preview === null ? $read : new SnapshotRead(array_replace($read->documents, $preview), $read->stale, $read->degraded);
+        if ($preview === null) {
+            return $read;
+        }
+
+        $documents = array_diff_key($read->documents, array_flip($preview['hidden']));
+
+        return new SnapshotRead(array_replace($documents, $preview['documents']), $read->stale, $read->degraded);
     }
 
     /**
@@ -99,12 +105,13 @@ final class SnapshotStore
      *
      * @param  array<string, array<string, mixed>>  $documents  keyed by id
      * @param  Closure(): T  $render
+     * @param  list<string>  $hidden  stored documents left out meanwhile, such as the record under its saved id
      * @return T
      */
-    public function previewing(Snapshot $snapshot, ?string $partition, array $documents, Closure $render): mixed
+    public function previewing(Snapshot $snapshot, ?string $partition, array $documents, Closure $render, array $hidden = []): mixed
     {
         $memo = self::memo($snapshot, $partition);
-        $this->previews[$memo] = $documents;
+        $this->previews[$memo] = ['documents' => $documents, 'hidden' => $hidden];
 
         try {
             return $render();

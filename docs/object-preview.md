@@ -24,14 +24,15 @@ Snapshot::make('campaigns')
   `$id` gives Core's primary key when the document's id is not it, and
   `$alias` the object's name in Core's `core.website_pages.pick_types` when
   the Core project gives it one. `listing()`'s `$coreType` and `$coreId` name
-  the same and do as well.
+  the same; a `listing()` without them keeps what `coreObject()` named,
+  whichever is called first.
 - The preview needs `pullOne()`: it is how the site reads the record from
   Core with the person's values.
 
 ## What Core reads
 
 `GET /api/core/v1/object-pages` and `GET /api/core/v1/object-page?type&id`,
-sealed for reading, list each such document by Core's type and id with its
+sealed for reading (with `features.snapshots` on), list each such document by Core's type and id with its
 page on every site, read from the stored copy. While nothing at all can be
 read (a cold cache and Core unreachable) they answer `503`, never an empty
 list, so Core keeps its addresses.
@@ -47,8 +48,14 @@ Core frames `GET /core-preview/object?type&id&site[&state]` (the path is
    (`X-Core-Preview-Applied: true`).
 2. The site renders the page through its own route for the document's path,
    with the previewed document in place of the stored one for every read of
-   that snapshot during the render, and nothing of it written. The static
-   cache is neither read nor written.
+   that snapshot during the render (the record under its saved id is left
+   out, should the unsaved values give it another), and nothing of it
+   written. The static cache is neither read nor written, `@nocache` regions
+   are kept for this request only, and Statamic's cache tags are off. A cache
+   of the site's own in a view (`Cache::remember`) must not run while
+   `PreviewContext::current()->isRendering()`, or it keeps the unsaved values.
+   A page that answers with a redirect (a canonical slug) is not followed:
+   the frame shows a `404`.
 3. The answer is `no-store`, `noindex`, `no-referrer`, framed by Core's
    address alone (`frame-ancestors`, from `client.base_url`), and carries the
    preview script.
@@ -73,7 +80,8 @@ shows, and a field Core lets the person type into is edited in place:
 @endforeach
 ```
 
-The field is the property's name in Core. `true` marks a plain-text field
+The field is the property's name in Core, and the block's index is its
+position among the page's blocks, counted from 0. `true` marks a plain-text field
 that can be typed into; Core decides which of them the person may type into.
 The markers print only on a page rendered for the preview frame, so a public
 or cached page carries none. A hint is drawn after the element, so an image

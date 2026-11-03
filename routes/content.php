@@ -26,7 +26,7 @@ Route::middleware((array) config('core-web.content.middleware', ['throttle:120,1
         }
 
         // The Core records the site serves a page for (v1.5), from the snapshots that name their Core object.
-        if (CoreWebServiceProvider::enabled('preview')) {
+        if (CoreWebServiceProvider::enabled('preview') && CoreWebServiceProvider::enabled('snapshots')) {
             Route::controller(ObjectPagesController::class)->group(function (): void {
                 Route::get('object-pages', 'index')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('object-pages.index');
                 Route::get('object-page', 'show')->middleware(VerifyCoreEnvelope::ALIAS.':website.read')->name('object-pages.show');

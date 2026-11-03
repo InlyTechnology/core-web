@@ -386,8 +386,9 @@ final class Snapshot
     public function listing(Closure $title, ?string $coreType = null, ?Closure $coreId = null): self
     {
         $this->listingTitle = $title;
-        $this->listingCoreType = $coreType === '' ? null : $coreType;
-        $this->listingCoreId = $coreId;
+        // Without its own, the listing keeps what coreObject() named, whichever is called first.
+        $this->listingCoreType = blank($coreType) ? $this->listingCoreType : $coreType;
+        $this->listingCoreId = $coreId ?? $this->listingCoreId;
 
         return $this;
     }

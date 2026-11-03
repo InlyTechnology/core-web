@@ -12,18 +12,19 @@ use Illuminate\Support\HtmlString;
  */
 final class PreviewMarkers
 {
-    public static function field(string $field, bool $editable = false): HtmlString
+    public static function field(?string $field, bool $editable = false): HtmlString
     {
-        if (! self::active()) {
+        if ($field === null || $field === '' || ! self::active()) {
             return new HtmlString('');
         }
 
         return new HtmlString('data-core-field="'.e($field).'"'.($editable ? ' data-core-editable' : ''));
     }
 
-    public static function block(int $index): HtmlString
+    /** Core counts a page's blocks from 0, so `$index` is the block's position, never a key of the site's own. */
+    public static function block(int|string $index): HtmlString
     {
-        return new HtmlString(self::active() ? 'data-core-block="'.$index.'"' : '');
+        return new HtmlString(self::active() && is_numeric($index) ? 'data-core-block="'.(int) $index.'"' : '');
     }
 
     private static function active(): bool

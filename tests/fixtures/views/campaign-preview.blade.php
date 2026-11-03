@@ -4,4 +4,5 @@
     <section @coreBlock($loop->index)>{{ $block }}</section>
 @endforeach
 <p>{{ $others }}</p>
+@nocache('campaign-region')
 </body></html>

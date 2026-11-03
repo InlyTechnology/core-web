@@ -366,13 +366,14 @@ class CoreWebServiceProvider extends ServiceProvider
         Blade::directive('coreBlock', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::block('.$expression.'); ?>');
 
         if (self::enabled('preview') && self::enabled('snapshots')) {
+            $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
             $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
             $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
             $this->loadRoutesFrom(__DIR__.'/../routes/preview.php');
         }
 
         // Statamic connector API v1.2: Core reads the checks and proposes, where the site speaks the API.
-        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || self::enabled('preview') || config('core-web.content.feed.enabled'))) {
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || (self::enabled('preview') && self::enabled('snapshots')) || config('core-web.content.feed.enabled'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
         }
 

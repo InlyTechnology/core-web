@@ -6,11 +6,13 @@ use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Validator;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Statamic\Facades\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\NullCacher;
+use Statamic\StaticCaching\NoCache\Session as NoCacheSession;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
 
@@ -25,25 +27,33 @@ class ObjectPreviewController
 {
     public function __invoke(Request $request, ObjectPages $pages, SnapshotStore $store, PreviewContext $context): SymfonyResponse
     {
-        $input = $request->validate([
+        // An unsealed frame route answers a malformed address as a missing page, never a redirect back to a Referer.
+        $validator = Validator::make($request->query(), [
             'type' => ['required', 'string', 'max:128'],
             'id' => ['required', 'string', 'max:128'],
             'site' => ['required', 'string', 'max:64'],
             'state' => ['nullable', 'string', 'regex:/^[A-Za-z0-9]{48}$/'],
         ]);
-
         $core = self::coreOrigin();
-        $snapshot = $pages->snapshotFor($input['type']);
 
-        abort_if($core === null || $snapshot === null || Site::get($input['site']) === null, 404);
+        abort_if($validator->fails() || $core === null || Site::get((string) $request->query('site')) === null, 404);
 
-        $site = $input['site'];
-        $saved = $pages->document($snapshot, $site, $input['id']);
-        $previewed = blank($input['state'] ?? null) ? null : $this->previewed($snapshot, $site, $input['id'], (string) $input['state'], $context);
+        $input = $validator->validated();
 
-        [$documentId, $document] = $previewed ?? $saved ?? abort(404);
+        foreach ($pages->snapshotsFor($input['type']) as $snapshot) {
+            $saved = $pages->document($snapshot, $input['site'], $input['id']);
+            $previewed = blank($input['state'] ?? null) ? null : $this->previewed($snapshot, $input['site'], $input['id'], (string) $input['state'], $context);
 
-        return $this->framed($this->render($snapshot, $site, $documentId, $document, $previewed !== null, $store, $context), $core);
+            if (($previewed ?? $saved) !== null) {
+                [$documentId, $document] = $previewed ?? $saved;
+                $partition = $snapshot->partitionFor($input['site']) ?: null;
+                $hidden = $previewed === null ? [] : array_values(array_diff($pages->storedIds($snapshot, $partition, $input['id']), [$documentId]));
+
+                return $this->framed($this->render($request, $snapshot, $input['site'], $partition, $documentId, $document, $hidden, $store, $context), $core);
+            }
+        }
+
+        abort(404);
     }
 
     /**
@@ -82,33 +92,61 @@ class ObjectPreviewController
     }
 
     /**
-     * The page as the site's own route renders it, with the document in place of the stored one, never served from
-     * or written to the static cache.
+     * The page as the site's own route renders it, with the document in place of the stored one. Nothing the render
+     * makes is kept: not the page, its nocache regions or its cache tags, which the public page would read back.
      *
      * @param  array<string, mixed>  $document
+     * @param  list<string>  $hidden
      */
-    private function render(Snapshot $snapshot, string $site, string $documentId, array $document, bool $unsaved, SnapshotStore $store, PreviewContext $context): SymfonyResponse
+    private function render(Request $request, Snapshot $snapshot, string $site, ?string $partition, string $documentId, array $document, array $hidden, SnapshotStore $store, PreviewContext $context): SymfonyResponse
     {
         $url = rtrim(Site::get($site)->absoluteUrl(), '/').ObjectPages::encodePath((string) $snapshot->pagePath($document, $site));
-        $page = Request::create($url, 'GET', server: ['HTTP_ACCEPT' => 'text/html']);
+        $page = Request::create($url, 'GET', server: self::visitor($request));
         $original = app('request');
-        $partition = $snapshot->partitionFor($site);
+        $session = app()->resolved(NoCacheSession::class) ? app(NoCacheSession::class) : null;
+        $cacheTags = config('statamic.system.cache_tags_enabled', true);
 
         // Statamic binds its cacher afresh for every resolve, so the stand-in is dropped again rather than swapped back.
         app()->instance(Cacher::class, new NullCacher);
+        app()->instance(NoCacheSession::class, new PreviewNoCacheSession($url));
+        config(['statamic.system.cache_tags_enabled' => false]);
 
         try {
             return $context->rendering(fn (): SymfonyResponse => $store->previewing(
                 $snapshot,
-                $partition === false ? null : $partition,
+                $partition,
                 [$documentId => $document],
                 fn (): SymfonyResponse => app(Kernel::class)->handle($page),
+                $hidden,
             ));
         } finally {
             app()->forgetInstance(Cacher::class);
+            $session === null ? app()->forgetInstance(NoCacheSession::class) : app()->instance(NoCacheSession::class, $session);
+            config(['statamic.system.cache_tags_enabled' => $cacheTags]);
+
+            // The router keeps the page's route as current; nothing after this answer reads it.
             app()->instance('request', $original);
             Facade::clearResolvedInstance('request');
         }
+    }
+
+    /**
+     * The visitor's address and the proxy headers that carry it, so the page's own throttles and loopback checks see
+     * them rather than the server itself.
+     *
+     * @return array<string, string>
+     */
+    private static function visitor(Request $request): array
+    {
+        $server = ['HTTP_ACCEPT' => 'text/html', 'REMOTE_ADDR' => (string) $request->server('REMOTE_ADDR', '')];
+
+        foreach ($request->server->all() as $key => $value) {
+            if (is_string($value) && (str_starts_with($key, 'HTTP_X_FORWARDED_') || in_array($key, ['HTTP_FORWARDED', 'HTTP_USER_AGENT', 'HTTP_ACCEPT_LANGUAGE'], true))) {
+                $server[$key] = $value;
+            }
+        }
+
+        return $server;
     }
 
     /** The page's answer for Core's frame alone: nothing of it cached, indexed or sent on in a Referer. */
@@ -121,6 +159,7 @@ class ObjectPreviewController
             $content = PreviewScript::inject($content, $core);
         }
 
+        // A redirect (a canonical slug, a trailing slash) is not followed: the frame shows only the page itself.
         return response($content, $page->getStatusCode() === 200 ? 200 : 404, [
             'Content-Type' => $page->headers->get('Content-Type') ?? 'text/html; charset=UTF-8',
             'Cache-Control' => 'no-store',

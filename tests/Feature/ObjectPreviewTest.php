@@ -14,6 +14,8 @@ use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Facades\StaticCache;
+use Statamic\StaticCaching\NoCache\Session as NoCacheSession;
 
 /** Statamic connector API v1.5 and v1.6: the records the site serves a page for, and Core's preview of one. */
 class ObjectPreviewTest extends TestCase
@@ -51,7 +53,8 @@ class ObjectPreviewTest extends TestCase
             ->pullOne(function (string $id): array {
                 $row = CoreClient::fromConfig()->object('campaign', $id)['data']['attributes'] ?? null;
 
-                return $row === null ? [] : ['c'.$id => $row];
+                // Keyed by slug, as a site may key them, so a renamed record is a new key.
+                return $row === null ? [] : [$row['slug'] => $row];
             })
             ->partitionBy(fn (array $doc) => $doc['site'], ['default', 'other'])
             ->pages(fn (array $doc) => ($doc['hidden'] ?? false) ? null : '/kampanjer/'.$doc['slug'])
@@ -139,7 +142,8 @@ class ObjectPreviewTest extends TestCase
         $html = (string) $this->get('/core-preview/object?type=campaign&id=7&site=default&state='.self::STATE)->assertOk()->getContent();
 
         $this->assertStringContainsString('>Spring, unsaved</h1>', $html);
-        $this->assertStringContainsString('<p>Spring, unsaved,Hidden</p>', $html);
+        $this->assertStringContainsString('<p>Hidden,Spring, unsaved</p>', $html);
+        $this->assertStringContainsString('<p>REGION Spring, unsaved</p>', $html);
         Http::assertSent(fn (HttpRequest $request) => $request->header('X-Core-Preview') === [self::STATE]);
 
         $this->get('/kampanjer/spring')->assertOk()->assertSee('<h1 >Spring</h1>', false)->assertSee('<p>Spring,Hidden</p>', false);
@@ -161,6 +165,55 @@ class ObjectPreviewTest extends TestCase
         $this->get('/core-preview/object?type=product&id=7&site=default')->assertNotFound();
         $this->get('/core-preview/object?type=campaign&id=7&site=nowhere')->assertNotFound();
         $this->get('/core-preview/object?type=campaign&id=8&site=default')->assertNotFound();
-        $this->getJson('/core-preview/object?type=campaign&id=7&site=default&state=short')->assertUnprocessable();
+        $this->get('/core-preview/object?type=campaign&id=7&site=default&state=short', ['Referer' => 'https://evil.example/x'])->assertNotFound();
+    }
+
+    public function test_a_preview_leaves_the_public_static_cache_and_its_nocache_regions_alone(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'half',
+            'statamic.static_caching.strategies.half' => ['driver' => 'application', 'expiry' => null],
+        ]);
+        Route::get('cached/{slug}', fn (string $slug) => SnapshotPage::for('campaigns')->render('campaign-preview', [
+            'campaign' => SnapshotPage::for('campaigns')->find(fn (array $doc) => $doc['slug'] === $slug),
+            'others' => '',
+        ]))->middleware('statamic.web');
+        app(SnapshotRegistry::class)->get('campaigns')->pages(fn (array $doc) => ($doc['hidden'] ?? false) ? null : '/cached/'.$doc['slug']);
+
+        $this->get('http://default.test/cached/spring')->assertOk()->assertSee('REGION Spring</p>', false);
+        // Each request is a process of its own in production, with a nocache session of its own.
+        $this->app->forgetInstance(NoCacheSession::class);
+        $this->get('/core-preview/object?type=campaign&id=7&site=default&state='.self::STATE)
+            ->assertOk()
+            ->assertSee('REGION Spring, unsaved</p>', false);
+
+        $this->app->forgetInstance(NoCacheSession::class);
+        $public = (string) $this->get('http://default.test/cached/spring')->assertOk()->getContent();
+        $this->assertStringContainsString('<h1 >Spring</h1>', $public);
+        $this->assertStringContainsString('REGION Spring</p>', $public);
+        $this->assertStringNotContainsString('unsaved', $public);
+        $this->assertTrue(config('statamic.system.cache_tags_enabled', true));
+
+        $stored = (fn () => $this->storage)->call(StaticCache::cacheStore()->getStore());
+        $this->assertStringNotContainsString('unsaved', serialize($stored));
+    }
+
+    public function test_listing_keeps_the_core_object_named_before_it(): void
+    {
+        $snapshot = Snapshot::make('x')->coreObject('facility', fn (array $doc) => $doc['core_id'])->listing(fn (array $doc) => $doc['name']);
+
+        $this->assertSame('facility', $snapshot->coreType());
+        $this->assertSame('12', $snapshot->coreIdOf(['core_id' => 12, 'name' => 'A'], 'a'));
+    }
+
+    public function test_core_is_told_to_wait_rather_than_that_every_page_is_gone_while_nothing_can_be_read(): void
+    {
+        app(SnapshotRegistry::class)->register(Snapshot::make('broken')
+            ->pull(fn () => throw new \RuntimeException('Core is down'))
+            ->pages(fn (array $doc) => '/broken/'.$doc['slug'])
+            ->coreObject('broken'));
+
+        $this->callSealed('GET', '/api/core/v1/object-pages', 'website.read')->assertStatus(503);
+        $this->callSealed('GET', '/api/core/v1/object-page?type=broken&id=1', 'website.read')->assertStatus(503);
     }
 }
