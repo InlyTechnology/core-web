@@ -12,9 +12,6 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   kept between requests instead of rebuilt from every blueprint on each
   draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
   stache clear on deploy, drops it; a catalog read refreshes it.
-
-## Unreleased
-
 - **Compressed static cache on a Redis cache cluster**: on Laravel Cloud
   with `CACHE_STORE=redis` and phpredis, statically cached pages now go
   through a compressing copy of the cache's Redis connection (zstd, else
