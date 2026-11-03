@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Env;
 use Livewire\Livewire;
 use LogicException;
@@ -55,6 +56,9 @@ final class CloudDefaults
 
     /** Marks the static cache store this class wrote, so it is written again for each build. */
     private const STATIC_CACHE_MARKER = 'core_web_release';
+
+    /** The Redis connection the static cache's pages go through on a Redis default store: the cache's own, compressing. */
+    public const STATIC_CACHE_CONNECTION = 'core_web_static_cache';
 
     /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
     public const PEAK_DISKS = ['favicons', 'social_images'];
@@ -162,8 +166,14 @@ final class CloudDefaults
     }
 
     /**
-     * The static cache on the shared database store, under a prefix per build: the deploy clears it while the old
-     * release still serves, and a page cached then would point new containers at assets their build does not have.
+     * The static cache on the shared default store, under a prefix per build: the deploy clears it while the old release
+     * still serves, and a page cached then would point new containers at assets their build does not have.
+     *
+     * On the database store the pages share the cache table. On Redis (a Cloud cache cluster) they go through a copy of
+     * the cache's connection that compresses: a page is hundreds of KB of HTML, a few hundred of them fill a small
+     * instance, and HTML compresses several times over. Only that connection compresses, since Laravel's counters (rate
+     * limits) INCRBY values a compressing client would have stored compressed; its locks stay on the plain connection.
+     * Without a store of either kind, or without compression in phpredis, the pages sit in the default store.
      */
     private static function shareStaticCache(Repository $config): void
     {
@@ -175,18 +185,72 @@ final class CloudDefaults
 
         $default = $config->get('cache.stores.'.$config->get('cache.default'));
         $release = self::release();
+        $shared = match (is_array($default) && $release !== null ? ($default['driver'] ?? null) : null) {
+            'database' => $default,
+            'redis' => self::compressingRedisStore($config, $default),
+            default => null,
+        };
 
-        if (! is_array($default) || ($default['driver'] ?? null) !== 'database' || $release === null) {
+        if ($shared === null) {
             $config->set('cache.stores', array_diff_key((array) $config->get('cache.stores'), ['static_cache' => true]));
 
             return;
         }
 
         $config->set('cache.stores.static_cache', [
-            ...$default,
+            ...$shared,
             'prefix' => ($default['prefix'] ?? $config->get('cache.prefix')).'static_'.$release.'_',
             self::STATIC_CACHE_MARKER => true,
         ]);
+    }
+
+    /**
+     * A Redis store like the default one, on a compressing copy of its connection, or null when phpredis cannot
+     * compress (no zstd, lz4 or lzf built in, or the predis client) or the connection is not a plain one.
+     *
+     * @param  array<string, mixed>  $default
+     * @return array<string, mixed>|null
+     */
+    private static function compressingRedisStore(Repository $config, array $default): ?array
+    {
+        $name = (string) ($default['connection'] ?? 'default');
+        $connection = $config->get('database.redis.'.$name);
+        $compression = self::redisCompression();
+
+        if (! is_array($connection) || $compression === null || $config->get('database.redis.client', 'phpredis') !== 'phpredis') {
+            return null;
+        }
+
+        // The static cache flushes its whole store (the deploy, the CP's Cache utility): FLUSHDB on that database. A
+        // database of its own is set over the connection's URL expanded, as a URL's database wins over the key.
+        $database = (string) Env::get('CORE_STATIC_CACHE_REDIS_DB', '');
+
+        if ($database !== '') {
+            $connection = [...(new ConfigurationUrlParser)->parseConfiguration($connection), 'database' => $database];
+        }
+
+        $config->set('database.redis.'.self::STATIC_CACHE_CONNECTION, [
+            ...$connection,
+            'options' => [...(array) ($connection['options'] ?? []), 'compression' => $compression],
+        ]);
+
+        return [
+            ...$default,
+            'connection' => self::STATIC_CACHE_CONNECTION,
+            'lock_connection' => $default['lock_connection'] ?? $name,
+        ];
+    }
+
+    /** The best compression this phpredis was built with: zstd, else lz4, else lzf. */
+    private static function redisCompression(): ?int
+    {
+        foreach (['Redis::COMPRESSION_ZSTD', 'Redis::COMPRESSION_LZ4', 'Redis::COMPRESSION_LZF'] as $constant) {
+            if (defined($constant)) {
+                return constant($constant);
+            }
+        }
+
+        return null;
     }
 
     /** The build this container runs, from its Vite manifests: the same in every container of one deploy. */
