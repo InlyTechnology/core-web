@@ -2,8 +2,10 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Closure;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
@@ -11,9 +13,11 @@ use Inly\CoreWeb\Cloud\ImportContentCommand;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
+use Redis;
 use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
+use Throwable;
 
 class CloudTest extends TestCase
 {
@@ -118,6 +122,117 @@ class CloudTest extends TestCase
             @unlink($manifest);
             @rmdir(dirname($manifest));
         }
+    }
+
+    /** Runs $test with a build's Vite manifest in public/, as a deployed site has. */
+    private function withBuild(Closure $test): void
+    {
+        $manifest = public_path('core-web-test-build/manifest.json');
+        @mkdir(dirname($manifest), 0777, true);
+        file_put_contents($manifest, '{}');
+
+        try {
+            $test();
+        } finally {
+            @unlink($manifest);
+            @rmdir(dirname($manifest));
+        }
+    }
+
+    /** A Cloud cache cluster: CACHE_STORE=redis on the cache connection. */
+    private function onRedis(int $port = 6379): void
+    {
+        $this->setEnv('CACHE_STORE', 'redis');
+        config([
+            'database.redis.client' => 'phpredis',
+            'database.redis.cache' => ['host' => '127.0.0.1', 'port' => $port, 'database' => 1, 'options' => ['prefix' => 'app_']],
+            'database.redis.default' => ['host' => '127.0.0.1', 'port' => $port, 'database' => 0],
+            'cache.stores.redis' => ['driver' => 'redis', 'connection' => 'cache', 'lock_connection' => 'default'],
+            'cache.stores.static_cache' => ['driver' => 'file', 'path' => '/tmp/static'],
+        ]);
+    }
+
+    public function test_on_redis_the_static_cache_compresses_through_a_copy_of_the_cache_connection(): void
+    {
+        $this->onRedis();
+
+        $this->withBuild(function (): void {
+            CloudDefaults::apply($this->app);
+            $store = config('cache.stores.static_cache');
+            $connection = config('database.redis.'.CloudDefaults::STATIC_CACHE_CONNECTION);
+
+            $this->assertSame('redis', $store['driver']);
+            $this->assertSame(CloudDefaults::STATIC_CACHE_CONNECTION, $store['connection']);
+            $this->assertSame('default', $store['lock_connection'], 'locks stay on a plain connection');
+            $this->assertStringContainsString('static_', $store['prefix']);
+            $this->assertSame(1, $connection['database']);
+            $this->assertSame('app_', $connection['options']['prefix'], 'the cache connection\'s own options are kept');
+            $this->assertSame(Redis::COMPRESSION_ZSTD, $connection['options']['compression']);
+            $this->assertArrayNotHasKey('compression', config('database.redis.cache.options'), 'the cache itself is not compressed');
+
+            CloudDefaults::apply($this->app);
+            $this->assertSame($store, config('cache.stores.static_cache'), 'applying again changes nothing');
+        });
+    }
+
+    public function test_on_redis_the_static_cache_can_have_a_database_of_its_own(): void
+    {
+        $this->onRedis();
+        $this->setEnv('CORE_STATIC_CACHE_REDIS_DB', '2');
+
+        $this->withBuild(function (): void {
+            CloudDefaults::apply($this->app);
+
+            $this->assertSame('2', config('database.redis.'.CloudDefaults::STATIC_CACHE_CONNECTION.'.database'));
+        });
+    }
+
+    public function test_with_predis_the_pages_sit_in_the_redis_default_store(): void
+    {
+        $this->onRedis();
+        config(['database.redis.client' => 'predis']);
+
+        $this->withBuild(function (): void {
+            CloudDefaults::apply($this->app);
+
+            $this->assertNull(config('cache.stores.static_cache'));
+        });
+    }
+
+    public function test_a_compressed_page_round_trips_through_redis_and_the_cache_stays_plain(): void
+    {
+        $redis = new Redis;
+
+        try {
+            $redis->connect('127.0.0.1', 6390, 0.2);
+        } catch (Throwable) {
+            $this->markTestSkipped('No Redis on 127.0.0.1:6390.');
+        }
+
+        $redis->flushAll();
+        $this->onRedis(6390);
+
+        $this->withBuild(function () use ($redis): void {
+            CloudDefaults::apply($this->app);
+            $this->app->forgetInstance('redis');
+            Cache::forgetDriver(['static_cache', 'redis']);
+
+            $html = str_repeat('<li><a class="inline-flex items-center gap-2 rounded-full px-3">Bilar</a></li>', 4000);
+            Cache::store('static_cache')->forever('responses:page', $html);
+            Cache::store('redis')->forever('hits', 1);
+            Cache::store('redis')->increment('hits');
+
+            $this->assertSame($html, Cache::store('static_cache')->get('responses:page'));
+            $this->assertSame(2, (int) Cache::store('redis')->get('hits'), 'counters on the cache still INCRBY');
+
+            $redis->select(1);
+            $stored = collect($redis->keys('*'))->first(fn (string $key): bool => str_contains($key, 'responses:page'));
+            $this->assertLessThan(strlen($html) / 10, $redis->strlen($stored), 'the page is stored compressed');
+
+            $lock = Cache::store('static_cache')->lock('urls', 10);
+            $this->assertTrue($lock->get());
+            $this->assertTrue($lock->release(), 'a lock taken through the static cache releases');
+        });
     }
 
     public function test_livewire_uploads_wait_in_the_private_bucket(): void

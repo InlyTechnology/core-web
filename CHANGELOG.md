@@ -13,6 +13,28 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
   stache clear on deploy, drops it; a catalog read refreshes it.
 
+## Unreleased
+
+- **Compressed static cache on a Redis cache cluster**: on Laravel Cloud
+  with `CACHE_STORE=redis` and phpredis, statically cached pages now go
+  through a compressing copy of the cache's Redis connection (zstd, else
+  lz4, else lzf), under a prefix per build as on the database store. A page
+  is hundreds of KB of HTML, so a small Valkey instance held only a few
+  hundred; compressed it holds several times more. The rest of the cache is
+  not compressed (counters `INCRBY`), and locks stay on the plain
+  connection. Clearing the static cache now runs `FLUSHDB` on the cache's
+  database, as it emptied the cache table on the database store;
+  `CORE_STATIC_CACHE_REDIS_DB` moves the pages to a database of their own
+  where the instance has more than one. Docs: [Laravel Cloud](docs/laravel-cloud.md).
+
+### Upgrade notes
+
+- **A site that compresses its own Redis static cache** (a `static_cache`
+  store in `config/cache.php` on a Redis connection): that store is kept
+  and core-web leaves it alone. To use core-web's instead, remove the
+  store and its connection, deploy, and check `redis-cli --scan --pattern
+  '*static_*responses*'` lists the new build's pages.
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now
