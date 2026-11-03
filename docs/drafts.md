@@ -80,7 +80,7 @@ update names (`FieldsHash` hashes the draft's fields). Refusals throw
 messages are translations a site rewords in
 `lang/vendor/core-web/{locale}/drafts.php`.
 
-## Core AI's drafts (API v1.3)
+## Core AI's drafts (API v1.4)
 
 With `features.content` on as well, core-web takes Core AI's drafts itself,
 under `content.prefix` (`api/core/v1`), each sealed with Core's key:
@@ -108,9 +108,13 @@ Replicators), each field with whether it is required, its options and
 default, when it applies and how its value is stored, plus how often each
 block is used and a few entries that use it. `blocks/{collection}/{handle}`
 is one block in full, its nested fields included. Both carry
-`catalog_hash`: a draft naming an older one is refused (`catalog_changed`,
-with the current hash), so the AI never builds on blocks that changed under
-it. The hash is kept between requests, dropped on every save of a
+`catalog_hash`. A draft naming an older one is still written, checked
+against the blueprints as they are now (a block or field that went away is
+refused there), and the answer carries a `catalog_changed` warning with the
+current hash, so the AI reads the blocks again before its next draft:
+`{"data": {…}, "warnings": [{"code": "catalog_changed", "message": "…",
+"catalog_hash": "…"}]}`.
+The hash is kept between requests, dropped on every save of a
 blueprint, fieldset, collection, taxonomy or term and on a stache clear, and
 refreshed by every `blocks` read.
 
@@ -129,7 +133,10 @@ is. What a site decides:
   imports beside the settings. `ai_fillable: false` (a field the AI leaves
   to an editor) and `draft_validate` (rules only a draft is held to) are
   listed too, but only tell the AI: a site whose drafts must hold to them
-  enforces them in its `DraftValueNormaliser`.
+  enforces them in its `DraftValueNormaliser`. `draft_recommend` takes the
+  same rules as a recommendation, listed as the field's `recommended`: the
+  AI aims for it and says when what it has falls short (an image smaller
+  than the hero wants), but uses it rather than leave the field empty.
 - **How a value is stored**, by fieldtype (`drafts.schema.value_formats`),
   over core-web's own: a site's own fieldtype, or its own way of taking an
   asset.

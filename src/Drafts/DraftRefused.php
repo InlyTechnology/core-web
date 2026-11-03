@@ -93,11 +93,6 @@ class DraftRefused extends RuntimeException
         return new self('not_found', __('core-web::drafts.no_draft'), status: 404);
     }
 
-    public static function catalogChanged(string $current): self
-    {
-        return new self('catalog_changed', __('core-web::drafts.catalog_changed'), ['catalog_hash' => $current]);
-    }
-
     public static function revisionsOff(): self
     {
         return new self('revisions_off', __('core-web::drafts.revisions_off'));

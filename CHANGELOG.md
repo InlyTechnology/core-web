@@ -8,6 +8,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A changed catalog warns instead of refusing** (Statamic connector API
+  v1.4): a draft naming an older `catalog_hash` is written, checked against
+  the blueprints as they are now, and its answer carries a
+  `catalog_changed` entry under `warnings`. A Core that retried on the old
+  refusal keeps working; it simply never sees one. Docs: [Drafts](docs/drafts.md#content-schema).
+- **Recommendations for drafts**: `draft_recommend` on a field lists rules
+  the AI aims for without being held to them, read as the field's
+  `recommended` in the content schema. Docs: [Drafts](docs/drafts.md#content-schema).
 - **Publishing someone else's draft**: `DraftWriter::publish()`, and so
   `POST drafts/{id}/publish`, publishes a draft whoever holds it, for an
   author with the CMS `publish` permission on the entry, as the CP does. It
