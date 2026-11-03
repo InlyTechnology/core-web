@@ -88,6 +88,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
@@ -188,6 +189,8 @@ class CoreWebServiceProvider extends ServiceProvider
             }
 
             MailSender::apply($this->app);
+
+            TrackingQueryStrings::apply($this->app['config']);
 
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();

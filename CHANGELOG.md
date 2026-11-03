@@ -12,6 +12,30 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   kept between requests instead of rebuilt from every blueprint on each
   draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
   stache clear on deploy, drops it; a catalog read refreshes it.
+- **Ad and analytics parameters stay out of the static cache's key**: the
+  parameters ad platforms add to a landing page (`utm_*`, `gclid`, `fbclid`,
+  HubSpot's `hsa_*` and others, in `static_cache.tracking_query_strings`) are
+  added to Statamic's `disallowed_query_strings`, beside the site's own. A
+  click from a campaign used to cache a full page of its own that nothing
+  read again; it now gets the page cached under the plain address. Not
+  applied on the `full` strategy. Docs: [Static cache](docs/static-cache.md#ad-and-analytics-parameters).
+
+### Upgrade notes
+
+- **Anything that reads these parameters on the server must render inside
+  `@nocache`.** A page is now cached under its address without them, as
+  rendered for the visitor who brought them, so a value read outside
+  `@nocache` reaches every later visitor. That was always the rule for a
+  Core form (its `query` page source), and is now what breaks when it is
+  missed. Find them with `grep -rn "utm_\|gclid\|fbclid\|query()" app
+  resources/views`, and check each one renders in a `@nocache` partial or
+  reads the address in the browser. Verify on a cached page: open it with
+  `?utm_source=a`, then with `?utm_source=b`, and check the second shows
+  `b`.
+- **A site that keeps its own list** in `disallowed_query_strings` can leave
+  it: the lists are merged. Remove entries now in core-web's when you like.
+  `'static_cache' => ['tracking_query_strings' => []]` in the site's
+  `config/core-web.php` turns core-web's off.
 
 ## v0.37.0
 
