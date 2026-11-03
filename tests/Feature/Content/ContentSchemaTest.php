@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature\Content;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Drafts\ContentSchema;
 use Inly\CoreWeb\Drafts\DescribesStoredValue;
@@ -10,6 +11,7 @@ use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Dictionaries\BasicDictionary;
+use Statamic\Events\StacheCleared;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
@@ -49,7 +51,7 @@ class ContentSchemaTest extends TestCase
             'ai_instructions' => 'One per page, first.',
             'fields' => [
                 ['handle' => 'headline', 'field' => ['type' => 'text', 'validate' => ['required'], 'ai_instructions' => 'Short.']],
-                ['handle' => 'image', 'field' => ['type' => 'assets', 'container' => 'assets', 'max_files' => 1, 'draft_validate' => ['dimensions:min_width=1200']]],
+                ['handle' => 'image', 'field' => ['type' => 'assets', 'container' => 'assets', 'max_files' => 1, 'draft_validate' => ['dimensions:min_width=1200'], 'draft_recommend' => ['dimensions:min_width=2400,min_ratio=4/3']]],
                 ['handle' => 'show_cta', 'field' => ['type' => 'revealer']],
                 ['handle' => 'cta', 'field' => ['type' => 'text', 'if' => ['show_cta' => 'true', 'headline' => 'not empty']]],
                 ['handle' => 'brand', 'field' => ['type' => 'dictionary', 'dictionary' => 'schema_test_brands', 'max_items' => 1]],
@@ -159,6 +161,7 @@ class ContentSchemaTest extends TestCase
 
         $image = self::field($hero['fields'], 'image');
         $this->assertSame(['dimensions:min_width=1200'], $image['validate'], 'a rule only a draft is held to reads like any other');
+        $this->assertSame(['dimensions:min_width=2400,min_ratio=4/3'], $image['recommended'], 'a recommendation is listed apart from the rules');
         $this->assertSame(['container' => 'assets', 'images' => true], $image['assets']);
         $this->assertStringEndsWith('; one value', $image['value']);
 
@@ -241,6 +244,24 @@ class ContentSchemaTest extends TestCase
         Blink::flush();
 
         $this->assertNotSame($hash, app(ContentSchema::class)->hash());
+    }
+
+    public function test_the_hash_is_kept_between_requests_until_a_save_moves_it(): void
+    {
+        $hash = app(ContentSchema::class)->hash();
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
+
+        $this->assertSame('kept', app(ContentSchema::class)->hash(), 'a draft does not rebuild the schema');
+        $this->assertSame($hash, app(ContentSchema::class)->describe()['catalog_hash'], 'a catalog read hands Core the current hash');
+        $this->assertSame($hash, Cache::get(StatamicContentSchema::hashCacheKey()), 'and keeps it');
+
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
+        event(new StacheCleared);
+        $this->assertSame($hash, app(ContentSchema::class)->hash(), 'a stache clear on deploy drops it');
+
+        Cache::put(StatamicContentSchema::hashCacheKey(), 'kept');
+        Term::make()->taxonomy('tags')->inDefaultLocale()->slug('extra')->data(['title' => 'Extra'])->save();
+        $this->assertNotSame('kept', app(ContentSchema::class)->hash(), 'a term save drops it');
     }
 
     public function test_core_reads_the_schema_sealed_for_reading(): void

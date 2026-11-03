@@ -136,6 +136,40 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Static cache
+    |--------------------------------------------------------------------------
+    |
+    | tracking_query_strings: the parameters ad and analytics platforms add to
+    | a landing page, added to Statamic's disallowed_query_strings so a click
+    | from a campaign no longer caches a page of its own. Statamic matches
+    | names exactly. Whatever reads them on the server (a Core form's `query`
+    | page source) must render inside `@nocache`, or the first visitor's
+    | values reach everyone. The site's own list in
+    | config/statamic/static_caching.php is kept; [] adds none. Not applied
+    | on the `full` strategy, whose nocache regions would no longer be found
+    | for an address carrying them.
+    |
+    */
+
+    'static_cache' => [
+        'tracking_query_strings' => [
+            // Google Analytics and campaign tags
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', '_gl',
+            // Google Ads
+            'gclid', 'gbraid', 'wbraid', 'gad_source', 'gad_campaignid', 'dclid',
+            // Meta, Microsoft, TikTok, LinkedIn
+            'fbclid', 'msclkid', 'ttclid', 'li_fat_id',
+            // Mailchimp
+            'mc_cid', 'mc_eid',
+            // HubSpot emails and CTAs
+            '_hsenc', '_hsmi', 'hsCtaTracking',
+            // HubSpot ads tracking, one combination per ad, keyword and network
+            'hsa_acc', 'hsa_cam', 'hsa_grp', 'hsa_ad', 'hsa_src', 'hsa_tgt', 'hsa_kw', 'hsa_mt', 'hsa_net', 'hsa_ver',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | This site's Core
     |--------------------------------------------------------------------------
     |
@@ -359,9 +393,22 @@ return [
     |
     | key_cache_key: the cache key Core's key document is kept under.
     |
+    | feed: the pages Core keeps a copy of (`GET content`, docs/content-feed.md),
+    | for the Statamic connector's stock importer. Off by default: a site
+    | that serves a feed of its own leaves it off. `collections` names the
+    | collections served (none: the drafted ones); `dictionaries` names, by
+    | Dictionary handle, the Core object type a site's own Core-backed
+    | Dictionary picks, so the page lists it under `shows`. A pick from
+    | core_snapshot_pages needs no entry: its snapshot's listing names it.
+    |
     */
 
     'content' => [
+        'feed' => [
+            'enabled' => false,
+            'collections' => [],
+            'dictionaries' => [],
+        ],
         'connector_id' => env('CORE_CONTENT_CONNECTOR_ID', ''),
         'environment' => env('CORE_CONTENT_ENVIRONMENT'),
         'store' => null,
