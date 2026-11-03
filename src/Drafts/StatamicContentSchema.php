@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Drafts;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Statamic\Contracts\Entries\Entry;
 use Statamic\Facades\Collection as Collections;
@@ -29,6 +30,9 @@ use Throwable;
 class StatamicContentSchema implements ContentSchema
 {
     public const EXAMPLE_LIMIT = 3;
+
+    /** Where hash() keeps the fingerprint between requests; forgetHash() drops it on every save that moves it. */
+    public const HASH_CACHE_KEY = 'core-web:drafts:catalog-hash';
 
     /** Fieldtypes that lay out the form and store nothing. */
     private const UI_ONLY_FIELDTYPES = ['section', 'revealer', 'html', 'spacer'];
@@ -93,7 +97,7 @@ class StatamicContentSchema implements ContentSchema
         );
 
         return [
-            'catalog_hash' => $this->hash(),
+            'catalog_hash' => $this->rememberHash(),
             ...$this->guide(),
             'collections' => array_values(array_map(fn (array $definition) => $this->summary($definition), $collections)),
         ];
@@ -108,13 +112,40 @@ class StatamicContentSchema implements ContentSchema
         }
 
         return [
-            'catalog_hash' => $this->hash(),
+            'catalog_hash' => $this->rememberHash(),
             'data' => ['collection' => $collection, ...$block, 'usage' => self::present($this->usage($collection)[$handle] ?? self::unused())],
         ];
     }
 
     /** sha256 of the schema without its usage, which moves with every save: a blueprint, fieldset, taxonomy term or guide link moves it. */
     public function hash(): string
+    {
+        // A draft only compares the hash, so it is not worth reading every blueprint for; the hour covers a blueprint edited on disk, which fires no event.
+        return Cache::remember(self::hashCacheKey(), now()->addHour(), fn () => $this->freshHash());
+    }
+
+    public static function forgetHash(): void
+    {
+        Cache::forget(self::hashCacheKey());
+    }
+
+    /** Scoped to this checkout, so two environments sharing a cache store never take each other's hash. */
+    public static function hashCacheKey(): string
+    {
+        return self::HASH_CACHE_KEY.':'.hash('xxh3', base_path().'|'.config('app.url'));
+    }
+
+    /** A catalog read has the schema built anyway, so it hands Core the current hash and keeps it for the drafts that follow. */
+    private function rememberHash(): string
+    {
+        $hash = $this->freshHash();
+
+        Cache::put(self::hashCacheKey(), $hash, now()->addHour());
+
+        return $hash;
+    }
+
+    protected function freshHash(): string
     {
         return hash('sha256', json_encode([$this->guide(), array_values($this->collections())], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }

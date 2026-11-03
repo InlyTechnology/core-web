@@ -16,6 +16,59 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Recommendations for drafts**: `draft_recommend` on a field lists rules
   the AI aims for without being held to them, read as the field's
   `recommended` in the content schema. Docs: [Drafts](docs/drafts.md#content-schema).
+- **Publishing someone else's draft**: `DraftWriter::publish()`, and so
+  `POST drafts/{id}/publish`, publishes a draft whoever holds it, for an
+  author with the CMS `publish` permission on the entry, as the CP does. It
+  used to refuse with `held` unless the author held the draft, so a reviewer
+  in Core could not publish an editor's draft. The revision records who
+  published, with the publisher's message and provenance. Writing a draft
+  still never touches one someone else holds.
+  Docs: [Drafts](docs/drafts.md).
+
+- **Faster drafts**: the catalog fingerprint a draft is checked against is
+  kept between requests instead of rebuilt from every blueprint on each
+  draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
+  stache clear on deploy, drops it; a catalog read refreshes it.
+- **Compressed static cache on a Redis cache cluster**: on Laravel Cloud
+  with `CACHE_STORE=redis` and phpredis, statically cached pages now go
+  through a compressing copy of the cache's Redis connection (zstd, else
+  lz4, else lzf), under a prefix per build as on the database store. A page
+  is hundreds of KB of HTML, so a small Valkey instance held only a few
+  hundred; compressed it holds several times more. The rest of the cache is
+  not compressed (counters `INCRBY`), and locks stay on the plain
+  connection. Clearing the static cache now runs `FLUSHDB` on the cache's
+  database, as it emptied the cache table on the database store;
+  `CORE_STATIC_CACHE_REDIS_DB` moves the pages to a database of their own
+  where the instance has more than one. Docs: [Laravel Cloud](docs/laravel-cloud.md).
+- **Ad and analytics parameters stay out of the static cache's key**: the
+  parameters ad platforms add to a landing page (`utm_*`, `gclid`, `fbclid`,
+  HubSpot's `hsa_*` and others, in `static_cache.tracking_query_strings`) are
+  added to Statamic's `disallowed_query_strings`, beside the site's own. A
+  click from a campaign used to cache a full page of its own that nothing
+  read again; it now gets the page cached under the plain address. Not
+  applied on the `full` strategy. Docs: [Static cache](docs/static-cache.md#ad-and-analytics-parameters).
+
+### Upgrade notes
+
+- **A site that compresses its own Redis static cache** (a `static_cache`
+  store in `config/cache.php` on a Redis connection): that store is kept
+  and core-web leaves it alone. To use core-web's instead, remove the
+  store and its connection, deploy, and check `redis-cli --scan --pattern
+  '*static_*responses*'` lists the new build's pages.
+- **Anything that reads these parameters on the server must render inside
+  `@nocache`.** A page is now cached under its address without them, as
+  rendered for the visitor who brought them, so a value read outside
+  `@nocache` reaches every later visitor. That was always the rule for a
+  Core form (its `query` page source), and is now what breaks when it is
+  missed. Find them with `grep -rn "utm_\|gclid\|fbclid\|query()" app
+  resources/views`, and check each one renders in a `@nocache` partial or
+  reads the address in the browser. Verify on a cached page: open it with
+  `?utm_source=a`, then with `?utm_source=b`, and check the second shows
+  `b`.
+- **A site that keeps its own list** in `disallowed_query_strings` can leave
+  it: the lists are merged. Remove entries now in core-web's when you like.
+  `'static_cache' => ['tracking_query_strings' => []]` in the site's
+  `config/core-web.php` turns core-web's off.
 
 ## v0.37.0
 

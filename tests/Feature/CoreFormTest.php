@@ -16,6 +16,7 @@ use Inly\CoreWeb\Testing\FakesCore;
 use Inly\CoreWeb\Tests\TestCase;
 use Livewire\Livewire;
 use Livewire\LivewireServiceProvider;
+use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 /** A site's own form markup posting to a Core form: the definition fills in what the markup leaves out. */
 class CoreFormTest extends TestCase
@@ -37,6 +38,12 @@ class CoreFormTest extends TestCase
 
         $app['config']->set('core-web.forms.classes', [InspectionForm::class]);
         $app['view']->addLocation(__DIR__.'/../fixtures/views');
+    }
+
+    /** A page behind Statamic's static cache, its form in a nocache region. */
+    protected function defineRoutes($router): void
+    {
+        $router->get('/landing', fn () => view('tracking-landing'))->middleware(['web', StaticCache::class]);
     }
 
     /** @return array<string, mixed> */
@@ -167,6 +174,28 @@ class CoreFormTest extends TestCase
                 && $parts->has('photos[]')
                 && $parts['photos[]']['filename'] === 'file-1.jpg';
         });
+    }
+
+    public function test_a_form_in_nocache_sees_the_visitors_own_tracking_query_on_a_cached_page(): void
+    {
+        $this->fakeForms();
+        $this->warm();
+        config(['statamic.static_caching.strategy' => 'half']);
+
+        $first = $this->get('/landing?utm_source=first-visit')->assertOk()->getContent();
+        $second = $this->get('/landing?utm_source=second-visit&page=2')->assertOk()->getContent();
+        $again = $this->get('/landing?utm_source=second-visit')->assertOk()->getContent();
+        $plain = $this->get('/landing')->assertOk()->getContent();
+
+        preg_match('/data-rendered="(\w+)"/', $first, $rendered);
+        $this->assertStringContainsString($rendered[0], $plain, 'the campaign visit cached the page under its plain address');
+        $this->assertStringContainsString($rendered[0], $again, 'another campaign visit is served the same cached page');
+        $this->assertStringNotContainsString($rendered[0], $second, 'a parameter the site keeps is a page of its own');
+
+        $this->assertStringContainsString('first-visit', $first);
+        $this->assertStringContainsString('second-visit', $again);
+        $this->assertStringNotContainsString('first-visit', $again, 'the form captures the visitor\'s own query, not the first one');
+        $this->assertStringNotContainsString('visit', $plain);
     }
 
     public function test_the_fields_core_refuses_show_on_the_form(): void

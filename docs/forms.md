@@ -87,7 +87,10 @@ button. What the definition carries does the rest:
   question) in the view and `extraRules()` when a form draws spam.
 - **Static cache**: the component captures the visitor's page (referrer,
   query string) when it renders, so on a statically cached page render it
-  inside `@nocache`, or the first visitor's values go to everyone.
+  inside `@nocache`, or the first visitor's values go to everyone. Since
+  the ad and analytics parameters stay out of the cache's key
+  ([Static cache](static-cache.md#ad-and-analytics-parameters)), a campaign
+  visit's `utm_*` would otherwise reach every visitor of the plain page.
 - **Language**: the definition is read in the app's locale when the
   snapshot is pulled, so labels and messages are in the site's default
   language.

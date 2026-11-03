@@ -18,7 +18,9 @@ rather than change a live entry.
 - Values are validated against the blueprint, values their field conditions
   hide are left out (`FieldConditions`, a port of the CP's), and `dry_run`
   checks without saving.
-- `publish()` makes the draft live; `read()` returns it with who holds it.
+- `publish()` makes the draft live, whoever holds it, for an author allowed
+  to publish the entry, and records the publisher on the revision; `read()`
+  returns it with who holds it.
   Both writes take the author or a closure that makes one, called only once
   the request names an entry it may draft, so a refusal about the request
   (an unknown entry is `not_found`, 404) comes before one about the author.
@@ -112,6 +114,9 @@ refused there), and the answer carries a `catalog_changed` warning with the
 current hash, so the AI reads the blocks again before its next draft:
 `{"data": {…}, "warnings": [{"code": "catalog_changed", "message": "…",
 "catalog_hash": "…"}]}`.
+The hash is kept between requests, dropped on every save of a
+blueprint, fieldset, collection, taxonomy or term and on a stache clear, and
+refreshed by every `blocks` read.
 
 `Inly\CoreWeb\Drafts\StatamicContentSchema` reads it all from the
 blueprints and fieldsets, so a new block is in it the moment its fieldset
