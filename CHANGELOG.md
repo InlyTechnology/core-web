@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.38.0
 
 - **Skip link**: `<x-core-web::skip-link />` (with `features.seo`) renders
   the link a keyboard user meets first, jumping past the header to the
