@@ -67,6 +67,8 @@ final class Snapshot
 
     private ?string $listingCoreType = null;
 
+    private ?string $coreAlias = null;
+
     /** @var (Closure(array<string, mixed>, string): (int|string|null))|null */
     private ?Closure $listingCoreId = null;
 
@@ -384,10 +386,59 @@ final class Snapshot
     public function listing(Closure $title, ?string $coreType = null, ?Closure $coreId = null): self
     {
         $this->listingTitle = $title;
-        $this->listingCoreType = $coreType === '' ? null : $coreType;
-        $this->listingCoreId = $coreId;
+        // Without its own, the listing keeps what coreObject() named, whichever is called first.
+        $this->listingCoreType = blank($coreType) ? $this->listingCoreType : $coreType;
+        $this->listingCoreId = $coreId ?? $this->listingCoreId;
 
         return $this;
+    }
+
+    /**
+     * Names the Core object the documents are, by its lookup key, with the
+     * document's id as Core's primary key unless `$id` gives it. A snapshot
+     * with pages() then lists each page as the record's page on the site
+     * (docs/object-preview.md). `$alias` is the name Core's project gives the
+     * object in `core.website_pages.pick_types`, when it gives one.
+     *
+     * @param  (Closure(array<string, mixed>, string): (int|string|null))|null  $id  given the document and its id
+     */
+    public function coreObject(string $type, ?Closure $id = null, ?string $alias = null): self
+    {
+        $this->listingCoreType = $type === '' ? null : $type;
+        $this->listingCoreId = $id ?? $this->listingCoreId;
+        $this->coreAlias = $alias === '' ? null : $alias;
+
+        return $this;
+    }
+
+    /** The lookup key in Core of the objects the documents are, as coreObject() or the listing names it; null without one. */
+    public function coreType(): ?string
+    {
+        return $this->listingCoreType;
+    }
+
+    /** How the site names the object to Core: its alias when it has one, else its lookup key. */
+    public function coreName(): ?string
+    {
+        return $this->listingCoreType === null ? null : ($this->coreAlias ?? $this->listingCoreType);
+    }
+
+    /** Whether Core's `$type` (a lookup key or the alias) names this snapshot's object. */
+    public function namesCoreObject(string $type): bool
+    {
+        return $this->listingCoreType !== null && in_array($type, array_filter([$this->listingCoreType, $this->coreAlias]), true);
+    }
+
+    /**
+     * The document's primary key in Core, null when it names none.
+     *
+     * @param  array<string, mixed>  $document
+     */
+    public function coreIdOf(array $document, string $id): ?string
+    {
+        $coreId = $this->listingCoreId === null ? $id : ($this->listingCoreId)($document, $id);
+
+        return is_int($coreId) || (is_string($coreId) && $coreId !== '') ? (string) $coreId : null;
     }
 
     public function listed(): bool

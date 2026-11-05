@@ -14,6 +14,95 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   it uploads anything, and for an entry the check now counts the files it is about to
   upload as there. See `docs/content-push.md`.
 
+## v0.39.0
+
+- **Object preview** (Statamic connector API v1.5 and v1.6): with
+  `features.preview` on, a snapshot whose pages show Core records names its
+  object with `->coreObject()`. Core then reads which records the site
+  serves a page for (`object-pages`) and frames a record's page beside its
+  edit form with the person's unsaved values (`/core-preview/object`), read
+  from Core with `X-Core-Preview` and rendered through the site's own route,
+  with nothing of it kept in the static cache, its nocache regions or cache
+  tags. `@coreField('title', true)` and `@coreBlock($loop->index)` mark what
+  a click in that frame picks, and print nothing on any other page. Docs:
+  [Object preview](docs/object-preview.md).
+
+## v0.38.0
+
+- **Skip link**: `<x-core-web::skip-link />` (with `features.seo`) renders
+  the link a keyboard user meets first, jumping past the header to the
+  page's content (`#main-content`, else the page's `<main>`), worded
+  through `__()` (*Hoppa till innehållet* in Swedish) and styled by `resources/css/core-skip-link.css`. It replaces
+  Peak Tools' skip links on a site moving off Peak. Docs: [SEO](docs/seo.md#the-skip-link).
+- **Content feed**: with `content.feed.enabled` on, core-web serves the Statamic
+  connector API's `content` endpoints. That covers every page of the drafted
+  collections (or of `content.feed.collections`), with its text, blocks, SEO,
+  working copy and stored fields. Each page lists, under `shows`, the Core
+  objects it picks through `core_snapshot_pages` or a Dictionary named in
+  `content.feed.dictionaries`. Saving or deleting a page pings Core. A site
+  with a feed of its own leaves it off. Docs: [Content feed](docs/content-feed.md).
+- **A changed catalog warns instead of refusing** (Statamic connector API
+  v1.4): a draft naming an older `catalog_hash` is written, checked against
+  the blueprints as they are now, and its answer carries a
+  `catalog_changed` entry under `warnings`. A Core that retried on the old
+  refusal keeps working; it simply never sees one. Docs: [Drafts](docs/drafts.md#content-schema).
+- **Recommendations for drafts**: `draft_recommend` on a field lists rules
+  the AI aims for without being held to them, read as the field's
+  `recommended` in the content schema. Docs: [Drafts](docs/drafts.md#content-schema).
+- **Publishing someone else's draft**: `DraftWriter::publish()`, and so
+  `POST drafts/{id}/publish`, publishes a draft whoever holds it, for an
+  author with the CMS `publish` permission on the entry, as the CP does. It
+  used to refuse with `held` unless the author held the draft, so a reviewer
+  in Core could not publish an editor's draft. The revision records who
+  published, with the publisher's message and provenance. Writing a draft
+  still never touches one someone else holds.
+  Docs: [Drafts](docs/drafts.md).
+
+- **Faster drafts**: the catalog fingerprint a draft is checked against is
+  kept between requests instead of rebuilt from every blueprint on each
+  draft. A save of a blueprint, fieldset, collection, taxonomy or term, and a
+  stache clear on deploy, drops it; a catalog read refreshes it.
+- **Compressed static cache on a Redis cache cluster**: on Laravel Cloud
+  with `CACHE_STORE=redis` and phpredis, statically cached pages now go
+  through a compressing copy of the cache's Redis connection (zstd, else
+  lz4, else lzf), under a prefix per build as on the database store. A page
+  is hundreds of KB of HTML, so a small Valkey instance held only a few
+  hundred; compressed it holds several times more. The rest of the cache is
+  not compressed (counters `INCRBY`), and locks stay on the plain
+  connection. Clearing the static cache now runs `FLUSHDB` on the cache's
+  database, as it emptied the cache table on the database store;
+  `CORE_STATIC_CACHE_REDIS_DB` moves the pages to a database of their own
+  where the instance has more than one. Docs: [Laravel Cloud](docs/laravel-cloud.md).
+- **Ad and analytics parameters stay out of the static cache's key**: the
+  parameters ad platforms add to a landing page (`utm_*`, `gclid`, `fbclid`,
+  HubSpot's `hsa_*` and others, in `static_cache.tracking_query_strings`) are
+  added to Statamic's `disallowed_query_strings`, beside the site's own. A
+  click from a campaign used to cache a full page of its own that nothing
+  read again; it now gets the page cached under the plain address. Not
+  applied on the `full` strategy. Docs: [Static cache](docs/static-cache.md#ad-and-analytics-parameters).
+
+### Upgrade notes
+
+- **A site that compresses its own Redis static cache** (a `static_cache`
+  store in `config/cache.php` on a Redis connection): that store is kept
+  and core-web leaves it alone. To use core-web's instead, remove the
+  store and its connection, deploy, and check `redis-cli --scan --pattern
+  '*static_*responses*'` lists the new build's pages.
+- **Anything that reads these parameters on the server must render inside
+  `@nocache`.** A page is now cached under its address without them, as
+  rendered for the visitor who brought them, so a value read outside
+  `@nocache` reaches every later visitor. That was always the rule for a
+  Core form (its `query` page source), and is now what breaks when it is
+  missed. Find them with `grep -rn "utm_\|gclid\|fbclid\|query()" app
+  resources/views`, and check each one renders in a `@nocache` partial or
+  reads the address in the browser. Verify on a cached page: open it with
+  `?utm_source=a`, then with `?utm_source=b`, and check the second shows
+  `b`.
+- **A site that keeps its own list** in `disallowed_query_strings` can leave
+  it: the lists are merged. Remove entries now in core-web's when you like.
+  `'static_cache' => ['tracking_query_strings' => []]` in the site's
+  `config/core-web.php` turns core-web's off.
+
 ## v0.37.0
 
 - **Link fields pick Core's pages**: each `buttons.core_links` entry is now

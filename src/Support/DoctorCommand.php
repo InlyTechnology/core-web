@@ -14,7 +14,7 @@ use Inly\CoreWeb\CoreWebServiceProvider;
 class DoctorCommand extends Command
 {
     /** Features that call Core with the site's own client. */
-    public const CLIENT_FEATURES = ['snapshots', 'chat', 'content', 'live', 'forms', 'cms_sign_in'];
+    public const CLIENT_FEATURES = ['snapshots', 'chat', 'content', 'live', 'forms', 'cms_sign_in', 'preview'];
 
     /** Features whose work a ping or Core's notice queues: on a sync queue it runs inside Core's request. */
     public const QUEUE_FEATURES = ['snapshots', 'cms_sign_in'];

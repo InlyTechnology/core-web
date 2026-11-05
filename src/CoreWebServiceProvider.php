@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Inly\CoreWeb\Buttons\Button;
 use Inly\CoreWeb\Buttons\CoreLinkType;
 use Inly\CoreWeb\Buttons\MigrateButtonsCommand;
@@ -44,6 +45,10 @@ use Inly\CoreWeb\Content\ContentPings;
 use Inly\CoreWeb\Content\CoreEnvelope;
 use Inly\CoreWeb\Content\CoreSigningKeys;
 use Inly\CoreWeb\Content\CoreUsers;
+use Inly\CoreWeb\Content\Feed\FeedCollections;
+use Inly\CoreWeb\Content\Feed\PageStatus;
+use Inly\CoreWeb\Content\Feed\PingPageJob;
+use Inly\CoreWeb\Content\Feed\StatamicPageStatus;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\ContentSync\AuthenticateSyncToken;
 use Inly\CoreWeb\ContentSync\ContentLoginCommand;
@@ -74,6 +79,7 @@ use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
+use Inly\CoreWeb\Preview\PreviewContext;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
 use Inly\CoreWeb\Seo\NotFoundPage;
@@ -88,6 +94,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
 use Inly\CoreWeb\Widgets\ConsentStatsWidget;
@@ -97,20 +104,37 @@ use Inly\CoreWeb\Widgets\DraftsWidget;
 use Inly\CoreWeb\Widgets\MissingAltTextWidget;
 use InvalidArgumentException;
 use LogicException;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\AssetDeleted;
 use Statamic\Events\AssetReuploaded;
 use Statamic\Events\AssetSaved;
 use Statamic\Events\AssetUploaded;
+use Statamic\Events\BlueprintDeleted;
+use Statamic\Events\BlueprintReset;
+use Statamic\Events\BlueprintSaved;
+use Statamic\Events\CollectionDeleted;
 use Statamic\Events\CollectionSaved;
 use Statamic\Events\CollectionTreeSaved;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\EntrySaved;
+use Statamic\Events\EntryScheduleReached;
+use Statamic\Events\FieldsetDeleted;
+use Statamic\Events\FieldsetReset;
+use Statamic\Events\FieldsetSaved;
 use Statamic\Events\GlobalSetDeleted;
 use Statamic\Events\GlobalVariablesSaved;
+use Statamic\Events\LocalizedTermDeleted;
+use Statamic\Events\LocalizedTermSaved;
+use Statamic\Events\RevisionDeleted;
+use Statamic\Events\RevisionSaved;
 use Statamic\Events\RevisionSaving;
+use Statamic\Events\StacheCleared;
+use Statamic\Events\TaxonomyDeleted;
+use Statamic\Events\TaxonomySaved;
 use Statamic\Events\TermDeleted;
 use Statamic\Events\TermSaved;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\Permission;
 use Statamic\Facades\User;
@@ -118,6 +142,7 @@ use Statamic\Facades\Utility;
 use Statamic\Fields\FieldsetRepository;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
+use Throwable;
 
 /**
  * Dormant until a site switches a feature on (core-web.features): with every
@@ -177,6 +202,8 @@ class CoreWebServiceProvider extends ServiceProvider
 
             MailSender::apply($this->app);
 
+            TrackingQueryStrings::apply($this->app['config']);
+
             if (self::enabled('snapshots')) {
                 $this->mergeSnapshotStore();
             }
@@ -221,12 +248,14 @@ class CoreWebServiceProvider extends ServiceProvider
         // Scoped: a read is kept for the rest of the request or job.
         $this->app->scoped(SnapshotStore::class, fn ($app) => new SnapshotStore(SnapshotStore::repository(), $app['log']));
         $this->app->scoped(SnapshotSitemaps::class);
+        $this->app->scoped(PreviewContext::class);
 
         // Not scoped: built from config each time, so configured() answers from the configuration of the moment.
         $this->app->bind(CoreClient::class, fn () => CoreClient::fromConfig());
         $this->app->bind(CoreSigningKeys::class, fn () => CoreSigningKeys::fromConfig());
         $this->app->bind(CoreEnvelope::class, fn () => CoreEnvelope::fromConfig());
         $this->app->bind(ContentPings::class, fn () => ContentPings::fromConfig());
+        $this->app->bindIf(PageStatus::class, StatamicPageStatus::class);
 
         $this->app->bindIf(DraftValueNormaliser::class, StoredValues::class);
         $this->app->bind(ProposalStore::class, fn () => ProposalStore::fromConfig());
@@ -332,9 +361,24 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->bootChecks();
         }
 
+        // Printed by the site's templates whether or not the preview is on; they print nothing outside a preview.
+        Blade::directive('coreField', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::field('.$expression.'); ?>');
+        Blade::directive('coreBlock', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::block('.$expression.'); ?>');
+
+        if (self::enabled('preview') && self::enabled('snapshots')) {
+            $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+            $this->loadRoutesFrom(__DIR__.'/../routes/preview.php');
+        }
+
         // Statamic connector API v1.2: Core reads the checks and proposes, where the site speaks the API.
-        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts'))) {
+        if (self::enabled('content') && (self::enabled('checks') || self::enabled('drafts') || (self::enabled('preview') && self::enabled('snapshots')) || config('core-web.content.feed.enabled'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/content.php');
+        }
+
+        if (self::enabled('content') && config('core-web.content.feed.enabled')) {
+            $this->bootContentFeed();
         }
 
         if (self::enabled('forms')) {
@@ -499,6 +543,13 @@ class CoreWebServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/drafts.php');
         $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         Event::listen(RevisionSaving::class, KeepDraftProvenance::class);
+        Event::listen([
+            BlueprintSaved::class, BlueprintDeleted::class, BlueprintReset::class,
+            FieldsetSaved::class, FieldsetDeleted::class, FieldsetReset::class,
+            CollectionSaved::class, CollectionDeleted::class, TaxonomySaved::class, TaxonomyDeleted::class,
+            TermSaved::class, TermDeleted::class, LocalizedTermSaved::class, LocalizedTermDeleted::class,
+            StacheCleared::class,
+        ], fn () => StatamicContentSchema::forgetHash());
         DraftsWidget::register();
 
         Statamic::pushCpRoutes(fn () => require __DIR__.'/../routes/proposals.php');
@@ -527,6 +578,35 @@ class CoreWebServiceProvider extends ServiceProvider
                 ->cron($cron)
                 ->withoutOverlapping()
                 ->runInBackground());
+        }
+    }
+
+    /** Every save or delete of a served page tells Core, which reads the page back. */
+    private function bootContentFeed(): void
+    {
+        Event::listen([EntrySaved::class, EntryScheduleReached::class], fn (EntrySaved|EntryScheduleReached $event) => $this->pingPage($event->entry, 'saved'));
+        Event::listen(EntryDeleted::class, fn (EntryDeleted $event) => $this->pingPage($event->entry, 'deleted'));
+        // A working copy changes has_draft and fields without saving the entry.
+        Event::listen([RevisionSaved::class, RevisionDeleted::class], function (RevisionSaved|RevisionDeleted $event): void {
+            $key = (string) $event->revision->key();
+
+            if (str_starts_with($key, 'collections/') && ($entry = Entry::find(Str::afterLast($key, '/'))) !== null) {
+                $this->pingPage($entry, 'saved');
+            }
+        });
+    }
+
+    private function pingPage(EntryContract $entry, string $action): void
+    {
+        if (! FeedCollections::serves($entry) || ! app(ContentPings::class)->enabled()) {
+            return;
+        }
+
+        // A ping that cannot be sent never fails the editor's save; the nightly full read catches up.
+        try {
+            PingPageJob::dispatch((string) $entry->id(), $action)->afterCommit();
+        } catch (Throwable $e) {
+            report($e);
         }
     }
 
@@ -692,6 +772,8 @@ class CoreWebServiceProvider extends ServiceProvider
         }
 
         $this->loadViews();
+        // The skip link's label.
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         $this->loadRoutesFrom(__DIR__.'/../routes/seo.php');
 
         if (filled(config('core-web.seo.not_found.global'))) {

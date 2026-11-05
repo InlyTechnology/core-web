@@ -260,10 +260,10 @@ class DraftWriter
     }
 
     /**
-     * Publishes the author's draft as an editor's Publish in the CP does: the
+     * Publishes the entry's draft as an editor's Publish in the CP does: the
      * working copy becomes the live entry, or the unpublished entry goes live,
-     * with a publish revision carrying the author's provenance and message. A
-     * draft someone else holds is theirs to publish. A required image the
+     * with a publish revision carrying the author's provenance and message,
+     * whoever holds the draft. A required image the
      * draft lacks inside a block does not stop it (the block renders nothing
      * until an editor adds one) and is named in the answer; a field the
      * collection is published with (`published_with`) does.
@@ -298,8 +298,7 @@ class DraftWriter
             throw DraftRefused::nothingToPublish();
         }
 
-        $this->guard($entry, $user);
-
+        // Publishing is a review: whoever may publish the entry publishes the draft whoever holds it, as in the CP.
         $draft = $holder['status'] === self::STATUS_WORKING_COPY ? $entry->fromWorkingCopy() : clone $entry;
         $data = EntryFields::stored($draft);
 
