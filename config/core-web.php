@@ -752,6 +752,9 @@ return [
     | person, within their own CP permissions (what they may not publish
     | stays a draft). Off, a push only ever drafts and proposes.
     | push_items: the most files one push carries.
+    | push_batch_files, push_batch_assets: the most files and assets one request
+    | of a push checks, so a large push of existing entries outlasts no gateway
+    | timeout. A file with more assets goes alone.
     | push_bytes: the most content (all files together) one push carries.
     | push_asset_bytes: the largest asset file a push uploads.
     |
@@ -779,6 +782,8 @@ return [
         'push' => true,
         'push_publish' => false,
         'push_items' => 200,
+        'push_batch_files' => 5,
+        'push_batch_assets' => 15,
         'push_bytes' => 10 * 1024 * 1024,
         'push_asset_bytes' => 20 * 1024 * 1024,
     ],
