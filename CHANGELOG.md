@@ -8,6 +8,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A Core link in a link field is picked like an entry**: the Campaign or
+  Brand option of a Statamic `link` field shows one inline item with a status
+  dot and a menu, chosen from a searchable list, instead of a multi-select
+  with a counter and a chip. Stored values are unchanged. See
+  `docs/buttons.md`.
 - **A push carries the images a block requires**: an image a required asset
   field names (a hero slide's photo, say) and the push uploads no longer
   refuses the file as missing its image. The push checks every file before

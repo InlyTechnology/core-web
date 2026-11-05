@@ -19,6 +19,8 @@ final class CoreLinkType extends LinkType
     /** Adds each configured Core link to the link fieldtype; Statamic's own entry and asset types keep their handles. */
     public static function register(): void
     {
+        CoreLinkPicker::register();
+
         foreach (array_keys(Button::coreLinks()) as $handle) {
             if (! in_array($handle, ['entry', 'asset', 'url', 'first-child'], true)) {
                 Link::extend($handle, self::class);
@@ -45,11 +47,9 @@ final class CoreLinkType extends LinkType
         }
 
         return [
-            'type' => 'dictionary',
+            'type' => CoreLinkPicker::HANDLE,
             'dictionary' => $link['snapshot'] === null ? $link['dictionary'] : ['type' => SnapshotPagesDictionary::HANDLE, 'snapshot' => $link['snapshot']],
-            // A string on purpose: the link field reads its nested field's value as a list, which the dictionary input
-            // sends only when it is not exactly 1, and the input still stops at one pick.
-            'max_items' => '1',
+            'max_items' => 1,
         ];
     }
 
