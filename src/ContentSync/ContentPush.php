@@ -85,7 +85,7 @@ class ContentPush
     public function __construct(private DraftWriter $writer, private Proposals $proposals, private DraftBase $draftBase) {}
 
     /**
-     * @param  list<array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string}>  $items
+     * @param  list<array{path: string, contents: string, base?: ?string, draft?: ?string, parent_id?: ?string, arriving_assets?: list<string>}>  $items  `arriving_assets`: the files a dry run's push uploads before it writes
      * @param  array<int, string>  $refusedAssets  item index => why an asset it names cannot be pushed
      * @return array{written: bool, results: list<array<string, mixed>>}
      */
@@ -282,6 +282,7 @@ class ContentPush
                 'blueprint' => is_string($data['blueprint'] ?? null) ? $data['blueprint'] : null,
                 'fields' => $fields,
                 'dry_run' => $dryRun,
+                'arriving_assets' => $item['arriving_assets'] ?? [],
             ], new StoredValues);
 
             return [...$this->drafted($path, $id, $result, $dryRun), ...$unpublished];
@@ -323,6 +324,7 @@ class ContentPush
             'fields' => $fields,
             'base_hash' => $draftHash,
             'dry_run' => $dryRun,
+            'arriving_assets' => $item['arriving_assets'] ?? [],
         ], new StoredValues);
 
         return [...$this->drafted($path, $id, $result, $dryRun), ...$unpublished];

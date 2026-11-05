@@ -165,9 +165,15 @@ class SyncApiController
 
         $items = (array) $request->input('items');
         $refusedAssets = [];
+        $arriving = [];
 
         foreach ($items as $i => $item) {
             foreach ((array) ($item['assets'] ?? []) as $key) {
+                // A dry run is the push's check before it uploads what the site lacks, so those files count as there.
+                if ($dryRun && ($statuses[$key]['status'] ?? null) === AssetPush::MISSING) {
+                    $arriving[$i][] = $key;
+                }
+
                 $status = $statuses[$key]['status'] ?? null;
 
                 if ($status === null || in_array($status, [AssetPush::CONFLICT, AssetPush::FORBIDDEN, AssetPush::INVALID], true) || (! $dryRun && $status === AssetPush::MISSING)) {
@@ -178,13 +184,14 @@ class SyncApiController
             }
         }
 
-        $result = $push->push(self::author($request), array_map(fn (array $item) => [
+        $result = $push->push(self::author($request), array_map(fn (array $item, int $i) => [
             'path' => (string) $item['path'],
             'contents' => (string) $item['contents'],
             'base' => $item['base'] ?? null,
             'draft' => $item['draft'] ?? null,
             'parent_id' => $item['parent_id'] ?? null,
-        ], $items), $request->boolean('partial'), $request->boolean('force'), $dryRun, $refusedAssets, $request->boolean('publish'));
+            'arriving_assets' => $arriving[$i] ?? [],
+        ], $items, array_keys($items)), $request->boolean('partial'), $request->boolean('force'), $dryRun, $refusedAssets, $request->boolean('publish'));
 
         return new JsonResponse([...$result, 'assets' => array_values($statuses)]);
     }

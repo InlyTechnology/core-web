@@ -21,6 +21,7 @@ use Inly\CoreWeb\Tests\TestCase;
 use RuntimeException;
 use Statamic\Events\EntrySaved;
 use Statamic\Facades\AssetContainer;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
@@ -321,6 +322,42 @@ class ContentPushTest extends TestCase
         ])->assertOk()->assertJson(['written' => false, 'results' => [['status' => 'refused', 'error' => 'asset_refused']], 'assets' => [['status' => 'conflict']]]);
 
         $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_a_required_image_the_push_uploads_passes_the_check_before_it_is_uploaded(): void
+    {
+        $disk = $this->scratch.'/photos';
+        File::ensureDirectoryExists($disk);
+        config(['filesystems.disks.photos' => ['driver' => 'local', 'root' => $disk, 'url' => '/photos']]);
+        AssetContainer::make('photos')->disk('photos')->save();
+        Blueprint::make('page')->setNamespace('collections.pages')->setContents(['fields' => [
+            ['handle' => 'title', 'field' => ['type' => 'text', 'validate' => ['required']]],
+            ['handle' => 'slides', 'field' => ['type' => 'grid', 'fields' => [
+                ['handle' => 'image', 'field' => ['type' => 'assets', 'container' => 'photos', 'max_files' => 1, 'validate' => ['required']]],
+            ]]],
+        ]])->save();
+        Blink::flush();
+        $this->pull()->assertSuccessful();
+        $token = $this->tokenFor($this->cmsUser('pia@example.com', super: true));
+        $base = json_decode(file_get_contents($this->lock), true)['bases']['collections/pages/home.md'];
+        $push = fn (string $image, bool $dryRun) => $this->withToken($token)->postJson('/!/core-web/sync/push', [
+            'items' => [['path' => 'collections/pages/home.md', 'contents' => "---\nid: home\ntitle: Home\nslides:\n  -\n    id: one\n    image: {$image}\n---\n", 'base' => $base, 'assets' => ['photos::anna.jpg']]],
+            'assets' => [['container' => 'photos', 'path' => 'anna.jpg', 'hash' => hash('sha256', 'anna bytes')]],
+            'dry_run' => $dryRun,
+        ]);
+
+        $push('anna.jpg', true)->assertOk()->assertJson(['written' => false, 'results' => [['status' => 'working_copy']], 'assets' => [['status' => 'missing']]]);
+        $push('other.jpg', true)->assertOk()->assertJson(['results' => [['status' => 'refused', 'error' => 'validation']]]);
+        $push('anna.jpg', false)->assertOk()->assertJson(['written' => false, 'results' => [['status' => 'refused', 'error' => 'asset_refused']]]);
+
+        $this->withToken($token)->post('/!/core-web/sync/push/asset', [
+            'container' => 'photos',
+            'path' => 'anna.jpg',
+            'file' => UploadedFile::fake()->createWithContent('anna.jpg', 'anna bytes'),
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $push('anna.jpg', false)->assertOk()->assertJson(['written' => true, 'results' => [['status' => 'working_copy']]]);
+        $this->assertSame('anna.jpg', Entry::find('home')->fromWorkingCopy()->get('slides')[0]['image']);
     }
 
     public function test_an_asset_is_refused_when_its_path_is_not_an_uploadable_file_of_its_kind(): void
