@@ -78,6 +78,15 @@ home page stays first, and changing it needs permission to reorder the
 collection. At most `content_sync.push_items` (200) files go in one push;
 narrow a larger one with `--only` or `--site`.
 
+**Batches.** A site checks every file and asset of a request inside that
+request, so a push of entries the site already has goes in several:
+`content_sync.push_batch_files` (5) files and `content_sync.push_batch_assets`
+(15) assets each, a file with more assets alone. Every batch is checked
+before any is written, so a refusal still stops the whole push, and each is
+recorded in `content.lock` as it lands, so running the same command again
+after a timeout sends the rest. A push holding a new entry, a global, a tree
+or `--publish` stays one request.
+
 **Page trees holding new entries.** The check, `--dry-run` included, runs
 before those entries exist, so it checks the whole tree with their ids
 allowed: where they sit (its depth, the home page), what it drops, the
@@ -107,6 +116,8 @@ so a push never reverts an editor's edit. An entry with an open working
 copy this checkout did not push (even the developer's own, made in the CP)
 is refused too (`working_copy`). `--force` skips both checks but never the
 drafts' own guard: a working copy someone else holds is still refused.
+A working copy that is the pusher's own and already holds what the file says
+passes without `--force`: it is what a push whose answer never arrived left.
 Files pulled before this check existed have no base; pull again, or push
 with `--force`, which says which files it cannot check. The whole push is
 checked first and written only when every file passes; with `--partial`

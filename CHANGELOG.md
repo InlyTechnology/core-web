@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A large push no longer outlasts the web server**: `content:push` sends
+  entries the site already has in batches (`content_sync.push_batch_files`,
+  `content_sync.push_batch_assets`), records each as it lands and still
+  checks all of them before writing any. See `docs/content-push.md`.
+- **A push can be sent again after a lost answer**: a working copy that is
+  the pusher's own and already holds what the file says is no longer refused
+  as `working_copy`, so a timeout during the write needs no `--force`.
 - **A push carries the images a block requires**: an image a required asset
   field names (a hero slide's photo, say) and the push uploads no longer
   refuses the file as missing its image. The push checks every file before

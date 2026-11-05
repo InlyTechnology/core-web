@@ -167,8 +167,141 @@ class ContentPushCommand extends Command
      */
     private function send(LocalContent $local, RemoteSite $remote, array $files): int
     {
+        $batches = $this->batches($local, $files);
+        $checked = [];
+        $statuses = [];
+
+        foreach ($batches as $batch) {
+            $answer = $this->request($remote, [...$this->payload($batch), 'dry_run' => true]);
+            array_push($checked, ...$answer['results']);
+
+            foreach ($answer['assets'] ?? [] as $asset) {
+                $statuses[$asset['container'].'::'.$asset['path']] = $asset;
+            }
+        }
+
+        $refused = array_filter($checked, fn (array $result) => $result['status'] === ContentPush::STATUS_REFUSED);
+        $this->outcome['results'] = $checked;
+
+        if ($this->option('dry-run') || ($refused !== [] && ! $this->option('partial'))) {
+            $this->report($checked);
+
+            if ($refused !== [] && ! $this->option('dry-run')) {
+                $this->error('Nothing was pushed: '.count($refused).' of '.count($files).' files were refused (--partial pushes the rest).');
+
+                return self::FAILURE;
+            }
+
+            $this->line('Dry run: nothing was pushed.');
+
+            return $refused === [] ? self::SUCCESS : self::FAILURE;
+        }
+
+        $passing = array_column(array_filter($checked, fn (array $result) => $result['status'] !== ContentPush::STATUS_REFUSED), 'path');
+
+        foreach ($passing as $path) {
+            foreach ($files[$path]['assets'] as $key => $asset) {
+                if (($statuses[$key]['status'] ?? null) !== AssetPush::MISSING) {
+                    continue;
+                }
+
+                $this->upload($remote, $asset);
+                $statuses[$key] = ['status' => AssetPush::SAME];
+            }
+        }
+
+        $results = [];
+        $anyWritten = false;
+
+        foreach ($batches as $i => $batch) {
+            try {
+                $result = $this->request($remote, [...$this->payload($batch), 'dry_run' => false]);
+            } catch (RemoteSiteError $e) {
+                if ($i === 0) {
+                    throw $e;
+                }
+
+                throw new RemoteSiteError($e->getMessage()." {$i} of ".count($batches).' batches were pushed and recorded: run the same command again for the rest.', previous: $e);
+            }
+
+            $this->report($result['results']);
+            array_push($results, ...$result['results']);
+            $anyWritten = $anyWritten || ($result['written'] ?? false);
+            $this->outcome = [...$this->outcome, 'written' => $anyWritten, 'results' => $results];
+
+            // Recorded batch by batch, so a later one failing leaves what landed out of the next push.
+            if ($result['written'] ?? false) {
+                $this->record($local, $files, $result['results']);
+            }
+        }
+
+        $landed = array_filter($results, fn (array $item) => isset($files[$item['path']]) && $item['status'] !== ContentPush::STATUS_REFUSED);
+        $written = count($landed);
+        $live = count(array_filter($landed, fn (array $item) => in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true)));
+
+        if ($this->option('publish') && ! self::reportsPublishing($results)) {
+            $this->warn('The site said nothing about publishing: it may predate content:push --publish. What was pushed is a draft or proposal; publish it in the CP, or update core-web on the site.');
+        }
+
+        $failed = count($results) - $written;
+
+        if ($this->option('publish')) {
+            $waiting = $written - $live - count(array_filter($results, fn (array $item) => $item['status'] === ContentPush::STATUS_UNCHANGED));
+            $this->info(sprintf('Pushed to %s: %d published or applied, %d left for an editor in the CP, %d refused.', $remote->url(), $live, $waiting, $failed));
+        } else {
+            $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
+        }
+
+        return $failed === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * The files split into requests short enough for the web server's timeout: a site checks every file and asset
+     * of a request in that request. Only entries the site already has are split: a new entry and the tree placing it,
+     * or a --publish that goes live whole, must stay in one request.
+     *
+     * @param  array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>  $files
+     * @return list<array<string, array<string, mixed>>>
+     */
+    private function batches(LocalContent $local, array $files): array
+    {
+        $pulled = $local->lock()['items'];
+        $splits = ! $this->option('publish')
+            && collect(array_keys($files))->every(fn (string $path) => ContentPush::typeOf($path) === 'entries' && isset($pulled[$path]));
+
+        if (! $splits) {
+            return [$files];
+        }
+
+        $maxFiles = max(1, (int) config('core-web.content_sync.push_batch_files', 5));
+        $maxAssets = max(1, (int) config('core-web.content_sync.push_batch_assets', 15));
+        $batches = [];
+        $batch = [];
+        $assets = 0;
+
+        foreach ($files as $path => $file) {
+            if ($batch !== [] && (count($batch) >= $maxFiles || $assets + count($file['assets']) > $maxAssets)) {
+                $batches[] = $batch;
+                $batch = [];
+                $assets = 0;
+            }
+
+            $batch[$path] = $file;
+            $assets += count($file['assets']);
+        }
+
+        return [...$batches, $batch];
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $files
+     * @return array<string, mixed>
+     */
+    private function payload(array $files): array
+    {
         $assets = array_merge(...array_values(array_map(fn (array $file) => $file['assets'], $files)));
-        $payload = [
+
+        return [
             'items' => array_values(array_map(fn (string $path, array $file) => array_filter([
                 'path' => $path,
                 'contents' => $file['contents'],
@@ -183,51 +316,22 @@ class ContentPushCommand extends Command
             'force' => (bool) $this->option('force'),
             'publish' => (bool) $this->option('publish'),
         ];
+    }
 
-        $checked = $this->request($remote, [...$payload, 'dry_run' => true]);
-        $refused = array_filter($checked['results'], fn (array $result) => $result['status'] === ContentPush::STATUS_REFUSED);
-        $this->outcome['results'] = $checked['results'];
-
-        if ($this->option('dry-run') || ($refused !== [] && ! $this->option('partial'))) {
-            $this->report($checked['results']);
-
-            if ($refused !== [] && ! $this->option('dry-run')) {
-                $this->error('Nothing was pushed: '.count($refused).' of '.count($files).' files were refused (--partial pushes the rest).');
-
-                return self::FAILURE;
-            }
-
-            $this->line('Dry run: nothing was pushed.');
-
-            return $refused === [] ? self::SUCCESS : self::FAILURE;
-        }
-
-        $passing = array_column(array_filter($checked['results'], fn (array $result) => $result['status'] !== ContentPush::STATUS_REFUSED), 'path');
-        $statuses = collect($checked['assets'] ?? [])->keyBy(fn (array $asset) => $asset['container'].'::'.$asset['path']);
-
-        foreach ($passing as $path) {
-            foreach ($files[$path]['assets'] as $key => $asset) {
-                if (($statuses[$key]['status'] ?? null) !== AssetPush::MISSING) {
-                    continue;
-                }
-
-                $this->upload($remote, $asset);
-                $statuses[$key] = ['status' => AssetPush::SAME];
-            }
-        }
-
-        $result = $this->request($remote, [...$payload, 'dry_run' => false]);
-        $this->outcome = [...$this->outcome, 'written' => (bool) ($result['written'] ?? false), 'results' => $result['results']];
-        $this->report($result['results']);
-
+    /**
+     * Writes what one answer landed into content.lock.
+     *
+     * @param  array<string, array<string, mixed>>  $files
+     * @param  list<array<string, mixed>>  $results
+     */
+    private function record(LocalContent $local, array $files, array $results): void
+    {
         $pushed = $local->lock()['pushed'];
         $drafts = [];
         $bases = [];
         $published = [];
-        $written = 0;
-        $live = 0;
 
-        foreach ($result['results'] as $item) {
+        foreach ($results as $item) {
             if (! isset($files[$item['path']])) {
                 continue;
             }
@@ -241,7 +345,6 @@ class ContentPushCommand extends Command
                 continue;
             }
 
-            $written++;
             $isLive = in_array($item['status'], [ContentPush::STATUS_PUBLISHED, ContentPush::STATUS_APPLIED], true);
             // A file the site already held as sent is as live as one the push made live, and its version is the site's.
             $isLanded = $isLive || $item['status'] === ContentPush::STATUS_UNCHANGED;
@@ -255,10 +358,6 @@ class ContentPushCommand extends Command
                 $drafts[$item['path']] = $item['draft'];
             }
 
-            if ($isLive) {
-                $live++;
-            }
-
             if ($isLanded) {
                 $published[$item['path']] = $files[$item['path']]['hash'];
 
@@ -268,24 +367,7 @@ class ContentPushCommand extends Command
             }
         }
 
-        if ($result['written'] ?? false) {
-            $local->writePushed($pushed, $drafts, $bases, $published);
-        }
-
-        if ($this->option('publish') && ! self::reportsPublishing($result['results'])) {
-            $this->warn('The site said nothing about publishing: it may predate content:push --publish. What was pushed is a draft or proposal; publish it in the CP, or update core-web on the site.');
-        }
-
-        $failed = count($result['results']) - $written;
-
-        if ($this->option('publish')) {
-            $waiting = $written - $live - count(array_filter($result['results'], fn (array $item) => $item['status'] === ContentPush::STATUS_UNCHANGED));
-            $this->info(sprintf('Pushed to %s: %d published or applied, %d left for an editor in the CP, %d refused.', $remote->url(), $live, $waiting, $failed));
-        } else {
-            $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
-        }
-
-        return $failed === 0 ? self::SUCCESS : self::FAILURE;
+        $local->writePushed($pushed, $drafts, $bases, $published);
     }
 
     /**

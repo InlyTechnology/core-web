@@ -47,6 +47,9 @@ class ContentPushTest extends TestCase
 
     private string $lock;
 
+    /** Which write of the push the gateway answers 504 to; 0 for none. */
+    private int $lostWrite = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -106,7 +109,15 @@ class ContentPushTest extends TestCase
 
     private function routeRemoteToThisApp(): void
     {
-        Http::fake(function (Request $request) {
+        $writes = 0;
+
+        Http::fake(function (Request $request) use (&$writes) {
+            $isWrite = str_ends_with($request->url(), '/sync/push') && ($request->data()['dry_run'] ?? false) === false;
+
+            if ($isWrite && ++$writes === $this->lostWrite) {
+                return Http::response('', 504);
+            }
+
             $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'];
 
             if ($request->hasHeader('Authorization')) {
@@ -417,6 +428,99 @@ class ContentPushTest extends TestCase
 
         $this->push()->expectsOutputToContain('[working_copy]')->expectsOutputToContain('Nothing was pushed')->assertFailed();
         $this->assertSame('Edited in the CP', Entry::find('home')->fromWorkingCopy()->get('title'));
+    }
+
+    public function test_a_push_whose_answer_never_arrived_can_be_sent_again(): void
+    {
+        $this->pull()->assertSuccessful();
+        $pulled = file_get_contents($this->lock);
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Pushed');
+        $this->push()->assertSuccessful();
+
+        // The site wrote the working copy, but the checkout never heard, so its lock is as before the push.
+        file_put_contents($this->lock, $pulled);
+        $this->freshLocal();
+
+        $this->push()->expectsOutputToContain('working_copy')->assertSuccessful();
+        $this->assertSame('Pushed', Entry::find('home')->fromWorkingCopy()->get('title'));
+
+        $this->freshLocal();
+        $this->assertSame([], $this->statusPaths(), 'The retry is recorded as pushed.');
+
+        // A later edit goes over that draft like any push over its own.
+        $this->edit('collections/pages/home.md', 'title: Pushed', 'title: Pushed again');
+        $this->freshLocal();
+        $this->push()->assertSuccessful();
+        $this->assertSame('Pushed again', Entry::find('home')->fromWorkingCopy()->get('title'));
+    }
+
+    public function test_someone_elses_working_copy_holding_the_same_values_is_still_refused(): void
+    {
+        $this->pull()->assertSuccessful();
+        $other = $this->cmsUser('other@example.com', super: true);
+        Entry::find('home')->fromWorkingCopy()->set('title', 'Same')->makeWorkingCopy()->user($other)->save();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Same');
+
+        $this->push()->expectsOutputToContain('[working_copy]')->expectsOutputToContain('Nothing was pushed')->assertFailed();
+        $this->assertSame((string) $other->id(), (string) Entry::find('home')->workingCopy()->user()->id());
+    }
+
+    public function test_a_push_of_existing_entries_goes_in_batches(): void
+    {
+        config(['core-web.content_sync.push_batch_files' => 1]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Home edited');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: About edited');
+
+        $this->push()->expectsOutputToContain('2 drafted or proposed, 0 refused')->assertSuccessful();
+
+        $pushes = array_map(fn (array $sent) => json_decode($sent[0]->body(), true), Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/sync/push'))->values()->all());
+        $this->assertSame([[true, 1], [true, 1], [false, 1], [false, 1]], array_map(fn (array $push) => [$push['dry_run'], count($push['items'])], $pushes));
+        $this->assertSame('Home edited', Entry::find('home')->fromWorkingCopy()->get('title'));
+        $this->assertSame('About edited', Entry::find('about')->fromWorkingCopy()->get('title'));
+    }
+
+    public function test_a_refusal_in_any_batch_stops_the_whole_push_before_it_writes(): void
+    {
+        config(['core-web.content_sync.push_batch_files' => 1]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Home edited');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: ""');
+
+        $this->push()->expectsOutputToContain('Nothing was pushed: 1 of 2')->assertFailed();
+
+        $this->assertFalse(Entry::find('home')->hasWorkingCopy());
+    }
+
+    public function test_a_batch_that_fails_leaves_those_before_it_recorded(): void
+    {
+        config(['core-web.content_sync.push_batch_files' => 1]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Home edited');
+        $this->edit('collections/pages/about.md', 'title: About', 'title: About edited');
+
+        $this->lostWrite = 2;
+
+        $this->push()->expectsOutputToContain('1 of 2 batches were pushed and recorded')->assertFailed();
+
+        $this->assertCount(1, $this->statusPaths());
+
+        $this->lostWrite = 0;
+        $this->freshLocal();
+        $this->push()->expectsOutputToContain('1 drafted or proposed, 0 refused')->assertSuccessful();
+    }
+
+    public function test_a_new_entry_keeps_the_push_in_one_request(): void
+    {
+        config(['core-web.content_sync.push_batch_files' => 1]);
+        $this->pull()->assertSuccessful();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Home edited');
+        file_put_contents($this->root.'/collections/pages/fresh.md', "---\nid: fresh\ntitle: Fresh\n---\n");
+
+        $this->push()->assertSuccessful();
+
+        $pushes = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/sync/push'));
+        $this->assertCount(2, $pushes, 'One check and one write.');
     }
 
     public function test_an_open_working_copy_the_checkout_never_pushed_is_refused(): void
