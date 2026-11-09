@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.40.0
 
 - **Live reads run Core functions**: `LiveRequest::function('vehicles/calculate-financing', [...])`
   runs a Core function on the site's token. The answer is kept for the
