@@ -415,6 +415,7 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadViews();
             $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
             MissingAltTextWidget::register();
+            (new CpThumbnails)->register();
             // Every change to a container's assets can change its count, so the next dashboard visit scans it again.
             Event::listen([AssetSaved::class, AssetDeleted::class, AssetUploaded::class, AssetReuploaded::class], fn ($event) => MissingAltText::forget($event->asset->containerHandle()));
             // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
@@ -423,7 +424,6 @@ class CoreWebServiceProvider extends ServiceProvider
             // Asset::url() on a disk reading the live site's pulled index; never on a server.
             if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
-                (new CpThumbnails)->register();
             }
 
             if ($this->app->runningInConsole()) {

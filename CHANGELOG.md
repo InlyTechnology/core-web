@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Control panel thumbnails come from the CDN**: with `media` on, a file
+  on a media disk the CDN serves gets its CP thumbnail (asset browser, edit
+  screen, assets fields, the `missing_alt_text` widget) from the CDN instead
+  of Glide, a video a CDN frame. Glide decoded each original inside the app,
+  so a few large photos could take a small Laravel Cloud instance past its
+  memory. See `docs/media.md`.
+
 ## v0.41.0
 
 - **A large push no longer outlasts the web server**: `content:push` sends
