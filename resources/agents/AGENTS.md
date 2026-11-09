@@ -141,6 +141,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   Manager renders through `<x-core-web::consent.google-tag-manager>`, never through Peak SEO's tracker setting.
 - **A new vendor is declared in the same change**: its key (or its own definition) in `consent.vendors`, and
   `consent.policy_version` raised so visitors are asked again. There is no scanner to catch a missed one.
+- **A preview is no visit**: Core's frame and Live Preview get no banner or trackers by themselves; a preview
+  route of the site's own calls `Inly\CoreWeb\Preview\Preview::mark()` before it answers, which also keeps the
+  response out of every cache, and a tracker of the site's own outside the consent components checks `Preview::active()`.
 - A site that must have a certified CMP (it shows Google's ads, or a contract names Cookiebot) keeps Cookiebot.
 
 ## SEO (`seo`)

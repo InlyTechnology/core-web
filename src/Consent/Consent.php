@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Consent;
 
+use Inly\CoreWeb\Preview\Preview;
 use Statamic\Facades\Asset;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -15,11 +16,14 @@ class Consent
 
     /**
      * The settings core-consent.js reads from window.coreConsent; the same for every visitor, so a cached page holds it.
+     * A preview, never cached, asks nothing, runs nothing it holds and logs nothing.
      *
      * @return array<string, mixed>
      */
     public static function script(): array
     {
+        $preview = Preview::active();
+
         return [
             'cookie' => (string) self::setting('cookie', 'core_consent'),
             'version' => (int) self::setting('policy_version', 1),
@@ -32,7 +36,8 @@ class Consent
             'fingerprint' => self::logs() ? ConsentSnapshot::fingerprint(ConsentSnapshot::content()) : null,
             'lang' => app()->getLocale(),
             'site' => Site::current()->handle(),
-            'log' => self::logs() ? route('core-web.consent.store', [], false) : null,
+            'log' => self::logs() && ! $preview ? route('core-web.consent.store', [], false) : null,
+            'preview' => $preview,
         ];
     }
 
@@ -86,6 +91,12 @@ class Consent
     public static function asks(): bool
     {
         return array_diff(array_keys(ConsentVendors::byCategory()), ['necessary']) !== [];
+    }
+
+    /** Whether this page asks: never a preview, which is no visit and loads nothing the banner would ask for. */
+    public static function asksHere(): bool
+    {
+        return self::asks() && ! Preview::active();
     }
 
     /**

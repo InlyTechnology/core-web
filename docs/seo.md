@@ -98,7 +98,8 @@ its own classes merge in.
 
 `tracker_type` is `gtag` (Google Analytics, `google_analytics`) or `gtm`
 (Tag Manager, `google_tag_manager`), rendered only where
-`trackers_{environment}` is on. With the `consent` feature the tags are held
+`trackers_{environment}` is on and never in a preview
+([Previews](cookie-consent.md#previews)). With the `consent` feature the tags are held
 until statistics is granted (Tag Manager through
 `<x-core-web::consent.google-tag-manager>`), so the site's tracker test needs
 no exception for them. Other tracking scripts are the site's own, held with

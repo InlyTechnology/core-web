@@ -12,6 +12,7 @@ use Inly\CoreWeb\Consent\Consent;
 use Inly\CoreWeb\Consent\ConsentSnapshot;
 use Inly\CoreWeb\Consent\ConsentUtilityController;
 use Inly\CoreWeb\Consent\ConsentVendors;
+use Inly\CoreWeb\Preview\Preview;
 use Inly\CoreWeb\Tests\TestCase;
 use InvalidArgumentException;
 use Statamic\Facades\AssetContainer;
@@ -20,8 +21,10 @@ use Statamic\Facades\Entry;
 use Statamic\Facades\Fieldset;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Facades\Token;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
+use Statamic\Tokens\Handlers\LivePreview;
 
 class ConsentTest extends TestCase
 {
@@ -263,6 +266,51 @@ class ConsentTest extends TestCase
 
         $this->assertStringNotContainsString('text/plain', $html);
         $this->assertStringContainsString("'GTM-ABC'", $html);
+    }
+
+    public function test_a_preview_asks_nothing_reads_no_choice_and_loads_nothing_it_holds(): void
+    {
+        Preview::mark();
+
+        $head = Blade::render('<x-core-web::consent.head />');
+        $settings = Consent::script();
+
+        $this->assertTrue($settings['preview']);
+        $this->assertNull($settings['log']);
+        $this->assertStringContainsString('\\u0022preview\\u0022:true', $head);
+        $this->assertStringContainsString('!settings.preview && document.cookie', $head);
+        $this->assertStringContainsString("gtag('consent', 'default'", $head);
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.banner />')));
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.settings-link />')));
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.google-tag-manager id="GTM-ABC" />')));
+        $this->assertStringContainsString('bk_id', $declaration = Blade::render('<x-core-web::consent.declaration />'));
+        $this->assertStringNotContainsString('data-consent-open', $declaration);
+
+        $gate = Blade::render('<x-core-web::consent.gate category="marketing" class="mt-8"><iframe src="https://example.com"></iframe></x-core-web::consent.gate>');
+
+        $this->assertStringNotContainsString('example.com', $gate);
+        $this->assertStringNotContainsString('data-consent', $gate);
+        $this->assertStringContainsString('class="mt-8"', $gate);
+        $this->assertStringContainsString('not loaded in a preview', $gate);
+    }
+
+    public function test_a_visit_is_no_preview_and_keeps_the_banner(): void
+    {
+        $this->assertFalse(Preview::active());
+        $this->assertFalse(Consent::script()['preview']);
+        $this->assertStringContainsString('data-consent-banner', Blade::render('<x-core-web::consent.banner />'));
+    }
+
+    public function test_the_control_panel_s_live_preview_is_a_preview(): void
+    {
+        Token::make('live-token', LivePreview::class)->save();
+
+        $this->get('/?token=nope');
+        $this->assertFalse(Preview::active());
+
+        $this->get('/?live-preview=x&token=live-token');
+        $this->assertTrue(Preview::active());
+        $this->assertSame('', trim(Blade::render('<x-core-web::consent.banner />')));
     }
 
     public function test_the_declaration_lists_every_cookie_with_its_lifetime(): void

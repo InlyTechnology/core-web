@@ -1,4 +1,4 @@
-{{-- In <head>, before any tag: every consent API's denied defaults, and a returning visitor's choice applied at once. --}}
+{{-- In <head>, before any tag: every consent API's denied defaults, and a returning visitor's choice applied at once (never in a preview, which stays denied). --}}
 @php($signals = \Inly\CoreWeb\Consent\ConsentVendors::signals())
 <script>
     window.coreConsent = @js(\Inly\CoreWeb\Consent\Consent::script());
@@ -18,8 +18,8 @@
 @endif
     (function (settings) {
         var choice = null;
-        var match = document.cookie.match(new RegExp('(?:^|; )' + settings.cookie + '=([^;]*)'));
         try {
+            var match = !settings.preview && document.cookie.match(new RegExp('(?:^|; )' + settings.cookie + '=([^;]*)'));
             var read = match && JSON.parse(decodeURIComponent(match[1]));
             if (read && Array.isArray(read.c) && read.v === settings.version && (read.s === undefined || (read.s && typeof read.s === 'object' && read.s[settings.site] === settings.scope)) && Date.now() - read.t * 1000 <= settings.renewAfterDays * 864e5) choice = read;
         } catch (e) {}

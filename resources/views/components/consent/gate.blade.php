@@ -1,6 +1,13 @@
 @props(['category' => 'marketing'])
 @php($title = ['preferences' => __('preferences'), 'statistics' => __('statistics'), 'marketing' => __('marketing')][$category] ?? $category)
-{{-- An embed (a HubSpot form, a booking frame, a video) rendered only once its category is granted. --}}
+{{-- An embed (a HubSpot form, a booking frame, a video) rendered only once its category is granted; never in a preview. --}}
+@if (\Inly\CoreWeb\Preview\Preview::active())
+<div {{ $attributes }}>
+    <div class="core-consent-gate" @if ($style = \Inly\CoreWeb\Consent\Consent::brandingStyle()) style="{{ $style }}" @endif>
+        <p>{{ __('This content uses :category cookies, so it is not loaded in a preview.', ['category' => $title]) }}</p>
+    </div>
+</div>
+@else
 <div data-consent-gate="{{ $category }}" {{ $attributes }}>
     <template>{{ $slot }}</template>
     <div class="core-consent-gate" data-consent-placeholder @if ($style = \Inly\CoreWeb\Consent\Consent::brandingStyle()) style="{{ $style }}" @endif>
@@ -9,3 +16,4 @@
         <button type="button" class="core-consent__button core-consent__button--outline" data-consent-open>{{ __('Cookie settings') }}</button>
     </div>
 </div>
+@endif

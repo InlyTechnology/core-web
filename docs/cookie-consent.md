@@ -114,7 +114,9 @@ it.
 - **An embed** (a HubSpot form, a booking frame, a video):
   `<x-core-web::consent.gate category="marketing">...</x-core-web::consent.gate>`
   shows a placeholder with *Accept marketing cookies* until it is granted.
-  Declare the embed's vendor too, so the category is in the banner.
+  Declare the embed's vendor too, so the category is in the banner. Blade
+  runs the slot even while it holds it back, so an `@push` inside a gate
+  escapes it: hold such a script with `@consentScript` instead.
 - **The declaration**: `<x-core-web::consent.declaration />` on the cookie
   page, a table per category read from the same list, with the visitor's
   current choice and a button to change it.
@@ -124,6 +126,35 @@ category taken back reloads the page, since a
 script that ran cannot be stopped. `window.CoreConsent` has `open()`,
 `has(category)`, `categories()` and `onChange(fn)`, and a
 `core-consent:change` event fires on `window`.
+
+## Previews
+
+A preview is no visit: Core's preview frame, the control panel's Live
+Preview and a draft's preview link (which opens Live Preview) render with no
+banner, no settings link and no Tag Manager. Consent Mode stays denied, a
+returning visitor's choice is not read, nothing is logged, a held script
+never runs and a gated embed shows a short note in its place.
+`window.CoreConsent.has()` answers `false` for every optional category. The
+`seo` feature's Google tags and a button's tracker event stay off too.
+
+A preview route of the site's own (a signed link to a page before it goes
+out) marks its response the same way, before it answers:
+
+```php
+use Inly\CoreWeb\Preview\Preview;
+
+Preview::mark();
+
+return response($view->render());
+```
+
+Marking also keeps the response out of every cache, an error page the route
+answers with included: it answers `X-Statamic-Uncacheable: true` and
+`Cache-Control: no-store, private`, since a kept copy would outlive the
+link's signature and serve the draft to anyone.
+
+`Preview::active()` answers whether the response is a preview, for a
+tracker or a form of the site's own that should stay off it.
 
 ## Several domains
 
