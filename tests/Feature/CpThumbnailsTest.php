@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\User;
@@ -35,6 +36,7 @@ class CpThumbnailsTest extends TestCase
         File::copy(__DIR__.'/../fixtures/pixel.png', $this->scratch.'/hero.png');
         File::put($this->scratch.'/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
         File::put($this->scratch.'/clip.mp4', 'clip');
+        File::put($this->scratch.'/clip.webm', 'clip');
 
         config(['filesystems.disks.assets.root' => $this->scratch, 'filesystems.disks.assets.url' => self::CDN]);
         Storage::forgetDisk('assets');
@@ -59,6 +61,20 @@ class CpThumbnailsTest extends TestCase
 
         $show = $this->getJson(cp_route('assets.show', base64_encode('assets::hero.png')))->assertOk()->json('data');
         $this->assertSame($assets['hero.png']['thumbnail'], $show['thumbnail']);
+    }
+
+    public function test_a_video_the_cdn_cannot_frame_keeps_statamic_s_thumbnail(): void
+    {
+        $webm = collect($this->browse('assets'))->firstWhere('basename', 'clip.webm');
+
+        $this->assertStringStartsNotWith(self::CDN, (string) ($webm['thumbnail'] ?? ''));
+    }
+
+    public function test_the_thumbnail_route_listings_build_sends_them_to_the_cdn(): void
+    {
+        $this->actingAs($this->super())
+            ->get(cp_route('assets.thumbnails.show', ['encoded_asset' => base64_encode('assets::hero.png'), 'size' => 'small']))
+            ->assertRedirect(self::CDN.'/hero.png?width=400&height=400&fit=contain&format=auto');
     }
 
     public function test_where_the_cdn_does_not_serve_the_disk_glide_makes_the_thumbnail(): void
@@ -105,8 +121,11 @@ class CpThumbnailsTest extends TestCase
     /** @return list<array<string, mixed>> */
     private function browse(string $container): array
     {
-        $super = User::find('boss') ?? tap(User::make()->id('boss')->email('boss@example.com')->makeSuper())->save();
+        return $this->actingAs($this->super())->getJson(cp_route('assets.browse.index').'/folders/'.$container)->assertOk()->json('data');
+    }
 
-        return $this->actingAs($super)->getJson(cp_route('assets.browse.index').'/folders/'.$container)->assertOk()->json('data');
+    private function super(): UserContract
+    {
+        return User::find('boss') ?? tap(User::make()->id('boss')->email('boss@example.com')->makeSuper())->save();
     }
 }
