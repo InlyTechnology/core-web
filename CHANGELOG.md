@@ -8,6 +8,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A large push no longer outlasts the web server**: `content:push` sends
+  entries the site already has in batches (`content_sync.push_batch_files`,
+  `content_sync.push_batch_assets`), records each as it lands and still
+  checks all of them before writing any. See `docs/content-push.md`.
+- **A push can be sent again after a lost answer**: a draft that is the
+  pusher's own and already holds what the file says (a working copy, or an
+  unpublished entry) is no longer refused as `working_copy` or
+  `base_changed`, so a timeout during the write needs no `--force`.
 - **Previews ask no consent and load no trackers**: Core's preview frame,
   the control panel's Live Preview and a draft's preview link render without
   the cookie banner, the settings link, Tag Manager or the `seo` feature's
