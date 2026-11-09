@@ -84,8 +84,10 @@ request, so a push of entries the site already has goes in several:
 (15) assets each, a file with more assets alone. Every batch is checked
 before any is written, so a refusal still stops the whole push, and each is
 recorded in `content.lock` as it lands, so running the same command again
-after a timeout sends the rest. A push holding a new entry, a global, a tree
-or `--publish` stays one request.
+after a timeout sends the rest. A refusal the site makes only at the write
+stops the batches after it, unless `--partial`. Anything else (a new entry,
+a term, a global, a tree, two files naming one entry, or `--publish`) stays
+one request.
 
 **Page trees holding new entries.** The check, `--dry-run` included, runs
 before those entries exist, so it checks the whole tree with their ids
@@ -116,8 +118,9 @@ so a push never reverts an editor's edit. An entry with an open working
 copy this checkout did not push (even the developer's own, made in the CP)
 is refused too (`working_copy`). `--force` skips both checks but never the
 drafts' own guard: a working copy someone else holds is still refused.
-A working copy that is the pusher's own and already holds what the file says
-passes without `--force`: it is what a push whose answer never arrived left.
+A draft that is the pusher's own and already holds what the file says passes
+without `--force`, a working copy or an unpublished entry alike: it is what a
+push whose answer never arrived left.
 Files pulled before this check existed have no base; pull again, or push
 with `--force`, which says which files it cannot check. The whole push is
 checked first and written only when every file passes; with `--partial`
@@ -125,7 +128,7 @@ the passing ones are written and the refused ones listed. Two files that
 are the same entry refuse each other (`duplicate`). A refusal the check
 could not foresee, the site changing between the check and the write,
 still leaves the files before it written. Each refused file prints its
-reason, and the command exits non-zero. One push carries at most
+reason, and the command exits non-zero. One request carries at most
 `content_sync.push_bytes` (10 MB) of content in all.
 
 **The lock.** A push does not change what the lock says was pulled: the

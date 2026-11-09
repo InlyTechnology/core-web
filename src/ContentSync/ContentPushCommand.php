@@ -168,11 +168,12 @@ class ContentPushCommand extends Command
     private function send(LocalContent $local, RemoteSite $remote, array $files): int
     {
         $batches = $this->batches($local, $files);
+        $sha = $this->gitSha();
         $checked = [];
         $statuses = [];
 
         foreach ($batches as $batch) {
-            $answer = $this->request($remote, [...$this->payload($batch), 'dry_run' => true]);
+            $answer = $this->request($remote, [...$this->payload($batch, $sha), 'dry_run' => true]);
             array_push($checked, ...$answer['results']);
 
             foreach ($answer['assets'] ?? [] as $asset) {
@@ -212,16 +213,17 @@ class ContentPushCommand extends Command
 
         $results = [];
         $anyWritten = false;
+        $stoppedAfter = null;
 
         foreach ($batches as $i => $batch) {
             try {
-                $result = $this->request($remote, [...$this->payload($batch), 'dry_run' => false]);
+                $result = $this->request($remote, [...$this->payload($batch, $sha), 'dry_run' => false]);
             } catch (RemoteSiteError $e) {
                 if ($i === 0) {
                     throw $e;
                 }
 
-                throw new RemoteSiteError($e->getMessage()." {$i} of ".count($batches).' batches were pushed and recorded: run the same command again for the rest.', previous: $e);
+                throw new RemoteSiteError(rtrim($e->getMessage(), '.').". {$i} of ".count($batches).' batches were pushed and recorded: run the same command again for the rest.', previous: $e);
             }
 
             $this->report($result['results']);
@@ -232,6 +234,15 @@ class ContentPushCommand extends Command
             // Recorded batch by batch, so a later one failing leaves what landed out of the next push.
             if ($result['written'] ?? false) {
                 $this->record($local, $files, $result['results']);
+            }
+
+            // The site changed since the check: without --partial, a refusal stops the push as the check's would have.
+            $refusedHere = collect($result['results'])->contains(fn (array $item) => $item['status'] === ContentPush::STATUS_REFUSED);
+
+            if ($refusedHere && ! $this->option('partial') && $i < count($batches) - 1) {
+                $stoppedAfter = $i + 1;
+
+                break;
             }
         }
 
@@ -252,13 +263,18 @@ class ContentPushCommand extends Command
             $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
         }
 
-        return $failed === 0 ? self::SUCCESS : self::FAILURE;
+        if ($stoppedAfter !== null) {
+            $this->error(sprintf('The site refused a file it passed in the check, so %d of %d batches were sent and the rest were not: fix it and run the same command again.', $stoppedAfter, count($batches)));
+        }
+
+        return $failed === 0 && $stoppedAfter === null ? self::SUCCESS : self::FAILURE;
     }
 
     /**
-     * The files split into requests short enough for the web server's timeout: a site checks every file and asset
-     * of a request in that request. Only entries the site already has are split: a new entry and the tree placing it,
-     * or a --publish that goes live whole, must stay in one request.
+     * The files split into requests the web server answers in time, splitting only entries the site already has.
+     *
+     * A new entry and the tree placing it, a --publish that goes live whole, and two files naming one entry are checked
+     * against each other, so they stay in one request.
      *
      * @param  array<string, array{hash: string, contents: string, base: ?string, draft: ?string, parent_id: ?string, assets: array<string, array<string, mixed>>}>  $files
      * @return list<array<string, array<string, mixed>>>
@@ -266,8 +282,10 @@ class ContentPushCommand extends Command
     private function batches(LocalContent $local, array $files): array
     {
         $pulled = $local->lock()['items'];
+        $items = array_map(fn (string $path, array $file) => ['path' => $path, 'contents' => $file['contents']], array_keys($files), $files);
         $splits = ! $this->option('publish')
-            && collect(array_keys($files))->every(fn (string $path) => ContentPush::typeOf($path) === 'entries' && isset($pulled[$path]));
+            && collect(array_keys($files))->every(fn (string $path) => ContentPush::typeOf($path) === 'entries' && isset($pulled[$path]))
+            && ContentPush::duplicates($items) === [];
 
         if (! $splits) {
             return [$files];
@@ -297,7 +315,7 @@ class ContentPushCommand extends Command
      * @param  array<string, array<string, mixed>>  $files
      * @return array<string, mixed>
      */
-    private function payload(array $files): array
+    private function payload(array $files, ?string $sha): array
     {
         $assets = array_merge(...array_values(array_map(fn (array $file) => $file['assets'], $files)));
 
@@ -311,7 +329,7 @@ class ContentPushCommand extends Command
                 'assets' => array_keys($file['assets']),
             ], fn (mixed $value) => $value !== null && $value !== []), array_keys($files), $files)),
             'assets' => array_values(array_map(fn (array $asset) => Arr::only($asset, ['container', 'path', 'hash', 'size']), $assets)),
-            'git_sha' => $this->gitSha(),
+            'git_sha' => $sha,
             'partial' => (bool) $this->option('partial'),
             'force' => (bool) $this->option('force'),
             'publish' => (bool) $this->option('publish'),

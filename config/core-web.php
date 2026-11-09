@@ -755,7 +755,7 @@ return [
     | push_batch_files, push_batch_assets: the most files and assets one request
     | of a push checks, so a large push of existing entries outlasts no gateway
     | timeout. A file with more assets goes alone.
-    | push_bytes: the most content (all files together) one push carries.
+    | push_bytes: the most content (all files together) one request carries.
     | push_asset_bytes: the largest asset file a push uploads.
     |
     */

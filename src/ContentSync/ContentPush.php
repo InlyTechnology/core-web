@@ -317,11 +317,18 @@ class ContentPush
             'arriving_assets' => $item['arriving_assets'] ?? [],
         ];
 
+        // A draft that already holds what this file says is what a push whose answer never arrived left, so this one may record it.
         if (! $force && ! $ours) {
-            $this->assertBase($path, 'entries', $existing, $item['base'] ?? null);
+            try {
+                $this->assertBase($path, 'entries', $existing, $item['base'] ?? null);
+            } catch (DraftRefused $e) {
+                // An unpublished entry is drafted in place, so that push changed its live file.
+                if ($e->error !== 'base_changed' || $existing->published() || ! $this->holdsAlready($author, $write)) {
+                    throw $e;
+                }
+            }
 
-            // The live file is unchanged, but a working copy made since (even the pusher's own in the CP) is not the pulled version,
-            // unless it already holds what this file says: a push whose answer never arrived, which this one may record.
+            // A working copy made since the pull (even the pusher's own in the CP) is not the pulled version.
             if ($existing->revisionsEnabled() && $existing->hasWorkingCopy() && ! $this->holdsAlready($author, $write)) {
                 throw new DraftRefused('working_copy', __('core-web::sync.push_working_copy'));
             }
@@ -333,7 +340,7 @@ class ContentPush
     }
 
     /**
-     * Whether the entry's working copy is the author's and writing these fields would change nothing in it.
+     * Whether the entry's draft is the author's and writing these fields would change nothing in it.
      *
      * @param  array<string, mixed>  $write
      */
@@ -341,7 +348,7 @@ class ContentPush
     {
         try {
             return $this->writer->write($author, [...$write, 'dry_run' => true], new StoredValues)['changed_fields'] === [];
-        } catch (DraftRefused) {
+        } catch (DraftRefused|ValidationException) {
             return false;
         }
     }
@@ -364,7 +371,7 @@ class ContentPush
      * @param  list<array{path: string, contents: string}>  $items
      * @return array<int, true>
      */
-    private static function duplicates(array $items): array
+    public static function duplicates(array $items): array
     {
         $seen = [];
         $duplicates = [];
