@@ -1,5 +1,25 @@
 # Static cache
 
+## The strategy
+
+core-web turns Statamic's static cache on for every site it runs on a
+server, on Laravel Cloud or not: `half`, unless the app's environment is
+`local` or `testing`, where a cached page would hide the change being made.
+A server needs no `STATAMIC_STATIC_CACHING_STRATEGY` line for it.
+
+The site's own choice stands: a strategy its
+`config/statamic/static_caching.php` sets, or the env var (`full`, or `null`
+to turn caching off). Statamic's skeleton `.env.example` carries
+`STATAMIC_STATIC_CACHING_STRATEGY=null`, so delete that line: a server whose
+`.env` was copied from it would stay uncached.
+
+`half` still runs PHP on each request, and serves the stored page instead of
+rendering it. Only `full` is served by the web server without PHP, and Cloud
+has no web server rewrites for it. `php artisan config:show
+statamic.static_caching.strategy` prints what a server resolved.
+
+## Pages a snapshot change touches
+
 A snapshot moving saves no entry, so Statamic's invalidation never hears of
 it. `SiteCache::flushOnChange()` is the change listener that forgets the
 pages showing it; `SiteCache::flushEverySiteOnChange()` forgets every site's
@@ -61,7 +81,10 @@ inside `@nocache`: on the `half` strategy Statamic renders a nocache region
 again in each visitor's own request, with their own query, and the cached
 page keeps only its placeholder. A Core form's `query` page source is the
 usual case. Reading them in the browser (analytics and ad scripts do) needs
-nothing.
+nothing. Pagination links leave them out on their own while pages are
+cached: core-web gives Laravel's paginator a query without them, so `withQueryString()` (which
+Statamic's paginated tags call) keeps a listing's other parameters but never
+hands the first visitor's campaign to everyone who pages on.
 
 Not applied on the `full` strategy: it fills nocache regions from the
 browser, which sends the address with the parameters, and Statamic looks the

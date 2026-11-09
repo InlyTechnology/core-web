@@ -79,7 +79,8 @@ class DeployCommand extends Command
         $steps = [
             ['migrate', ['--force' => true], true],
             ['statamic:stache:refresh', [], true],
-            ['statamic:static:clear', [], true],
+            // Statamic fails the command when there is no static cache to clear (a local run, a site that turned it off).
+            ...(filled(config('statamic.static_caching.strategy')) ? [['statamic:static:clear', [], true]] : []),
             ['statamic:search:update', ['--all' => true], true],
         ];
 
