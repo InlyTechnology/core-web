@@ -49,16 +49,34 @@ class DeployCommand extends Command
         return self::SUCCESS;
     }
 
-    /** A local index is written to this container's disk, which no web replica reads and the next deploy resets. */
+    /** A local index is a file each container builds on its first search, which a save updates on one container only. */
     private function warnAboutLocalSearch(): void
     {
         $local = collect((array) config('statamic.search.indexes', []))
-            ->filter(fn ($index): bool => ($index['driver'] ?? null) === 'local')
+            ->filter(fn ($index): bool => is_array($index) && ($index['driver'] ?? 'local') === 'local')
             ->keys();
 
         if ($local->isNotEmpty()) {
-            $this->components->warn('Search indexes on the local driver stay empty on Cloud: '.$local->implode(', ').'. Use a remote search driver there, and keep search result pages out of the static cache: one container\'s index would be cached for everyone.');
+            $this->components->warn('Search indexes on the local driver are a file on each container on Cloud: '.$local->implode(', ').'. Each container builds its own on its first search, and a save reaches one container\'s copy only, so the others show it after their next restart. Use a remote search driver where edits must show at once, and keep search result pages out of the static cache.');
         }
+    }
+
+    /**
+     * On Cloud a local index is built by the container that reads it (CloudDefaults), so the deploy builds only those that
+     * outlive it: built here, a local one would be written to a disk no web replica reads.
+     *
+     * @return list<array{string, array<string, mixed>, bool}>
+     */
+    private function searchSteps(): array
+    {
+        if (! CloudDefaults::onCloud()) {
+            return [['statamic:search:update', ['--all' => true], true]];
+        }
+
+        return array_map(
+            fn (string $index): array => ['statamic:search:update', ['index' => $index], true],
+            ImportContentCommand::lastingSearchIndexes(),
+        );
     }
 
     /** Cloud's scheduler wakes a hibernating site for each due task, so one due every few minutes keeps it awake for good. */
@@ -81,7 +99,7 @@ class DeployCommand extends Command
             ['statamic:stache:refresh', [], true],
             // Statamic fails the command when there is no static cache to clear (a local run, a site that turned it off).
             ...(filled(config('statamic.static_caching.strategy')) ? [['statamic:static:clear', [], true]] : []),
-            ['statamic:search:update', ['--all' => true], true],
+            ...$this->searchSteps(),
         ];
 
         // Not required: with Core down the site serves the snapshots it has, and a deploy should not wait for Core.

@@ -90,6 +90,13 @@ final class CloudDefaults
             foreach (self::DEFAULTS as $key => [$env, $value]) {
                 self::set($config, $key, $env, $value);
             }
+
+            // Statamic queues every index build. On a worker a local index is written to the worker's disk, which no web
+            // replica reads, so each search queues another build and then finds no index. Built in the request, it is
+            // written where it is read.
+            if (blank(Env::get('STATAMIC_SEARCH_QUEUE_CONNECTION')) && blank($config->get('statamic.search.queue_connection')) && self::localSearchIndexes($config) !== []) {
+                $config->set('statamic.search.queue_connection', 'sync');
+            }
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
@@ -284,6 +291,18 @@ final class CloudDefaults
 
         $config->set('filesystems.disks.'.self::UPLOADS_DISK, [...$private, 'driver' => self::UPLOADS_DRIVER]);
         $config->set('livewire.temporary_file_upload.disk', self::UPLOADS_DISK);
+    }
+
+    /**
+     * The search indexes kept in a file on the container's disk, Statamic's own `cp` index included while the config names none.
+     *
+     * @return list<string>
+     */
+    public static function localSearchIndexes(Repository $config): array
+    {
+        $indexes = (array) $config->get('statamic.search.indexes', []) + ['cp' => ['driver' => 'local']];
+
+        return array_keys(array_filter($indexes, fn (mixed $index): bool => is_array($index) && ($index['driver'] ?? 'local') === 'local'));
     }
 
     /** Whether content and users live in the database, as nothing on Cloud's disk outlives a deploy. */

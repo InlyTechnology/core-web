@@ -21,6 +21,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Livewire's temporary uploads (`livewire.temporary_file_upload.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | a `livewire-tmp` disk on the private bucket, under a driver of its own (on an `s3` disk Livewire refuses a `multiple` field and never cleans up), so Livewire deletes uploads older than a day itself | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
+| The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: each container builds a local index in the request that first searches it, on its own disk. Queued, the build ran on the worker's disk, which no web replica reads, so every search queued another build and then failed on a missing index | `STATAMIC_SEARCH_QUEUE_CONNECTION`; a connection the site's config sets is kept |
 
 Static caching is on (`half`) here as on any server, with or without the
 feature: see [Static cache](static-cache.md#the-strategy).
@@ -80,9 +81,12 @@ The site does its half once:
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
   and turn on Cloud's scheduler for `core:reconcile-cms-users`.
-- Search: a `local` index lives on one container's disk, so on Cloud it
-  needs a remote search driver; `core-web:deploy` warns about any local
-  index.
+- Search: a `local` index is a file on each container's disk. Each
+  container builds its own on its first search (the feature builds it in the
+  request), and a save updates the copy of the one container that handles
+  it (with a worker, the worker's), so the others show an edit after their
+  next restart or deploy. Where edits must show in search at once, use a
+  remote search driver; `core-web:deploy` warns about any local index.
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
@@ -173,7 +177,9 @@ php artisan core-web:deploy
 ```
 
 It runs `migrate --force`, `statamic:stache:refresh`, `statamic:static:clear`
-(when a strategy is set) and `statamic:search:update --all`, then `core:warm` with
+(when a strategy is set) and `statamic:search:update --all` (on Cloud, only
+for the indexes that outlive the container: a `local` one built there would
+land on a disk no web replica reads), then `core:warm` with
 `features.snapshots` (a failed warm-up does not fail the deploy: the site
 serves the snapshots it has), then the site's own commands in
 `cloud.deploy`, and stops at the first required step that fails. On Cloud it

@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Local search indexes work on Laravel Cloud**: with `features.cloud`,
+  Statamic builds a `local` search index on the `sync` queue, so the
+  container that searches builds its own copy in that request. Queued on a
+  worker, the index was written to the worker's disk, which no web replica
+  reads: every search queued another build (one job per 100 documents) and
+  then failed on the missing index. `core-web:deploy` on Cloud now rebuilds
+  only the indexes that outlive the container. A connection the site sets
+  (`STATAMIC_SEARCH_QUEUE_CONNECTION`, or `search.queue_connection` in its
+  config) is kept. See `docs/laravel-cloud.md`.
+
 ## v0.44.0
 
 - **Search a Core object for a listing**: the `search` feature runs
