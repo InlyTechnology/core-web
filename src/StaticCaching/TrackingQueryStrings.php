@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\StaticCaching;
 
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Arr;
 
 /**
  * The query parameters ad and analytics platforms add to a landing page, kept out of the static cache's key. Each
@@ -11,6 +13,7 @@ use Illuminate\Contracts\Config\Repository;
  *
  * A page is then cached under its address without them, as rendered for the visitor who brought them. Whatever reads
  * them on the server must render inside `@nocache`, which re-renders per request with the visitor's own query.
+ * Pagination links (`withQueryString()`, which Statamic's paginated tags call) leave them out for that reason.
  */
 final class TrackingQueryStrings
 {
@@ -24,6 +27,10 @@ final class TrackingQueryStrings
         if ($tracking === [] || $config->get('statamic.static_caching.strategy') === 'full') {
             return;
         }
+
+        // Laravel's own resolver hands a paginator the whole query: cached, the page would credit the first visitor's
+        // campaign with every later visitor's next page.
+        Paginator::queryStringResolver(fn (): array => Arr::except(app('request')->query(), $tracking));
 
         $own = (array) $config->get('statamic.static_caching.disallowed_query_strings', []);
 
