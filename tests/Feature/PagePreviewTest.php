@@ -149,6 +149,49 @@ class PagePreviewTest extends TestCase
         $frame = $this->frameOf($entry);
         $entry->delete();
 
+        $this->get($frame)->assertNotFound()->assertHeader('Cache-Control', 'no-store, private');
+    }
+
+    public function test_the_frame_shows_a_scheduled_page(): void
+    {
+        Collection::make('events')->sites(['default'])->dated(true)->futureDateBehavior('private')->routes('/evenemang/{slug}')->template('page-preview')->save();
+        $entry = Entry::make()->collection('events')->locale('default')->slug('mässa')->date(now()->addWeek())->data(['title' => 'Mässa']);
+        $entry->save();
+
+        $this->assertSame('scheduled', $entry->status());
+        $this->get($this->frameOf($entry))->assertOk()->assertSee('<h1>Mässa</h1>', false);
+    }
+
+    public function test_the_link_expires_after_a_day(): void
+    {
+        $frame = $this->frameOf($this->page('om-oss', 'Om oss'));
+
+        $this->travel(23)->hours();
+        $this->get($frame)->assertOk();
+
+        $this->travel(2)->hours();
+        $this->get($frame)->assertForbidden();
+    }
+
+    public function test_a_redirect_has_no_page_to_frame(): void
+    {
+        $entry = Entry::make()->collection('pages')->locale('default')->slug('gammal')->data(['title' => 'Gammal', 'redirect' => 'https://example.com/ny']);
+        $entry->save();
+
+        $this->callSealed('GET', '/api/core/v1/page-preview/'.$entry->id(), 'website.read')->assertNotFound()->assertJsonPath('error', 'not_found');
+    }
+
+    public function test_where_the_site_serves_the_stock_feed_only_its_collections_are_framed(): void
+    {
+        Collection::make('notes')->sites(['default'])->routes('/anteckningar/{slug}')->template('page-preview')->save();
+        $note = Entry::make()->collection('notes')->locale('default')->slug('intern')->data(['title' => 'Intern']);
+        $note->save();
+        $page = $this->page('om-oss', 'Om oss');
+        $frame = $this->frameOf($note);
+        config(['core-web.content.feed.enabled' => true, 'core-web.content.feed.collections' => ['pages']]);
+
+        $this->callSealed('GET', '/api/core/v1/page-preview/'.$note->id(), 'website.read')->assertNotFound()->assertJsonPath('error', 'not_found');
         $this->get($frame)->assertNotFound();
+        $this->callSealed('GET', '/api/core/v1/page-preview/'.$page->id(), 'website.read')->assertOk();
     }
 }

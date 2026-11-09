@@ -534,7 +534,8 @@ return [
     | `middleware`. `path` frames a record's page with the person's unsaved
     | values; without an applied preview state it renders only a page the
     | site serves publicly. `page_path` frames one of the site's own pages as
-    | it is in the CMS, behind a link the site signed for Core.
+    | it is in the CMS, behind a link the site signed for Core; it keeps its
+    | `{id}` segment, and needs features.content for Core to ask for the link.
     |
     */
 

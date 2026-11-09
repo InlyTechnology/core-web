@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Preview;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
+use Inly\CoreWeb\Content\Feed\FeedCollections;
 use Inly\CoreWeb\Drafts\DraftPreview;
 use Inly\CoreWeb\Drafts\EntryFields;
 use Statamic\Contracts\Entries\Entry as EntryContract;
@@ -17,13 +18,13 @@ final class PagePreview
 {
     public const ROUTE = 'core-web.preview.page';
 
-    /** Core asks for a fresh link each time the frame opens, so a day outlasts a screen left open. */
+    /** Core asks for a fresh link each time its preview screen opens, so a day outlasts a screen left open. */
     private const HOURS = 24;
 
     /** The link Core frames, or null for an entry with no page on the site. */
     public static function link(EntryContract $entry): ?string
     {
-        if (blank(EntryFields::draftOf($entry)->absoluteUrl())) {
+        if (! self::hasPage($entry)) {
             return null;
         }
 
@@ -39,6 +40,10 @@ final class PagePreview
      */
     public static function address(EntryContract $entry): ?string
     {
+        if (! self::hasPage($entry)) {
+            return null;
+        }
+
         $draft = EntryFields::draftOf($entry);
 
         if ($draft === $entry && $entry->status() === 'published') {
@@ -48,6 +53,21 @@ final class PagePreview
         }
 
         return DraftPreview::livePreviewUrl($draft);
+    }
+
+    /**
+     * A page the frame can show: the entry has an address of its own and is no redirect, and, where the site serves
+     * Core the stock content feed, is in a collection the feed serves, since those are the pages Core knows.
+     */
+    private static function hasPage(EntryContract $entry): bool
+    {
+        $draft = EntryFields::draftOf($entry);
+
+        if ($entry->isRedirect() || $draft->isRedirect() || blank($draft->absoluteUrl())) {
+            return false;
+        }
+
+        return ! config('core-web.content.feed.enabled') || FeedCollections::serves($entry);
     }
 
     private static function origin(string $url): ?string

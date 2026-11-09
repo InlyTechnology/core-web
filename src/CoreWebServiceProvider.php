@@ -381,7 +381,11 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');
             $this->loadViewsFrom(__DIR__.'/../resources/views', 'core-web');
             $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
-            $this->loadRoutesFrom(__DIR__.'/../routes/page-preview.php');
+
+            // A site page's frame opens on a link Core asks the content API for.
+            if (self::enabled('content')) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/page-preview.php');
+            }
 
             // A record's page is read from the snapshot that names its Core object.
             if (self::enabled('snapshots')) {

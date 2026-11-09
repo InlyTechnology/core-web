@@ -29,6 +29,9 @@ class PagePreviewController
     /** Behind the link's signature, so only a link the site handed Core opens it. */
     public function frame(Request $request, string $id, PreviewFrame $frame): SymfonyResponse
     {
+        // Before anything can fail, so the site's error page for a missing one stays out of every cache too.
+        Preview::mark();
+
         $core = PreviewFrame::coreOrigin();
         $entry = Entry::find($id);
         $url = $entry === null ? null : PagePreview::address($entry);

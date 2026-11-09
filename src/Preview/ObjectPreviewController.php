@@ -99,4 +99,10 @@ class ObjectPreviewController
 
         return $frame->render($request, $url, fn (Closure $handle): SymfonyResponse => $store->previewing($snapshot, $partition, [$documentId => $document], $handle, $hidden));
     }
+
+    /** @deprecated Use PreviewFrame::coreOrigin() instead. */
+    public static function coreOrigin(): ?string
+    {
+        return PreviewFrame::coreOrigin();
+    }
 }

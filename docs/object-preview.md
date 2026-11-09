@@ -101,7 +101,9 @@ Core asks the site for a link to frame:
 1. `GET /api/core/v1/page-preview/{id}`, sealed for reading, answers
    `{"data": {"entry_id": "...", "url": "..."}}`: a link the site signs for 24
    hours, on the origin of the page's own site. An entry with no page answers
-   `404` with the error `not_found`.
+   `404` with the error `not_found`: one with no address, a redirect, or,
+   where the site serves the stock content feed, one in a collection the feed
+   does not serve.
 2. Core frames the link, `GET /core-preview/page/{id}` with its signature
    (the path is `preview.page_path`, throttled by `preview.middleware`). The
    site renders the page through its own route: the page itself while it is
@@ -110,6 +112,14 @@ Core asks the site for a link to frame:
    nothing of it cached, `no-store`, framed by Core alone, with the preview
    script and the markers, and no consent asked.
 
-Core asks for a fresh link each time the frame opens, so a link outlives a
-screen left open for the day and no longer. Anyone holding it sees the page
-as it is in the CMS until it expires, as with a draft's preview link.
+Core asks for a fresh link each time its preview screen opens, so a link
+outlives a screen left open for the day and no longer. Anyone holding it,
+opened in a tab of its own too, sees the page as it is in the CMS until it
+expires, as with a draft's preview link.
+
+A working copy or an unpublished entry renders through Statamic's Live
+Preview, which stands the previewed entry in for the stored one and does not
+take it back. In a PHP process that ends with the request (PHP-FPM) nothing
+outlives the frame; under a long-lived worker (Octane, a queue worker
+rendering pages) the stand-in would reach the next request, so the frame
+route is not served from one.
