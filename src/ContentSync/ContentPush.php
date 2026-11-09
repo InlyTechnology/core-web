@@ -322,8 +322,8 @@ class ContentPush
             try {
                 $this->assertBase($path, 'entries', $existing, $item['base'] ?? null);
             } catch (DraftRefused $e) {
-                // An unpublished entry is drafted in place, so that push changed its live file.
-                if ($e->error !== 'base_changed' || $existing->published() || ! $this->holdsAlready($author, $write)) {
+                // An entry the file keeps unpublished is drafted in place, so that push changed its live file.
+                if ($e->error !== 'base_changed' || $unpublished === [] || $existing->published() || ! $this->holdsAlready($author, $write)) {
                     throw $e;
                 }
             }

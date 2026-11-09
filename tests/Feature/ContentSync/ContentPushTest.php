@@ -50,6 +50,9 @@ class ContentPushTest extends TestCase
     /** Which write of the push the gateway answers 504 to; 0 for none. */
     private int $lostWrite = 0;
 
+    /** Which write of the push the site makes before the gateway answers 504; 0 for none. */
+    private int $lostAnswer = 0;
+
     /** @var (\Closure(int, Request): void)|null runs before the site answers each write, as an editor working in between */
     private ?\Closure $beforeWrite = null;
 
@@ -132,6 +135,10 @@ class ContentPushTest extends TestCase
             }
 
             $response = $this->call($request->method(), $request->url(), [], [], [], $server, $request->body());
+
+            if ($isWrite && $writes === $this->lostAnswer) {
+                return Http::response('', 504);
+            }
 
             return Http::response($response->getContent(), $response->getStatusCode(), $response->headers->all());
         });
@@ -440,12 +447,12 @@ class ContentPushTest extends TestCase
     public function test_a_push_whose_answer_never_arrived_can_be_sent_again(): void
     {
         $this->pull()->assertSuccessful();
-        $pulled = file_get_contents($this->lock);
         $this->edit('collections/pages/home.md', 'title: Home', 'title: Pushed');
-        $this->push()->assertSuccessful();
+        $this->lostAnswer = 1;
+        $this->push()->assertFailed();
+        $this->assertSame('Pushed', Entry::find('home')->fromWorkingCopy()->get('title'), 'The site wrote it; only the answer was lost.');
 
-        // The site wrote the working copy, but the checkout never heard, so its lock is as before the push.
-        file_put_contents($this->lock, $pulled);
+        $this->lostAnswer = 0;
         $this->freshLocal();
 
         $this->push()->expectsOutputToContain('working_copy')->assertSuccessful();
@@ -477,12 +484,12 @@ class ContentPushTest extends TestCase
         Entry::make()->id('hidden')->collection('pages')->locale('default')->slug('hidden')->published(false)
             ->data(['title' => 'Hidden', 'updated_by' => User::findByEmail('boss@example.com')->id()])->save();
         $this->pull()->assertSuccessful();
-        $pulled = file_get_contents($this->lock);
         $this->edit('collections/pages/hidden.md', 'title: Hidden', 'title: Pushed');
-        $this->push()->assertSuccessful();
+        $this->lostAnswer = 1;
+        $this->push()->assertFailed();
+        $this->assertSame('Pushed', Entry::find('hidden')->get('title'), 'The site rewrote the entry in place; only the answer was lost.');
 
-        // The site rewrote the unpublished entry in place, but the checkout never heard, so its lock is as before the push.
-        file_put_contents($this->lock, $pulled);
+        $this->lostAnswer = 0;
         $this->freshLocal();
 
         $this->push()->expectsOutputToContain('draft_entry')->assertSuccessful();
@@ -501,6 +508,60 @@ class ContentPushTest extends TestCase
 
         $this->push()->expectsOutputToContain('[base_changed]')->expectsOutputToContain('Nothing was pushed')->assertFailed();
         $this->assertSame((string) $other->id(), (string) Entry::find('hidden')->lastModifiedBy()->id());
+    }
+
+    public function test_an_entry_unpublished_on_the_site_since_the_pull_is_not_republished(): void
+    {
+        config(['core-web.content_sync.push_publish' => true]);
+        $this->pull()->assertSuccessful();
+        Entry::find('home')->set('title', 'Same')->set('updated_by', User::findByEmail('boss@example.com')->id())->published(false)->save();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Same');
+
+        $this->push(['--publish' => true])->expectsOutputToContain('[base_changed]')->assertFailed();
+        $this->assertFalse(Entry::find('home')->published());
+    }
+
+    public function test_an_entry_published_on_the_site_since_the_pull_is_refused_even_with_the_same_values(): void
+    {
+        Entry::make()->id('hidden')->collection('pages')->locale('default')->slug('hidden')->published(false)
+            ->data(['title' => 'Hidden', 'updated_by' => User::findByEmail('boss@example.com')->id()])->save();
+        $this->pull()->assertSuccessful();
+        Entry::find('hidden')->set('title', 'Same')->published(true)->save();
+        $this->edit('collections/pages/hidden.md', 'title: Hidden', 'title: Same');
+
+        $this->push()->expectsOutputToContain('[base_changed]')->assertFailed();
+    }
+
+    public function test_a_published_entry_changed_since_the_pull_is_refused_even_with_the_same_values(): void
+    {
+        $this->pull()->assertSuccessful();
+        Entry::find('home')->set('title', 'Same')->save();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: Same');
+
+        $this->push()->expectsOutputToContain('[base_changed]')->expectsOutputToContain('Nothing was pushed')->assertFailed();
+    }
+
+    public function test_an_unpublished_entry_pulled_without_a_base_is_refused_even_with_the_same_values(): void
+    {
+        Entry::make()->id('hidden')->collection('pages')->locale('default')->slug('hidden')->published(false)
+            ->data(['title' => 'Hidden', 'updated_by' => User::findByEmail('boss@example.com')->id()])->save();
+        $this->pull()->assertSuccessful();
+        $lock = json_decode(file_get_contents($this->lock), true);
+        unset($lock['bases']);
+        file_put_contents($this->lock, json_encode($lock));
+        Entry::find('hidden')->set('title', 'Same')->save();
+        $this->edit('collections/pages/hidden.md', 'title: Hidden', 'title: Same');
+
+        $this->push()->expectsOutputToContain('[no_base]')->assertFailed();
+    }
+
+    public function test_an_invalid_file_over_the_pusher_s_own_working_copy_is_refused_as_a_working_copy(): void
+    {
+        $this->pull()->assertSuccessful();
+        Entry::find('home')->fromWorkingCopy()->set('title', 'Edited in the CP')->makeWorkingCopy()->user(User::findByEmail('boss@example.com'))->save();
+        $this->edit('collections/pages/home.md', 'title: Home', 'title: ""');
+
+        $this->push()->expectsOutputToContain('[working_copy]')->assertFailed();
     }
 
     public function test_a_push_of_existing_entries_goes_in_batches(): void
@@ -532,31 +593,47 @@ class ContentPushTest extends TestCase
 
     public function test_a_refusal_the_site_makes_at_the_write_stops_the_batches_after_it(): void
     {
-        config(['core-web.content_sync.push_batch_files' => 1]);
-        Entry::make()->id('third')->collection('pages')->locale('default')->slug('third')->data(['title' => 'Third'])->save();
+        config(['core-web.content_sync.push_batch_files' => 2]);
+        $titles = ['home' => 'Home', 'about' => 'About', 'third' => 'Third', 'fourth' => 'Fourth', 'fifth' => 'Fifth'];
+
+        foreach (['third', 'fourth', 'fifth'] as $slug) {
+            Entry::make()->id($slug)->collection('pages')->locale('default')->slug($slug)->data(['title' => $titles[$slug]])->save();
+        }
+
         $this->pull()->assertSuccessful();
 
-        foreach (['home' => 'Home', 'about' => 'About', 'third' => 'Third'] as $slug => $title) {
+        foreach ($titles as $slug => $title) {
             $this->edit("collections/pages/{$slug}.md", "title: {$title}", "title: {$title} edited");
         }
 
         $other = $this->cmsUser('other@example.com', super: true);
         $sent = [];
         $this->beforeWrite = function (int $write, Request $request) use ($other, &$sent): void {
-            $id = basename($request->data()['items'][0]['path'], '.md');
-            $sent[] = $id;
+            $ids = array_map(fn (array $item) => basename($item['path'], '.md'), $request->data()['items']);
+            $sent[] = $ids;
 
             if ($write === 2) {
-                Entry::find($id)->fromWorkingCopy()->set('title', 'Theirs')->makeWorkingCopy()->user($other)->save();
+                Entry::find($ids[0])->fromWorkingCopy()->set('title', 'Theirs')->makeWorkingCopy()->user($other)->save();
             }
         };
 
-        $this->push()->expectsOutputToContain('2 of 3 batches were sent and the rest were not')->assertFailed();
+        $this->push()
+            ->expectsOutputToContain('Pushed to https://remote.test: 2 drafted or proposed, 1 refused')
+            ->expectsOutputToContain('1 of 3 batches were written and the rest were not')
+            ->assertFailed();
 
-        $this->assertCount(2, $sent);
-        $unsent = array_values(array_diff(['home', 'about', 'third'], $sent))[0];
-        $this->assertFalse(Entry::find($unsent)->hasWorkingCopy());
-        $this->assertSame(['collections/pages/'.$sent[1].'.md', 'collections/pages/'.$unsent.'.md'], $this->statusPaths());
+        $this->assertCount(2, $sent, 'The third batch is never sent.');
+        [$refused, $alongside] = $sent[1];
+        $this->assertFalse(Entry::find($alongside)->hasWorkingCopy(), 'The refused batch wrote nothing.');
+        $unsent = array_values(array_diff(array_keys($titles), ...$sent));
+        $this->assertCount(1, $unsent);
+        $this->assertFalse(Entry::find($unsent[0])->hasWorkingCopy());
+
+        $pending = array_map(fn (string $id) => "collections/pages/{$id}.md", [$refused, $alongside, $unsent[0]]);
+        sort($pending);
+        $status = $this->statusPaths();
+        sort($status);
+        $this->assertSame($pending, $status);
     }
 
     public function test_two_files_naming_one_entry_are_not_split_into_batches(): void

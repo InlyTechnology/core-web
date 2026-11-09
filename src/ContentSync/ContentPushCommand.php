@@ -212,8 +212,8 @@ class ContentPushCommand extends Command
         }
 
         $results = [];
-        $anyWritten = false;
-        $stoppedAfter = null;
+        $writtenBatches = 0;
+        $stopped = false;
 
         foreach ($batches as $i => $batch) {
             try {
@@ -223,24 +223,27 @@ class ContentPushCommand extends Command
                     throw $e;
                 }
 
-                throw new RemoteSiteError(rtrim($e->getMessage(), '.').". {$i} of ".count($batches).' batches were pushed and recorded: run the same command again for the rest.', previous: $e);
+                throw new RemoteSiteError(rtrim($e->getMessage(), '.').". {$writtenBatches} of ".count($batches).' batches were pushed and recorded: run the same command again for the rest.', previous: $e);
             }
 
-            $this->report($result['results']);
-            array_push($results, ...$result['results']);
-            $anyWritten = $anyWritten || ($result['written'] ?? false);
-            $this->outcome = [...$this->outcome, 'written' => $anyWritten, 'results' => $results];
+            $isWritten = (bool) ($result['written'] ?? false);
+            $refusedHere = array_values(array_filter($result['results'], fn (array $item) => $item['status'] === ContentPush::STATUS_REFUSED));
+            // An answer that wrote nothing carries the check's statuses for the rest: only its refusals happened.
+            $happened = $isWritten ? $result['results'] : $refusedHere;
+
+            $this->report($happened);
+            array_push($results, ...$happened);
+            $this->outcome = [...$this->outcome, 'written' => $this->outcome['written'] || $isWritten, 'results' => $results];
 
             // Recorded batch by batch, so a later one failing leaves what landed out of the next push.
-            if ($result['written'] ?? false) {
+            if ($isWritten) {
+                $writtenBatches++;
                 $this->record($local, $files, $result['results']);
             }
 
             // The site changed since the check: without --partial, a refusal stops the push as the check's would have.
-            $refusedHere = collect($result['results'])->contains(fn (array $item) => $item['status'] === ContentPush::STATUS_REFUSED);
-
-            if ($refusedHere && ! $this->option('partial') && $i < count($batches) - 1) {
-                $stoppedAfter = $i + 1;
+            if ($refusedHere !== [] && ! $this->option('partial')) {
+                $stopped = count($batches) > 1;
 
                 break;
             }
@@ -263,11 +266,11 @@ class ContentPushCommand extends Command
             $this->info(sprintf('Pushed to %s: %d drafted or proposed, %d refused. An editor publishes or applies them in the CP.', $remote->url(), $written, $failed));
         }
 
-        if ($stoppedAfter !== null) {
-            $this->error(sprintf('The site refused a file it passed in the check, so %d of %d batches were sent and the rest were not: fix it and run the same command again.', $stoppedAfter, count($batches)));
+        if ($stopped) {
+            $this->error(sprintf('The site refused a file it passed in the check, so %d of %d batches were written and the rest were not: fix it and run the same command again.', $writtenBatches, count($batches)));
         }
 
-        return $failed === 0 && $stoppedAfter === null ? self::SUCCESS : self::FAILURE;
+        return $failed === 0 && ! $stopped ? self::SUCCESS : self::FAILURE;
     }
 
     /**
