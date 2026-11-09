@@ -37,6 +37,10 @@ class CpThumbnailsTest extends TestCase
         File::put($this->scratch.'/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
         File::put($this->scratch.'/clip.mp4', 'clip');
         File::put($this->scratch.'/clip.webm', 'clip');
+        // Sparse: a size past the CDN's frame limit without writing the bytes.
+        $handle = fopen($this->scratch.'/long.mp4', 'w');
+        ftruncate($handle, 100_000_000);
+        fclose($handle);
 
         config(['filesystems.disks.assets.root' => $this->scratch, 'filesystems.disks.assets.url' => self::CDN]);
         Storage::forgetDisk('assets');
@@ -65,9 +69,12 @@ class CpThumbnailsTest extends TestCase
 
     public function test_a_video_the_cdn_cannot_frame_keeps_statamic_s_thumbnail(): void
     {
-        $webm = collect($this->browse('assets'))->firstWhere('basename', 'clip.webm');
+        $assets = collect($this->browse('assets'))->keyBy('basename');
 
-        $this->assertStringStartsNotWith(self::CDN, (string) ($webm['thumbnail'] ?? ''));
+        foreach (['clip.webm', 'long.mp4'] as $video) {
+            $this->assertArrayHasKey($video, $assets->all());
+            $this->assertStringStartsNotWith(self::CDN, (string) ($assets[$video]['thumbnail'] ?? ''), $video);
+        }
     }
 
     public function test_the_thumbnail_route_listings_build_sends_them_to_the_cdn(): void
