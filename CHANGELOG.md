@@ -13,8 +13,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   the cookie banner, the settings link, Tag Manager or the `seo` feature's
   Google tags, Consent Mode stays denied and a gated embed shows a note in
   its place. `Preview::mark()` does the same for a preview route of the
-  site's own, and `Preview::active()` answers whether a response is one. A
-  site picks up the script's part on its next asset build. See
+  site's own and keeps its response, an error page included, out of every
+  cache. `Preview::active()` answers whether a response is a preview. A site
+  picks up the script's part on its next asset build. See
   `docs/cookie-consent.md`.
 
 ## v0.40.0

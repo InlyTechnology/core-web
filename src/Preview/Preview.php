@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Preview;
 
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Whether this response shows a page to someone looking at it before or
@@ -15,7 +16,10 @@ final class Preview
 {
     private const ATTRIBUTE = 'core-web.preview';
 
-    /** Marks this response as a preview, for a preview route of the site's own (a signed link to an unreleased page). */
+    /**
+     * Marks this response as a preview, for a preview route of the site's own (a signed link to an unreleased page),
+     * and keeps it out of every cache.
+     */
     public static function mark(): void
     {
         request()->attributes->set(self::ATTRIBUTE, true);
@@ -36,5 +40,18 @@ final class Preview
         }
 
         return $request->attributes->get(self::ATTRIBUTE) === true;
+    }
+
+    /** A marked response stays out of every cache: a kept copy would outlive the link that opened it. */
+    public static function keepOutOfCaches(Request $request, Response $response): Response
+    {
+        if ($request->attributes->get(self::ATTRIBUTE) !== true) {
+            return $response;
+        }
+
+        $response->headers->set('X-Statamic-Uncacheable', 'true');
+        $response->headers->set('Cache-Control', 'no-store, private');
+
+        return $response;
     }
 }

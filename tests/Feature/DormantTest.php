@@ -14,6 +14,7 @@ use Inly\CoreWeb\CmsSignIn\RedirectCpLoginToCore;
 use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Media\MediaDisks;
+use Inly\CoreWeb\Preview\KeepPreviewsOutOfCaches;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
@@ -118,6 +119,7 @@ class DormantTest extends TestCase
     public function test_no_middleware_joins_statamic_s_group(): void
     {
         $this->assertNotContains(UncacheableWhileDegraded::class, app(Router::class)->getMiddlewareGroups()['statamic.web'] ?? []);
+        $this->assertNotContains(KeepPreviewsOutOfCaches::class, app(Router::class)->getMiddlewareGroups()['statamic.web'] ?? []);
     }
 
     public function test_no_command_is_registered(): void

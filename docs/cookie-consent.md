@@ -138,16 +138,20 @@ never runs and a gated embed shows a short note in its place.
 `seo` feature's Google tags and a button's tracker event stay off too.
 
 A preview route of the site's own (a signed link to a page before it goes
-out) marks its response the same way. Marking does not keep it out of the
-static cache, so the route sends the header for that itself:
+out) marks its response the same way, before it answers:
 
 ```php
 use Inly\CoreWeb\Preview\Preview;
 
 Preview::mark();
 
-return response($view->render())->withHeaders(['X-Statamic-Uncacheable' => 'true']);
+return response($view->render());
 ```
+
+Marking also keeps the response out of every cache, an error page the route
+answers with included: it answers `X-Statamic-Uncacheable: true` and
+`Cache-Control: no-store, private`, since a kept copy would outlive the
+link's signature and serve the draft to anyone.
 
 `Preview::active()` answers whether the response is a preview, for a
 tracker or a form of the site's own that should stay off it.
