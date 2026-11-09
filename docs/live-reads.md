@@ -63,13 +63,55 @@ class LoanQuote extends LiveRead
 - `present()` is what the page gets. The default is Core's `data`; return null
   for an answer the site cannot show (`unavailable`).
 - `ttl()` keeps an answer per input, in `live.store`, and lets the visitor's
-  browser keep it for what is left of that (`private, max-age`). 0, the
-  default, keeps none. `keep($data)` returning false keeps that one answer
+  browser keep it for what is left of that (`private, max-age`). 0 keeps
+  none; the default keeps none either, except a Core function's answer
+  (below). `keep($data)` returning false keeps that one answer
   nowhere: a fallback Core gave while a source was down, say.
 - `staleFor()` serves the last good answer for that many seconds past
   `ttl()` while Core fails, instead of `unavailable` (`$result->stale`, and
   never kept by the browser; the JSON says `stale: true`). 0, the default,
   serves none.
+
+## Running a Core function
+
+A read of a figure Core works out is best a [Core function](https://docs.inlycore.com/learn/functions/functions):
+the same named read that Core AI, MCP and Core's own pages run, under the
+site's client token. `LiveRequest::function()` runs one by its key, with its
+arguments as Core's Functions API takes them (the record by its route key):
+
+```php
+public function request(array $input): ?LiveRequest
+{
+    return LiveRequest::function('vehicles/calculate-financing', [
+        'vehicle' => $input['vehicle'],
+        'duration' => (int) $input['duration'],
+    ]);
+}
+```
+
+The read is otherwise like any other: `rules()` still bounds what the visitor
+may send, and `present()` still says what the page gets of `data`. What
+differs is how Core's answer is read:
+
+- **Caching.** A read that names no `ttl()` keeps the answer for the
+  `max-age` the function's `cacheFor()` sends, and keeps none when Core sends
+  `no-store`. A `ttl()` the read names, 0 included, wins.
+- **Refusals.** A 422 is passed on per input, each error under the argument
+  its `source.parameter` names, still for the fields in `rules()` only: name
+  the visitor's input as the function names its arguments, or Core's messages
+  for a renamed one never reach the page. A 404, and a 204, is `not_found`.
+- **No answer yet.** A 202 (still working), a 409 (cannot answer yet) and a
+  429 (past the function's `rateLimit()`) are `unavailable`, with the stale
+  answer when there is one. A 503 or a 429 switches the read off for the
+  `Retry-After` Core sent in seconds (at most five minutes; without one, for
+  `live.retry_after`), since every visitor shares the site's token.
+- **Arguments.** Validation does not cast, so cast each one as the function
+  types it (`(int)`, `(bool)`): a PHP boolean is sent as `true` or `false`,
+  and a null argument is left out of the query.
+
+The function's key is a literal in the read, never built from the visitor's
+input, since the site's token may run other functions too. It is checked when
+the request is built: kebab-case segments only.
 
 After Core itself fails a read (502, 503, 504, a timeout, unreachable), the
 read answers at once for `live.retry_after` seconds (30): its stale answer,

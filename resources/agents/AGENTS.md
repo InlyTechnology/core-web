@@ -131,6 +131,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   than any page should show, so each live read is a named `LiveRead` and there is no pass-through.
 - **A snapshot when data makes pages, a live read when it fills part of one** (a price, a quote, stock on a
   cached page).
+- **A live read of a figure Core works out runs a Core function** (`LiveRequest::function()`), never a site
+  route of the Core app's own: the function is the one read the site, Core AI and MCP share.
 
 ## Cookie consent (`consent`)
 
