@@ -15,6 +15,30 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **A push can be sent again after a lost answer**: a working copy that is
   the pusher's own and already holds what the file says is no longer refused
   as `working_copy`, so a timeout during the write needs no `--force`.
+- **Previews ask no consent and load no trackers**: Core's preview frame,
+  the control panel's Live Preview and a draft's preview link render without
+  the cookie banner, the settings link, Tag Manager or the `seo` feature's
+  Google tags, Consent Mode stays denied and a gated embed shows a note in
+  its place. `Preview::mark()` does the same for a preview route of the
+  site's own and keeps its response, an error page included, out of every
+  cache. `Preview::active()` answers whether a response is a preview. A site
+  picks up the script's part on its next asset build. See
+  `docs/cookie-consent.md`.
+
+## v0.40.0
+
+- **Live reads run Core functions**: `LiveRequest::function('vehicles/calculate-financing', [...])`
+  runs a Core function on the site's token. The answer is kept for the
+  `max-age` the function sends unless the read names a `ttl()`, Core's
+  per-input errors reach the page as with any read, and a 503 or 429 turns
+  the read off for its `Retry-After`. `LiveRead::ttl()` now returns `?int`,
+  null by default; a read that overrides it is unchanged. See
+  `docs/live-reads.md`.
+- **A Core link in a link field is picked like an entry**: the Campaign or
+  Brand option of a Statamic `link` field shows one inline item with a status
+  dot and a menu, chosen from a searchable list, instead of a multi-select
+  with a counter and a chip. Stored values are unchanged. See
+  `docs/buttons.md`.
 - **A push carries the images a block requires**: an image a required asset
   field names (a hero slide's photo, say) and the push uploads no longer
   refuses the file as missing its image. The push checks every file before

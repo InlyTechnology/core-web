@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\Preview\Preview;
 use Inly\CoreWeb\Seo\NotFoundPage;
 use Inly\CoreWeb\Seo\Redirects;
 use Inly\CoreWeb\Seo\Seo;
@@ -165,6 +166,16 @@ class SeoTest extends TestCase
 
         $this->assertMatchesRegularExpression('/<script type="text\/plain" data-consent="statistics" data-src="https:\/\/www.googletagmanager.com\/gtag\/js\?id=G-TEST123"/', $html);
         $this->assertStringNotContainsString(' src="https://www.googletagmanager.com', $html);
+    }
+
+    public function test_a_preview_renders_no_google_tags(): void
+    {
+        $this->production();
+        $this->seo(['tracker_type' => 'gtag', 'google_analytics' => 'G-TEST123', 'trackers_production' => true]);
+        Preview::mark();
+
+        $this->assertFalse(Seo::trackersEnabled());
+        $this->assertStringNotContainsString('G-TEST123', $this->renderHead('about'));
     }
 
     public function test_json_ld_from_the_entry_cannot_close_the_script(): void

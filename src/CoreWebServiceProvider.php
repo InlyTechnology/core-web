@@ -9,6 +9,7 @@ use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Events\ResponsePrepared;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -79,6 +80,8 @@ use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\SyncMediaCommand;
 use Inly\CoreWeb\Media\UrlScheme;
+use Inly\CoreWeb\Preview\KeepPreviewsOutOfCaches;
+use Inly\CoreWeb\Preview\Preview;
 use Inly\CoreWeb\Preview\PreviewContext;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\ProposalStore;
@@ -364,6 +367,15 @@ class CoreWebServiceProvider extends ServiceProvider
         // Printed by the site's templates whether or not the preview is on; they print nothing outside a preview.
         Blade::directive('coreField', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::field('.$expression.'); ?>');
         Blade::directive('coreBlock', fn (string $expression): string => '<?php echo \\Inly\\CoreWeb\\Preview\\PreviewMarkers::block('.$expression.'); ?>');
+
+        // Ungated: a site's own preview route calls Preview::mark(), and nothing changes for a response it did not mark.
+        // The router prepares a route's answer before Statamic's static cache decides on it.
+        Event::listen(ResponsePrepared::class, fn (ResponsePrepared $event) => Preview::keepOutOfCaches($event->request, $event->response));
+
+        if (filled(config('statamic.static_caching.strategy'))) {
+            // A marked route's error page is prepared only after the static cache decided on it, so it is marked inside too.
+            Statamic::booted(fn () => $this->app->make(Router::class)->pushMiddlewareToGroup('statamic.web', KeepPreviewsOutOfCaches::class));
+        }
 
         if (self::enabled('preview') && self::enabled('snapshots')) {
             $this->loadTranslationsFrom(__DIR__.'/../lang', 'core-web');

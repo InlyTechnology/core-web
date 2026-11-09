@@ -10,7 +10,9 @@
 <div class="core-consent-declaration" @if ($style = \Inly\CoreWeb\Consent\Consent::brandingStyle()) style="{{ $style }}" @endif {{ $attributes }}>
     <p class="core-consent-declaration__status">
         {{ __('Your current choice:') }} <span data-consent-status data-none="{{ __('none yet') }}" data-labels='@json(array_map('strval', $titles))'>{{ __('none yet') }}</span>
-        <button type="button" class="core-consent__button core-consent__button--outline" data-consent-open>{{ __('Change cookie settings') }}</button>
+        @if (\Inly\CoreWeb\Consent\Consent::asksHere())
+            <button type="button" class="core-consent__button core-consent__button--outline" data-consent-open>{{ __('Change cookie settings') }}</button>
+        @endif
     </p>
     <p class="core-consent__id" data-consent-id-line hidden>{{ __('Your consent id:') }} <code data-consent-id></code></p>
     @foreach (\Inly\CoreWeb\Consent\ConsentVendors::byCategory() as $category => $vendors)

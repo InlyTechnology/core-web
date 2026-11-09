@@ -49,7 +49,7 @@ class CoreLive
         }
 
         $input = $validator->validated();
-        $ttl = max(0, $read->ttl());
+        $ttl = $read->ttl() === null ? null : max(0, $read->ttl());
         $key = 'core_web_live:'.$name.':'.sha1(serialize(self::sorted($input)));
         $kept = $ttl === 0 ? null : $this->kept($key);
 
@@ -61,8 +61,11 @@ class CoreLive
         $result = $this->down($name) ? LiveResult::unavailable() : $this->call($name, $read, $input);
 
         if ($result->successful()) {
+            // A read that names no ttl() keeps the answer for the max-age Core sent with it.
+            $ttl = max(0, $ttl ?? $result->ttl);
+
             if ($ttl === 0 || ! $read->keep((array) $result->data)) {
-                return $result;
+                return LiveResult::ok((array) $result->data);
             }
 
             $this->keepFor($key, (array) $result->data, $ttl, max(0, $read->staleFor()));
@@ -138,23 +141,31 @@ class CoreLive
                 max(1, (int) config('core-web.live.timeouts.connect', 3)),
             );
 
-            if ($response->status() === 404) {
+            $answer = $request->answer($response);
+
+            if ($answer->kind === CoreAnswer::NOT_FOUND) {
                 return LiveResult::notFound();
             }
 
-            if ($response->status() === 422) {
-                return LiveResult::invalid(self::errors($response->json('errors'), $read->rules()));
+            if ($answer->kind === CoreAnswer::INVALID) {
+                return LiveResult::invalid(self::errors($answer->errors, $read->rules()));
             }
 
-            $data = $response->successful() && is_array($json = $response->json()) ? $read->present($json, $input) : null;
+            if ($answer->kind === CoreAnswer::PENDING) {
+                Log::info('Core had no answer for a live read yet.', ['read' => $name, 'status' => $answer->status]);
+
+                return $this->failed($name, $answer->coreDown, $answer->retryAfter);
+            }
+
+            $data = $answer->kind === CoreAnswer::OK ? $read->present($answer->json ?? [], $input) : null;
 
             if ($data === null) {
-                Log::warning('Core live read failed.', ['read' => $name, 'status' => $response->status()]);
+                Log::warning('Core live read failed.', ['read' => $name, 'status' => $answer->status]);
 
-                return $this->failed($name, self::coreDown($response->status()));
+                return $this->failed($name, $answer->coreDown, $answer->retryAfter);
             }
 
-            return LiveResult::ok($data);
+            return LiveResult::ok($data, $answer->maxAge);
         } catch (InvalidArgumentException $e) {
             Log::warning('Core live read refused.', ['read' => $name, 'message' => $e->getMessage()]);
 
@@ -170,16 +181,13 @@ class CoreLive
         }
     }
 
-    /** Whether a status says Core itself is down; a 500 can be one visitor's input, which must not switch the read off for all. */
-    protected static function coreDown(int $status): bool
+    /**
+     * Unavailable, marking Core down for the read when Core itself failed:
+     * for the Retry-After Core sent, else core-web.live.retry_after seconds.
+     */
+    protected function failed(string $name, bool $coreDown, ?int $retryAfter = null): LiveResult
     {
-        return in_array($status, [502, 503, 504], true);
-    }
-
-    /** Unavailable, marking Core down for the read for core-web.live.retry_after seconds when Core itself failed. */
-    protected function failed(string $name, bool $coreDown): LiveResult
-    {
-        $seconds = max(0, (int) config('core-web.live.retry_after', 30));
+        $seconds = $retryAfter ?? max(0, (int) config('core-web.live.retry_after', 30));
 
         if ($coreDown && $seconds > 0) {
             try {
@@ -224,24 +232,18 @@ class CoreLive
 
     /**
      * Core's validation messages for the fields the visitor sent (the read's
-     * rules), strings only: Core judged a body the site built, and the rest
-     * can name fields the visitor never saw.
+     * rules): Core judged a request the site built, and the rest can name
+     * fields the visitor never saw.
      *
+     * @param  array<string, list<string>>  $errors
      * @param  array<string, mixed>  $rules
      * @return array<string, list<string>>
      */
-    protected static function errors(mixed $errors, array $rules): array
+    protected static function errors(array $errors, array $rules): array
     {
         $fields = array_map(fn (string $key): string => explode('.', $key)[0], array_keys($rules));
-        $out = [];
 
-        foreach (is_array($errors) ? $errors : [] as $field => $messages) {
-            if (in_array(explode('.', (string) $field)[0], $fields, true)) {
-                $out[(string) $field] = array_values(array_filter((array) $messages, 'is_string'));
-            }
-        }
-
-        return $out;
+        return array_filter($errors, fn (string $field): bool => in_array(explode('.', $field)[0], $fields, true), ARRAY_FILTER_USE_KEY);
     }
 
     /**

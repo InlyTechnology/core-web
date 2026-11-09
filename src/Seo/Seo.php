@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Seo;
 
 use Illuminate\Support\Facades\Cache;
+use Inly\CoreWeb\Preview\Preview;
 use Inly\CoreWeb\Support\Values;
 use Statamic\Contracts\Entries\Entry;
 use Statamic\Contracts\Taxonomies\Term;
@@ -38,12 +39,12 @@ final class Seo
         return app()->environment('production') && ! self::get('noindex_production', false);
     }
 
-    /** Whether the Google tags render in this environment: the global's trackers_{environment} toggle. */
+    /** Whether the Google tags render on this response: the global's trackers_{environment} toggle, and never in a preview. */
     public static function trackersEnabled(): bool
     {
         $environment = (string) app()->environment();
 
-        if (! in_array($environment, ['local', 'staging', 'production'], true)) {
+        if (! in_array($environment, ['local', 'staging', 'production'], true) || Preview::active()) {
             return false;
         }
 

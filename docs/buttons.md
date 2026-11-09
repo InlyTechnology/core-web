@@ -121,7 +121,8 @@ site) resolves to no link, and the button is not drawn.
 
 Every Statamic `link` field offers the same Core links too, beside Entry and
 URL, so a block's own link field can pick a campaign rather than typing its
-path. It stores `campaign::{pick}`, and the field augments to the page's
+path. The pick looks like an Entry pick, one item with a status dot chosen from
+a searchable list. It stores `campaign::{pick}`, and the field augments to the page's
 address like any other link: `{{ $set['cta_link'] }}` or `->url()`. A value
 saved before (a URL, an entry) keeps working, so a site switches nothing in its
 blueprints. A pick whose page is gone augments to no URL, which a site's
@@ -162,7 +163,8 @@ with its callers moved to the null return and the `variant` key.
 ## Tracker events
 
 A tracker event is sent on click while the `seo` global's trackers render in
-this environment (`trackers_{environment}`): a `dataLayer` event for Google
+this environment (`trackers_{environment}`), never in a
+[preview](cookie-consent.md#previews): a `dataLayer` event for Google
 Tag Manager, `gtag('event', …)` for Google Analytics, Fathom's
 `trackEvent` when `use_fathom` is on. Each call is guarded, since the consent
 banner may still hold the tag back, and the name keeps only letters, digits,

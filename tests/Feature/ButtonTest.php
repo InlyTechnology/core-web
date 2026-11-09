@@ -260,9 +260,16 @@ class ButtonTest extends TestCase
 
         $types = $link(null)->fieldtype()->preload()['types'];
         $this->assertSame('Campaign', $types['campaign']['title']);
-        $this->assertSame('dictionary', $types['campaign']['component']);
+        $this->assertSame('relationship', $types['campaign']['component'], 'a Core link is picked like an entry, not from a multi-select');
         $this->assertSame('site_campaigns', $types['campaign']['config']['dictionary']);
+        $this->assertSame(1, $types['campaign']['config']['max_items']);
         $this->assertSame(['winter'], $link('campaign::winter')->fieldtype()->preload()['types']['campaign']['selected']);
+
+        $picker = (new Field('campaign', $types['campaign']['config']))->fieldtype();
+        $this->assertSame([['id' => 'winter', 'title' => 'Vinter', 'status' => 'published']], $picker->getItemData(['winter'])->all());
+        $this->assertTrue($picker->getItemData(['autumn'])->first()['invalid']);
+        $this->assertSame(['winter', 'summer'], $picker->getIndexItems(request())->pluck('id')->all());
+        $this->assertSame('winter', $picker->process(['winter']));
 
         $this->assertSame('/kampanjer/vinter', $link('campaign::winter')->augment()->value()->url());
         $this->assertSame('/brands/volvo', $link('brand::v1')->augment()->value()->url());

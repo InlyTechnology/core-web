@@ -51,15 +51,20 @@ abstract class LiveRead
         return false;
     }
 
-    /** Seconds an answer is kept, by the site per input and by the visitor's browser; 0 keeps none. */
-    public function ttl(): int
+    /**
+     * Seconds an answer is kept, by the site per input and by the visitor's
+     * browser; 0 keeps none. Null, the default, keeps a function's answer
+     * for the max-age its `cacheFor()` sends, and any other answer for none.
+     */
+    public function ttl(): ?int
     {
-        return 0;
+        return null;
     }
 
     /**
      * Seconds past ttl() the last good answer is still served while Core
-     * fails (never to a browser's cache); 0 serves none. Needs a ttl().
+     * fails (never to a browser's cache); 0 serves none. Needs a ttl() or a
+     * function's max-age.
      */
     public function staleFor(): int
     {

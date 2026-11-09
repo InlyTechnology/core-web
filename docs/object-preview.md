@@ -58,7 +58,8 @@ Core frames `GET /core-preview/object?type&id&site[&state]` (the path is
    the frame shows a `404`.
 3. The answer is `no-store`, `noindex`, `no-referrer`, framed by Core's
    address alone (`frame-ancestors`, from `client.base_url`), and carries the
-   preview script.
+   preview script. Like any [preview](cookie-consent.md#previews), it asks
+   no consent and loads no tracker.
 
 Without `state`, or when Core did not apply it, the route renders only a
 record with a public page, as that page shows it, and answers `404` for any
