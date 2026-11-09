@@ -163,7 +163,8 @@ with its callers moved to the null return and the `variant` key.
 ## Tracker events
 
 A tracker event is sent on click while the `seo` global's trackers render in
-this environment (`trackers_{environment}`): a `dataLayer` event for Google
+this environment (`trackers_{environment}`), never in a
+[preview](cookie-consent.md#previews): a `dataLayer` event for Google
 Tag Manager, `gtag('event', …)` for Google Analytics, Fathom's
 `trackEvent` when `use_fathom` is on. Each call is guarded, since the consent
 banner may still hold the tag back, and the name keeps only letters, digits,

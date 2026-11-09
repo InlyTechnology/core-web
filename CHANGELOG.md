@@ -6,6 +6,17 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Previews ask no consent and load no trackers**: Core's preview frame,
+  the control panel's Live Preview and a draft's preview link render without
+  the cookie banner, the settings link, Tag Manager or the `seo` feature's
+  Google tags, Consent Mode stays denied and a gated embed shows a note in
+  its place. `Preview::mark()` does the same for a preview route of the
+  site's own, and `Preview::active()` answers whether a response is one. A
+  site picks up the script's part on its next asset build. See
+  `docs/cookie-consent.md`.
+
 ## v0.40.0
 
 - **Live reads run Core functions**: `LiveRequest::function('vehicles/calculate-financing', [...])`

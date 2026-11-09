@@ -267,7 +267,14 @@ const onClick = (event) => {
     choose(checked, 'custom')
 }
 
+// A preview (Core's frame, Live Preview) is no visit: nothing it holds runs, and nothing is asked, kept or logged.
+const preview = () => {
+    window.CoreConsent = { open: () => {}, has: (category) => category === 'necessary', categories: () => ['necessary'], onChange: () => {} }
+}
+
 export default function coreConsent() {
+    if (settings().preview) return preview()
+
     current = readChoice()
     document.addEventListener('click', onClick)
     showStatus(current)

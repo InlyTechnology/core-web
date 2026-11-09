@@ -129,10 +129,12 @@ class ObjectPreviewTest extends TestCase
         $this->assertStringContainsString('<section data-core-block="1">Two</section>', $html);
         $this->assertStringContainsString('core-preview:focus', $html);
         $this->assertStringContainsString('"https:\/\/core.test"', $html);
+        $this->assertStringContainsString('<p>PREVIEW</p>', $html);
         Http::assertNotSent(fn (HttpRequest $request) => $request->hasHeader('X-Core-Preview'));
 
         $public = (string) $this->get('/kampanjer/spring')->assertOk()->getContent();
         $this->assertStringContainsString('<h1 >Spring</h1>', $public);
+        $this->assertStringNotContainsString('PREVIEW', $public);
         $this->assertStringNotContainsString('data-core', $public);
         $this->assertStringNotContainsString('core-preview:', $public);
     }

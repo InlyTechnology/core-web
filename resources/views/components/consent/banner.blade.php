@@ -1,5 +1,5 @@
 @props(['policyUrl' => null])
-@if (\Inly\CoreWeb\Consent\Consent::asks())
+@if (\Inly\CoreWeb\Consent\Consent::asksHere())
 @php
     $texts = \Inly\CoreWeb\Consent\Consent::texts($policyUrl);
     $policyUrl = $texts['policy_url'];

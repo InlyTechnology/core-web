@@ -4,5 +4,6 @@
     <section @coreBlock($loop->index)>{{ $block }}</section>
 @endforeach
 <p>{{ $others }}</p>
+@if (\Inly\CoreWeb\Preview\Preview::active())<p>PREVIEW</p>@endif
 @nocache('campaign-region')
 </body></html>
