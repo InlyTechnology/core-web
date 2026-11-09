@@ -14,8 +14,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   site sets, or `STATAMIC_STATIC_CACHING_STRATEGY` (`null` included), still
   wins. `core-web:deploy` skips `statamic:static:clear` when caching is off,
   which failed the deploy. See `docs/static-cache.md#the-strategy`.
-- **Pagination links drop ad and analytics parameters**: a listing's
-  `withQueryString()` links (Statamic's paginated tags call it) no longer
+- **Pagination links drop ad and analytics parameters**: while pages are
+  cached, a listing's `withQueryString()` links (Statamic's paginated tags call it) no longer
   carry `utm_*`, `gclid` and the rest of `static_cache.tracking_query_strings`.
   The page is cached without them since v0.38, so the first visitor's
   campaign reached every later visitor's next page.

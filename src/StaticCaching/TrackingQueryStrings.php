@@ -4,7 +4,6 @@ namespace Inly\CoreWeb\StaticCaching;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Pagination\Paginator;
-use Illuminate\Support\Arr;
 
 /**
  * The query parameters ad and analytics platforms add to a landing page, kept out of the static cache's key. Each
@@ -29,8 +28,10 @@ final class TrackingQueryStrings
         }
 
         // Laravel's own resolver hands a paginator the whole query: cached, the page would credit the first visitor's
-        // campaign with every later visitor's next page.
-        Paginator::queryStringResolver(fn (): array => Arr::except(app('request')->query(), $tracking));
+        // campaign with every later visitor's next page. Uncached, the visitor keeps their own on every page.
+        if (filled($config->get('statamic.static_caching.strategy'))) {
+            Paginator::queryStringResolver(fn (): array => array_diff_key(app('request')->query(), array_flip($tracking)));
+        }
 
         $own = (array) $config->get('statamic.static_caching.disallowed_query_strings', []);
 

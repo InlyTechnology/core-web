@@ -81,8 +81,8 @@ inside `@nocache`: on the `half` strategy Statamic renders a nocache region
 again in each visitor's own request, with their own query, and the cached
 page keeps only its placeholder. A Core form's `query` page source is the
 usual case. Reading them in the browser (analytics and ad scripts do) needs
-nothing. Pagination links leave them out on their own: core-web gives
-Laravel's paginator a query without them, so `withQueryString()` (which
+nothing. Pagination links leave them out on their own while pages are
+cached: core-web gives Laravel's paginator a query without them, so `withQueryString()` (which
 Statamic's paginated tags call) keeps a listing's other parameters but never
 hands the first visitor's campaign to everyone who pages on.
 
