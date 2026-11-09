@@ -17,6 +17,7 @@ One page per feature. Start with the [README](../README.md) for what the package
 - [Static cache](static-cache.md)
 - [Chat](chat.md)
 - [Live reads](live-reads.md)
+- [Search](search.md)
 - [Forms](forms.md)
 - [Media](media.md)
 - [Website content](website-content.md)

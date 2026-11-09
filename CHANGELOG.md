@@ -6,6 +6,19 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Search a Core object for a listing**: the `search` feature runs
+  `Search::for('vehicles')->search(request()->query(), facets: ['make'])` over
+  a search named in `search.objects`. The query keeps only what the object's
+  `/schema` offers, and the answer comes from its snapshot while the snapshot
+  holds every row (`search.local_limit`, 5,000) and the query keeps to the
+  rules Core's search contract pins, or from Core's Objects API, kept briefly
+  and served stale while Core fails. Synonyms, accent folding, values in use
+  and facet counts are Core's, declared on the object. `Snapshot::fromObject()`
+  pulls an object's rows as the search reads them. Needs Core with facets on
+  the Objects API and `sort_custom` in `/schema`. See `docs/search.md`.
+
 ## v0.41.0
 
 - **A large push no longer outlasts the web server**: `content:push` sends

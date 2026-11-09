@@ -15,6 +15,7 @@ use Inly\CoreWeb\Content\VerifyCoreEnvelope;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Preview\KeepPreviewsOutOfCaches;
+use Inly\CoreWeb\Search\Search;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Tests\TestCase;
@@ -38,7 +39,7 @@ class DormantTest extends TestCase
 
     public function test_every_feature_is_off_by_default(): void
     {
-        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false, 'consent' => false, 'seo' => false, 'favicons' => false, 'buttons' => false, 'preview' => false], config('core-web.features'));
+        $this->assertSame(['snapshots' => false, 'chat' => false, 'content' => false, 'live' => false, 'search' => false, 'drafts' => false, 'checks' => false, 'forms' => false, 'cp_link' => false, 'cms_sign_in' => false, 'content_sync' => false, 'media' => false, 'cloud' => false, 'consent' => false, 'seo' => false, 'favicons' => false, 'buttons' => false, 'preview' => false], config('core-web.features'));
     }
 
     public function test_no_route_is_registered(): void
@@ -60,6 +61,15 @@ class DormantTest extends TestCase
     {
         $this->assertFalse(app(Router::class)->has('core-web.live'));
         $this->get('/!/core-web/live/quote')->assertNotFound();
+    }
+
+    public function test_no_search_runs(): void
+    {
+        config(['core-web.search.objects.cars' => ['object' => 'car']]);
+
+        $this->expectException(LogicException::class);
+
+        Search::for('cars');
     }
 
     public function test_no_cms_sign_in_is_wired(): void
