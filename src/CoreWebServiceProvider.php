@@ -75,6 +75,7 @@ use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\CpThumbnailController;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\MissingAltText;
@@ -143,6 +144,7 @@ use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Facades\Utility;
 use Statamic\Fields\FieldsetRepository;
+use Statamic\Http\Controllers\CP\Assets\ThumbnailController;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 use Throwable;
@@ -415,6 +417,8 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadViews();
             $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
             MissingAltTextWidget::register();
+            (new CpThumbnails)->register();
+            $this->app->bind(ThumbnailController::class, CpThumbnailController::class);
             // Every change to a container's assets can change its count, so the next dashboard visit scans it again.
             Event::listen([AssetSaved::class, AssetDeleted::class, AssetUploaded::class, AssetReuploaded::class], fn ($event) => MissingAltText::forget($event->asset->containerHandle()));
             // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
@@ -423,7 +427,6 @@ class CoreWebServiceProvider extends ServiceProvider
             // Asset::url() on a disk reading the live site's pulled index; never on a server.
             if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
-                (new CpThumbnails)->register();
             }
 
             if ($this->app->runningInConsole()) {

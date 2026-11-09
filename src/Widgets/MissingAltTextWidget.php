@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Widgets;
 use Illuminate\Contracts\View\View;
 use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Queue;
+use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Media\ScanMissingAltTextJob;
 use Statamic\Contracts\Assets\Asset;
@@ -52,7 +53,7 @@ class MissingAltTextWidget extends Widget
             ->map(fn (Asset $asset) => [
                 'name' => $asset->basename(),
                 'folder' => $asset->folder() === '/' ? null : $asset->folder(),
-                'thumbnail' => $asset->thumbnailUrl('small'),
+                'thumbnail' => CpThumbnails::url($asset) ?? $asset->thumbnailUrl('small'),
                 'edit_url' => $asset->editUrl(),
             ])
             ->values()
