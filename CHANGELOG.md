@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Live reads run Core functions**: `LiveRequest::function('vehicles/calculate-financing', [...])`
+  runs a Core function on the site's token. The answer is kept for the
+  `max-age` the function sends unless the read names a `ttl()`, Core's
+  per-input errors reach the page as with any read, and a 503 or 429 turns
+  the read off for its `Retry-After`. `LiveRead::ttl()` now returns `?int`,
+  null by default; a read that overrides it is unchanged. See
+  `docs/live-reads.md`.
 - **A Core link in a link field is picked like an entry**: the Campaign or
   Brand option of a Statamic `link` field shows one inline item with a status
   dot and a menu, chosen from a searchable list, instead of a multi-select
