@@ -1,5 +1,25 @@
 # Static cache
 
+## The strategy
+
+core-web turns Statamic's static cache on for every site it runs on a
+server, on Laravel Cloud or not: `half`, unless the app's environment is
+`local` or `testing`, where a cached page would hide the change being made.
+A server needs no `STATAMIC_STATIC_CACHING_STRATEGY` line for it.
+
+The site's own choice stands: a strategy its
+`config/statamic/static_caching.php` sets, or the env var (`full`, or `null`
+to turn caching off). Statamic's skeleton `.env.example` carries
+`STATAMIC_STATIC_CACHING_STRATEGY=null`, so delete that line: a server whose
+`.env` was copied from it would stay uncached.
+
+`half` still runs PHP on each request, and serves the stored page instead of
+rendering it. Only `full` is served by the web server without PHP, and Cloud
+has no web server rewrites for it. `php artisan config:show
+statamic.static_caching.strategy` prints what a server resolved.
+
+## Pages a snapshot change touches
+
 A snapshot moving saves no entry, so Statamic's invalidation never hears of
 it. `SiteCache::flushOnChange()` is the change listener that forgets the
 pages showing it; `SiteCache::flushEverySiteOnChange()` forgets every site's

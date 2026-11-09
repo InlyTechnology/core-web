@@ -97,6 +97,7 @@ use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
+use Inly\CoreWeb\StaticCaching\DefaultStrategy;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
@@ -153,6 +154,8 @@ use Throwable;
  * Dormant until a site switches a feature on (core-web.features): with every
  * switch off it adds no route, schedule, middleware, command, tag or cache
  * store, only the `core-web.envelope` alias a site's own routes may name.
+ * Ungated, it turns static caching on (`half`) outside local and tests
+ * (DefaultStrategy) and keeps ad parameters out of the cache's keys.
  * The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
@@ -200,6 +203,9 @@ class CoreWebServiceProvider extends ServiceProvider
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
             SiteCore::apply($this->app);
+
+            // Before Statamic boots, which subscribes its invalidation only when a strategy is set.
+            DefaultStrategy::apply($this->app);
 
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);

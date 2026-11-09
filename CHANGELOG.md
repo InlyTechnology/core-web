@@ -6,6 +6,32 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Static caching is on wherever the app is not local or under tests**:
+  core-web sets the `half` strategy on every server, Forge as well as
+  Laravel Cloud, when the site's config and env name none. A strategy the
+  site sets, or `STATAMIC_STATIC_CACHING_STRATEGY` (`null` included), still
+  wins. `core-web:deploy` skips `statamic:static:clear` when caching is off,
+  which failed the deploy. See `docs/static-cache.md#the-strategy`.
+
+### Upgrade notes
+
+- **A server without a strategy now caches pages.** Off Laravel Cloud, a
+  site with no `STATAMIC_STATIC_CACHING_STRATEGY` in its env and `null` in
+  `config/statamic/static_caching.php` was uncached and now runs `half` in
+  every environment but `local` and `testing` (staging included). Find it:
+  `php artisan config:show statamic.static_caching.strategy` on the server
+  prints `half` after the update. Migrate: render anything per visitor
+  (forms with errors or a success message, session reads, `old()`) inside
+  `@nocache`; to keep a server uncached, set
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` there. Delete the skeleton's
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` line from `.env.example` (and a
+  server's `.env` copied from it), or that server stays uncached. Verify: a
+  page loaded twice on the server is served from the cache the second time.
+  On Cloud nothing changes, except that `APP_ENV=local` or `testing` there
+  now leaves caching off.
+
 ## v0.42.0
 
 - **Control panel thumbnails come from the CDN**: with `media` on, a file

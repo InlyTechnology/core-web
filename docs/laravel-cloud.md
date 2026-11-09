@@ -12,7 +12,6 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Maintenance mode | the `cache` driver on the `database` store | `APP_MAINTENANCE_DRIVER`, `APP_MAINTENANCE_STORE` |
 | The snapshots store (`snapshots.store_driver`) | `database` | `CORE_SNAPSHOT_STORE` |
 | Content sync tokens (`content_sync.tokens.driver`) | `database` | `CORE_SYNC_TOKENS_DRIVER` |
-| Static caching | `half` | `STATAMIC_STATIC_CACHING_STRATEGY` |
 | Statamic's Glide cache (`statamic.assets.image_manipulation.cache`) when `true` or `hybrid`, which keep renditions in one container's `public/img` | off: each image URL carries its source (signed, with `secure` on) and each container renders its own copies, through PHP | none; a disk name in `config/statamic/assets.php` keeps a cache shared in a bucket |
 | Peak's `favicons` and `social_images` disks, when `config/filesystems.php` defines them `local` (with `features.media` on) | media disks on the bucket, in folders of the same name: Peak's addons hardcode the container handles and write through the disk; `/favicons/...`, where Peak Tools links its icons, redirects to the bucket | none; a disk of another driver is left alone |
 | Stache watcher, Statamic's git integration | off | `STATAMIC_STACHE_WATCHER`, `STATAMIC_GIT_ENABLED` |
@@ -22,6 +21,9 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Livewire's temporary uploads (`livewire.temporary_file_upload.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | a `livewire-tmp` disk on the private bucket, under a driver of its own (on an `s3` disk Livewire refuses a `multiple` field and never cleans up), so Livewire deletes uploads older than a day itself | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
+
+Static caching is on (`half`) here as on any server, with or without the
+feature: see [Static cache](static-cache.md#the-strategy).
 
 An env var the environment sets keeps its own value, including one Cloud
 itself injects when a resource is attached (a cache cluster sets
