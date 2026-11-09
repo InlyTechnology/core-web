@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Core previews the site's own pages**: with `features.preview` and
+  `features.content`, Core's preview frame shows one of the site's pages as
+  it is in the CMS, its working copy included, where the page itself refuses
+  to be framed. Core asks for a signed link at
+  `GET /api/core/v1/page-preview/{id}` (Statamic connector API v1.7) and
+  frames `/core-preview/page/{id}`, rendered like the object preview. These
+  two routes need no `features.snapshots`. See `docs/object-preview.md`.
 - **Previews ask no consent and load no trackers**: Core's preview frame,
   the control panel's Live Preview and a draft's preview link render without
   the cookie banner, the settings link, Tag Manager or the `seo` feature's

@@ -2,9 +2,11 @@
 
 Core shows a record's page on the site beside the record's edit form, with
 the values the person has not saved yet (Statamic connector API v1.5 and
-v1.6, [Core's docs](https://docs.inlycore.com/learn/website-content/website-preview)).
-`features.preview`, with `features.snapshots` and `features.content`, gives
-Core the two things it needs from the site: which records the site serves a
+v1.6, [Core's docs](https://docs.inlycore.com/learn/website-content/website-preview)),
+and frames one of the site's own pages as it is in the CMS (v1.7, [a page of
+the site](#a-page-of-the-site)). `features.preview`, with
+`features.content`, gives Core the frame of the site's pages; with
+`features.snapshots` too, it also gives Core which records the site serves a
 page for, and a route that renders one from Core's unsaved values.
 
 ## Naming the Core object
@@ -87,3 +89,27 @@ that can be typed into; Core decides which of them the person may type into.
 The markers print only on a page rendered for the preview frame, so a public
 or cached page carries none. A hint is drawn after the element, so an image
 is marked on its `<figure>` or another wrapper rather than on the `<img>`.
+
+## A page of the site
+
+Core's preview of one of the site's own pages frames it as it is in the CMS:
+its working copy when it has one, else the entry, unpublished or scheduled
+too. The page itself is not framed, since the site keeps its pages to its own
+origin (an `X-Frame-Options` header, Live Preview's `frame-ancestors`), so
+Core asks the site for a link to frame:
+
+1. `GET /api/core/v1/page-preview/{id}`, sealed for reading, answers
+   `{"data": {"entry_id": "...", "url": "..."}}`: a link the site signs for 24
+   hours, on the origin of the page's own site. An entry with no page answers
+   `404` with the error `not_found`.
+2. Core frames the link, `GET /core-preview/page/{id}` with its signature
+   (the path is `preview.page_path`, throttled by `preview.middleware`). The
+   site renders the page through its own route: the page itself while it is
+   live as it stands, else the working copy or the entry in Live Preview.
+   The render and the answer are the preview route's (steps 2 and 3 above):
+   nothing of it cached, `no-store`, framed by Core alone, with the preview
+   script and the markers, and no consent asked.
+
+Core asks for a fresh link each time the frame opens, so a link outlives a
+screen left open for the day and no longer. Anyone holding it sees the page
+as it is in the CMS until it expires, as with a draft's preview link.
