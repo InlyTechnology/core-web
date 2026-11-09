@@ -5,6 +5,8 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Inly\CoreWeb\StaticCaching\DefaultStrategy;
 use Inly\CoreWeb\Tests\TestCase;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
+use Statamic\Events\EntrySaved;
+use Statamic\StaticCaching\Invalidate;
 
 class DefaultStrategyTest extends TestCase
 {
@@ -79,6 +81,7 @@ class DefaultStrategyTest extends TestCase
     public function test_a_site_on_a_server_boots_with_pages_cached(): void
     {
         $this->assertSame('half', config('statamic.static_caching.strategy'));
+        $this->assertContains(Invalidate::class.'@refreshEntry', $this->app['events']->getRawListeners()[EntrySaved::class] ?? [], 'a save flushes the pages');
     }
 
     public function test_the_suite_boots_without_a_static_cache(): void

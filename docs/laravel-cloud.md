@@ -173,7 +173,7 @@ php artisan core-web:deploy
 ```
 
 It runs `migrate --force`, `statamic:stache:refresh`, `statamic:static:clear`
-and `statamic:search:update --all`, then `core:warm` with
+(when a strategy is set) and `statamic:search:update --all`, then `core:warm` with
 `features.snapshots` (a failed warm-up does not fail the deploy: the site
 serves the snapshots it has), then the site's own commands in
 `cloud.deploy`, and stops at the first required step that fails. On Cloud it

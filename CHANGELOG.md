@@ -21,16 +21,19 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   site with no `STATAMIC_STATIC_CACHING_STRATEGY` in its env and `null` in
   `config/statamic/static_caching.php` was uncached and now runs `half` in
   every environment but `local` and `testing` (staging included). Find it:
-  `php artisan config:show statamic.static_caching.strategy` on the server
-  prints `half` after the update. Migrate: render anything per visitor
-  (forms with errors or a success message, session reads, `old()`) inside
-  `@nocache`; to keep a server uncached, set
+  before updating, `php artisan config:show statamic.static_caching.strategy`
+  on the server prints `null`; then search the views for `$errors`,
+  `session(` and `old(` outside `@nocache`. Migrate: render anything per
+  visitor (forms with errors or a success message, session reads, `old()`)
+  inside `@nocache`; to keep a server uncached, set
   `STATAMIC_STATIC_CACHING_STRATEGY=null` there. Delete the skeleton's
   `STATAMIC_STATIC_CACHING_STRATEGY=null` line from `.env.example` (and a
-  server's `.env` copied from it), or that server stays uncached. Verify: a
-  page loaded twice on the server is served from the cache the second time.
-  On Cloud nothing changes, except that `APP_ENV=local` or `testing` there
-  now leaves caching off.
+  server's `.env` copied from it), or that server stays uncached. Verify:
+  the CP's Utilities → Cache shows the `half` strategy and pages cached
+  after a few visits. On Cloud, a strategy the site's
+  `config/statamic/static_caching.php` sets now wins where `half` used to
+  override it (a `full` there is not served on Cloud, so set it back to
+  `null`), and `APP_ENV=local` or `testing` now leaves caching off.
 
 ## v0.42.0
 

@@ -155,7 +155,8 @@ use Throwable;
  * switch off it adds no route, schedule, middleware, command, tag or cache
  * store, only the `core-web.envelope` alias a site's own routes may name.
  * Ungated, it turns static caching on (`half`) outside local and tests
- * (DefaultStrategy) and keeps ad parameters out of the cache's keys.
+ * (DefaultStrategy), with the middleware that keeps previews out of that
+ * cache, and keeps ad parameters out of the cache's keys.
  * The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
@@ -204,8 +205,10 @@ class CoreWebServiceProvider extends ServiceProvider
         $merge = function (): void {
             SiteCore::apply($this->app);
 
-            // Before Statamic boots, which subscribes its invalidation only when a strategy is set.
-            DefaultStrategy::apply($this->app);
+            // Before Statamic boots, which subscribes its invalidation only when a strategy is set: registered late, it would cache pages no save flushes.
+            if (! $this->app->isBooted()) {
+                DefaultStrategy::apply($this->app);
+            }
 
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
