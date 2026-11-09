@@ -49,7 +49,7 @@ class CoreLive
         }
 
         $input = $validator->validated();
-        $ttl = $read->ttl();
+        $ttl = $read->ttl() === null ? null : max(0, $read->ttl());
         $key = 'core_web_live:'.$name.':'.sha1(serialize(self::sorted($input)));
         $kept = $ttl === 0 ? null : $this->kept($key);
 
@@ -141,7 +141,8 @@ class CoreLive
                 max(1, (int) config('core-web.live.timeouts.connect', 3)),
             );
 
-            if ($response->status() === 404) {
+            // A function answers 204 when there is nothing for the input.
+            if ($response->status() === 404 || ($request->function !== null && $response->status() === 204)) {
                 return LiveResult::notFound();
             }
 
@@ -281,10 +282,12 @@ class CoreLive
         return $out;
     }
 
-    /** Seconds a function's answer may be kept: its `private, max-age`, never one Core sends `no-store`. */
+    /** Seconds a function's answer may be kept: its `private, max-age`, never one Core sends `no-store` or `no-cache`. */
     protected static function maxAge(string $cacheControl): int
     {
-        if (str_contains($cacheControl, 'no-store') || preg_match('~(?:^|[,\s])max-age=(\d+)~', $cacheControl, $match) !== 1) {
+        $cacheControl = strtolower($cacheControl);
+
+        if (str_contains($cacheControl, 'no-store') || str_contains($cacheControl, 'no-cache') || preg_match('~(?:^|[,\s])max-age="?(\d+)~', $cacheControl, $match) !== 1) {
             return 0;
         }
 

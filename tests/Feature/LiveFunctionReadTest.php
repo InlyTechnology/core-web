@@ -24,7 +24,7 @@ class LiveFunctionReadTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('core-web.live.reads', ['financing' => FinancingRead::class, 'uncached' => UncachedFinancingRead::class]);
+        $app['config']->set('core-web.live.reads', ['financing' => FinancingRead::class, 'uncached' => UncachedFinancingRead::class, 'lasting' => LastingFinancingRead::class]);
     }
 
     /** @param  array<string, string>  $headers */
@@ -135,6 +135,50 @@ class LiveFunctionReadTest extends TestCase
         $this->getJson('/!/core-web/live/financing?vehicle=v2&months=12')->assertOk();
     }
 
+    public function test_nothing_to_answer_is_not_found(): void
+    {
+        $this->fakeFunction(Http::response(null, 204));
+
+        $this->getJson(self::URL)->assertNotFound()->assertExactJson(['error' => 'not_found']);
+    }
+
+    public function test_an_answer_that_cannot_be_given_yet_leaves_the_read_on(): void
+    {
+        $this->fakeFunction(Http::response(['errors' => [['code' => 'open_period', 'title' => 'Open.']]], 409));
+        $this->getJson(self::URL)->assertStatus(503)->assertExactJson(['error' => 'unavailable']);
+
+        $this->fakeFunction();
+        $this->getJson(self::URL)->assertOk();
+    }
+
+    public function test_the_last_answer_kept_for_core_s_max_age_is_served_while_the_function_is_down(): void
+    {
+        $this->fakeFunction();
+        $this->getJson('/!/core-web/live/lasting?vehicle=v1&months=12')->assertOk();
+
+        $this->travel(2)->minutes();
+        $this->fakeFunction(Http::response(['errors' => [['code' => 'unavailable', 'title' => 'Down.']]], 503, ['Retry-After' => '60']));
+
+        $this->getJson('/!/core-web/live/lasting?vehicle=v1&months=12')->assertOk()->assertExactJson(['data' => ['monthly' => 120], 'stale' => true]);
+    }
+
+    public function test_a_long_retry_after_is_capped_at_five_minutes(): void
+    {
+        $this->fakeFunction(Http::response(['errors' => [['code' => 'unavailable', 'title' => 'Down.']]], 503, ['Retry-After' => '86400']));
+        $this->getJson(self::URL)->assertStatus(503);
+
+        $this->fakeFunction();
+        $this->travel(301)->seconds();
+        $this->getJson(self::URL)->assertOk();
+    }
+
+    public function test_upper_case_cache_control_is_read(): void
+    {
+        $this->fakeFunction(headers: ['Cache-Control' => 'Private, Max-Age=30']);
+
+        $this->getJson(self::URL)->assertOk()->assertHeader('Cache-Control', 'max-age=30, private');
+    }
+
     public function test_a_function_key_is_checked(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -177,5 +221,13 @@ class UncachedFinancingRead extends FinancingRead
     public function ttl(): int
     {
         return 0;
+    }
+}
+
+class LastingFinancingRead extends FinancingRead
+{
+    public function staleFor(): int
+    {
+        return 3600;
     }
 }

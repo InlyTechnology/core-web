@@ -63,7 +63,8 @@ abstract class LiveRead
 
     /**
      * Seconds past ttl() the last good answer is still served while Core
-     * fails (never to a browser's cache); 0 serves none. Needs a ttl().
+     * fails (never to a browser's cache); 0 serves none. Needs a ttl() or a
+     * function's max-age.
      */
     public function staleFor(): int
     {

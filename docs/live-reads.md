@@ -97,16 +97,21 @@ differs is how Core's answer is read:
   `max-age` the function's `cacheFor()` sends, and keeps none when Core sends
   `no-store`. A `ttl()` the read names, 0 included, wins.
 - **Refusals.** A 422 is passed on per input, each error under the argument
-  its `source.parameter` names, still for the fields in `rules()` only. A 404
-  is `not_found`.
+  its `source.parameter` names, still for the fields in `rules()` only: name
+  the visitor's input as the function names its arguments, or Core's messages
+  for a renamed one never reach the page. A 404, and a 204, is `not_found`.
 - **No answer yet.** A 202 (still working), a 409 (cannot answer yet) and a
   429 (past the function's `rateLimit()`) are `unavailable`, with the stale
   answer when there is one. A 503 or a 429 switches the read off for the
-  `Retry-After` Core sent (at most five minutes), since every visitor shares
-  the site's token.
+  `Retry-After` Core sent in seconds (at most five minutes; without one, for
+  `live.retry_after`), since every visitor shares the site's token.
+- **Arguments.** Validation does not cast, so cast each one as the function
+  types it (`(int)`, `(bool)`): a PHP boolean is sent as `true` or `false`,
+  and a null argument is left out of the query.
 
-The function's key is checked when the request is built: kebab-case segments,
-never a path of the visitor's.
+The function's key is a literal in the read, never built from the visitor's
+input, since the site's token may run other functions too. It is checked when
+the request is built: kebab-case segments only.
 
 After Core itself fails a read (502, 503, 504, a timeout, unreachable), the
 read answers at once for `live.retry_after` seconds (30): its stale answer,
