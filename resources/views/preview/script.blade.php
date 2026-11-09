@@ -2,11 +2,14 @@
 <style>
     .core-framed { --core-ring: oklch(0.55 0.2 262); --core-ring-soft: oklch(0.55 0.2 262 / 0.06); --core-quiet: oklch(0.55 0.02 262); }
     .core-framed [data-core-field], .core-framed [data-core-block] { position: relative; border-radius: 3px; outline: 1.5px solid transparent; outline-offset: 6px; transition: outline-color 120ms ease, background-color 120ms ease; cursor: pointer; }
-    .core-framed [data-core-hint]:hover { outline-color: var(--core-quiet); }
     .core-framed [data-core-highlighted] { outline-color: var(--core-ring); background: var(--core-ring-soft); box-shadow: 0 0 0 6px var(--core-ring-soft); }
-    .core-framed [data-core-typeable]:hover { outline-color: var(--core-ring); background: var(--core-ring-soft); box-shadow: 0 0 0 6px var(--core-ring-soft); cursor: text; }
-    .core-framed [data-core-hint]:not([contenteditable]):hover::after { content: attr(data-core-hint); position: absolute; right: -7.5px; bottom: calc(100% + 7.5px); padding: 0.2rem 0.6rem; border-radius: 4px 4px 0 0; background: var(--core-quiet); color: white; font: 500 0.9rem/1.4 ui-sans-serif, system-ui, sans-serif; white-space: nowrap; pointer-events: none; z-index: 2147483647; }
-    .core-framed [data-core-typeable]:not([contenteditable]):hover::after { background: var(--core-ring); }
+    /* A touch screen holds :hover after a tap, so the hover outline and hint show only where a pointer hovers. */
+    @media (hover: hover) {
+        .core-framed [data-core-hint]:hover { outline-color: var(--core-quiet); }
+        .core-framed [data-core-typeable]:hover { outline-color: var(--core-ring); background: var(--core-ring-soft); box-shadow: 0 0 0 6px var(--core-ring-soft); cursor: text; }
+        .core-framed [data-core-hint]:not([contenteditable]):hover::after { content: attr(data-core-hint); position: absolute; right: -7.5px; bottom: calc(100% + 7.5px); padding: 0.2rem 0.6rem; border-radius: 4px 4px 0 0; background: var(--core-quiet); color: white; font: 500 0.9rem/1.4 ui-sans-serif, system-ui, sans-serif; white-space: nowrap; pointer-events: none; z-index: 2147483647; }
+        .core-framed [data-core-typeable]:not([contenteditable]):hover::after { background: var(--core-ring); }
+    }
     .core-framed [contenteditable] { outline: 2px solid var(--core-ring); outline-offset: 6px; background: var(--core-ring-soft); box-shadow: 0 0 0 6px var(--core-ring-soft); cursor: text; }
 </style>
 <script>

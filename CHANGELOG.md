@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **The preview frame shows its hover hints only where a pointer hovers**: on
+  a phone or a tablet, a tap on a marked element left its hover outline and
+  hint drawn over the page, since a touch screen holds `:hover` after a tap.
+  The tap still goes straight to the field or block, or starts typing in a
+  field that can be typed into. See
+  `docs/object-preview.md#marking-fields-and-blocks`.
+
 ## v0.44.0
 
 - **Search a Core object for a listing**: the `search` feature runs

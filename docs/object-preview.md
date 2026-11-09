@@ -87,3 +87,6 @@ that can be typed into; Core decides which of them the person may type into.
 The markers print only on a page rendered for the preview frame, so a public
 or cached page carries none. A hint is drawn after the element, so an image
 is marked on its `<figure>` or another wrapper rather than on the `<img>`.
+The hover outline and the hint show only where the device has a pointer that
+hovers; on a phone or a tablet a tap goes straight to the field or block, or
+starts typing in a field that can be typed into.
