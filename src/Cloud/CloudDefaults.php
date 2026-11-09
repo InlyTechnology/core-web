@@ -22,7 +22,6 @@ final class CloudDefaults
         'statamic.stache.watcher' => ['STATAMIC_STACHE_WATCHER', false],
         // A Stache built from git is the same in every container, so each keeps its own; on the database store every read is a query.
         'statamic.stache.cache_store' => ['STATAMIC_STACHE_CACHE_STORE', 'file'],
-        'statamic.static_caching.strategy' => ['STATAMIC_STATIC_CACHING_STRATEGY', 'half'],
         // Content lives in the database on Cloud; a CP save has nothing to commit.
         'statamic.git.enabled' => ['STATAMIC_GIT_ENABLED', false],
         // Every Cloud site keeps revisions (stored with the content); a collection still opts in with `revisions: true`, and they need Pro.

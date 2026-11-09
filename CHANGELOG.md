@@ -16,8 +16,43 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   rules Core's search contract pins, or from Core's Objects API, kept briefly
   and served stale while Core fails. Synonyms, accent folding, values in use
   and facet counts are Core's, declared on the object. `Snapshot::fromObject()`
-  pulls an object's rows as the search reads them. Needs Core with facets on
-  the Objects API and `sort_custom` in `/schema`. See `docs/search.md`.
+  pulls an object's rows as the search reads them. Needs Core v63.0.0 or
+  later, for facets on the Objects API and `sort_custom` in `/schema`. See
+  `docs/search.md`.
+
+## v0.43.0
+
+- **Static caching is on wherever the app is not local or under tests**:
+  core-web sets the `half` strategy on every server, Forge as well as
+  Laravel Cloud, when the site's config and env name none. A strategy the
+  site sets, or `STATAMIC_STATIC_CACHING_STRATEGY` (`null` included), still
+  wins. `core-web:deploy` skips `statamic:static:clear` when caching is off,
+  which failed the deploy. See `docs/static-cache.md#the-strategy`.
+- **Pagination links drop ad and analytics parameters**: while pages are
+  cached, a listing's `withQueryString()` links (Statamic's paginated tags call it) no longer
+  carry `utm_*`, `gclid` and the rest of `static_cache.tracking_query_strings`.
+  The page is cached without them since v0.38, so the first visitor's
+  campaign reached every later visitor's next page.
+
+### Upgrade notes
+
+- **A server without a strategy now caches pages.** Off Laravel Cloud, a
+  site with no `STATAMIC_STATIC_CACHING_STRATEGY` in its env and `null` in
+  `config/statamic/static_caching.php` was uncached and now runs `half` in
+  every environment but `local` and `testing` (staging included). Find it:
+  before updating, `php artisan config:show statamic.static_caching.strategy`
+  on the server prints `null`; then search the views for `$errors`,
+  `session(` and `old(` outside `@nocache`. Migrate: render anything per
+  visitor (forms with errors or a success message, session reads, `old()`)
+  inside `@nocache`; to keep a server uncached, set
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` there. Delete the skeleton's
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` line from `.env.example` (and a
+  server's `.env` copied from it), or that server stays uncached. Verify:
+  the CP's Utilities → Cache shows the `half` strategy and pages cached
+  after a few visits. On Cloud, a strategy the site's
+  `config/statamic/static_caching.php` sets now wins where `half` used to
+  override it (a `full` there is not served on Cloud, so set it back to
+  `null`), and `APP_ENV=local` or `testing` now leaves caching off.
 
 ## v0.42.0
 

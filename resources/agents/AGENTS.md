@@ -11,6 +11,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Every feature is off until the site's `config/core-web.php` switches it on** (`features.*`), and a feature
   that is off registers nothing. The file holds only the keys the site changes; publish the whole config only
   to change more than that.
+- **Static caching is on wherever the app is not `local` or `testing`**: core-web sets `half` when the site names
+  no strategy, so a server needs no `STATAMIC_STATIC_CACHING_STRATEGY` line. Delete the skeleton's `=null` line
+  from `.env.example`, or a server whose `.env` was copied from it stays uncached. See `docs/static-cache.md`.
 - **The package is changed in its own repository** (InlyTechnology/core-web), released as a tag and pulled in
   with `composer update inly/core-web`. Never a copy under `packages/`, never an edit in `vendor/`. A site
   needing something core-web almost does: propose the change to core-web.

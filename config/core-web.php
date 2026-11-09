@@ -159,7 +159,8 @@ return [
     | values reach everyone. The site's own list in
     | config/statamic/static_caching.php is kept; [] adds none. Not applied
     | on the `full` strategy, whose nocache regions would no longer be found
-    | for an address carrying them.
+    | for an address carrying them. While pages are cached, pagination links
+    | (`withQueryString()`) leave them out too.
     |
     */
 

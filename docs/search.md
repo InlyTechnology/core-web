@@ -23,6 +23,9 @@ a set of rows, the declaration and what Core returns for each request. A copy
 lives in `tests/fixtures/core-search-contract.json`, and the local engine is
 tested against every case, so the two engines cannot drift apart unnoticed.
 
+The backoffice runs Core v63.0.0 or later: earlier versions answer no facets
+and do not mark the filters and sorts only Core runs.
+
 ## Switching it on
 
 ```php

@@ -74,7 +74,6 @@ class CloudTest extends TestCase
         $this->assertSame('database', config('session.driver'));
         $this->assertSame('database', config('core-web.snapshots.store_driver'));
         $this->assertSame('database', config('core-web.content_sync.tokens.driver'));
-        $this->assertSame('half', config('statamic.static_caching.strategy'));
         $this->assertFalse(config('statamic.git.enabled'));
         $this->assertTrue(config('statamic.revisions.enabled'));
         $this->assertTrue(config('statamic.editions.pro'));
@@ -493,7 +492,7 @@ class CloudTest extends TestCase
 
     public function test_deploy_runs_the_steps_and_the_sites_own(): void
     {
-        config(['core-web.cloud.detected' => false, 'core-web.cloud.deploy' => ['env']]);
+        config(['core-web.cloud.detected' => false, 'core-web.cloud.deploy' => ['env'], 'statamic.static_caching.strategy' => 'half']);
 
         Artisan::call('core-web:deploy');
         $output = Artisan::output();
@@ -503,6 +502,14 @@ class CloudTest extends TestCase
         }
 
         $this->assertStringNotContainsString('core:warm', $output, 'only with the snapshots feature');
+    }
+
+    public function test_deploy_without_a_static_cache_skips_clearing_it(): void
+    {
+        config(['core-web.cloud.detected' => false, 'statamic.static_caching.strategy' => null]);
+
+        $this->assertSame(0, Artisan::call('core-web:deploy'));
+        $this->assertStringNotContainsString('statamic:static:clear', Artisan::output());
     }
 
     public function test_import_refuses_while_entries_read_content_files(): void
