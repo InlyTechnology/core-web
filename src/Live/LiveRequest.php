@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Live;
 
+use Illuminate\Http\Client\Response;
 use InvalidArgumentException;
 
 /** The one call to Core a live read makes, on the site's client token. */
@@ -34,6 +35,12 @@ final class LiveRequest
         }
 
         return new self('get', '/api/v1/functions/'.$key, self::query($arguments), $key);
+    }
+
+    /** Core's answer to this request, read by the contract of what it asked. */
+    public function answer(Response $response): CoreAnswer
+    {
+        return $this->function === null ? CoreAnswer::fromRoute($response) : CoreAnswer::fromFunction($response);
     }
 
     /** @param  array<string, mixed>  $query */

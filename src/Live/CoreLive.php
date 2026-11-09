@@ -61,7 +61,7 @@ class CoreLive
         $result = $this->down($name) ? LiveResult::unavailable() : $this->call($name, $read, $input);
 
         if ($result->successful()) {
-            // A read that names no ttl() keeps a function's answer for the max-age Core sent with it.
+            // A read that names no ttl() keeps the answer for the max-age Core sent with it.
             $ttl = max(0, $ttl ?? $result->ttl);
 
             if ($ttl === 0 || ! $read->keep((array) $result->data)) {
@@ -141,33 +141,31 @@ class CoreLive
                 max(1, (int) config('core-web.live.timeouts.connect', 3)),
             );
 
-            // A function answers 204 when there is nothing for the input.
-            if ($response->status() === 404 || ($request->function !== null && $response->status() === 204)) {
+            $answer = $request->answer($response);
+
+            if ($answer->kind === CoreAnswer::NOT_FOUND) {
                 return LiveResult::notFound();
             }
 
-            if ($response->status() === 422) {
-                $errors = $request->function === null ? $response->json('errors') : self::functionErrors($response->json('errors'));
-
-                return LiveResult::invalid(self::errors($errors, $read->rules()));
+            if ($answer->kind === CoreAnswer::INVALID) {
+                return LiveResult::invalid(self::errors($answer->errors, $read->rules()));
             }
 
-            // A function that is still working (202), cannot answer yet (409) or is past its limit (429) has no answer for now.
-            if ($request->function !== null && in_array($response->status(), [202, 409, 429], true)) {
-                Log::info('Core function answered without data.', ['read' => $name, 'function' => $request->function, 'status' => $response->status()]);
+            if ($answer->kind === CoreAnswer::PENDING) {
+                Log::info('Core had no answer for a live read yet.', ['read' => $name, 'status' => $answer->status]);
 
-                return $this->failed($name, $response->status() === 429, self::retryAfter($response->header('Retry-After')));
+                return $this->failed($name, $answer->coreDown, $answer->retryAfter);
             }
 
-            $data = $response->successful() && is_array($json = $response->json()) ? $read->present($json, $input) : null;
+            $data = $answer->kind === CoreAnswer::OK ? $read->present($answer->json ?? [], $input) : null;
 
             if ($data === null) {
-                Log::warning('Core live read failed.', ['read' => $name, 'status' => $response->status()]);
+                Log::warning('Core live read failed.', ['read' => $name, 'status' => $answer->status]);
 
-                return $this->failed($name, self::coreDown($response->status()), $request->function === null ? null : self::retryAfter($response->header('Retry-After')));
+                return $this->failed($name, $answer->coreDown, $answer->retryAfter);
             }
 
-            return LiveResult::ok($data, $request->function === null ? 0 : self::maxAge($response->header('Cache-Control')));
+            return LiveResult::ok($data, $answer->maxAge);
         } catch (InvalidArgumentException $e) {
             Log::warning('Core live read refused.', ['read' => $name, 'message' => $e->getMessage()]);
 
@@ -183,16 +181,9 @@ class CoreLive
         }
     }
 
-    /** Whether a status says Core itself is down; a 500 can be one visitor's input, which must not switch the read off for all. */
-    protected static function coreDown(int $status): bool
-    {
-        return in_array($status, [502, 503, 504], true);
-    }
-
     /**
      * Unavailable, marking Core down for the read when Core itself failed:
-     * for the Retry-After a function sent, else core-web.live.retry_after
-     * seconds.
+     * for the Retry-After Core sent, else core-web.live.retry_after seconds.
      */
     protected function failed(string $name, bool $coreDown, ?int $retryAfter = null): LiveResult
     {
@@ -241,63 +232,18 @@ class CoreLive
 
     /**
      * Core's validation messages for the fields the visitor sent (the read's
-     * rules), strings only: Core judged a body the site built, and the rest
-     * can name fields the visitor never saw.
+     * rules): Core judged a request the site built, and the rest can name
+     * fields the visitor never saw.
      *
+     * @param  array<string, list<string>>  $errors
      * @param  array<string, mixed>  $rules
      * @return array<string, list<string>>
      */
-    protected static function errors(mixed $errors, array $rules): array
+    protected static function errors(array $errors, array $rules): array
     {
         $fields = array_map(fn (string $key): string => explode('.', $key)[0], array_keys($rules));
-        $out = [];
 
-        foreach (is_array($errors) ? $errors : [] as $field => $messages) {
-            if (in_array(explode('.', (string) $field)[0], $fields, true)) {
-                $out[(string) $field] = array_values(array_filter((array) $messages, 'is_string'));
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * A function's 422 as field messages: Core answers `errors` as a list,
-     * each naming its input under `source.parameter`.
-     *
-     * @return array<string, list<string>>
-     */
-    protected static function functionErrors(mixed $errors): array
-    {
-        $out = [];
-
-        foreach (is_array($errors) ? $errors : [] as $error) {
-            $field = is_array($error) ? ($error['source']['parameter'] ?? null) : null;
-
-            if (is_string($field) && is_string($error['title'] ?? null)) {
-                $out[$field][] = $error['title'];
-            }
-        }
-
-        return $out;
-    }
-
-    /** Seconds a function's answer may be kept: its `private, max-age`, never one Core sends `no-store` or `no-cache`. */
-    protected static function maxAge(string $cacheControl): int
-    {
-        $cacheControl = strtolower($cacheControl);
-
-        if (str_contains($cacheControl, 'no-store') || str_contains($cacheControl, 'no-cache') || preg_match('~(?:^|[,\s])max-age="?(\d+)~', $cacheControl, $match) !== 1) {
-            return 0;
-        }
-
-        return (int) $match[1];
-    }
-
-    /** A Retry-After in seconds, capped at five minutes so one answer cannot switch a read off for long; null when Core sent none. */
-    protected static function retryAfter(string $header): ?int
-    {
-        return ctype_digit(trim($header)) ? min((int) trim($header), 300) : null;
+        return array_filter($errors, fn (string $field): bool => in_array(explode('.', $field)[0], $fields, true), ARRAY_FILTER_USE_KEY);
     }
 
     /**
