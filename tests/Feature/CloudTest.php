@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Closure;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -17,6 +18,12 @@ use Redis;
 use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
+use Statamic\Events\UserDeleted;
+use Statamic\Facades\Search;
+use Statamic\Facades\User;
+use Statamic\Search\InsertMultipleJob;
+use Statamic\Search\Null\NullIndex;
+use Statamic\Search\UpdateItemIndexes;
 use Throwable;
 
 class CloudTest extends TestCase
@@ -346,6 +353,87 @@ class CloudTest extends TestCase
         CloudDefaults::apply($this->app);
 
         $this->assertSame('glide', config('statamic.assets.image_manipulation.cache'));
+    }
+
+    public function test_a_local_search_index_is_built_in_the_request_that_reads_it(): void
+    {
+        $this->setEnv('STATAMIC_SEARCH_QUEUE_CONNECTION', null);
+        config(['queue.default' => 'database', 'statamic.search.queue_connection' => null, 'statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('sync', config('statamic.search.queue_connection'));
+        $this->assertSame('sync', (new InsertMultipleJob('default', null, collect()))->connection, 'the connection Statamic queues each build on');
+
+        config(['statamic.search.queue_connection' => null, 'statamic.search.indexes' => ['products' => ['driver' => 'algolia']]]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('sync', config('statamic.search.queue_connection'), 'Statamic adds a local cp index when the config names none');
+    }
+
+    public function test_search_builds_keep_their_queue_with_only_remote_indexes_or_one_the_site_chose(): void
+    {
+        $this->setEnv('STATAMIC_SEARCH_QUEUE_CONNECTION', null);
+        config(['statamic.search.queue_connection' => null, 'statamic.search.indexes' => ['products' => ['driver' => 'algolia'], 'cp' => ['driver' => 'null']]]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(config('statamic.search.queue_connection'));
+
+        config(['statamic.search.queue_connection' => 'redis', 'statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('redis', config('statamic.search.queue_connection'));
+
+        // Read by Statamic's own config when the site did not publish it, which merges after core-web registers.
+        $this->setEnv('STATAMIC_SEARCH_QUEUE_CONNECTION', 'database');
+        config(['statamic.search.queue_connection' => null]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(config('statamic.search.queue_connection'));
+    }
+
+    public function test_on_laravel_13_a_save_updates_the_index_of_the_container_it_is_made_on(): void
+    {
+        if (! class_exists(QueueRoutes::class)) {
+            $this->markTestSkipped('Queue routes arrived in Laravel 13.');
+        }
+
+        // The app booted with Statamic's own local default index, which routed saves already.
+        $this->app->instance('queue.routes', new QueueRoutes);
+        $this->setEnv('STATAMIC_SEARCH_QUEUE_CONNECTION', null);
+        config(['queue.default' => 'database', 'statamic.search.queue_connection' => 'redis', 'statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(app('queue.routes')->getConnection(new UpdateItemIndexes), 'a connection the site chose keeps its queue');
+
+        config(['statamic.search.queue_connection' => null]);
+        CloudDefaults::apply($this->app);
+
+        // Pushed to the database queue it would fail here: the test database has no jobs table.
+        event(new UserDeleted(User::make()->email('editor@example.com')));
+        $this->assertSame('sync', app('queue.routes')->getConnection(new UpdateItemIndexes));
+    }
+
+    public function test_on_cloud_the_deploy_builds_only_the_indexes_that_outlive_the_container(): void
+    {
+        Search::extend('remote', fn ($app, array $config, string $name, ?string $locale) => new NullIndex($name, $config, $locale));
+        config([
+            'statamic.eloquent-driver.entries.driver' => 'eloquent',
+            'statamic.users.repository' => 'eloquent',
+            'statamic.search.indexes' => ['default' => ['driver' => 'local'], 'products' => ['driver' => 'remote']],
+        ]);
+
+        $this->assertSame(0, Artisan::call('core-web:deploy'));
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('Index products updated', $output);
+        $this->assertStringNotContainsString('Index default updated', $output);
+        $this->assertStringContainsString('builds its own on its first search', $output);
+
+        config(['statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        $this->assertSame(0, Artisan::call('core-web:deploy'));
+
+        $this->assertStringNotContainsString('statamic:search:update', Artisan::output());
     }
 
     public function test_definitions_stay_files_from_git(): void
