@@ -244,6 +244,10 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeGroupDefaults('buttons', ['variants', 'link_types', 'core_links']);
             }
 
+            if (self::enabled('search')) {
+                $this->mergeGroupDefaults('search', ['objects']);
+            }
+
             if (self::enabled('media')) {
                 $this->mergeMediaDefaults();
 
@@ -365,6 +369,11 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('live')) {
             self::liveReads();
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
+        }
+
+        if (self::enabled('search')) {
+            // The label of a facet's empty count.
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         }
 
         if (self::enabled('drafts')) {

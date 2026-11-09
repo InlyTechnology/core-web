@@ -4,8 +4,10 @@ namespace Inly\CoreWeb\Snapshots;
 
 use Closure;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Search\SearchRow;
 use InvalidArgumentException;
 use LogicException;
+use RuntimeException;
 
 /**
  * The definition of one cached copy of Core objects: where it lives in the
@@ -125,6 +127,46 @@ final class Snapshot
         $this->pull = $pull;
 
         return $this;
+    }
+
+    /**
+     * Pulls every row of a Core object the site's client may read, each as
+     * the search engines read a row (Inly\CoreWeb\Search\SearchRow: its
+     * attributes by property name, with its `id`), keyed by id, and reads one
+     * again by id when Core pings it. The copy core-web.search's local engine
+     * searches: it holds every row, so the local engine answers as Core would,
+     * and a list Core gives only in part fails the pull rather than replace
+     * the last good copy with a part of it.
+     */
+    public function fromObject(string $type, int $pageSize = 100): self
+    {
+        $this->pull = function () use ($type, $pageSize): array {
+            $pages = app(CoreClient::class)->objects($type, $pageSize);
+            $rows = [];
+
+            foreach ($pages as $document) {
+                $row = SearchRow::from(is_array($document['data'] ?? null) ? $document['data'] : []);
+
+                if ($row['id'] !== '') {
+                    $rows[$row['id']] = $row;
+                }
+            }
+
+            if ($pages->getReturn()['truncated']) {
+                throw new RuntimeException("Core listed [{$type}] in part.");
+            }
+
+            return $rows;
+        };
+
+        $this->pullOne = function (string $id) use ($type): array {
+            $document = app(CoreClient::class)->object($type, $id);
+            $row = is_array($document['data'] ?? null) ? SearchRow::from($document['data']) : null;
+
+            return $row === null || $row['id'] === '' ? [] : [$row['id'] => $row];
+        };
+
+        return $this->coreObject($type);
     }
 
     /**

@@ -38,6 +38,11 @@ return [
     | scripts at /!/core-web/live/{name}, and for its own code through
     | Inly\CoreWeb\Live\CoreLive.
     |
+    | search: the site's searches of Core objects (`search`), each read
+    | through Inly\CoreWeb\Search\Search: answered from the object's
+    | snapshot when it holds every row, by Core's Objects API otherwise. A
+    | search over a snapshot needs `snapshots` on too.
+    |
     | drafts: drafts of the site's entries written as an editor's CP save
     | writes them (Inly\CoreWeb\Drafts\DraftWriter), for the sources that
     | write them (Core AI, a push), with their signed preview link (`drafts`)
@@ -105,6 +110,7 @@ return [
         'chat' => false,
         'content' => false,
         'live' => false,
+        'search' => false,
         'drafts' => false,
         'checks' => false,
         'forms' => false,
@@ -460,6 +466,55 @@ return [
         'store' => null,
         'name' => 'core-web.live',
         'middleware' => ['throttle:60,1'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Search
+    |--------------------------------------------------------------------------
+    |
+    | Searches of a Core object for the site's listings, each read with
+    | Search::for($name)->search(request()->query(), facets: [...]). The query
+    | keeps only what the object's `/schema` description offers, and the
+    | answer is the same whichever engine gives it (docs/search.md).
+    |
+    | objects: each search by name, with the object's lookup key in Core
+    | (`object`), the snapshot holding its rows (`snapshot`, made with
+    | Snapshot::fromObject(); none searches Core only) and the engine it
+    | always runs on (`engine`, null to let the rows decide).
+    |
+    |     'objects' => [
+    |         'vehicles' => ['object' => 'vehicle', 'snapshot' => 'vehicles'],
+    |     ],
+    |
+    | engine: `local`, `remote` or null for every search that names none.
+    | Null searches the snapshot while it holds at most `local_limit` rows
+    | and the query keeps to the rules Core's search contract publishes, and
+    | Core otherwise.
+    |
+    | schema_ttl / ttl: seconds an object's description and an answer from
+    | Core are kept, per query. stale_for: seconds longer either is served
+    | while Core cannot give a fresh one.
+    |
+    | retry_after: seconds Core is not asked again after it failed, unless it
+    | sent a Retry-After. timeouts: seconds to connect to Core and to wait for
+    | its answer. store: the cache store; null is the default store.
+    |
+    */
+
+    'search' => [
+        'objects' => [],
+        'engine' => null,
+        'local_limit' => 5000,
+        'schema_ttl' => 900,
+        'ttl' => 60,
+        'stale_for' => 3600,
+        'retry_after' => 30,
+        'timeouts' => [
+            'connect' => 3,
+            'read' => 5,
+        ],
+        'store' => null,
     ],
 
     /*

@@ -137,6 +137,22 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **A live read of a figure Core works out runs a Core function** (`LiveRequest::function()`), never a site
   route of the Core app's own: the function is the one read the site, Core AI and MCP share.
 
+## Search (`search`)
+
+- **A listing visitors search and filter is `Search::for($name)->search(request()->query(), facets: [...])`**
+  over an object named in `search.objects`, never a query, synonym list, accent folding or filter rules of the
+  site's own, and never a search route of the Core app's own. Synonyms, values in use and facets are declared
+  on the object in Core; the site reads them from its `/schema`.
+- **Give the search a snapshot made with `Snapshot::fromObject()`** for an object of up to `search.local_limit`
+  rows, registered on Core's ping for it: a search then runs locally, with only the object's description read
+  from Core every `schema_ttl`. Never filter or partition that snapshot; which rows the site sees is Core's
+  `access()` for its client. The object's default sort must be on its rows (a number or a date, never Core's
+  `created_at`), or every listing without a `sort` goes to Core.
+- **A filter the local engine cannot run goes to Core by itself** (`filter_custom`, a field not on the rows):
+  never force `engine` to `local` to avoid that.
+- **Render what the result says**: `stale` still shows the rows, `unavailable` says the listing cannot be
+  searched right now, `invalid` shows no rows. Page links come from `SearchQuery::toUrl()`, never hand-built.
+
 ## Cookie consent (`consent`)
 
 - **Every script that sets an optional cookie is held back** with `@consentScript('<category>')` or

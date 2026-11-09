@@ -23,6 +23,7 @@ What the package gives a site:
 | Static cache helpers | `Inly\CoreWeb\StaticCaching\SiteCache`, `SiteScopedInvalidator` | Flush the pages a snapshot change touches (or the whole site when they are not known); scope the `all` invalidation rule to the saved item's site |
 | Rich text | `Inly\CoreWeb\Support\CoreHtml` | Narrows Core's `*_html` fields to prose markup |
 | Chat relay | `Inly\CoreWeb\Chat\*` | A site's visitors talking to Core's chat agents: the transport (`CoreChat`), the relay routes, the per-agent `ChatContext`, a headless Alpine factory and `<x-core-web::chat>` |
+| Search | `Inly\CoreWeb\Search\*` | A Core object searched and filtered for a listing (`Search::for()`): the query read from the page address against the object's `/schema`, answered from its snapshot (`Snapshot::fromObject()`) by the rules Core's search contract pins, or by Core's Objects API, with facet counts |
 | Own form markup | `Inly\CoreWeb\Forms\*` | A Livewire form with the site's own markup posting to a Core form (`CoreForm`): defaults, validation and missing required fields from Core's definition, and the entry sent on the site's token |
 | Website content | `Inly\CoreWeb\Content\*` | Opens the envelopes Core seals with its own key for a site's content endpoints (`core-web.envelope:<purpose>`), reads Core's published keys, and pings Core when a page changes |
 | CMS sign-in | `Inly\CoreWeb\CmsSignIn\*` | The control panel signed into from Core alone: the hand-off and offboarding routes, a user provider that admits only the accounts Core provisioned, the CP login redirected to Core, and `core:reconcile-cms-users` |
@@ -63,6 +64,7 @@ One page per feature, in [`docs/`](docs):
 - [Static cache](docs/static-cache.md)
 - [Chat](docs/chat.md)
 - [Live reads](docs/live-reads.md)
+- [Search](docs/search.md)
 - [Forms](docs/forms.md)
 - [Media](docs/media.md)
 - [Website content](docs/website-content.md)

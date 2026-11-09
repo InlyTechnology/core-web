@@ -53,6 +53,15 @@ shares with the backoffice under the backoffice's own names:
 | `content.environment` | `CORE_CONTENT_ENVIRONMENT` | The environment a draft or publish must be sealed for; empty is `app()->environment()` |
 | `content.store` | `null` | The cache store holding Core's keys and the spent nonces; `null` is the default store. Shared by every server behind the site, and best one a deploy's `cache:clear` and Statamic's cache clearing leave alone: clearing the nonces lets an envelope captured in the last five minutes be replayed once |
 | `content.key_cache_key` | `core_web_signing_keys` | Where Core's key document is cached |
+| `features.search` | `false` | Switch on object searches (see [Search](search.md)) |
+| `search.objects` | `[]` | Search name => `object` (Core's lookup key), `snapshot` (the snapshot with its rows, none for Core only) and `engine` (`local`, `remote`, or null to let the rows decide) |
+| `search.engine` | `null` | The engine of every search that names none |
+| `search.local_limit` | `5000` | The most rows a snapshot holds for the local engine to search it |
+| `search.schema_ttl` / `search.ttl` | `900` / `60` | Seconds an object's description, and an answer from Core per query, are kept |
+| `search.stale_for` | `3600` | Seconds longer either is served while Core cannot give a fresh one |
+| `search.retry_after` | `30` | Seconds Core is not asked again after it failed, unless it sent a `Retry-After` (at most 300) |
+| `search.timeouts` | `connect` 3, `read` 5 | Seconds |
+| `search.store` | `null` | The cache store; `null` is the default store |
 | `features.media` | `false` | Switch on the media components and disks (see [Media](media.md)) |
 | `media.cdn.origins` | `['https://cdn.inlycore.com']` | The transforming CDN's base URLs; only URLs under one get transform params. `[]` turns transforms off |
 | `media.cdn.scheme` | `CoreCdnScheme` | The `UrlScheme` that builds transform URLs (core-cdn's query params); `PassthroughScheme` builds none |
