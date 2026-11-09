@@ -4,6 +4,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Closure;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -17,9 +18,12 @@ use Redis;
 use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
+use Statamic\Events\UserDeleted;
 use Statamic\Facades\Search;
+use Statamic\Facades\User;
 use Statamic\Search\InsertMultipleJob;
 use Statamic\Search\Null\NullIndex;
+use Statamic\Search\UpdateItemIndexes;
 use Throwable;
 
 class CloudTest extends TestCase
@@ -386,6 +390,28 @@ class CloudTest extends TestCase
         CloudDefaults::apply($this->app);
 
         $this->assertNull(config('statamic.search.queue_connection'));
+    }
+
+    public function test_on_laravel_13_a_save_updates_the_index_of_the_container_it_is_made_on(): void
+    {
+        if (! class_exists(QueueRoutes::class)) {
+            $this->markTestSkipped('Queue routes arrived in Laravel 13.');
+        }
+
+        // The app booted with Statamic's own local default index, which routed saves already.
+        $this->app->instance('queue.routes', new QueueRoutes);
+        $this->setEnv('STATAMIC_SEARCH_QUEUE_CONNECTION', null);
+        config(['queue.default' => 'database', 'statamic.search.queue_connection' => 'redis', 'statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(app('queue.routes')->getConnection(new UpdateItemIndexes), 'a connection the site chose keeps its queue');
+
+        config(['statamic.search.queue_connection' => null]);
+        CloudDefaults::apply($this->app);
+
+        // Pushed to the database queue it would fail here: the test database has no jobs table.
+        event(new UserDeleted(User::make()->email('editor@example.com')));
+        $this->assertSame('sync', app('queue.routes')->getConnection(new UpdateItemIndexes));
     }
 
     public function test_on_cloud_the_deploy_builds_only_the_indexes_that_outlive_the_container(): void

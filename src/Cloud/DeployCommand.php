@@ -52,12 +52,11 @@ class DeployCommand extends Command
     /** A local index is a file each container builds on its first search, which a save updates on one container only. */
     private function warnAboutLocalSearch(): void
     {
-        $local = collect((array) config('statamic.search.indexes', []))
-            ->filter(fn ($index): bool => is_array($index) && ($index['driver'] ?? 'local') === 'local')
-            ->keys();
+        // Statamic's own `cp` index is left out: every site has one, and it serves CP search only.
+        $local = array_filter(CloudDefaults::localSearchIndexes(config()), fn (string $index): bool => config()->has("statamic.search.indexes.{$index}"));
 
-        if ($local->isNotEmpty()) {
-            $this->components->warn('Search indexes on the local driver are a file on each container on Cloud: '.$local->implode(', ').'. Each container builds its own on its first search, and a save reaches one container\'s copy only, so the others show it after their next restart. Use a remote search driver where edits must show at once, and keep search result pages out of the static cache.');
+        if ($local !== []) {
+            $this->components->warn('Search indexes on the local driver are a file on each container on Cloud: '.implode(', ', $local).'. Each container builds its own on its first search, and a save reaches one container\'s copy only, so the others show it after their next restart. Use a remote search driver where edits must show at once, and keep search result pages out of the static cache.');
         }
     }
 

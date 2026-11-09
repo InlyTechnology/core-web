@@ -4,11 +4,13 @@ namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Env;
 use Livewire\Livewire;
 use LogicException;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
+use Statamic\Search\UpdateItemIndexes;
 
 /**
  * The config a Statamic site needs on Laravel Cloud, whose disk every deploy resets,
@@ -97,6 +99,16 @@ final class CloudDefaults
             if (blank(Env::get('STATAMIC_SEARCH_QUEUE_CONNECTION')) && blank($config->get('statamic.search.queue_connection')) && self::localSearchIndexes($config) !== []) {
                 $config->set('statamic.search.queue_connection', 'sync');
             }
+        }
+
+        // A save updates the indexes through a queued listener, which on a worker updates the worker's copy, or rebuilds it
+        // whole in one job. While builds run in the request, the save updates the copy of the container it was made on.
+        if ($config->get('statamic.search.queue_connection') === 'sync' && class_exists(QueueRoutes::class)) {
+            $app->extend('queue.routes', function (QueueRoutes $routes): QueueRoutes {
+                $routes->set(UpdateItemIndexes::class, connection: 'sync');
+
+                return $routes;
+            });
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
@@ -294,15 +306,25 @@ final class CloudDefaults
     }
 
     /**
-     * The search indexes kept in a file on the container's disk, Statamic's own `cp` index included while the config names none.
+     * The driver of each search index, Statamic's own `cp` index included while the config names none.
+     *
+     * @return array<string, string>
+     */
+    public static function searchIndexDrivers(Repository $config): array
+    {
+        $indexes = array_filter((array) $config->get('statamic.search.indexes', []), is_array(...)) + ['cp' => ['driver' => 'local']];
+
+        return array_map(fn (array $index): string => (string) ($index['driver'] ?? 'local'), $indexes);
+    }
+
+    /**
+     * The search indexes kept in a file on the container's disk.
      *
      * @return list<string>
      */
     public static function localSearchIndexes(Repository $config): array
     {
-        $indexes = (array) $config->get('statamic.search.indexes', []) + ['cp' => ['driver' => 'local']];
-
-        return array_keys(array_filter($indexes, fn (mixed $index): bool => is_array($index) && ($index['driver'] ?? 'local') === 'local'));
+        return array_keys(array_filter(self::searchIndexDrivers($config), fn (string $driver): bool => $driver === 'local'));
     }
 
     /** Whether content and users live in the database, as nothing on Cloud's disk outlives a deploy. */

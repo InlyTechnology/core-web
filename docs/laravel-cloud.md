@@ -21,7 +21,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Livewire's temporary uploads (`livewire.temporary_file_upload.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | a `livewire-tmp` disk on the private bucket, under a driver of its own (on an `s3` disk Livewire refuses a `multiple` field and never cleans up), so Livewire deletes uploads older than a day itself | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
-| The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: each container builds a local index in the request that first searches it, on its own disk. Queued, the build ran on the worker's disk, which no web replica reads, so every search queued another build and then failed on a missing index | `STATAMIC_SEARCH_QUEUE_CONNECTION`; a connection the site's config sets is kept |
+| The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: a local index is built in the request that first searches it, on the disk of the container that reads it, and a save updates the index in the request that saves (on Laravel 13, which routes Statamic's queued `UpdateItemIndexes` listener to `sync`; on Laravel 12 it keeps its queue) | `STATAMIC_SEARCH_QUEUE_CONNECTION` set to a connection name (an empty value or `null` still gets `sync`); a connection the site's config sets is kept |
 
 Static caching is on (`half`) here as on any server, with or without the
 feature: see [Static cache](static-cache.md#the-strategy).
@@ -82,11 +82,12 @@ The site does its half once:
   to), keep the CP provider on the `statamic` driver with its `model` set,
   and turn on Cloud's scheduler for `core:reconcile-cms-users`.
 - Search: a `local` index is a file on each container's disk. Each
-  container builds its own on its first search (the feature builds it in the
-  request), and a save updates the copy of the one container that handles
-  it (with a worker, the worker's), so the others show an edit after their
-  next restart or deploy. Where edits must show in search at once, use a
-  remote search driver; `core-web:deploy` warns about any local index.
+  container builds its own whole index in the request that first searches
+  it, or saves an entry, and that request waits for it. A save updates the
+  copy of the container it is made on, so the others show an edit after
+  their next restart or deploy. That holds for a few thousand documents; past
+  that, or where edits must show in search at once, use a remote search
+  driver. `core-web:deploy` warns about every local index the config names.
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
