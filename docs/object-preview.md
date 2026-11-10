@@ -120,6 +120,6 @@ expires, as with a draft's preview link.
 A working copy or an unpublished entry renders through Statamic's Live
 Preview, which stands the previewed entry in for the stored one and does not
 take it back. In a PHP process that ends with the request (PHP-FPM) nothing
-outlives the frame; under a long-lived worker (Octane, a queue worker
-rendering pages) the stand-in would reach the next request, so the frame
-route is not served from one.
+outlives the frame. Under a long-lived worker (Octane, a queue worker
+rendering pages) the stand-in would reach the next request, so a site with
+`features.preview` on does not serve the frame route from one.

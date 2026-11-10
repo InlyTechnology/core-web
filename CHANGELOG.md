@@ -15,6 +15,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `GET /api/core/v1/page-preview/{id}` (Statamic connector API v1.7) and
   frames `/core-preview/page/{id}`, rendered like the object preview. These
   two routes need no `features.snapshots`. See `docs/object-preview.md`.
+- `ObjectPreviewController::coreOrigin()` is deprecated: call
+  `PreviewFrame::coreOrigin()` instead. It still works.
 
 ## v0.46.0
 

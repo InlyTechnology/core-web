@@ -9,6 +9,8 @@ use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\StaticCache;
+use Statamic\StaticCaching\NoCache\Session as NoCacheSession;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /** Statamic connector API v1.7: Core's preview frame of one of the site's own pages, as it is in the CMS. */
@@ -111,6 +113,38 @@ class PagePreviewTest extends TestCase
 
         $this->assertStringContainsString('<h1>Om oss, ändrad</h1>', $html);
         $this->assertStringContainsString('<p>PREVIEW</p>', $html);
+    }
+
+    public function test_under_half_static_caching_the_frame_renders_a_live_page_fresh_and_keeps_nothing(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'half',
+            'statamic.static_caching.strategies.half' => ['driver' => 'application', 'expiry' => null],
+        ]);
+        // A live page with no working copy is framed through its public address, which the cache keeps; a working
+        // copy goes through Live Preview, which Statamic never caches.
+        $cold = $this->page('om-oss', 'Om oss');
+        $warm = $this->page('kontakt', 'Kontakt');
+
+        $this->get($this->frameOf($cold))->assertOk()->assertSee('<p>PREVIEW</p>', false);
+        // Each request is a process of its own in production, with a nocache session of its own.
+        $this->app->forgetInstance(NoCacheSession::class);
+        $this->assertStringNotContainsString('PREVIEW', (string) $this->get('http://default.test/sidor/om-oss')->assertOk()->getContent());
+
+        $this->app->forgetInstance(NoCacheSession::class);
+        $this->get('http://default.test/sidor/kontakt')->assertOk()->assertSee('<h1>Kontakt</h1>', false);
+        $this->app->forgetInstance(NoCacheSession::class);
+        $this->get($this->frameOf($warm))->assertOk()->assertSee('<p>PREVIEW</p>', false);
+        $this->app->forgetInstance(NoCacheSession::class);
+        $this->assertStringNotContainsString('PREVIEW', (string) $this->get('http://default.test/sidor/kontakt')->assertOk()->getContent());
+
+        // The store also holds the Stache and Live Preview's tokens, so only the static cache's own keys are read.
+        $cached = collect((fn () => $this->storage)->call(StaticCache::cacheStore()->getStore()))
+            ->filter(fn (mixed $item, string $key): bool => str_starts_with($key, 'static-cache:'));
+        $urls = $cached->filter(fn (mixed $item, string $key): bool => str_ends_with($key, '.urls'))->flatMap(fn (array $item): array => array_values($item['value']));
+        $this->assertEqualsCanonicalizing(['/sidor/om-oss', '/sidor/kontakt'], $urls->all());
+        $this->assertStringNotContainsString('PREVIEW', serialize($cached->all()));
+        $this->assertStringNotContainsString('core-preview:', serialize($cached->all()));
     }
 
     public function test_the_frame_shows_an_unpublished_page(): void
