@@ -75,6 +75,7 @@ use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
 use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
+use Inly\CoreWeb\Media\CpThumbnailController;
 use Inly\CoreWeb\Media\CpThumbnails;
 use Inly\CoreWeb\Media\MediaDisks;
 use Inly\CoreWeb\Media\MissingAltText;
@@ -96,6 +97,7 @@ use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
+use Inly\CoreWeb\StaticCaching\DefaultStrategy;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
@@ -143,6 +145,7 @@ use Statamic\Facades\Permission;
 use Statamic\Facades\User;
 use Statamic\Facades\Utility;
 use Statamic\Fields\FieldsetRepository;
+use Statamic\Http\Controllers\CP\Assets\ThumbnailController;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
 use Throwable;
@@ -151,6 +154,9 @@ use Throwable;
  * Dormant until a site switches a feature on (core-web.features): with every
  * switch off it adds no route, schedule, middleware, command, tag or cache
  * store, only the `core-web.envelope` alias a site's own routes may name.
+ * Ungated, it turns static caching on (`half`) outside local and tests
+ * (DefaultStrategy), with the middleware that keeps previews out of that
+ * cache, and keeps ad parameters out of the cache's keys.
  * The `snapshots` feature is the snapshot pipeline with its pings and
  * sitemaps; an app registers its snapshots by extending the registry:
  * `$this->app->extend(SnapshotRegistry::class, fn ($r) => $r->register(...))`.
@@ -199,6 +205,11 @@ class CoreWebServiceProvider extends ServiceProvider
         $merge = function (): void {
             SiteCore::apply($this->app);
 
+            // Before Statamic boots, which subscribes its invalidation only when a strategy is set: registered late, it would cache pages no save flushes.
+            if (! $this->app->isBooted()) {
+                DefaultStrategy::apply($this->app);
+            }
+
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
             }
@@ -231,6 +242,10 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('buttons')) {
                 $this->mergeGroupDefaults('buttons', ['variants', 'link_types', 'core_links']);
+            }
+
+            if (self::enabled('search')) {
+                $this->mergeGroupDefaults('search', ['objects']);
             }
 
             if (self::enabled('media')) {
@@ -356,6 +371,11 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/live.php');
         }
 
+        if (self::enabled('search')) {
+            // The label of a facet's empty count.
+            $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+        }
+
         if (self::enabled('drafts')) {
             $this->bootDrafts();
         }
@@ -424,6 +444,8 @@ class CoreWebServiceProvider extends ServiceProvider
             $this->loadViews();
             $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
             MissingAltTextWidget::register();
+            (new CpThumbnails)->register();
+            $this->app->bind(ThumbnailController::class, CpThumbnailController::class);
             // Every change to a container's assets can change its count, so the next dashboard visit scans it again.
             Event::listen([AssetSaved::class, AssetDeleted::class, AssetUploaded::class, AssetReuploaded::class], fn ($event) => MissingAltText::forget($event->asset->containerHandle()));
             // Outside resources/views: under the core-web namespace, view:cache would compile them with media off.
@@ -432,7 +454,6 @@ class CoreWebServiceProvider extends ServiceProvider
             // Asset::url() on a disk reading the live site's pulled index; never on a server.
             if (self::enabled('content_sync') && $this->app->environment(['local', 'testing'])) {
                 $this->loadRoutesFrom(__DIR__.'/../routes/media.php');
-                (new CpThumbnails)->register();
             }
 
             if ($this->app->runningInConsole()) {

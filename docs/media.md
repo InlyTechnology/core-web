@@ -223,6 +223,21 @@ environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
   `php artisan media:sync push --force`, on the Cloud credentials like any
   other key.
 
+## Control panel thumbnails
+
+With `media` on, the control panel's thumbnails of a file on a media disk the
+CDN serves come from the CDN, at the CP's thumbnail size: in the asset
+browser, an asset's edit screen, an assets field, the assets column of an
+entry or term listing and the `missing_alt_text` widget. An MP4 under 100 MB
+gets a frame of itself, with no FFmpeg on the server; any other video keeps
+Statamic's thumbnail, since the CDN makes frames of MP4 only. Glide
+would decode the original inside the app, which for a large photo (a 50
+megapixel JPEG is some 200 MB decoded) is more memory than a small server
+has, and a fresh container renders every thumbnail again. Previews and links
+keep the file's own URL. An SVG, a private container, a disk the site defines
+itself and a URL outside the CDN's origins (a local folder, a file in the
+local layer) keep Statamic's thumbnails.
+
 ## Images missing alt text
 
 With `media` on, the control panel has a `missing_alt_text` dashboard widget

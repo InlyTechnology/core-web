@@ -16,6 +16,107 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   frames `/core-preview/page/{id}`, rendered like the object preview. These
   two routes need no `features.snapshots`. See `docs/object-preview.md`.
 
+## v0.46.0
+
+- **A save refreshes its own site only**: with `background_recache` on,
+  `SiteScopedInvalidator` forgets the saved entry's page on its site at once
+  (under http and https) and renders the rest of that site's cached pages
+  again in the background (`SiteCache::refresh()`). Statamic's `all` rule
+  renders again every page cached on the static cache's base URL, which is
+  every site's pages when the sites share that host (hundreds of renders for
+  one save on an install with many sites), while pages on other hosts kept
+  their stale copies. Without `background_recache` the saved site's pages
+  are flushed. See `docs/static-cache.md`.
+- **A global reaches the sites that inherit it**: a global saved on one site
+  now also flushes (or refreshes) the pages of every site whose copy of the
+  set reads its values through an origin, directly or through another copy.
+  They kept showing the old values.
+- **A site's flush forgets each page once**: `SiteCache::flush()` and
+  `flushPaths()` forget a page once with every query string it was cached
+  under, where they forgot it once per cached query string, each time
+  reading the cacher's whole URL list again.
+
+### Upgrade notes
+
+- **`/*` no longer takes a site's home page.** `SiteCache::flushPaths()` with
+  `/*` forgot the site's root page with the pages under it; it now forgets
+  only the pages under it, as every prefix does (`/brands/*` never takes
+  `/brands`). Find it: search the site's snapshot `dependents()` closures
+  and `flushPaths()` calls for `'/*'`. Migrate: return `'/'` beside `'/*'`
+  where the home page shows the data too. Verify: change one such document
+  and see the home page rendered with the new value.
+
+## v0.45.0
+
+- **Local search indexes work on Laravel Cloud**: with `features.cloud`,
+  Statamic builds a `local` search index on the `sync` queue, so the
+  container that searches builds its own copy in that request. Queued on a
+  worker, the index was written to the worker's disk, which no web replica
+  reads: every search queued another build (one job per 100 documents) and
+  then failed on the missing index. On Laravel 13 a save updates the index
+  of the container it is made on, not the worker's copy, and
+  `core-web:deploy` on Cloud rebuilds only the indexes that outlive the
+  container. A connection the site sets (`STATAMIC_SEARCH_QUEUE_CONNECTION`,
+  or `search.queue_connection` in its config) is kept. See
+  `docs/laravel-cloud.md`.
+
+## v0.44.0
+
+- **Search a Core object for a listing**: the `search` feature runs
+  `Search::for('vehicles')->search(request()->query(), facets: ['make'])` over
+  a search named in `search.objects`. The query keeps only what the object's
+  `/schema` offers, and the answer comes from its snapshot while the snapshot
+  holds every row (`search.local_limit`, 5,000) and the query keeps to the
+  rules Core's search contract pins, or from Core's Objects API, kept briefly
+  and served stale while Core fails. Synonyms, accent folding, values in use
+  and facet counts are Core's, declared on the object. `Snapshot::fromObject()`
+  pulls an object's rows as the search reads them. Needs Core v63.0.0 or
+  later, for facets on the Objects API and `sort_custom` in `/schema`. See
+  `docs/search.md`.
+
+## v0.43.0
+
+- **Static caching is on wherever the app is not local or under tests**:
+  core-web sets the `half` strategy on every server, Forge as well as
+  Laravel Cloud, when the site's config and env name none. A strategy the
+  site sets, or `STATAMIC_STATIC_CACHING_STRATEGY` (`null` included), still
+  wins. `core-web:deploy` skips `statamic:static:clear` when caching is off,
+  which failed the deploy. See `docs/static-cache.md#the-strategy`.
+- **Pagination links drop ad and analytics parameters**: while pages are
+  cached, a listing's `withQueryString()` links (Statamic's paginated tags call it) no longer
+  carry `utm_*`, `gclid` and the rest of `static_cache.tracking_query_strings`.
+  The page is cached without them since v0.38, so the first visitor's
+  campaign reached every later visitor's next page.
+
+### Upgrade notes
+
+- **A server without a strategy now caches pages.** Off Laravel Cloud, a
+  site with no `STATAMIC_STATIC_CACHING_STRATEGY` in its env and `null` in
+  `config/statamic/static_caching.php` was uncached and now runs `half` in
+  every environment but `local` and `testing` (staging included). Find it:
+  before updating, `php artisan config:show statamic.static_caching.strategy`
+  on the server prints `null`; then search the views for `$errors`,
+  `session(` and `old(` outside `@nocache`. Migrate: render anything per
+  visitor (forms with errors or a success message, session reads, `old()`)
+  inside `@nocache`; to keep a server uncached, set
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` there. Delete the skeleton's
+  `STATAMIC_STATIC_CACHING_STRATEGY=null` line from `.env.example` (and a
+  server's `.env` copied from it), or that server stays uncached. Verify:
+  the CP's Utilities → Cache shows the `half` strategy and pages cached
+  after a few visits. On Cloud, a strategy the site's
+  `config/statamic/static_caching.php` sets now wins where `half` used to
+  override it (a `full` there is not served on Cloud, so set it back to
+  `null`), and `APP_ENV=local` or `testing` now leaves caching off.
+
+## v0.42.0
+
+- **Control panel thumbnails come from the CDN**: with `media` on, a file
+  on a media disk the CDN serves gets its CP thumbnail (asset browser, edit
+  screen, assets fields, listing columns, the `missing_alt_text` widget) from
+  the CDN instead of Glide, an MP4 under 100 MB a CDN frame. Glide decoded
+  each original inside the app, so a few large photos could take a small
+  Laravel Cloud instance past its memory. See `docs/media.md`.
+
 ## v0.41.0
 
 - **A large push no longer outlasts the web server**: `content:push` sends

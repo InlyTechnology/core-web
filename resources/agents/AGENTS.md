@@ -11,6 +11,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **Every feature is off until the site's `config/core-web.php` switches it on** (`features.*`), and a feature
   that is off registers nothing. The file holds only the keys the site changes; publish the whole config only
   to change more than that.
+- **Static caching is on wherever the app is not `local` or `testing`**: core-web sets `half` when the site names
+  no strategy, so a server needs no `STATAMIC_STATIC_CACHING_STRATEGY` line. Delete the skeleton's `=null` line
+  from `.env.example`, or a server whose `.env` was copied from it stays uncached. See `docs/static-cache.md`.
 - **The package is changed in its own repository** (InlyTechnology/core-web), released as a tag and pulled in
   with `composer update inly/core-web`. Never a copy under `packages/`, never an edit in `vendor/`. A site
   needing something core-web almost does: propose the change to core-web.
@@ -133,6 +136,22 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   cached page).
 - **A live read of a figure Core works out runs a Core function** (`LiveRequest::function()`), never a site
   route of the Core app's own: the function is the one read the site, Core AI and MCP share.
+
+## Search (`search`)
+
+- **A listing visitors search and filter is `Search::for($name)->search(request()->query(), facets: [...])`**
+  over an object named in `search.objects`, never a query, synonym list, accent folding or filter rules of the
+  site's own, and never a search route of the Core app's own. Synonyms, values in use and facets are declared
+  on the object in Core; the site reads them from its `/schema`.
+- **Give the search a snapshot made with `Snapshot::fromObject()`** for an object of up to `search.local_limit`
+  rows, registered on Core's ping for it: a search then runs locally, with only the object's description read
+  from Core every `schema_ttl`. Never filter or partition that snapshot; which rows the site sees is Core's
+  `access()` for its client. The object's default sort must be on its rows (a number or a date, never Core's
+  `created_at`), or every listing without a `sort` goes to Core.
+- **A filter the local engine cannot run goes to Core by itself** (`filter_custom`, a field not on the rows):
+  never force `engine` to `local` to avoid that.
+- **Render what the result says**: `stale` still shows the rows, `unavailable` says the listing cannot be
+  searched right now, `invalid` shows no rows. Page links come from `SearchQuery::toUrl()`, never hand-built.
 
 ## Cookie consent (`consent`)
 

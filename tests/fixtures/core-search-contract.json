@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "describe": {
+    "search": {
+      "mode": "fields",
+      "fields": ["name", "make", "plate"],
+      "synonyms": {
+        "elbil": { "fuel": "El" },
+        "laddhybrid": { "fuel": "Laddhybrid" },
+        "plug in hybrid": { "fuel": "Laddhybrid" },
+        "automat": { "gearbox": "Automat" },
+        "4x4": { "four_wheel_drive": true },
+        "göteborg": { "city": "Göteborg" }
+      },
+      "ignore_accents": true
+    },
+    "fields": {
+      "name": { "type": "string", "filter_key": "name" },
+      "make": { "type": "string", "filter_key": "make", "options_from_values": 200 },
+      "city": { "type": "string", "filter_key": "city", "options_from_values": 2 },
+      "fuel": {
+        "type": "string",
+        "filter_key": "fuel",
+        "options": [
+          { "value": "Bensin", "label": "Bensin" },
+          { "value": "Diesel", "label": "Diesel" },
+          { "value": "El", "label": "El" },
+          { "value": "Laddhybrid", "label": "Laddhybrid" }
+        ]
+      },
+      "gearbox": {
+        "type": "string",
+        "filter_key": "gearbox",
+        "options": [
+          { "value": "Automat", "label": "Automatic" },
+          { "value": "Manuell", "label": "Manual" }
+        ]
+      },
+      "four_wheel_drive": { "type": "boolean", "filter_key": "four_wheel_drive" },
+      "price": { "type": "number", "filter_key": "price" },
+      "plate": { "type": "license_plate", "filter_key": "plate" },
+      "affordable": { "type": "boolean", "filter_key": "affordable", "filter_custom": true },
+      "id": { "type": "number", "filter_key": "id" }
+    },
+    "fields_available": ["name", "make", "city", "fuel", "gearbox", "four_wheel_drive", "price", "plate"],
+    "filters_available": ["name", "make", "city", "fuel", "gearbox", "four_wheel_drive", "price", "plate", "affordable", "id"],
+    "filters_with_operators": ["price", "id"],
+    "filters_nullable": ["make", "city", "fuel", "gearbox", "four_wheel_drive", "price", "plate"],
+    "sorts_available": ["name", "make", "city", "fuel", "gearbox", "four_wheel_drive", "price", "plate"],
+    "facets_available": ["make", "city", "fuel", "gearbox"]
+  },
+  "accent_map": {
+    "a": "àáâãäåāăąÀÁÂÃÄÅĀĂĄ",
+    "c": "çćčĉċÇĆČĈĊ",
+    "d": "ďđĎĐ",
+    "e": "èéêëēėęěĕÈÉÊËĒĖĘĚĔ",
+    "g": "ğĝġģĞĜĠĢ",
+    "i": "ìíîïīįıĭÌÍÎÏĪĮİĬ",
+    "l": "łľĺļŁĽĹĻ",
+    "n": "ñńňņÑŃŇŅ",
+    "o": "òóôõöøōőŏÒÓÔÕÖØŌŐŎ",
+    "r": "řŕŗŘŔŖ",
+    "s": "śšşșŝŚŠŞȘŜ",
+    "t": "ťţțŤŢȚ",
+    "u": "ùúûüūůűųŭÙÚÛÜŪŮŰŲŬ",
+    "y": "ýÿŷÝŸŶ",
+    "z": "źžżŹŽŻ"
+  },
+  "fold": [
+    ["Škoda", "skoda"],
+    ["CITROËN C5", "citroen c5"],
+    ["Ølstykke Łódź", "olstykke lodz"],
+    ["Göteborg", "goteborg"],
+    ["İSTANBUL", "istanbul"]
+  ],
+  "rows": [
+    { "id": 1, "name": "Octavia", "make": "Škoda", "city": "Göteborg", "fuel": "Bensin", "gearbox": "Manuell", "four_wheel_drive": false, "price": 189000, "plate": "ABC123" },
+    { "id": 2, "name": "Enyaq", "make": "Škoda", "city": "Borås", "fuel": "El", "gearbox": "Automat", "four_wheel_drive": true, "price": 449000, "plate": "ABC 456" },
+    { "id": 3, "name": "XC60 Recharge", "make": "Volvo", "city": "Göteborg", "fuel": "Laddhybrid", "gearbox": "Automat", "four_wheel_drive": true, "price": 529000, "plate": "XYZ789" },
+    { "id": 4, "name": "C5 Aircross", "make": "Citroën", "city": "Borås", "fuel": "Diesel", "gearbox": "Manuell", "four_wheel_drive": false, "price": 239000, "plate": "KLM012" },
+    { "id": 5, "name": "V60", "make": "Volvo", "city": "Borås", "fuel": "Bensin", "gearbox": "Automat", "four_wheel_drive": false, "price": 279000, "plate": "DEF345" },
+    { "id": 6, "name": "Kodiaq", "make": "Škoda", "city": "Alingsås", "fuel": "Diesel", "gearbox": null, "four_wheel_drive": true, "price": 319000, "plate": null },
+    { "id": 7, "name": "Spare", "make": null, "city": null, "fuel": null, "gearbox": null, "four_wheel_drive": false, "price": null, "plate": null }
+  ],
+  "cases": [
+    { "title": "a field matched without its accent", "query": { "filter": { "_search": "skoda" } }, "ids": [1, 2, 6] },
+    { "title": "words in any field, in any order", "query": { "filter": { "_search": "aircross citroen" } }, "ids": [4] },
+    { "title": "a synonym alone", "query": { "filter": { "_search": "elbil" } }, "ids": [2] },
+    { "title": "a synonym beside text", "query": { "filter": { "_search": "Elbil, skoda" } }, "ids": [2] },
+    { "title": "two values for one key", "query": { "filter": { "_search": "elbil laddhybrid" } }, "ids": [2, 3] },
+    { "title": "a phrase and a second key", "query": { "filter": { "_search": "plug in hybrid automat" } }, "ids": [3] },
+    { "title": "a yes/no synonym", "query": { "filter": { "_search": "4x4" } }, "ids": [2, 3, 6] },
+    { "title": "a synonym typed without its accent", "query": { "filter": { "_search": "goteborg" } }, "ids": [1, 3] },
+    { "title": "a longer word is no synonym", "query": { "filter": { "_search": "elbilar" } }, "ids": [] },
+    { "title": "a synonym on top of a filter", "query": { "filter": { "_search": "automat", "fuel": "Bensin" } }, "ids": [5] },
+    { "title": "part of a word in a field", "query": { "filter": { "_search": "charge" } }, "ids": [3] },
+    { "title": "punctuation beside a synonym", "query": { "filter": { "_search": "skoda, elbil!" } }, "ids": [2] },
+    { "title": "a phone's curly quotes", "query": { "filter": { "_search": "“skoda” ‘elbil’" } }, "ids": [2] },
+    { "title": "part of a text filter", "query": { "filter": { "name": "OCT" } }, "ids": [1] },
+    { "title": "a value in use matched exactly", "query": { "filter": { "make": "Volvo" } }, "ids": [3, 5] },
+    { "title": "part of a value in use matches nothing", "query": { "filter": { "make": "Volv" } }, "ids": [] },
+    { "title": "any of a list of values in use", "query": { "filter": { "make": ["Volvo", "Citroën"] } }, "ids": [3, 4, 5] },
+    { "title": "a yes/no filter", "query": { "filter": { "four_wheel_drive": "true" } }, "ids": [2, 3, 6] },
+    { "title": "part of a plate, typed with its space", "query": { "filter": { "plate": "abc 1" } }, "ids": [1] },
+    { "title": "part of a plate stored with a space", "query": { "filter": { "plate": "c4" } }, "ids": [2] },
+    { "title": "a plate searched with a dash", "query": { "filter": { "_search": "abc-456" } }, "ids": [2] },
+    { "title": "rows with no value", "query": { "filter": { "gearbox": ":empty" } }, "ids": [6, 7] },
+    { "title": "a filter only Core runs", "query": { "filter": { "affordable": "true" } }, "ids": [1, 4] },
+    { "title": "a range on a number", "query": { "filter": { "price": [">=200000", "<=400000"] } }, "ids": [4, 5, 6] },
+    { "title": "sorted by a number, highest first", "query": { "filter": { "make": "Škoda" }, "sort": "-price" }, "ids": [2, 6, 1] },
+    {
+      "title": "facets leave their own filter out",
+      "query": { "filter": { "fuel": "Bensin,Diesel" }, "facets": "make,fuel,city" },
+      "ids": [1, 4, 5, 6],
+      "facets": {
+        "make": [
+          { "value": "Škoda", "label": "Škoda", "count": 2 },
+          { "value": "Citroën", "label": "Citroën", "count": 1 },
+          { "value": "Volvo", "label": "Volvo", "count": 1 }
+        ],
+        "fuel": [
+          { "value": "Bensin", "label": "Bensin", "count": 2 },
+          { "value": "Diesel", "label": "Diesel", "count": 2 },
+          { "value": "El", "label": "El", "count": 1 },
+          { "value": "Laddhybrid", "label": "Laddhybrid", "count": 1 },
+          { "value": ":empty", "label": "Empty", "count": 1 }
+        ],
+        "city": [
+          { "value": "Borås", "label": "Borås", "count": 2 },
+          { "value": "Alingsås", "label": "Alingsås", "count": 1 }
+        ]
+      }
+    },
+    {
+      "title": "facets keep the search and its synonyms",
+      "query": { "filter": { "_search": "automat" }, "facets": "make,gearbox" },
+      "ids": [2, 3, 5],
+      "facets": {
+        "make": [
+          { "value": "Volvo", "label": "Volvo", "count": 2 },
+          { "value": "Škoda", "label": "Škoda", "count": 1 }
+        ],
+        "gearbox": [
+          { "value": "Automat", "label": "Automatic", "count": 3 }
+        ]
+      }
+    }
+  ]
+}
