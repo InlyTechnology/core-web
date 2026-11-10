@@ -11,7 +11,6 @@ use Statamic\Facades\Site as Sites;
 use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
-use Statamic\Support\Str;
 
 /** The static cache of one site of a multisite install, whose sites share no cached pages. */
 class SiteCache
@@ -175,30 +174,36 @@ class SiteCache
     }
 
     /**
-     * Forgets these absolute URLs (a trailing `*` takes every page under
-     * one) where the site owns them, under http and https: a page is cached
-     * under the scheme it was requested with, which need not be the site's.
+     * Forgets the site's cached pages at these absolute URLs (what an
+     * invalidator reports; a trailing `*` takes every page under one), as
+     * flushPaths() does: under http and https, with any query string, and
+     * only the pages the site owns. Returns how many were forgotten.
      *
      * @param  iterable<mixed>  $urls
      */
-    public function forget(Site $site, iterable $urls): void
+    public function forget(Site $site, iterable $urls): int
     {
-        $forget = [];
+        $prefix = self::prefix($site);
+        $paths = [];
 
         foreach ($urls as $url) {
             // An unrouted entry's URL is null, which the cacher would read as the home page.
-            if (! is_string($url) || ! $this->owns($site, $url)) {
+            if (! is_string($url)) {
                 continue;
             }
 
-            $address = Str::after($url, '://');
-            $forget['http://'.$address] = true;
-            $forget['https://'.$address] = true;
+            $wildcard = str_ends_with($url, '*');
+            $address = $wildcard ? substr($url, 0, -1) : $url;
+
+            if (! $this->owns($site, $address)) {
+                continue;
+            }
+
+            $path = '/'.trim(substr('/'.trim((string) parse_url($address, PHP_URL_PATH), '/'), strlen($prefix)), '/');
+            $paths[] = $wildcard ? rtrim($path, '/').'/*' : $path;
         }
 
-        if ($forget !== []) {
-            $this->cacher->invalidateUrls(array_keys($forget));
-        }
+        return $paths === [] ? 0 : $this->flushPaths($site, $paths);
     }
 
     /**
@@ -259,8 +264,10 @@ class SiteCache
     /** @param  list<string>  $prefixes */
     private static function under(string $path, array $prefixes): bool
     {
+        $dir = rtrim($path, '/').'/';
+
         foreach ($prefixes as $prefix) {
-            if (str_starts_with($path.'/', $prefix) && $path.'/' !== $prefix) {
+            if (str_starts_with($dir, $prefix) && $dir !== $prefix) {
                 return true;
             }
         }

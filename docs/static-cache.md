@@ -62,9 +62,11 @@ whose pages you cannot name.
 `SiteCache::flush()` forgets the pages cached for one site: on its host, and on
 a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
-path on the site. `SiteCache::refresh()` renders the site's cached pages again in the
-background instead (one queued request per page), and visitors keep the
-cached copy until it is replaced.
+path on the site, and `SiteCache::forget()` by the absolute URLs an
+invalidator reports (a trailing `*` takes every page under one), keeping only
+those the site owns. `SiteCache::refresh()` renders the site's cached pages
+again in the background instead (one queued request per page), and visitors
+keep the cached copy until it is replaced.
 
 ## A save on one site of a multisite install
 
@@ -82,8 +84,8 @@ the site of what was saved:
 ],
 ```
 
-- An entry, a collection tree or a deleted navigation tree on one site
-  forgets that site's pages, on its host under http and https. The other
+- An entry, a global, a collection tree or a deleted navigation tree on one
+  site forgets that site's pages, on its host under http and https. The other
   sites' pages stay. A global also forgets the pages of every site whose
   copy of the set inherits its values (`origin`), directly or through
   another copy.
@@ -95,17 +97,20 @@ the site of what was saved:
   every page renders inside the save. A localized entry's copies on other
   sites are refreshed when each copy is saved, which Statamic does with its
   origin.
-- A collection tree save, a deleted entry and a scheduled entry going live
-  flush the site's pages at once, with or without `background_recache`:
-  Statamic invalidates for those instead of refreshing.
-- A navigation save (Statamic reports it without its site), an asset, a
-  taxonomy term or a form still clears, or refreshes, every page as
-  Statamic's rule does.
+- A deleted entry, global, collection tree or navigation tree, a collection
+  tree save and a scheduled entry going live flush the site's pages at once,
+  with or without `background_recache`: Statamic invalidates for those
+  instead of refreshing.
+- A navigation save (Statamic reports it without its site), an asset or a
+  form is left to Statamic's rule, which clears every page, or with
+  `background_recache` renders again those on the base URL. A taxonomy term
+  always clears every page.
 - Other rules than `all` are Statamic's own.
 
 With `background_recache` on, a moved page's old address is forgotten only
-when the save still knows it. On the flat-file Stache it does not (Statamic
-records the new address before the save is reported), so the old address is
+when the save still knows it. On the flat-file Stache it does not (the
+Stache resets the entry's original values during the save, before
+`EntrySaved` is reported), so the old address is
 rendered again with the rest of its site: with the `half` strategy its cached
 copy becomes the 404 it now answers, and its queued render ends as a failed
 job.

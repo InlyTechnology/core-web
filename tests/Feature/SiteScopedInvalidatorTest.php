@@ -4,12 +4,14 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Inly\CoreWeb\StaticCaching\SiteCache;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Console\Commands\StaticWarmJob;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Globals\Variables as VariablesContract;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -125,6 +127,48 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame([], $this->cached('http://other.test'));
     }
 
+    public function test_with_background_recache_a_global_whose_set_is_gone_renders_its_own_site_again(): void
+    {
+        $this->backgroundRecache();
+        $variables = app(VariablesContract::class)->globalSet('deleted')->locale('other');
+
+        $this->invalidator()->refresh($variables);
+
+        $this->assertSame(['http://other.test/', 'http://other.test/a'], $this->warmed());
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
+    }
+
+    public function test_a_moved_page_forgets_its_old_address_and_the_pages_under_it(): void
+    {
+        $entry = $this->entry('old');
+        $this->backgroundRecache();
+        $this->cache('http://default.test', ['/old', '/old/child', '/oldish']);
+        $this->cache('https://default.test', ['/old', '/old/child']);
+        $this->cache('http://other.test', ['/old']);
+        $entry->slug('new');
+        Blink::store('entry-uris')->flush();
+
+        $this->invalidator()->refresh($entry);
+
+        $this->assertSame(['/', '/a', '/b', '/oldish'], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('https://default.test'));
+        $this->assertSame(['/', '/a', '/old'], $this->cached('http://other.test'));
+    }
+
+    public function test_on_a_shared_host_a_page_under_the_root_leaves_the_other_site_s_pages(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $this->cache('http://shared.test', ['/', '/a', '/other', '/other/a']);
+
+        $forgotten = (new SiteCache($this->cacher))->forget(Site::get('default'), ['http://shared.test/*']);
+
+        $this->assertSame(1, $forgotten);
+        $this->assertSame(['/', '/other', '/other/a'], $this->cached('http://shared.test'));
+    }
+
     public function test_the_saved_page_is_forgotten_under_http_and_https(): void
     {
         $this->backgroundRecache();
@@ -160,7 +204,7 @@ class SiteScopedInvalidatorTest extends TestCase
 
         $this->invalidator()->refresh(Nav::make('main'));
 
-        $this->assertSame(['http://default.test/', 'http://default.test/a', 'http://default.test/b'], $this->warmed(), "only APP_URL's host, as Statamic refreshes it");
+        $this->assertSame(['http://default.test/', 'http://default.test/a', 'http://default.test/b'], $this->warmed(), "only the base URL's pages, as Statamic refreshes them");
     }
 
     public function test_other_rules_keep_statamic_s_own_invalidation(): void

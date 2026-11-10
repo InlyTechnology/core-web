@@ -11,13 +11,15 @@ use Statamic\StaticCaching\DefaultInvalidator;
 
 /**
  * The `all` rule one site at a time, for a multisite install whose sites
- * share no pages: Statamic's own rule clears (or renders again) every site's
- * pages for a save on one of them. What Statamic reports without a site still
- * goes to its rule; docs/static-cache.md has the details.
+ * share no pages: Statamic's own rule clears every site's pages for a save on
+ * one of them, or renders again those on the static cache's base URL. What
+ * Statamic reports without a site still goes to its rule; docs/static-cache.md
+ * has the details.
  */
 class SiteScopedInvalidator extends DefaultInvalidator
 {
-    public function invalidate(mixed $item): void
+    // No return type, as Statamic's, so a site's subclass written for an earlier release still loads.
+    public function invalidate(mixed $item)
     {
         $sites = $this->rules === 'all' ? $this->sitesOf($item) : [];
 
@@ -28,6 +30,10 @@ class SiteScopedInvalidator extends DefaultInvalidator
         }
 
         $cache = new SiteCache($this->cacher);
+        // A global has no URLs of its own under `all`, and reading its rules needs its set, which may be gone.
+        $urls = $this->refreshing && ! $item instanceof Variables
+            ? [...$this->getItemUrls($item), ...$this->getItemOldUrls($item)]
+            : [];
 
         foreach ($sites as $site) {
             if (! $this->refreshing) {
@@ -36,7 +42,7 @@ class SiteScopedInvalidator extends DefaultInvalidator
                 continue;
             }
 
-            $cache->forget($site, [...$this->getItemUrls($item), ...$this->getItemOldUrls($item)]);
+            $cache->forget($site, $urls);
             $cache->refresh($site);
         }
     }
