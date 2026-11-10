@@ -8,14 +8,14 @@ are in `resources/agents/AGENTS.md`, which ships with the package. How to test, 
 
 - **Check every behaviour claim before each review.** A claim is a sentence the pull request adds or changes, in
   the diff or the description, that says how core-web, Core or a package it runs on behaves. Check each one against
-  the code that does it (core-web's own, Core's, or the package's under `vendor/`), never memory, and list it with
-  the `file:line` that proves it.
+  the code it describes (core-web's own, the package's under `vendor/`, or Core's in the `inly-core` repository),
+  never memory, and list it with the `file:line` that proves it.
 - **Say a fact once.** The page in `docs/` owns how a feature behaves. A comment in code or config says what its
-  line is for and why, and points at that page where the reader needs to know how the feature behaves. The pull
+  line is for and why, and when the reader needs to know how the feature behaves, it points at that page. The pull
   request description and the `## Unreleased` notes say what changed and link the page rather than explaining it
   again: three places are three edits on every fix.
-- **Fix a wrong or unproved sentence by rewriting it to what the code shows, or by deleting it**, never by adding
-  a qualifier: the added sentence is where the next finding comes from.
+- **Fix a wrong sentence, or a claim nothing proves, by rewriting it to what the code shows, or by deleting it**,
+  never by adding a qualifier: the added sentence is where the next finding comes from.
 - **Every pull request gets a separate QA review before it is called ready, merged or released.** The reviewer is
   a separate agent that did not write the change (in Claude Code, a subagent). Hand it the diff, what the pull
   request is for and the claim list, never your own conclusions, and have it open each cited line rather than
