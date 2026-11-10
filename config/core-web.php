@@ -98,10 +98,12 @@ return [
     | them, and Inly\CoreWeb\Buttons\Button::resolve() turning one into what
     | the site's own button component draws.
     |
-    | preview: the records of Core the site serves a page for (`object-pages`)
-    | and Core's preview frame of one with unsaved values
-    | (/core-preview/object), with the @coreField and @coreBlock markers that
-    | let a click in the frame pick a field. Needs `snapshots` and `content`.
+    | preview: Core's preview frame of the site's own pages as they are in
+    | the CMS (/core-preview/page), and, with `snapshots`, the records of Core
+    | the site serves a page for (`object-pages`) and the frame of one with
+    | unsaved values (/core-preview/object), with the @coreField and
+    | @coreBlock markers that let a click in the frame pick a field. Needs
+    | `content`.
     |
     */
 
@@ -580,18 +582,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Object preview
+    | Preview
     |--------------------------------------------------------------------------
     |
-    | The route Core frames a record's page with, with the person's unsaved
-    | values (features.preview, docs/object-preview.md). It is not sealed, so
-    | it is throttled; without an applied preview state it renders only a
-    | page the site serves publicly.
+    | The routes Core's preview frame opens (features.preview,
+    | docs/object-preview.md), neither sealed, so both throttled by
+    | `middleware`. `path` frames a record's page with the person's unsaved
+    | values; without an applied preview state it renders only a page the
+    | site serves publicly. `page_path` frames one of the site's own pages as
+    | it is in the CMS, behind a link the site signed for Core; it keeps its
+    | `{id}` segment, and needs features.content for Core to ask for the link.
     |
     */
 
     'preview' => [
         'path' => 'core-preview/object',
+        'page_path' => 'core-preview/page/{id}',
         'middleware' => ['throttle:60,1'],
     ],
 

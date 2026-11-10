@@ -6,6 +6,18 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Core previews the site's own pages**: with `features.preview` and
+  `features.content`, Core's preview frame shows one of the site's pages as
+  it is in the CMS, its working copy included, where the page itself refuses
+  to be framed. Core asks for a signed link at
+  `GET /api/core/v1/page-preview/{id}` (Statamic connector API v1.7) and
+  frames `/core-preview/page/{id}`, rendered like the object preview. These
+  two routes need no `features.snapshots`. See `docs/object-preview.md`.
+- `ObjectPreviewController::coreOrigin()` is deprecated: call
+  `PreviewFrame::coreOrigin()` instead. It still works.
+
 ## v0.46.0
 
 - **A save refreshes its own site only**: with `background_recache` on,
