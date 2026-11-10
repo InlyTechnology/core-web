@@ -45,6 +45,12 @@ class DraftPreview
             return $entry->absoluteUrl();
         }
 
+        return self::livePreviewUrl($draft);
+    }
+
+    /** The draft's page in Live Preview, from a token minted for it now (Statamic keeps one for an hour), or null when it has no page. */
+    public static function livePreviewUrl(EntryContract $draft): ?string
+    {
         $url = $draft->absoluteUrl();
 
         if (blank($url)) {
