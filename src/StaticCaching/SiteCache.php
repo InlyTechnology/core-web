@@ -191,7 +191,7 @@ class SiteCache
         $paths = [];
 
         foreach ($urls as $url) {
-            // An unrouted entry's URL is null, which would read as the home page.
+            // An unrouted entry reports a null URL: it has no page to forget.
             if (! is_string($url)) {
                 continue;
             }
@@ -271,7 +271,7 @@ class SiteCache
 
     /**
      * Forgets each path once with every query string it was cached under:
-     * the cacher reads and rewrites the domain's whole URL list per call.
+     * each call reads the domain's whole URL list again.
      *
      * @param  list<string>  $paths
      */

@@ -66,7 +66,9 @@ path on the site, and `SiteCache::forget()` by the absolute URLs an
 invalidator reports (a trailing `*` takes every page under one), keeping only
 those the site owns. `SiteCache::refresh()` renders the site's cached pages
 again in the background instead (one queued request per page), and visitors
-keep the cached copy until it is replaced.
+keep the cached copy until it is replaced. On a shared host with no site at
+its root, a page cached outside every site's path (a 404 at `/foo` beside
+`/en` and `/sv`) is no site's, so only clearing the whole cache forgets it.
 
 ## A save on one site of a multisite install
 

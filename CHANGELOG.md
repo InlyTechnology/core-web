@@ -24,7 +24,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **A site's flush forgets each page once**: `SiteCache::flush()` and
   `flushPaths()` forget a page once with every query string it was cached
   under, where they forgot it once per cached query string, each time
-  rewriting the cacher's whole URL list.
+  reading the cacher's whole URL list again.
 
 ## v0.45.0
 
