@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **A save forgets the entry's copies on the other sites**: under
+  `SiteScopedInvalidator`, a saved entry's origin and other localizations
+  are forgotten on their own sites, since each links to it from a language
+  switcher or `hreflang`. A copy saved alone (a new slug on one site) left
+  the other sites' pages linking to its old address until their own site
+  was next cleared. Each copy is one page forgotten, rendered by its next
+  visitor. See `docs/static-cache.md`.
+
 ## v0.46.0
 
 - **A save refreshes its own site only**: with `background_recache` on,

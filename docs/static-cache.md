@@ -88,19 +88,22 @@ the site of what was saved:
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
-  sites' pages stay. A global also forgets the pages of every site whose
-  copy of the set inherits its values (`origin`), directly or through
-  another copy. Without `background_recache`, a save that reaches every site
-  clears the whole cache at once, as Statamic's rule does.
+  sites' pages stay, except a saved entry's copies on them (its origin and
+  its other localizations): each links to it from a language switcher or
+  `hreflang`, so it is forgotten on its own site, and its next visitor
+  renders it with the new address. A global also forgets the pages of every
+  site whose copy of the set inherits its values (`origin`), directly or
+  through another copy. Without `background_recache`, a save that reaches
+  every site clears the whole cache at once, as Statamic's rule does.
 - With `background_recache` on, a saved entry's own page on its site, and a
   moved page's old address with the pages under it, are forgotten at once
   (under http and https), so the next visitor sees the change, and the
   site's other pages are rendered again in the background
   by a queued job each; a saved global renders all of the site's pages
   again that way. Turn it on only with a queue worker: on the `sync` queue
-  every page renders inside the save. A localized entry's copies on other
-  sites are refreshed when each copy is saved, which Statamic does with its
-  origin.
+  every page renders inside the save. Statamic saves an entry's
+  localizations with it, so saving an origin renders each copy's site again
+  as well.
 - A deleted entry, global, collection tree or navigation tree, a collection
   tree save and a scheduled entry going live flush the site's pages at once,
   with or without `background_recache`: Statamic invalidates for those
@@ -118,6 +121,9 @@ whose cache store is `array`, which resets those values before `EntrySaved`
 is reported. With `background_recache` on, the old address is then rendered
 again with the rest of its site: with the `half` strategy its cached copy
 becomes the 404 it now answers, and its queued render ends as a failed job.
+The pages under a moved page move with it, but their copies on other sites
+are not forgotten: they link to the old addresses until their own site is
+next cleared.
 
 ## Ad and analytics parameters
 
