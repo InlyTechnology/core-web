@@ -15,13 +15,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   one site) left the other sites' pages linking to its old address until
   their own site was next cleared. Each copy is one page forgotten, rendered
   by its next visitor. See `docs/static-cache.md`.
-- **Forgetting pages on a shared host reads its cached pages once**:
-  `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()` work out
-  each site's path on the host once per call, where they resolved every
-  site's address for every cached page. The new `SiteCache::forgetMany()`
-  forgets pages on several sites in one pass over each host. Saving an
-  origin on fourteen path-prefixed sites spends about half as long
-  forgetting pages.
+- **Forgetting pages on a shared host is faster**: `SiteCache::forget()`,
+  `flushPaths()`, `flush()` and `refresh()` resolve each site's address on
+  the host once per call instead of once per cached page, and the new
+  `SiteCache::forgetMany()` forgets pages on several sites in one pass over
+  each host. Saving an origin on fourteen path-prefixed sites spends about
+  half as long forgetting pages.
 
 ## v0.46.0
 

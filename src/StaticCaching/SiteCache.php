@@ -122,7 +122,7 @@ class SiteCache
             $paths = [];
 
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                if (self::owner($neighbours, (string) $url) === $site->handle()) {
+                if (self::owner($neighbours, (string) $url) === self::handle($site)) {
                     $paths[strtok((string) $url, '?')] = true;
                 }
             }
@@ -154,7 +154,7 @@ class SiteCache
             $paths = [];
 
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                if (self::owner($neighbours, (string) $url) === $site->handle()) {
+                if (self::owner($neighbours, (string) $url) === self::handle($site)) {
                     $paths[strtok((string) $url, '?')] = true;
                 }
             }
@@ -248,13 +248,13 @@ class SiteCache
 
                 $neighbours[$host] ??= self::neighbours($host);
 
-                if (self::owner($neighbours[$host], $address) !== $site->handle()) {
+                if (self::owner($neighbours[$host], $address) !== self::handle($site)) {
                     continue;
                 }
 
                 $path = self::onSite($address, $prefix);
-                $targets[$host][$site->handle()] = self::addPath(
-                    $targets[$host][$site->handle()] ?? ['prefix' => $prefix, 'exact' => [], 'under' => []],
+                $targets[$host][self::handle($site)] = self::addPath(
+                    $targets[$host][self::handle($site)] ?? ['prefix' => $prefix, 'exact' => [], 'under' => []],
                     $wildcard ? rtrim($path, '/').'/*' : $path,
                 );
             }
@@ -375,7 +375,7 @@ class SiteCache
             return false;
         }
 
-        return self::owner(self::neighbours($host), $url) === $site->handle();
+        return self::owner(self::neighbours($host), $url) === self::handle($site);
     }
 
     /**
@@ -388,10 +388,16 @@ class SiteCache
     {
         return Sites::all()
             ->filter(fn (Site $other) => self::host($other) === $host)
-            ->map(fn (Site $other) => [$other->handle(), self::prefix($other)])
+            ->map(fn (Site $other) => [self::handle($other), self::prefix($other)])
             ->sortByDesc(fn (array $other) => strlen($other[1]))
             ->values()
             ->all();
+    }
+
+    /** A site's handle as a string: a handle of digits (`2026:` in sites.yaml) is read as an int. */
+    private static function handle(Site $site): string
+    {
+        return (string) $site->handle();
     }
 
     /**

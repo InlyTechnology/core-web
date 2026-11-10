@@ -67,10 +67,10 @@ invalidator reports (a trailing `*` takes every page under one), keeping only
 those the site owns; `SiteCache::forgetMany()` does that for several sites at
 once, keyed by site handle, reading each host's cached pages once for all of
 them. `SiteCache::refresh()` renders the site's cached pages again in the
-background instead (one queued request per page), and visitors
-keep the cached copy until it is replaced. On a shared host with no site at
-its root, a page cached outside every site's path (a 404 at `/foo` beside
-`/en` and `/sv`) is no site's, so no site's flush or refresh reaches it.
+background instead (one queued request per page), and visitors keep the
+cached copy until it is replaced. On a shared host with no site at its root,
+a page cached outside every site's path (a 404 at `/foo` beside `/en` and
+`/sv`) is no site's, so no site's flush or refresh reaches it.
 
 ## A save on one site of a multisite install
 
@@ -95,8 +95,9 @@ the site of what was saved:
   links to it from a language switcher or `hreflang`, so it is forgotten on
   its own site, and its next visitor renders it with the new address. A
   global also forgets the pages of every site whose copy of the set inherits
-  its values (`origin`), directly or through another copy. Without `background_recache`, a save that reaches
-  every site clears the whole cache at once, as Statamic's rule does.
+  its values (`origin`), directly or through another copy. Without
+  `background_recache`, a save that reaches every site clears the whole
+  cache at once, as Statamic's rule does.
 - With `background_recache` on, a saved entry's own page on its site, and a
   moved page's old address with the pages under it, are forgotten at once
   (under http and https), so the next visitor sees the change, and the

@@ -100,6 +100,48 @@ class SiteCacheTest extends TestCase
         $this->assertSame(['/', '/road', '/other/road', '/other/sea'], $this->cached('http://shared.test'));
     }
 
+    public function test_forgetting_several_sites_on_a_shared_host_takes_each_site_s_own_pages(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'en' => ['name' => 'English', 'url' => 'http://shared.test/en/', 'locale' => 'en_GB'],
+            'de' => ['name' => 'German', 'url' => 'http://shared.test/de/', 'locale' => 'de_DE'],
+        ]);
+        $this->cache('http://shared.test', ['/', '/a', '/b', '/en', '/en/a', '/en/b', '/en/b?x=1', '/de/a', '/de/b', '/de/b/c']);
+        $this->cache('https://shared.test', ['/a', '/en/a', '/en/b']);
+
+        $forgotten = (new SiteCache($this->cacher))->forgetMany([
+            'default' => ['http://shared.test/a'],
+            'en' => ['http://shared.test/en/b'],
+            'de' => ['http://shared.test/de/b/*'],
+            'gone' => ['http://shared.test/'],
+        ]);
+
+        $this->assertSame(6, $forgotten);
+        $this->assertSame(['/', '/b', '/en', '/en/a', '/de/a', '/de/b'], $this->cached('http://shared.test'), '/a on the root site is not /en/a');
+        $this->assertSame(['/en/a'], $this->cached('https://shared.test'));
+    }
+
+    public function test_a_site_whose_handle_is_digits_owns_its_pages(): void
+    {
+        Queue::fake();
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'en_GB'],
+            '2026' => ['name' => 'Campaign', 'url' => 'http://shared.test/sv/', 'locale' => 'sv_SE'],
+        ]);
+        $this->cache('http://shared.test', ['/', '/a', '/sv', '/sv/a', '/sv/b']);
+        $site = Site::get('2026');
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertTrue($cache->owns($site, 'http://shared.test/sv/a'));
+        $this->assertSame(1, $cache->forget($site, ['http://shared.test/sv/a']));
+        $this->assertSame(1, $cache->forgetMany([2026 => ['http://shared.test/sv/b']]));
+        $this->assertSame(1, $cache->refresh($site));
+
+        $cache->flush($site);
+        $this->assertSame(['/', '/a'], $this->cached('http://shared.test'));
+    }
+
     public function test_refresh_queues_each_page_of_the_site_once_and_keeps_serving_the_cached_copy(): void
     {
         Queue::fake();
