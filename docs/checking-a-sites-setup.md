@@ -10,7 +10,7 @@ what the switched-on features need from the environment it runs in, offline:
 | Schedule | Never: it lists the commands the features schedule and warns when one's schedule was set to `null` |
 | Pings | Never: it warns while `WEBSITE_SYNC_SECRET` is still set |
 | CMS accounts | Statamic's git integration commits the users folder while `cms_sign_in` is on |
-| Proposals | With `drafts` on, `drafts.proposals.disk` names a disk that is not defined. On Laravel Cloud (with `cloud`), proposals would sit on the default disk, a local disk or a disk on the public bucket (a scoped disk is judged by the disk it is scoped to); a warning when the disk is another bucket than the private one Cloud attaches |
+| Proposals | With `drafts` on, `drafts.proposals.disk` names a disk that is not defined, or is scoped to one that is not. On Laravel Cloud (with `cloud`), proposals would sit on the default disk, a local disk or a disk on the public bucket (a scoped disk is judged by the disk it is scoped to); a warning when the disk is another bucket than the private one Cloud attaches |
 
 It exits non-zero on a failure, so a deploy or a launch check can run it.
 What it cannot see (a worker or the scheduler actually running, the deploy

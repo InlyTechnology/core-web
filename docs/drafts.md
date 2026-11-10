@@ -191,7 +191,8 @@ one, where anyone could read a staged change by its path. On Laravel Cloud
 (`features.cloud`) the private bucket Cloud attaches is used when the site
 names no disk. `core-web:doctor` fails there while proposals would sit on
 the default disk, a local one or the public bucket, and on any host when
-`drafts.proposals.disk` names a disk that is not defined (see
+`drafts.proposals.disk` names a disk that is not defined, or is scoped to
+one that is not (see
 [Checking a site's setup](checking-a-sites-setup.md)).
 
 The CP nav's Proposals count reads which targets have an open proposal from

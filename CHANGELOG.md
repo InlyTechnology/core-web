@@ -15,7 +15,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `applied.json` could be read by their path. `core-web:doctor` fails while
   proposals on Cloud would sit on the default disk, a local disk or the
   public bucket, and on any host while `drafts.proposals.disk` names a disk
-  that is not defined. See `docs/laravel-cloud.md` and
+  that is not defined, or is scoped to one that is not. See `docs/laravel-cloud.md` and
   `docs/checking-a-sites-setup.md`.
 - **The CP nav counts proposals without opening them**: the Proposals count
   reads which targets have an open proposal from the cache, which a save
@@ -49,7 +49,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`core-web:doctor` can now fail a deploy.** It exits non-zero on
   a Cloud site with `drafts` on whose proposals would sit on the default
   disk, a local disk or the public bucket, and on any site whose
-  `drafts.proposals.disk` names a disk that is not defined. Find it: a
+  `drafts.proposals.disk` names a disk that is not defined, or is scoped
+  to one that is not. Find it: a
   deploy or launch script that runs `core-web:doctor`. Migrate: on Cloud,
   attach the private bucket (Core Cloud attaches it as `private`) and leave
   `drafts.proposals.disk` unset, as in the note above; elsewhere, define the

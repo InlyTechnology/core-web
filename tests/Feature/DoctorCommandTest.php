@@ -191,7 +191,7 @@ class DoctorCommandTest extends TestCase
             ->assertFailed();
     }
 
-    public function test_proposals_on_a_scoped_disk_are_judged_by_the_disk_it_prefixes(): void
+    public function test_proposals_on_a_scoped_disk_are_judged_by_the_disk_it_is_scoped_to(): void
     {
         $this->app['env'] = 'production';
         $this->onCloudWithDrafts([
