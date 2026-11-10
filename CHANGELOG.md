@@ -39,11 +39,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   are no longer listed. Find them: on the default disk (the public bucket),
   under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
   that folder to the same path on the private bucket, then delete it from
-  the public one, which still serves it until then. A site that names a
-  disk on the public bucket in `drafts.proposals.disk` (such as `media`)
-  removes the setting, so Cloud uses the private bucket and other hosts the
-  default disk, and moves the folder the same way. Verify: the
-  CP's Proposals page lists them (the nav's count follows within five
+  the public one, which still serves it until then. A Cloud site that names
+  a disk on the public bucket in `drafts.proposals.disk` (such as `media`)
+  removes the setting, so the private bucket is used (other hosts then use
+  the default disk), and moves the folder the same way. Verify, on Cloud:
+  the CP's Proposals page lists them (the nav's count follows within five
   minutes), `php artisan core-web:doctor` shows `ok Proposals`, and the old
   path is gone from the public bucket.
 - **`core-web:doctor` can now fail a deploy.** It exits non-zero on

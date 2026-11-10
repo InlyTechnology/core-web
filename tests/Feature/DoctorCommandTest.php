@@ -209,6 +209,12 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('fail Proposals: the staged disk is local')
             ->assertFailed();
+
+        config(['filesystems.disks.staged.disk' => ['driver' => 's3', 'bucket' => 'fls-public'], 'filesystems.disks.media' => ['driver' => 's3', 'bucket' => 'fls-public']]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is on the public bucket')
+            ->assertFailed();
     }
 
     public function test_proposals_on_another_bucket_on_cloud_are_a_warning(): void
@@ -228,6 +234,12 @@ class DoctorCommandTest extends TestCase
 
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names missing, which is not a defined disk')
+            ->assertFailed();
+
+        config(['filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'missing', 'prefix' => 'staged'], 'core-web.drafts.proposals.disk' => 'staged']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names staged, scoped to missing, which is not a defined disk')
             ->assertFailed();
     }
 

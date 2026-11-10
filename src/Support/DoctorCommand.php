@@ -167,10 +167,12 @@ class DoctorCommand extends Command
         }
 
         $disk = (string) config('core-web.drafts.proposals.disk');
+        [$holder, $held] = $disk === '' ? ['', null] : $this->diskHoldingFiles($disk);
 
         // Every CP page counts the open proposals, so a disk that is not defined fails them all.
-        if ($disk !== '' && ! is_array(config("filesystems.disks.{$disk}"))) {
-            $this->failure("Proposals: core-web.drafts.proposals.disk names {$disk}, which is not a defined disk");
+        if ($disk !== '' && $held === null) {
+            $missing = $holder === $disk ? "{$disk}," : "{$disk}, scoped to {$holder},";
+            $this->failure("Proposals: core-web.drafts.proposals.disk names {$missing} which is not a defined disk");
 
             return;
         }
@@ -187,16 +189,14 @@ class DoctorCommand extends Command
             return;
         }
 
-        $holder = $this->diskHoldingFiles($disk);
-
-        if (config("filesystems.disks.{$holder}.driver") === 'local') {
+        if (($held['driver'] ?? null) === 'local') {
             $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; {$unset}");
 
             return;
         }
 
-        $bucket = config("filesystems.disks.{$holder}.bucket");
-        $private = config('filesystems.disks.'.$this->diskHoldingFiles((string) config('core-web.cloud.uploads_disk', 'private')).'.bucket');
+        $bucket = $held['bucket'] ?? null;
+        $private = $this->diskHoldingFiles((string) config('core-web.cloud.uploads_disk', 'private'))[1]['bucket'] ?? null;
 
         if (filled($bucket) && $bucket === $private) {
             $this->ok("Proposals: kept on the {$disk} disk, in the private bucket");
@@ -206,28 +206,42 @@ class DoctorCommand extends Command
 
         $public = collect([config('filesystems.default'), config('core-web.media.bucket.cloud_disk') ?: 'media', ...array_keys((array) config('core-web.media.disks'))])
             ->filter(fn (mixed $name): bool => is_string($name) && $name !== '')
-            ->map(fn (string $name): string => $this->diskHoldingFiles($name));
-        $publicBuckets = $public->map(fn (string $name) => config("filesystems.disks.{$name}.bucket"))->filter();
+            ->map(fn (string $name): array => $this->diskHoldingFiles($name));
+        $publicBuckets = $public->map(fn (array $public) => $public[1]['bucket'] ?? null)->filter();
 
-        $public->contains($holder) || (filled($bucket) && $publicBuckets->contains($bucket))
+        $public->map(fn (array $public): string => $public[0])->contains($holder) || (filled($bucket) && $publicBuckets->contains($bucket))
             ? $this->failure("Proposals: the {$disk} disk is on the public bucket, where anyone could read a staged change by its path; {$unset}")
             : $this->warning("Proposals: kept on the {$disk} disk, which is not the private bucket Cloud attaches; make sure its bucket is private");
     }
 
-    /** The disk a scoped disk is a prefix of, followed until one holds the files itself. */
-    private function diskHoldingFiles(string $disk): string
+    /**
+     * The disk that holds a disk's files, following a scoped disk to the disk it is scoped to: its name and its
+     * config, null when it is not defined. A parent given inline has no name, so the scoped disk's name is kept.
+     *
+     * @return array{0: string, 1: array<string, mixed>|null}
+     */
+    private function diskHoldingFiles(string $disk): array
     {
-        for ($hops = 0; $hops < 5 && config("filesystems.disks.{$disk}.driver") === 'scoped'; $hops++) {
-            $parent = config("filesystems.disks.{$disk}.disk");
+        $config = config("filesystems.disks.{$disk}");
+
+        for ($hops = 0; $hops < 5 && is_array($config) && ($config['driver'] ?? null) === 'scoped'; $hops++) {
+            $parent = $config['disk'] ?? null;
+
+            if (is_array($parent)) {
+                $config = $parent;
+
+                continue;
+            }
 
             if (! is_string($parent) || $parent === '') {
                 break;
             }
 
             $disk = $parent;
+            $config = config("filesystems.disks.{$parent}");
         }
 
-        return $disk;
+        return [$disk, is_array($config) ? $config : null];
     }
 
     private function ok(string $message): void
