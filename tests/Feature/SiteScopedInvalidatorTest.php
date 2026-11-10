@@ -7,8 +7,12 @@ use Illuminate\Support\Facades\Queue;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Console\Commands\StaticWarmJob;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
 use Statamic\StaticCaching\Cachers\ApplicationCacher;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
@@ -16,7 +20,7 @@ use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
  * A save on one site of a multisite install under the `all` rule: that
  * site's pages flushed, or with background_recache the saved page forgotten
  * at once and the site's other pages rendered again in the background,
- * never another site's.
+ * never another site's; a global reaches the sites whose copy inherits it.
  */
 class SiteScopedInvalidatorTest extends TestCase
 {
@@ -28,6 +32,7 @@ class SiteScopedInvalidatorTest extends TestCase
     {
         parent::setUp();
 
+        config(['statamic.system.multisite' => true]);
         $this->cacher = new ApplicationCacher(Cache::store('array'), []);
         Collection::make('pages')->sites(['default', 'other'])->routes('/{slug}')->save();
     }
@@ -36,24 +41,79 @@ class SiteScopedInvalidatorTest extends TestCase
     {
         $this->cacheBothSites();
 
-        (new SiteScopedInvalidator($this->cacher, 'all'))->refresh($this->entry('a'));
+        $this->invalidator()->refresh($this->entry('a', 'other'));
 
-        $this->assertSame([], $this->cached('http://default.test'));
-        $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('http://other.test'));
     }
 
     public function test_with_background_recache_the_saved_page_goes_at_once_and_its_site_is_refreshed(): void
     {
-        config(['statamic.static_caching.background_recache' => true]);
-        $this->cacheBothSites();
+        $this->backgroundRecache();
         $entry = $this->entry('a');
-        Queue::fake();
 
-        (new SiteScopedInvalidator($this->cacher, 'all'))->refresh($entry);
+        $this->invalidator()->refresh($entry);
 
         $this->assertSame(['/', '/b'], $this->cached('http://default.test'), 'the other pages served as cached until rendered again');
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
         $this->assertSame(['http://default.test/', 'http://default.test/b'], $this->warmed());
+    }
+
+    public function test_a_localized_page_forgets_only_the_saved_site_s_copy(): void
+    {
+        $origin = $this->entry('a');
+        Entry::make()->collection('pages')->locale('other')->origin($origin)->slug('a')->save();
+        $this->backgroundRecache();
+
+        $this->invalidator()->refresh($origin);
+
+        $this->assertSame(['/', '/a'], $this->cached('http://other.test'), 'the copy on the other site is forgotten when it is saved itself');
+        $this->assertSame(['http://default.test/', 'http://default.test/b'], $this->warmed());
+    }
+
+    public function test_an_entry_without_a_page_forgets_nothing_at_once(): void
+    {
+        Collection::make('snippets')->sites(['default', 'other'])->save();
+        $snippet = Entry::make()->collection('snippets')->locale('default')->slug('footer');
+        $snippet->save();
+        $this->backgroundRecache();
+
+        $this->invalidator()->refresh($snippet);
+
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'), 'a missing URL is not the home page');
+        $this->assertSame(['http://default.test/', 'http://default.test/a', 'http://default.test/b'], $this->warmed());
+    }
+
+    public function test_a_global_reaches_every_site_whose_copy_inherits_it(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'sv_SE'],
+            'third' => ['name' => 'Third', 'url' => 'http://third.test/', 'locale' => 'sv_SE'],
+        ]);
+        $set = GlobalSet::make('settings')->sites(['default' => null, 'other' => 'default', 'third' => null]);
+        $set->save();
+        $this->cacheBothSites();
+        $this->cache('http://third.test', ['/']);
+
+        $this->invalidator()->refresh($set->in('default'));
+        $this->assertSame([], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('http://other.test'));
+        $this->assertSame(['/'], $this->cached('http://third.test'));
+
+        $this->cacheBothSites();
+        $this->invalidator()->refresh($set->in('other'));
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'), 'an origin does not read its copies');
+        $this->assertSame([], $this->cached('http://other.test'));
+    }
+
+    public function test_a_navigation_keeps_statamic_s_own_rule(): void
+    {
+        $this->backgroundRecache();
+
+        $this->invalidator()->refresh(Nav::make('main'));
+
+        $this->assertSame(['http://default.test/', 'http://default.test/a', 'http://default.test/b'], $this->warmed(), "only APP_URL's host, as Statamic refreshes it");
     }
 
     public function test_other_rules_keep_statamic_s_own_invalidation(): void
@@ -66,9 +126,21 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
     }
 
-    private function entry(string $slug): \Statamic\Contracts\Entries\Entry
+    private function invalidator(): SiteScopedInvalidator
     {
-        $entry = Entry::make()->collection('pages')->locale('default')->slug($slug)->data(['title' => $slug]);
+        return new SiteScopedInvalidator($this->cacher, 'all');
+    }
+
+    private function backgroundRecache(): void
+    {
+        config(['statamic.static_caching.background_recache' => true]);
+        $this->cacheBothSites();
+        Queue::fake();
+    }
+
+    private function entry(string $slug, string $site = 'default'): EntryContract
+    {
+        $entry = Entry::make()->collection('pages')->locale($site)->slug($slug)->data(['title' => $slug]);
         $entry->save();
 
         return $entry;

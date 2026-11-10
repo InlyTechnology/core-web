@@ -81,23 +81,25 @@ with `background_recache` on it renders again only the pages cached under
 ],
 ```
 
-- An entry, a global or a collection tree saved on one site forgets that
-  site's pages, on every host they were cached under. The other sites'
-  pages stay.
-- With `background_recache` on, a saved entry's own page (and its
-  descendants') is forgotten at once, so its next visitor sees the change,
-  and the site's other pages are rendered again in the background by a
-  queued job each; a saved global renders all of the site's pages again
-  that way. Turn it on only with a queue worker: on the `sync` queue every
-  page renders inside the save.
+- An entry or a collection tree saved on one site forgets that site's
+  pages, on its host under http and https. The other sites' pages stay. A
+  global also forgets the pages of every site whose copy of the set
+  inherits its values (`origin`).
+- With `background_recache` on, a saved entry's own page on its site is
+  forgotten at once, so its next visitor sees the change, and the site's
+  other pages are rendered again in the background by a queued job each; a
+  saved global renders all of the site's pages again that way. Turn it on
+  only with a queue worker: on the `sync` queue every page renders inside
+  the save. A localized entry's copies on other sites are refreshed when
+  each copy is saved, which Statamic does with its origin.
 - A navigation (Statamic reports a navigation save without its site), an
   asset, a taxonomy term or a form still clears, or refreshes, every page as
   Statamic's rule does.
 - Other rules than `all` are Statamic's own.
 
-A moved page's old address is forgotten only while the saved entry still
-holds its previous slug, which a flat-file save does not keep: then the old
-address answers with its cached copy until the site's pages are next flushed.
+With `background_recache` on, a moved page's old address is rendered again
+with the rest of its site: with the `half` strategy its cached copy becomes
+the 404 it now answers, and its queued render ends as a failed job.
 
 ## Ad and analytics parameters
 

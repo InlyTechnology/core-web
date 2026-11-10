@@ -112,6 +112,18 @@ class SiteCacheTest extends TestCase
         $this->assertSame(['http://shared.test/other', 'http://shared.test/other/b'], $this->warmed());
     }
 
+    public function test_refresh_forgets_a_page_cached_as_an_error_instead_of_rendering_it_again(): void
+    {
+        Queue::fake();
+        $this->cache('http://default.test', ['/', '/gone']);
+        Cache::store('array')->forever('static-cache:responses:'.md5('http://default.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
+
+        (new SiteCache($this->cacher))->refresh(Site::get('default'));
+
+        $this->assertSame(['http://default.test/'], $this->warmed());
+        $this->assertSame(['/'], $this->cached('http://default.test'));
+    }
+
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void
     {
         $this->app->instance(SiteCache::class, new SiteCache($this->cacher));

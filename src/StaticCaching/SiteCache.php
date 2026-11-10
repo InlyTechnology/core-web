@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\StaticCaching;
 
 use Closure;
+use Illuminate\Support\Collection;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
@@ -116,9 +117,7 @@ class SiteCache
         }
 
         $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $neighbours = Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $neighbours = self::neighbours($site);
 
         foreach ($this->cacher->getDomains() as $domain) {
             if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
@@ -137,9 +136,10 @@ class SiteCache
      * Renders every cached page of the site again in the background, one
      * queued request per page (Statamic's StaticWarmJob), while visitors
      * keep getting the cached copy until it is replaced. Pages are found on
-     * every host they were cached under and owned as flush() owns them, and
-     * each path is requested once with every query string it was cached
-     * under. Returns how many paths were queued.
+     * the site's host, under http and https, and owned as flush() owns
+     * them; each path is requested once with every query string it was
+     * cached under, and one cached as an error response is forgotten
+     * instead, as Statamic does. Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
     {
@@ -148,9 +148,7 @@ class SiteCache
         }
 
         $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $neighbours = Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $neighbours = self::neighbours($site);
         $queued = 0;
 
         foreach ($this->cacher->getDomains() as $domain) {
@@ -205,9 +203,7 @@ class SiteCache
 
         $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
         $prefix = self::prefix($site);
-        $neighbours = Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $neighbours = self::neighbours($site);
         $forgotten = 0;
 
         foreach ($this->cacher->getDomains() as $domain) {
@@ -242,6 +238,30 @@ class SiteCache
         }
 
         return false;
+    }
+
+    /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
+    public function owns(Site $site, string $url): bool
+    {
+        if (parse_url($url, PHP_URL_HOST) !== parse_url($site->absoluteUrl(), PHP_URL_HOST)) {
+            return false;
+        }
+
+        return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
+    }
+
+    /**
+     * The sites on the site's host, longest path first.
+     *
+     * @return Collection<array-key, Site>
+     */
+    private static function neighbours(Site $site): Collection
+    {
+        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+
+        return Sites::all()
+            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
+            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
     }
 
     /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */
