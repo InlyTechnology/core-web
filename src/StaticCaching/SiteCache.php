@@ -220,7 +220,7 @@ class SiteCache
             $target = self::addPath($target, (string) $path);
         }
 
-        return $this->forgetOnHost(self::host($site), [$site->handle() => $target]);
+        return $this->forgetOnHost(self::host($site), [self::handle($site) => $target]);
     }
 
     /** @param  list<array{Site, iterable<mixed>}>  $pages */
