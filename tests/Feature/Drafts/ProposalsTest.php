@@ -276,6 +276,12 @@ class ProposalsTest extends TestCase
         $this->proposals()->discard($result['id'], $this->user('eva@example.com'));
 
         $this->assertEmpty(array_filter($this->navItems(), fn (string $item) => str_starts_with($item, 'Proposals')), 'A decided proposal leaves the count at once.');
+
+        $this->proposals()->propose($this->author(), $target, array_reverse($target->current()), Proposals::base($target));
+        $this->assertContains('Proposals (1)', $this->navItems());
+
+        Storage::disk('local')->deleteDirectory('core-web/proposals/open');
+        $this->assertContains('Proposals (1)', $this->navItems(), 'The nav opens no proposal file once the count is cached.');
     }
 
     public function test_the_open_targets_are_read_from_the_files_once_until_a_save(): void

@@ -193,6 +193,8 @@ names no disk, and `core-web:doctor` fails while proposals would sit on the
 default disk or a local one.
 
 The CP nav's Proposals count reads which targets have an open proposal from
-the default cache store, which every save clears, so it opens no proposal on
-a CP page. Behind several servers with a cache each keeps to itself (`file`),
-another server's count can be up to five minutes old.
+the default cache store, so only the first CP page after a save, or after
+five minutes, opens the proposals. A save clears it; what a save cannot
+clear (another server's own `file` cache, a read that raced the save,
+proposal files changed by hand) can leave the count up to five minutes
+old.

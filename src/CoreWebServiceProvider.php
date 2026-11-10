@@ -226,7 +226,7 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeSnapshotStore();
             }
 
-            // A cached config already holds every merge below, since config:cache boots the providers that make them.
+            // A cached config already holds the defaults merges below, since config:cache boots the providers that make them.
             $merged = $this->app->configurationIsCached();
 
             if (self::enabled('cms_sign_in')) {

@@ -162,21 +162,51 @@ class DoctorCommand extends Command
     /** @param  list<string>  $features */
     private function checkProposals(array $features): void
     {
-        if (! in_array('drafts', $features, true) || ! in_array('cloud', $features, true) || ! CloudDefaults::onCloud()) {
+        if (! in_array('drafts', $features, true)) {
             return;
         }
 
-        $disk = config('core-web.drafts.proposals.disk');
+        $disk = (string) config('core-web.drafts.proposals.disk');
 
-        if (blank($disk)) {
+        // Every CP page counts the open proposals, so a disk that is not defined fails them all.
+        if ($disk !== '' && ! is_array(config("filesystems.disks.{$disk}"))) {
+            $this->failure("Proposals: core-web.drafts.proposals.disk names {$disk}, which config/filesystems.php does not define");
+
+            return;
+        }
+
+        if (! in_array('cloud', $features, true) || ! CloudDefaults::onCloud()) {
+            return;
+        }
+
+        if ($disk === '') {
             $this->failure('Proposals: kept on the default disk, the public bucket on Cloud; attach the private bucket as core-web.cloud.uploads_disk or name a private disk in core-web.drafts.proposals.disk');
 
             return;
         }
 
-        config("filesystems.disks.{$disk}.driver") === 'local'
-            ? $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; name a private bucket in core-web.drafts.proposals.disk")
-            : $this->ok("Proposals: kept on the {$disk} disk");
+        if (config("filesystems.disks.{$disk}.driver") === 'local') {
+            $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; name the private bucket in core-web.drafts.proposals.disk");
+
+            return;
+        }
+
+        $bucket = config("filesystems.disks.{$disk}.bucket");
+        $private = config('filesystems.disks.'.config('core-web.cloud.uploads_disk', 'private').'.bucket');
+
+        if (filled($bucket) && $bucket === $private) {
+            $this->ok("Proposals: kept on the {$disk} disk, in the private bucket");
+
+            return;
+        }
+
+        $public = collect([config('filesystems.default'), config('core-web.media.bucket.cloud_disk') ?: 'media', ...array_keys((array) config('core-web.media.disks'))])
+            ->filter(fn (mixed $name): bool => is_string($name) && $name !== '');
+        $publicBuckets = $public->map(fn (string $name) => config("filesystems.disks.{$name}.bucket"))->filter();
+
+        $public->contains($disk) || (filled($bucket) && $publicBuckets->contains($bucket))
+            ? $this->failure("Proposals: the {$disk} disk is on the public bucket, where anyone could read a staged change by its path; name the private bucket in core-web.drafts.proposals.disk")
+            : $this->warning("Proposals: kept on the {$disk} disk, which is not the private bucket Cloud attaches; make sure its bucket is private");
     }
 
     private function ok(string $message): void

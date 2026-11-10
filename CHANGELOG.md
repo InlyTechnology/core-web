@@ -13,12 +13,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
   default disk they sat in the public bucket, where a staged change and
   `applied.json` could be read by their path. `core-web:doctor` fails while
-  proposals on Cloud would sit on the default disk or a local one. See
-  `docs/laravel-cloud.md`.
+  proposals on Cloud would sit on the default disk, a local disk or the
+  public bucket, and on any host while `drafts.proposals.disk` names a disk
+  that is not defined. See `docs/laravel-cloud.md` and
+  `docs/checking-a-sites-setup.md`.
 - **The CP nav counts proposals without opening them**: the Proposals count
   reads which targets have an open proposal from the cache, which a save
   clears, where every CP page read each open proposal's file (one request
-  each on a bucket). See `docs/drafts.md`.
+  each on a bucket). A change a save cannot clear (proposal files changed by
+  hand, another server's own `file` cache) shows within five minutes. See
+  `docs/drafts.md`.
 - **The 404 page reads its entry once**: the page-not-found entry and its
   fields are looked up once per request, where each view the composer names
   (`errors/404`, `layout`) looked them up again.
@@ -35,9 +39,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   are no longer listed. Find them: on the default disk (the public bucket),
   under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
   that folder to the same path on the private bucket, then delete it from
-  the public one, which still serves it until then. Verify: the CP's
-  Proposals page lists them, `php artisan core-web:doctor` shows
-  `ok Proposals`, and the old path is gone from the public bucket.
+  the public one, which still serves it until then. A Cloud site that names
+  a disk on the public bucket in `drafts.proposals.disk` (such as `media`)
+  points it at `private` and moves the folder the same way. Verify: the
+  CP's Proposals page lists them (the nav's count follows within five
+  minutes), `php artisan core-web:doctor` shows `ok Proposals`, and the old
+  path is gone from the public bucket.
+- **`core-web:doctor` can now fail a deploy on Cloud.** It exits non-zero on
+  a Cloud site with `drafts` on whose proposals would sit on the default
+  disk, a local disk or the public bucket, and on any site whose
+  `drafts.proposals.disk` names a disk that is not defined. Find it: a
+  deploy or launch script that runs `core-web:doctor`. Migrate: attach the
+  private bucket (Core Cloud attaches it as `private`) or name a private
+  disk in `drafts.proposals.disk`, as in the note above. Verify: the doctor
+  shows `ok Proposals` and exits 0.
 
 ## v0.47.0
 

@@ -16,16 +16,20 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProposalStore
 {
-    /** A save forgets the open targets at once, so this only bounds a cache one server keeps to itself. */
+    /** How stale the open targets can be where a save cannot clear them: a cache per server, a read racing the save, files changed by hand. */
     private const OPEN_TARGETS_SECONDS = 300;
 
-    public function __construct(private Filesystem $disk, private string $path) {}
+    /** @param  string  $diskName  names the disk in the cache key, so moving proposals to another disk reads it afresh */
+    public function __construct(private Filesystem $disk, private string $path, private string $diskName = '') {}
 
     public static function fromConfig(): self
     {
+        $disk = config('core-web.drafts.proposals.disk') ?: null;
+
         return new self(
-            Storage::disk(config('core-web.drafts.proposals.disk') ?: null),
+            Storage::disk($disk),
             trim((string) config('core-web.drafts.proposals.path', 'core-web/proposals'), '/'),
+            (string) ($disk ?? config('filesystems.default')),
         );
     }
 
@@ -146,7 +150,7 @@ class ProposalStore
 
     private function openTargetsKey(): string
     {
-        return 'core-web.proposals.open-targets.'.md5($this->path);
+        return 'core-web.proposals.open-targets.'.md5($this->diskName.'|'.$this->path);
     }
 
     private function folder(bool $open): string
