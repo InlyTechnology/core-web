@@ -64,8 +64,10 @@ a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
 path on the site, and `SiteCache::forget()` by the absolute URLs an
 invalidator reports (a trailing `*` takes every page under one), keeping only
-those the site owns. `SiteCache::refresh()` renders the site's cached pages
-again in the background instead (one queued request per page), and visitors
+those the site owns; `SiteCache::forgetMany()` does that for several sites at
+once, keyed by site handle, reading each host's cached pages once for all of
+them. `SiteCache::refresh()` renders the site's cached pages again in the
+background instead (one queued request per page), and visitors
 keep the cached copy until it is replaced. On a shared host with no site at
 its root, a page cached outside every site's path (a 404 at `/foo` beside
 `/en` and `/sv`) is no site's, so no site's flush or refresh reaches it.
@@ -88,12 +90,12 @@ the site of what was saved:
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
-  sites' pages stay, except a saved entry's copies on them (its origin and
-  its other localizations): each links to it from a language switcher or
-  `hreflang`, so it is forgotten on its own site, and its next visitor
-  renders it with the new address. A global also forgets the pages of every
-  site whose copy of the set inherits its values (`origin`), directly or
-  through another copy. Without `background_recache`, a save that reaches
+  sites' pages stay, except a saved or deleted entry's copies on them (its
+  origin and its other localizations, along the whole chain of origins): each
+  links to it from a language switcher or `hreflang`, so it is forgotten on
+  its own site, and its next visitor renders it with the new address. A
+  global also forgets the pages of every site whose copy of the set inherits
+  its values (`origin`), directly or through another copy. Without `background_recache`, a save that reaches
   every site clears the whole cache at once, as Statamic's rule does.
 - With `background_recache` on, a saved entry's own page on its site, and a
   moved page's old address with the pages under it, are forgotten at once

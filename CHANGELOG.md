@@ -9,12 +9,19 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 ## Unreleased
 
 - **A save forgets the entry's copies on the other sites**: under
-  `SiteScopedInvalidator`, a saved entry's origin and other localizations
-  are forgotten on their own sites, since each links to it from a language
-  switcher or `hreflang`. A copy saved alone (a new slug on one site) left
-  the other sites' pages linking to its old address until their own site
-  was next cleared. Each copy is one page forgotten, rendered by its next
-  visitor. See `docs/static-cache.md`.
+  `SiteScopedInvalidator`, a saved or deleted entry's origin and other
+  localizations are forgotten on their own sites, since each links to it
+  from a language switcher or `hreflang`. A copy saved alone (a new slug on
+  one site) left the other sites' pages linking to its old address until
+  their own site was next cleared. Each copy is one page forgotten, rendered
+  by its next visitor. See `docs/static-cache.md`.
+- **Forgetting pages on a shared host reads its cached pages once**:
+  `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()` work out
+  each site's path on the host once per call, where they resolved every
+  site's address for every cached page. The new `SiteCache::forgetMany()`
+  forgets pages on several sites in one pass over each host. Saving an
+  origin on fourteen path-prefixed sites spends about half as long
+  forgetting pages.
 
 ## v0.46.0
 

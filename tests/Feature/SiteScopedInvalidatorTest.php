@@ -91,6 +91,29 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame(['http://other.test/'], $this->warmed());
     }
 
+    public function test_a_copy_of_a_copy_forgets_every_page_in_its_chain(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'sv_SE'],
+            'third' => ['name' => 'Third', 'url' => 'http://third.test/', 'locale' => 'sv_SE'],
+        ]);
+        Collection::find('pages')->sites(['default', 'other', 'third'])->save();
+        $root = $this->entry('a');
+        $copy = Entry::make()->collection('pages')->locale('other')->origin($root)->slug('a');
+        $copy->save();
+        $copyOfCopy = Entry::make()->collection('pages')->locale('third')->origin($copy)->slug('a');
+        $copyOfCopy->save();
+        $this->cacheBothSites();
+        $this->cache('http://third.test', ['/', '/a']);
+
+        $this->invalidator()->refresh($copyOfCopy);
+
+        $this->assertSame(['/', '/b'], $this->cached('http://default.test'), "the root's page links to the saved copy too");
+        $this->assertSame(['/'], $this->cached('http://other.test'));
+        $this->assertSame([], $this->cached('http://third.test'));
+    }
+
     public function test_without_background_recache_a_copy_forgets_only_its_origin_s_page(): void
     {
         $origin = $this->entry('a');
