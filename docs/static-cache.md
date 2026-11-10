@@ -88,10 +88,12 @@ the site of what was saved:
   site forgets that site's pages, on its host under http and https. The other
   sites' pages stay. A global also forgets the pages of every site whose
   copy of the set inherits its values (`origin`), directly or through
-  another copy.
-- With `background_recache` on, a saved entry's own page on its site is
-  forgotten at once (under http and https), so its next visitor sees the
-  change, and the site's other pages are rendered again in the background
+  another copy. Without `background_recache`, a save that reaches every site
+  clears the whole cache at once, as Statamic's rule does.
+- With `background_recache` on, a saved entry's own page on its site, and a
+  moved page's old address with the pages under it, are forgotten at once
+  (under http and https), so the next visitor sees the change, and the
+  site's other pages are rendered again in the background
   by a queued job each; a saved global renders all of the site's pages
   again that way. Turn it on only with a queue worker: on the `sync` queue
   every page renders inside the save. A localized entry's copies on other
@@ -101,19 +103,19 @@ the site of what was saved:
   tree save and a scheduled entry going live flush the site's pages at once,
   with or without `background_recache`: Statamic invalidates for those
   instead of refreshing.
-- A navigation save (Statamic reports it without its site), an asset or a
-  form is left to Statamic's rule, which clears every page, or with
-  `background_recache` renders again those on the base URL. A taxonomy term
+- A navigation save (Statamic reports it without its site), an asset save or
+  a form save is left to Statamic's rule, which clears every page, or with
+  `background_recache` renders again those on the base URL. Deleting a
+  navigation, an asset or a form, and saving or deleting a taxonomy term,
   always clears every page.
 - Other rules than `all` are Statamic's own.
 
-With `background_recache` on, a moved page's old address is forgotten only
-when the save still knows it. On the flat-file Stache it does not (the
-Stache resets the entry's original values during the save, before
-`EntrySaved` is reported), so the old address is
-rendered again with the rest of its site: with the `half` strategy its cached
-copy becomes the 404 it now answers, and its queued render ends as a failed
-job.
+A moved page's old address comes from the entry's original values. It is
+missed for a localized copy whose slug comes from its origin, and on a Stache
+whose cache store is `array`, which resets those values before `EntrySaved`
+is reported. With `background_recache` on, the old address is then rendered
+again with the rest of its site: with the `half` strategy its cached copy
+becomes the 404 it now answers, and its queued render ends as a failed job.
 
 ## Ad and analytics parameters
 

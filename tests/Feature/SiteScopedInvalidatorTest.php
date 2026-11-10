@@ -116,6 +116,20 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
     }
 
+    public function test_a_save_that_reaches_every_site_clears_the_whole_cache_at_once(): void
+    {
+        $set = GlobalSet::make('settings')->sites(['default' => null, 'other' => 'default']);
+        $set->save();
+        $this->cacheBothSites();
+        $this->cache('http://elsewhere.test', ['/']);
+
+        $this->invalidator()->refresh($set->in('default'));
+
+        $this->assertSame([], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('http://other.test'));
+        $this->assertSame([], $this->cached('http://elsewhere.test'), "as Statamic's own rule clears it");
+    }
+
     public function test_a_global_whose_set_is_gone_flushes_its_own_site(): void
     {
         $this->cacheBothSites();

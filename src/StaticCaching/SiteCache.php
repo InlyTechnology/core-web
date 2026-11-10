@@ -124,11 +124,15 @@ class SiteCache
                 continue;
             }
 
+            $paths = [];
+
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
                 if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
-                    $this->cacher->invalidateUrl($url, $domain);
+                    $paths[strtok((string) $url, '?')] = true;
                 }
             }
+
+            $this->invalidate(array_keys($paths), $domain);
         }
     }
 
@@ -187,7 +191,7 @@ class SiteCache
         $paths = [];
 
         foreach ($urls as $url) {
-            // An unrouted entry's URL is null, which the cacher would read as the home page.
+            // An unrouted entry's URL is null, which would read as the home page.
             if (! is_string($url)) {
                 continue;
             }
@@ -244,6 +248,8 @@ class SiteCache
                 continue;
             }
 
+            $matched = [];
+
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
                 if (self::owner($neighbours, (string) $url)?->handle() !== $site->handle()) {
                     continue;
@@ -252,13 +258,28 @@ class SiteCache
                 $onSite = '/'.trim(substr('/'.trim((string) parse_url((string) $url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
 
                 if (isset($exact[$onSite]) || self::under($onSite, $prefixes)) {
-                    $this->cacher->invalidateUrl($url, $domain);
+                    $matched[strtok((string) $url, '?')] = true;
                     $forgotten++;
                 }
             }
+
+            $this->invalidate(array_keys($matched), $domain);
         }
 
         return $forgotten;
+    }
+
+    /**
+     * Forgets each path once with every query string it was cached under:
+     * the cacher reads and rewrites the domain's whole URL list per call.
+     *
+     * @param  list<string>  $paths
+     */
+    private function invalidate(array $paths, ?string $domain): void
+    {
+        foreach ($paths as $path) {
+            $this->cacher->invalidateUrl($path, $domain);
+        }
     }
 
     /** @param  list<string>  $prefixes */

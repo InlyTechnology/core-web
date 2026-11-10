@@ -29,6 +29,13 @@ class SiteScopedInvalidator extends DefaultInvalidator
             return;
         }
 
+        // All of it at once: forgetting page by page rewrites the cacher's URL list for every page.
+        if (! $this->refreshing && count($sites) === Sites::all()->count()) {
+            $this->cacher->flush();
+
+            return;
+        }
+
         $cache = new SiteCache($this->cacher);
         // A global has no URLs of its own under `all`, and reading its rules needs its set, which may be gone.
         $urls = $this->refreshing && ! $item instanceof Variables

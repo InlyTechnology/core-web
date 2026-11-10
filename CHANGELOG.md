@@ -21,6 +21,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   now also flushes (or refreshes) the pages of every site whose copy of the
   set reads its values through an origin, directly or through another copy.
   They kept showing the old values.
+- **A site's flush forgets each page once**: `SiteCache::flush()` and
+  `flushPaths()` forget a page once with every query string it was cached
+  under, where they forgot it once per cached query string, each time
+  rewriting the cacher's whole URL list.
 
 ## v0.45.0
 

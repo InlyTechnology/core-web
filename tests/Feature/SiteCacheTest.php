@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Inly\CoreWeb\Snapshots\Snapshot;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
@@ -11,6 +12,7 @@ use Inly\CoreWeb\Tests\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Statamic\Console\Commands\StaticWarmJob;
+use Statamic\Events\UrlInvalidated;
 use Statamic\Facades\Site;
 use Statamic\StaticCaching\Cachers\ApplicationCacher;
 
@@ -68,6 +70,21 @@ class SiteCacheTest extends TestCase
 
         $this->assertSame(4, $flushed);
         $this->assertSame(['/campaigns/a/one', '/campaigns/a/two', '/brands', '/about'], $this->cached('http://default.test'));
+    }
+
+    public function test_each_path_is_forgotten_once_with_every_query_string_it_was_cached_under(): void
+    {
+        Event::fake([UrlInvalidated::class]);
+        $this->cache('http://default.test', ['/', '/a', '/a?x=1', '/a?y=2', '/b']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(3, $cache->flushPaths(Site::get('default'), ['/a']));
+        $this->assertSame(['/', '/b'], $this->cached('http://default.test'));
+        Event::assertDispatchedTimes(UrlInvalidated::class, 1);
+
+        $cache->flush(Site::get('default'));
+        $this->assertSame([], $this->cached('http://default.test'));
+        Event::assertDispatchedTimes(UrlInvalidated::class, 3);
     }
 
     public function test_named_paths_are_on_the_site_under_its_path_of_a_shared_host(): void
