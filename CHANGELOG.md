@@ -6,6 +6,36 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **A save refreshes its own site only**: with `background_recache` on,
+  `SiteScopedInvalidator` forgets the saved entry's page on its site at once
+  (under http and https) and renders the rest of that site's cached pages
+  again in the background (`SiteCache::refresh()`). Statamic's `all` rule
+  renders again every page cached on the static cache's base URL, which is
+  every site's pages when the sites share that host (hundreds of renders for
+  one save on an install with many sites), while pages on other hosts kept
+  their stale copies. Without `background_recache` the saved site's pages
+  are flushed. See `docs/static-cache.md`.
+- **A global reaches the sites that inherit it**: a global saved on one site
+  now also flushes (or refreshes) the pages of every site whose copy of the
+  set reads its values through an origin, directly or through another copy.
+  They kept showing the old values.
+- **A site's flush forgets each page once**: `SiteCache::flush()` and
+  `flushPaths()` forget a page once with every query string it was cached
+  under, where they forgot it once per cached query string, each time
+  reading the cacher's whole URL list again.
+
+### Upgrade notes
+
+- **`/*` no longer takes a site's home page.** `SiteCache::flushPaths()` with
+  `/*` forgot the site's root page with the pages under it; it now forgets
+  only the pages under it, as every prefix does (`/brands/*` never takes
+  `/brands`). Find it: search the site's snapshot `dependents()` closures
+  and `flushPaths()` calls for `'/*'`. Migrate: return `'/'` beside `'/*'`
+  where the home page shows the data too. Verify: change one such document
+  and see the home page rendered with the new value.
+
 ## v0.45.0
 
 - **Local search indexes work on Laravel Cloud**: with `features.cloud`,

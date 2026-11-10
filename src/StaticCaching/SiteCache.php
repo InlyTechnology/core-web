@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\StaticCaching;
 
 use Closure;
+use Illuminate\Support\Collection;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
@@ -116,21 +117,97 @@ class SiteCache
         }
 
         $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $neighbours = Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $neighbours = self::neighbours($site);
 
         foreach ($this->cacher->getDomains() as $domain) {
             if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
                 continue;
             }
 
+            $paths = [];
+
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
                 if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
-                    $this->cacher->invalidateUrl($url, $domain);
+                    $paths[strtok((string) $url, '?')] = true;
                 }
             }
+
+            $this->invalidate(array_keys($paths), $domain);
         }
+    }
+
+    /**
+     * Renders every cached page of the site again in the background, one
+     * queued request per page (Statamic's StaticWarmJob), while visitors
+     * keep getting the cached copy until it is replaced. Pages are found on
+     * the site's host, under http and https, and owned as flush() owns
+     * them; each path is requested once with every query string it was
+     * cached under, and one cached as an error response is forgotten
+     * instead, as Statamic does. Returns how many paths were handed on.
+     */
+    public function refresh(Site $site): int
+    {
+        if (! $this->cacher instanceof AbstractCacher) {
+            return 0;
+        }
+
+        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+        $neighbours = self::neighbours($site);
+        $queued = 0;
+
+        foreach ($this->cacher->getDomains() as $domain) {
+            if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
+                continue;
+            }
+
+            $paths = [];
+
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
+                    $paths[strtok((string) $url, '?')] = true;
+                }
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->cacher->refreshUrl($path, $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
+    }
+
+    /**
+     * Forgets the site's cached pages at these absolute URLs (what an
+     * invalidator reports; a trailing `*` takes every page under one), as
+     * flushPaths() does: under http and https, with any query string, and
+     * only the pages the site owns. Returns how many were forgotten.
+     *
+     * @param  iterable<mixed>  $urls
+     */
+    public function forget(Site $site, iterable $urls): int
+    {
+        $prefix = self::prefix($site);
+        $paths = [];
+
+        foreach ($urls as $url) {
+            // An unrouted entry reports a null URL: it has no page to forget.
+            if (! is_string($url)) {
+                continue;
+            }
+
+            $wildcard = str_ends_with($url, '*');
+            $address = $wildcard ? substr($url, 0, -1) : $url;
+
+            if (! $this->owns($site, $address)) {
+                continue;
+            }
+
+            $path = '/'.trim(substr('/'.trim((string) parse_url($address, PHP_URL_PATH), '/'), strlen($prefix)), '/');
+            $paths[] = $wildcard ? rtrim($path, '/').'/*' : $path;
+        }
+
+        return $paths === [] ? 0 : $this->flushPaths($site, $paths);
     }
 
     /**
@@ -163,15 +240,15 @@ class SiteCache
 
         $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
         $prefix = self::prefix($site);
-        $neighbours = Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $neighbours = self::neighbours($site);
         $forgotten = 0;
 
         foreach ($this->cacher->getDomains() as $domain) {
             if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
                 continue;
             }
+
+            $matched = [];
 
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
                 if (self::owner($neighbours, (string) $url)?->handle() !== $site->handle()) {
@@ -181,25 +258,66 @@ class SiteCache
                 $onSite = '/'.trim(substr('/'.trim((string) parse_url((string) $url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
 
                 if (isset($exact[$onSite]) || self::under($onSite, $prefixes)) {
-                    $this->cacher->invalidateUrl($url, $domain);
+                    $matched[strtok((string) $url, '?')] = true;
                     $forgotten++;
                 }
             }
+
+            $this->invalidate(array_keys($matched), $domain);
         }
 
         return $forgotten;
     }
 
+    /**
+     * Forgets each path once with every query string it was cached under:
+     * each call reads the domain's whole URL list again.
+     *
+     * @param  list<string>  $paths
+     */
+    private function invalidate(array $paths, ?string $domain): void
+    {
+        foreach ($paths as $path) {
+            $this->cacher->invalidateUrl($path, $domain);
+        }
+    }
+
     /** @param  list<string>  $prefixes */
     private static function under(string $path, array $prefixes): bool
     {
+        $dir = rtrim($path, '/').'/';
+
         foreach ($prefixes as $prefix) {
-            if (str_starts_with($path.'/', $prefix) && $path.'/' !== $prefix) {
+            if (str_starts_with($dir, $prefix) && $dir !== $prefix) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
+    public function owns(Site $site, string $url): bool
+    {
+        if (parse_url($url, PHP_URL_HOST) !== parse_url($site->absoluteUrl(), PHP_URL_HOST)) {
+            return false;
+        }
+
+        return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
+    }
+
+    /**
+     * The sites on the site's host, longest path first.
+     *
+     * @return Collection<array-key, Site>
+     */
+    private static function neighbours(Site $site): Collection
+    {
+        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+
+        return Sites::all()
+            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
+            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
     }
 
     /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */
