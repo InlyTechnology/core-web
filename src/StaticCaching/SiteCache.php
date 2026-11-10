@@ -134,6 +134,48 @@ class SiteCache
     }
 
     /**
+     * Renders every cached page of the site again in the background, one
+     * queued request per page (Statamic's StaticWarmJob), while visitors
+     * keep getting the cached copy until it is replaced. Pages are found on
+     * every host they were cached under and owned as flush() owns them, and
+     * each path is requested once with every query string it was cached
+     * under. Returns how many paths were queued.
+     */
+    public function refresh(Site $site): int
+    {
+        if (! $this->cacher instanceof AbstractCacher) {
+            return 0;
+        }
+
+        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+        $neighbours = Sites::all()
+            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
+            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        $queued = 0;
+
+        foreach ($this->cacher->getDomains() as $domain) {
+            if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
+                continue;
+            }
+
+            $paths = [];
+
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
+                    $paths[strtok((string) $url, '?')] = true;
+                }
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->cacher->refreshUrl($path, $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
+    }
+
+    /**
      * Forgets the site's cached pages at these paths, each with any query
      * string it was cached under. A path is on the site ('/campaigns', under
      * the site's own path on a shared host); a trailing `*` takes every page

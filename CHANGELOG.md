@@ -6,6 +6,17 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **A save refreshes its own site only**: with `background_recache` on,
+  `SiteScopedInvalidator` forgets the saved entry's page at once and renders
+  the rest of that site's cached pages again in the background
+  (`SiteCache::refresh()`), on every host they were cached under. Statamic's
+  `all` rule renders every site's pages again, and only those under
+  `APP_URL`'s host, which on a multisite install with many sites queued
+  hundreds of renders for one save. Without `background_recache` nothing
+  changes: the site's pages are flushed. See `docs/static-cache.md`.
+
 ## v0.45.0
 
 - **Local search indexes work on Laravel Cloud**: with `features.cloud`,

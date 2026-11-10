@@ -62,7 +62,42 @@ whose pages you cannot name.
 `SiteCache::flush()` forgets the pages cached for one site: on its host, and on
 a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
-path on the site.
+path on the site. `SiteCache::refresh()` renders the site's cached pages again in the
+background instead (one queued request per page), and visitors keep the
+cached copy until it is replaced.
+
+## A save on one site of a multisite install
+
+Statamic's `all` invalidation rule clears every site's pages on any save, and
+with `background_recache` on it renders again only the pages cached under
+`APP_URL`'s host. On an install whose sites share no pages,
+`SiteScopedInvalidator` keeps the rule to the site of what was saved:
+
+```php
+// config/statamic/static_caching.php
+'invalidation' => [
+    'class' => \Inly\CoreWeb\StaticCaching\SiteScopedInvalidator::class,
+    'rules' => 'all',
+],
+```
+
+- An entry, a global or a collection tree saved on one site forgets that
+  site's pages, on every host they were cached under. The other sites'
+  pages stay.
+- With `background_recache` on, a saved entry's own page (and its
+  descendants') is forgotten at once, so its next visitor sees the change,
+  and the site's other pages are rendered again in the background by a
+  queued job each; a saved global renders all of the site's pages again
+  that way. Turn it on only with a queue worker: on the `sync` queue every
+  page renders inside the save.
+- A navigation (Statamic reports a navigation save without its site), an
+  asset, a taxonomy term or a form still clears, or refreshes, every page as
+  Statamic's rule does.
+- Other rules than `all` are Statamic's own.
+
+A moved page's old address is forgotten only while the saved entry still
+holds its previous slug, which a flat-file save does not keep: then the old
+address answers with its cached copy until the site's pages are next flushed.
 
 ## Ad and analytics parameters
 
