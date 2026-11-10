@@ -8,6 +8,8 @@ use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Console\Commands\StaticWarmJob;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
+use Statamic\Contracts\Globals\Variables as VariablesContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -19,8 +21,9 @@ use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 /**
  * A save on one site of a multisite install under the `all` rule: that
  * site's pages flushed, or with background_recache the saved page forgotten
- * at once and the site's other pages rendered again in the background,
- * never another site's; a global reaches the sites whose copy inherits it.
+ * at once (under http and https) and the site's other pages rendered again
+ * in the background, never another site's; a global reaches the sites whose
+ * copy inherits it, directly or through another copy.
  */
 class SiteScopedInvalidatorTest extends TestCase
 {
@@ -86,25 +89,69 @@ class SiteScopedInvalidatorTest extends TestCase
 
     public function test_a_global_reaches_every_site_whose_copy_inherits_it(): void
     {
-        Site::setSites([
-            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
-            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'sv_SE'],
-            'third' => ['name' => 'Third', 'url' => 'http://third.test/', 'locale' => 'sv_SE'],
-        ]);
-        $set = GlobalSet::make('settings')->sites(['default' => null, 'other' => 'default', 'third' => null]);
-        $set->save();
-        $this->cacheBothSites();
-        $this->cache('http://third.test', ['/']);
+        $set = $this->inheritedSettings();
 
         $this->invalidator()->refresh($set->in('default'));
         $this->assertSame([], $this->cached('http://default.test'));
         $this->assertSame([], $this->cached('http://other.test'));
-        $this->assertSame(['/'], $this->cached('http://third.test'));
+        $this->assertSame([], $this->cached('http://third.test'), 'through the copy it inherits from');
+        $this->assertSame(['/'], $this->cached('http://fourth.test'));
 
         $this->cacheBothSites();
         $this->invalidator()->refresh($set->in('other'));
         $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'), 'an origin does not read its copies');
         $this->assertSame([], $this->cached('http://other.test'));
+    }
+
+    public function test_with_background_recache_a_global_renders_every_inheriting_site_again(): void
+    {
+        $set = $this->inheritedSettings();
+        $this->backgroundRecache();
+
+        $this->invalidator()->refresh($set->in('other'));
+
+        $this->assertEqualsCanonicalizing(['http://other.test/', 'http://other.test/a', 'http://third.test/'], $this->warmed());
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
+    }
+
+    public function test_a_global_whose_set_is_gone_flushes_its_own_site(): void
+    {
+        $this->cacheBothSites();
+        $variables = app(VariablesContract::class)->globalSet('deleted')->locale('other');
+
+        $this->invalidator()->refresh($variables);
+
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('http://other.test'));
+    }
+
+    public function test_the_saved_page_is_forgotten_under_http_and_https(): void
+    {
+        $this->backgroundRecache();
+        $this->cache('https://default.test', ['/', '/a']);
+
+        $this->invalidator()->refresh($this->entry('a'));
+
+        $this->assertSame(['/', '/b'], $this->cached('http://default.test'));
+        $this->assertSame(['/'], $this->cached('https://default.test'));
+    }
+
+    public function test_on_a_shared_host_a_localized_page_forgets_only_the_saved_site_s_copy(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $origin = $this->entry('a');
+        Entry::make()->collection('pages')->locale('other')->origin($origin)->slug('a')->save();
+        config(['statamic.static_caching.background_recache' => true]);
+        $this->cache('http://shared.test', ['/', '/a', '/other', '/other/a']);
+        Queue::fake();
+
+        $this->invalidator()->refresh($origin);
+
+        $this->assertSame(['/', '/other', '/other/a'], $this->cached('http://shared.test'));
+        $this->assertSame(['http://shared.test/'], $this->warmed());
     }
 
     public function test_a_navigation_keeps_statamic_s_own_rule(): void
@@ -124,6 +171,24 @@ class SiteScopedInvalidatorTest extends TestCase
 
         $this->assertSame(['/'], $this->cached('http://default.test'));
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
+    }
+
+    /** Four sites: other inherits the settings from default, third from other, fourth from none. */
+    private function inheritedSettings(): GlobalSetContract
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'sv_SE'],
+            'third' => ['name' => 'Third', 'url' => 'http://third.test/', 'locale' => 'sv_SE'],
+            'fourth' => ['name' => 'Fourth', 'url' => 'http://fourth.test/', 'locale' => 'sv_SE'],
+        ]);
+        $set = GlobalSet::make('settings')->sites(['default' => null, 'other' => 'default', 'third' => 'other', 'fourth' => null]);
+        $set->save();
+        $this->cacheBothSites();
+        $this->cache('http://third.test', ['/']);
+        $this->cache('http://fourth.test', ['/']);
+
+        return $set;
     }
 
     private function invalidator(): SiteScopedInvalidator

@@ -11,6 +11,7 @@ use Statamic\Facades\Site as Sites;
 use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
+use Statamic\Support\Str;
 
 /** The static cache of one site of a multisite install, whose sites share no cached pages. */
 class SiteCache
@@ -171,6 +172,33 @@ class SiteCache
         }
 
         return $queued;
+    }
+
+    /**
+     * Forgets these absolute URLs (a trailing `*` takes every page under
+     * one) where the site owns them, under http and https: a page is cached
+     * under the scheme it was requested with, which need not be the site's.
+     *
+     * @param  iterable<mixed>  $urls
+     */
+    public function forget(Site $site, iterable $urls): void
+    {
+        $forget = [];
+
+        foreach ($urls as $url) {
+            // An unrouted entry's URL is null, which the cacher would read as the home page.
+            if (! is_string($url) || ! $this->owns($site, $url)) {
+                continue;
+            }
+
+            $address = Str::after($url, '://');
+            $forget['http://'.$address] = true;
+            $forget['https://'.$address] = true;
+        }
+
+        if ($forget !== []) {
+            $this->cacher->invalidateUrls(array_keys($forget));
+        }
     }
 
     /**

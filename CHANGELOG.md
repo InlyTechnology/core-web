@@ -10,15 +10,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **A save refreshes its own site only**: with `background_recache` on,
   `SiteScopedInvalidator` forgets the saved entry's page on its site at once
-  and renders the rest of that site's cached pages again in the background
-  (`SiteCache::refresh()`), on the site's host under http and https.
-  Statamic's `all` rule renders every site's pages again, and only those
-  under `APP_URL`'s host, which on a multisite install with many sites
-  queued hundreds of renders for one save. Without `background_recache` the
-  site's pages are flushed, as before. See `docs/static-cache.md`.
+  (under http and https) and renders the rest of that site's cached pages
+  again in the background (`SiteCache::refresh()`). Statamic's `all` rule
+  renders every site's pages again, and only those on the static cache's
+  base URL, which on a multisite install with many sites queued hundreds of
+  renders for one save. Without `background_recache` the site's pages are
+  flushed, as before. See `docs/static-cache.md`.
 - **A global reaches the sites that inherit it**: a global saved on one site
   now also flushes (or refreshes) the pages of every site whose copy of the
-  set reads its values through an origin. They kept showing the old values.
+  set reads its values through an origin, directly or through another copy.
+  They kept showing the old values.
 
 ## v0.45.0
 

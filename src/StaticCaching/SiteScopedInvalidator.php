@@ -10,20 +10,14 @@ use Statamic\Sites\Site;
 use Statamic\StaticCaching\DefaultInvalidator;
 
 /**
- * The `all` rule, one site at a time, for a multisite install whose sites
- * share no pages: an entry, global or collection tree saved on one site
- * flushes only that site's cached pages, and a global those of every site
- * whose copy inherits its values. With background_recache on, the saved
- * item's own pages on the site are forgotten at once, so the next visitor
- * sees the change, and the site's other pages are rendered again in the
- * background (SiteCache::refresh()). What Statamic reports without a site
- * (a navigation, an asset, a taxonomy term, a form) still flushes or
- * refreshes everything. Set it as statamic.static_caching.invalidation.class
- * to use it.
+ * The `all` rule one site at a time, for a multisite install whose sites
+ * share no pages: Statamic's own rule clears (or renders again) every site's
+ * pages for a save on one of them. What Statamic reports without a site still
+ * goes to its rule; docs/static-cache.md has the details.
  */
 class SiteScopedInvalidator extends DefaultInvalidator
 {
-    public function invalidate($item)
+    public function invalidate(mixed $item): void
     {
         $sites = $this->rules === 'all' ? $this->sitesOf($item) : [];
 
@@ -34,7 +28,6 @@ class SiteScopedInvalidator extends DefaultInvalidator
         }
 
         $cache = new SiteCache($this->cacher);
-        $urls = $this->refreshing ? [...$this->getItemUrls($item), ...$this->getItemOldUrls($item)] : [];
 
         foreach ($sites as $site) {
             if (! $this->refreshing) {
@@ -43,13 +36,7 @@ class SiteScopedInvalidator extends DefaultInvalidator
                 continue;
             }
 
-            // An unrouted entry has no URL, which the cacher would read as the home page.
-            $own = array_filter($urls, fn (mixed $url) => is_string($url) && $url !== '' && $cache->owns($site, $url));
-
-            if ($own !== []) {
-                $this->cacher->invalidateUrls(array_values($own));
-            }
-
+            $cache->forget($site, [...$this->getItemUrls($item), ...$this->getItemOldUrls($item)]);
             $cache->refresh($site);
         }
     }
@@ -72,7 +59,14 @@ class SiteScopedInvalidator extends DefaultInvalidator
      */
     private function inheritingSites(Variables $variables): array
     {
-        $origins = $variables->globalSet()->origins();
+        $set = $variables->globalSet();
+
+        // The set can be deleted before the queued invalidation runs.
+        if ($set === null) {
+            return array_values(array_filter([$variables->site()]));
+        }
+
+        $origins = $set->origins();
         $handles = [$variables->locale()];
 
         do {
