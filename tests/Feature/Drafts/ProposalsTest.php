@@ -301,6 +301,22 @@ class ProposalsTest extends TestCase
         $this->assertSame(['global:settings:default'], app(ProposalStore::class)->openTargets(), 'A save has the next read go to the files.');
     }
 
+    public function test_each_proposals_disk_caches_its_own_open_targets(): void
+    {
+        Storage::fake('second');
+        config(['core-web.drafts.proposals.disk' => 'second']);
+        $global = GlobalTarget::make('settings', 'default');
+        $this->proposals()->propose($this->author(), $global, ['phone' => '456'], Proposals::base($global));
+
+        config(['core-web.drafts.proposals.disk' => null]);
+        $nav = NavTarget::make('main', 'default');
+        $this->proposals()->propose($this->author(), $nav, array_reverse($nav->current()), Proposals::base($nav));
+        $this->assertSame(['nav:main:default'], app(ProposalStore::class)->openTargets());
+
+        config(['core-web.drafts.proposals.disk' => 'second']);
+        $this->assertSame(['global:settings:default'], app(ProposalStore::class)->openTargets());
+    }
+
     /** @return list<string> */
     private function navItems(): array
     {

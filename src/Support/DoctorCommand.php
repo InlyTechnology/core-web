@@ -170,7 +170,7 @@ class DoctorCommand extends Command
 
         // Every CP page counts the open proposals, so a disk that is not defined fails them all.
         if ($disk !== '' && ! is_array(config("filesystems.disks.{$disk}"))) {
-            $this->failure("Proposals: core-web.drafts.proposals.disk names {$disk}, which config/filesystems.php does not define");
+            $this->failure("Proposals: core-web.drafts.proposals.disk names {$disk}, which is not a defined disk");
 
             return;
         }
@@ -179,20 +179,24 @@ class DoctorCommand extends Command
             return;
         }
 
+        $unset = 'leave core-web.drafts.proposals.disk unset so the private bucket Cloud attaches is used';
+
         if ($disk === '') {
-            $this->failure('Proposals: kept on the default disk, the public bucket on Cloud; attach the private bucket as core-web.cloud.uploads_disk or name a private disk in core-web.drafts.proposals.disk');
+            $this->failure('Proposals: kept on the default disk, the public bucket on Cloud; attach the private bucket as core-web.cloud.uploads_disk');
 
             return;
         }
 
-        if (config("filesystems.disks.{$disk}.driver") === 'local') {
-            $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; name the private bucket in core-web.drafts.proposals.disk");
+        $holder = $this->diskHoldingFiles($disk);
+
+        if (config("filesystems.disks.{$holder}.driver") === 'local') {
+            $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; {$unset}");
 
             return;
         }
 
-        $bucket = config("filesystems.disks.{$disk}.bucket");
-        $private = config('filesystems.disks.'.config('core-web.cloud.uploads_disk', 'private').'.bucket');
+        $bucket = config("filesystems.disks.{$holder}.bucket");
+        $private = config('filesystems.disks.'.$this->diskHoldingFiles((string) config('core-web.cloud.uploads_disk', 'private')).'.bucket');
 
         if (filled($bucket) && $bucket === $private) {
             $this->ok("Proposals: kept on the {$disk} disk, in the private bucket");
@@ -201,12 +205,29 @@ class DoctorCommand extends Command
         }
 
         $public = collect([config('filesystems.default'), config('core-web.media.bucket.cloud_disk') ?: 'media', ...array_keys((array) config('core-web.media.disks'))])
-            ->filter(fn (mixed $name): bool => is_string($name) && $name !== '');
+            ->filter(fn (mixed $name): bool => is_string($name) && $name !== '')
+            ->map(fn (string $name): string => $this->diskHoldingFiles($name));
         $publicBuckets = $public->map(fn (string $name) => config("filesystems.disks.{$name}.bucket"))->filter();
 
-        $public->contains($disk) || (filled($bucket) && $publicBuckets->contains($bucket))
-            ? $this->failure("Proposals: the {$disk} disk is on the public bucket, where anyone could read a staged change by its path; name the private bucket in core-web.drafts.proposals.disk")
+        $public->contains($holder) || (filled($bucket) && $publicBuckets->contains($bucket))
+            ? $this->failure("Proposals: the {$disk} disk is on the public bucket, where anyone could read a staged change by its path; {$unset}")
             : $this->warning("Proposals: kept on the {$disk} disk, which is not the private bucket Cloud attaches; make sure its bucket is private");
+    }
+
+    /** The disk a scoped disk is a prefix of, followed until one holds the files itself. */
+    private function diskHoldingFiles(string $disk): string
+    {
+        for ($hops = 0; $hops < 5 && config("filesystems.disks.{$disk}.driver") === 'scoped'; $hops++) {
+            $parent = config("filesystems.disks.{$disk}.disk");
+
+            if (! is_string($parent) || $parent === '') {
+                break;
+            }
+
+            $disk = $parent;
+        }
+
+        return $disk;
     }
 
     private function ok(string $message): void

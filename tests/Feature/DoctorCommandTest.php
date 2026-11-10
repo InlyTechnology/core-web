@@ -183,6 +183,32 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('fail Proposals: the drafts disk is on the public bucket')
             ->assertFailed();
+
+        config(['filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'media', 'prefix' => 'staged'], 'core-web.drafts.proposals.disk' => 'staged']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is on the public bucket')
+            ->assertFailed();
+    }
+
+    public function test_proposals_on_a_scoped_disk_are_judged_by_the_disk_it_prefixes(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts([
+            'filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'],
+            'filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'private', 'prefix' => 'staged'],
+            'core-web.drafts.proposals.disk' => 'staged',
+        ]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Proposals: kept on the staged disk, in the private bucket')
+            ->assertSuccessful();
+
+        config(['filesystems.disks.staged.disk' => 'local']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is local')
+            ->assertFailed();
     }
 
     public function test_proposals_on_another_bucket_on_cloud_are_a_warning(): void
@@ -201,7 +227,7 @@ class DoctorCommandTest extends TestCase
         config(['core-web.features.drafts' => true, 'core-web.drafts.proposals.disk' => 'missing']);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names missing, which config/filesystems.php does not define')
+            ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names missing, which is not a defined disk')
             ->assertFailed();
     }
 

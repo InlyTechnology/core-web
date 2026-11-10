@@ -39,20 +39,22 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   are no longer listed. Find them: on the default disk (the public bucket),
   under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
   that folder to the same path on the private bucket, then delete it from
-  the public one, which still serves it until then. A Cloud site that names
-  a disk on the public bucket in `drafts.proposals.disk` (such as `media`)
-  points it at `private` and moves the folder the same way. Verify: the
+  the public one, which still serves it until then. A site that names a
+  disk on the public bucket in `drafts.proposals.disk` (such as `media`)
+  removes the setting, so Cloud uses the private bucket and other hosts the
+  default disk, and moves the folder the same way. Verify: the
   CP's Proposals page lists them (the nav's count follows within five
   minutes), `php artisan core-web:doctor` shows `ok Proposals`, and the old
   path is gone from the public bucket.
-- **`core-web:doctor` can now fail a deploy on Cloud.** It exits non-zero on
+- **`core-web:doctor` can now fail a deploy.** It exits non-zero on
   a Cloud site with `drafts` on whose proposals would sit on the default
   disk, a local disk or the public bucket, and on any site whose
   `drafts.proposals.disk` names a disk that is not defined. Find it: a
-  deploy or launch script that runs `core-web:doctor`. Migrate: attach the
-  private bucket (Core Cloud attaches it as `private`) or name a private
-  disk in `drafts.proposals.disk`, as in the note above. Verify: the doctor
-  shows `ok Proposals` and exits 0.
+  deploy or launch script that runs `core-web:doctor`. Migrate: on Cloud,
+  attach the private bucket (Core Cloud attaches it as `private`) and leave
+  `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
+  disk the doctor names or remove the setting. Verify: the doctor shows
+  `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
 
 ## v0.47.0
 
