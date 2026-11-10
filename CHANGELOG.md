@@ -26,6 +26,16 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   under, where they forgot it once per cached query string, each time
   reading the cacher's whole URL list again.
 
+### Upgrade notes
+
+- **`/*` no longer takes a site's home page.** `SiteCache::flushPaths()` with
+  `/*` forgot the site's root page with the pages under it; it now forgets
+  only the pages under it, as every prefix does (`/brands/*` never takes
+  `/brands`). Find it: search the site's snapshot `dependents()` closures
+  and `flushPaths()` calls for `'/*'`. Migrate: return `'/'` beside `'/*'`
+  where the home page shows the data too. Verify: change one such document
+  and see the home page rendered with the new value.
+
 ## v0.45.0
 
 - **Local search indexes work on Laravel Cloud**: with `features.cloud`,
