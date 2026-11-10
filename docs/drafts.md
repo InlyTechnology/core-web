@@ -186,4 +186,13 @@ app(Proposals::class)->propose($author, $target, $newTree, Proposals::base($targ
   when its nav entry is hidden.
 
 Proposals are kept as JSON on a filesystem disk (`drafts.proposals`); a host
-whose disk does not outlive a deploy names a bucket.
+whose disk does not outlive a deploy names a private bucket, never a public
+one, where anyone could read a staged change by its path. On Laravel Cloud
+(`features.cloud`) the private bucket Cloud attaches is used when the site
+names no disk, and `core-web:doctor` fails while proposals would sit on the
+default disk or a local one.
+
+The CP nav's Proposals count reads which targets have an open proposal from
+the default cache store, which every save clears, so it opens no proposal on
+a CP page. Behind several servers with a cache each keeps to itself (`file`),
+another server's count can be up to five minutes old.

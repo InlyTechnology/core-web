@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Support;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
@@ -46,6 +47,7 @@ class DoctorCommand extends Command
         $this->checkSchedule($features, $schedule);
         $this->checkPingSecret($features);
         $this->checkCmsAccounts($features);
+        $this->checkProposals($features);
 
         if (in_array('media', $features, true)) {
             $this->line('media: run `php artisan media:check` for the disks and the bucket.');
@@ -155,6 +157,26 @@ class DoctorCommand extends Command
         $committed
             ? $this->failure('CMS accounts: statamic.git.paths commits the users folder; accounts live on the server that created them')
             : $this->ok('CMS accounts: not committed by Statamic\'s git integration');
+    }
+
+    /** @param  list<string>  $features */
+    private function checkProposals(array $features): void
+    {
+        if (! in_array('drafts', $features, true) || ! in_array('cloud', $features, true) || ! CloudDefaults::onCloud()) {
+            return;
+        }
+
+        $disk = config('core-web.drafts.proposals.disk');
+
+        if (blank($disk)) {
+            $this->failure('Proposals: kept on the default disk, the public bucket on Cloud; attach the private bucket as core-web.cloud.uploads_disk or name a private disk in core-web.drafts.proposals.disk');
+
+            return;
+        }
+
+        config("filesystems.disks.{$disk}.driver") === 'local'
+            ? $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; name a private bucket in core-web.drafts.proposals.disk")
+            : $this->ok("Proposals: kept on the {$disk} disk");
     }
 
     private function ok(string $message): void

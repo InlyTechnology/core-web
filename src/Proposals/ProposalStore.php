@@ -4,17 +4,21 @@ namespace Inly\CoreWeb\Proposals;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Where proposals are kept: one JSON file each, on a filesystem disk
  * (core-web.drafts.proposals: `disk`, `path`), so a host whose local disk
- * does not outlive a deploy names a bucket. Decided proposals stay as the
- * record of what was applied or discarded, and by whom, in their own folder,
- * so reading the open ones (every CP page, for the nav) stays small.
+ * does not outlive a deploy names a private bucket. Decided proposals stay as
+ * the record of what was applied or discarded, and by whom, in their own
+ * folder, so reading the open ones stays small.
  */
 class ProposalStore
 {
+    /** A save forgets the open targets at once, so this only bounds a cache one server keeps to itself. */
+    private const OPEN_TARGETS_SECONDS = 300;
+
     public function __construct(private Filesystem $disk, private string $path) {}
 
     public static function fromConfig(): self
@@ -47,6 +51,8 @@ class ProposalStore
         if (! $proposal->open()) {
             $this->disk->delete($this->file($proposal->id, true));
         }
+
+        Cache::forget($this->openTargetsKey());
 
         $index = $this->appliedIndex();
 
@@ -106,6 +112,20 @@ class ProposalStore
             ->all();
     }
 
+    /**
+     * The target of each open proposal, from the cache: the CP nav counts them on every page, which on a bucket would
+     * read every open file each time.
+     *
+     * @return list<string>
+     */
+    public function openTargets(): array
+    {
+        return Cache::remember($this->openTargetsKey(), self::OPEN_TARGETS_SECONDS, fn (): array => $this->in(true)
+            ->map(fn (Proposal $proposal) => $proposal->target)
+            ->values()
+            ->all());
+    }
+
     public function openFor(string $target): ?Proposal
     {
         return collect($this->open())->first(fn (Proposal $proposal) => $proposal->target === $target);
@@ -122,6 +142,11 @@ class ProposalStore
     private function read(string $file): Proposal
     {
         return Proposal::fromArray(json_decode((string) $this->disk->get($file), true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    private function openTargetsKey(): string
+    {
+        return 'core-web.proposals.open-targets.'.md5($this->path);
     }
 
     private function folder(bool $open): string

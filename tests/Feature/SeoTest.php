@@ -306,6 +306,22 @@ class SeoTest extends TestCase
         $this->assertSame('', trim(view('errors/404', ['response_code' => 200])->render()));
     }
 
+    public function test_the_page_not_found_entry_is_looked_up_once_for_every_view_of_the_404(): void
+    {
+        Entry::make()->id('missing')->collection('pages')->locale('default')->slug('not-found')->data(['title' => 'Lost?'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->save();
+        $set->in('default')->data(['error_404_entry' => ['missing']])->save();
+        View::addLocation(__DIR__.'/../fixtures/seo-views');
+
+        $this->assertSame('Lost?', trim(view('errors/404', ['response_code' => 404])->render()));
+
+        Entry::find('missing')->merge(['title' => 'Changed'])->save();
+
+        // The layout of the same 404 reads what the error view read, not the entry again.
+        $this->assertSame('Lost?', trim(view('errors/404', ['response_code' => 404])->render()));
+    }
+
     public function test_a_collection_s_own_fields_make_the_social_card(): void
     {
         config(['core-web.seo.social.collections' => ['articles' => ['image' => 'image', 'description' => 'excerpt', 'type' => 'article']]]);

@@ -135,6 +135,42 @@ class DoctorCommandTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_proposals_on_the_default_disk_on_cloud_fail(): void
+    {
+        $this->app['env'] = 'production';
+        config(['core-web.features.drafts' => true, 'core-web.features.cloud' => true, 'core-web.cloud.detected' => true, 'core-web.drafts.proposals.disk' => null]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: kept on the default disk')
+            ->assertFailed();
+    }
+
+    public function test_proposals_on_a_local_disk_on_cloud_fail(): void
+    {
+        $this->app['env'] = 'production';
+        config(['core-web.features.drafts' => true, 'core-web.features.cloud' => true, 'core-web.cloud.detected' => true, 'core-web.drafts.proposals.disk' => 'local']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the local disk is local')
+            ->assertFailed();
+    }
+
+    public function test_proposals_in_a_bucket_on_cloud_pass(): void
+    {
+        $this->app['env'] = 'production';
+        config([
+            'core-web.features.drafts' => true,
+            'core-web.features.cloud' => true,
+            'core-web.cloud.detected' => true,
+            'filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'],
+            'core-web.drafts.proposals.disk' => 'private',
+        ]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Proposals: kept on the private disk')
+            ->assertSuccessful();
+    }
+
     public function test_it_is_registered_once_a_feature_is_on(): void
     {
         $this->assertArrayHasKey('core-web:doctor', app(Kernel::class)->all());

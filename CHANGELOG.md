@@ -6,6 +6,39 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
+  proposals are kept in the private bucket Cloud attaches
+  (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
+  default disk they sat in the public bucket, where a staged change and
+  `applied.json` could be read by their path. `core-web:doctor` fails while
+  proposals on Cloud would sit on the default disk or a local one. See
+  `docs/laravel-cloud.md`.
+- **The CP nav counts proposals without opening them**: the Proposals count
+  reads which targets have an open proposal from the cache, which a save
+  clears, where every CP page read each open proposal's file (one request
+  each on a bucket). See `docs/drafts.md`.
+- **The 404 page reads its entry once**: the page-not-found entry and its
+  fields are looked up once per request, where each view the composer names
+  (`errors/404`, `layout`) looked them up again.
+- **A cached config skips the defaults merges**: `config:cache` already holds
+  the group, media, SEO and sign-in defaults core-web merges at boot, so a
+  request on a cached config no longer merges them again, and the package
+  config is read once where each merge required it.
+
+### Upgrade notes
+
+- **Open proposals on Laravel Cloud move to the private bucket.** A Cloud
+  site with `features.drafts` and no `drafts.proposals.disk` now reads
+  proposals from the private bucket, so proposals staged before the update
+  are no longer listed. Find them: on the default disk (the public bucket),
+  under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
+  that folder to the same path on the private bucket, then delete it from
+  the public one, which still serves it until then. Verify: the CP's
+  Proposals page lists them, `php artisan core-web:doctor` shows
+  `ok Proposals`, and the old path is gone from the public bucket.
+
 ## v0.47.0
 
 - **Core previews the site's own pages**: with `features.preview` and
