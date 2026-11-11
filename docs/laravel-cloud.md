@@ -79,7 +79,8 @@ The site does its half once:
 - The feature leaves `QUEUE_CONNECTION` alone. With no worker and no Cloud
   queue attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail,
   the snapshot and sign-in jobs) never runs. A worker in an environment
-  with background recache on also takes the `low` queue (the table above).
+  with background recache on, or that runs `static:warm --queue`, also takes
+  the `low` queue (the table above).
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
