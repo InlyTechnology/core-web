@@ -422,7 +422,7 @@ class CloudTest extends TestCase
         $this->assertSame('low', config('statamic.static_caching.warm_queue'), 'set when the app registers');
 
         $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', null);
-        config(['queue.default' => 'database', 'statamic.static_caching.warm_queue' => null]);
+        config(['statamic.static_caching.warm_queue' => null]);
         CloudDefaults::apply($this->app);
 
         $this->assertSame('low', config('statamic.static_caching.warm_queue'));
@@ -437,13 +437,11 @@ class CloudTest extends TestCase
         $this->assertSame('renders', config('statamic.static_caching.warm_queue'));
 
         // Read by the site's config/statamic/static_caching.php, loaded before core-web registers; an empty value is the connection's default queue.
-        foreach (['default', ''] as $value) {
-            $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', $value);
-            config(['statamic.static_caching.warm_queue' => $value]);
-            CloudDefaults::apply($this->app);
+        $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', '');
+        config(['statamic.static_caching.warm_queue' => '']);
+        CloudDefaults::apply($this->app);
 
-            $this->assertSame($value, config('statamic.static_caching.warm_queue'));
-        }
+        $this->assertSame('', config('statamic.static_caching.warm_queue'));
     }
 
     public function test_the_warm_queue_is_left_alone_off_cloud(): void

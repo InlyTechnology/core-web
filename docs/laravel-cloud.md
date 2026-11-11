@@ -22,7 +22,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Draft proposals (`drafts.proposals.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | that private bucket: on the default disk, the public bucket, anyone could read a staged change by its path | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
-| The queue Statamic renders a page again on after a save (`statamic.static_caching.warm_queue`), when the site's config names none | `low`: a save queues a render for each page it reaches, which on the default queue would hold up the site's other jobs (a ping's refresh, form mail). With [background recache](static-cache.md#rendering-pages-again-after-a-save) on and no worker taking it, those pages keep their old copy | `STATAMIC_STATIC_WARM_QUEUE`, an empty value included; a queue the site's config sets is kept |
+| The queue Statamic renders pages on (`statamic.static_caching.warm_queue`: a save's renders and `static:warm --queue`) | `low`: a save queues a render for each page it reaches, which on the default queue would hold up the site's other jobs (a ping's refresh, form mail). With [background recache](static-cache.md#rendering-pages-again-after-a-save) on and no worker taking it, those pages keep their old copy | `STATAMIC_STATIC_WARM_QUEUE`, an empty value included; a queue the site's config sets is kept |
 | The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: a local index is built in the request that first searches it, on the disk of the container that reads it, and a save updates the index in the request that saves (on Laravel 13, which routes Statamic's queued `UpdateItemIndexes` listener to `sync`; on Laravel 12 it keeps its queue) | `STATAMIC_SEARCH_QUEUE_CONNECTION` set to a connection name (an empty value or `null` still gets `sync`); a connection the site's config sets is kept |
 
 Static caching is on (`half`) here as on any server, with or without the
@@ -78,8 +78,8 @@ The site does its half once:
   rather than a `MAIL_FROM_ADDRESS` per environment.
 - The feature leaves `QUEUE_CONNECTION` alone. With no worker and no Cloud
   queue attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail,
-  the snapshot and sign-in jobs) never runs. With a worker, production's
-  worker takes the `low` queue too (the table above).
+  the snapshot and sign-in jobs) never runs. A worker in an environment
+  with background recache on also takes the `low` queue (the table above).
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
