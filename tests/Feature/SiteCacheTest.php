@@ -145,6 +145,7 @@ class SiteCacheTest extends TestCase
     public function test_refresh_queues_each_page_of_the_site_once_and_keeps_serving_the_cached_copy(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         $this->cache('http://default.test', ['/', '/a', '/a?page=2']);
         $this->cache('http://www.default.test', ['/b']);
         $this->cache('http://other.test', ['/', '/c']);
@@ -160,6 +161,7 @@ class SiteCacheTest extends TestCase
     public function test_refresh_on_a_shared_host_takes_the_site_s_own_path_only(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
             'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
@@ -174,6 +176,7 @@ class SiteCacheTest extends TestCase
     public function test_refresh_forgets_a_page_cached_as_an_error_instead_of_rendering_it_again(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         $this->cache('http://default.test', ['/', '/gone']);
         Cache::store('array')->forever('static-cache:responses:'.md5('http://default.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
 
@@ -186,6 +189,7 @@ class SiteCacheTest extends TestCase
     public function test_refreshing_named_paths_queues_those_pages_with_their_query_strings_only(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         $this->cache('http://default.test', ['/', '/campaigns', '/campaigns?brand=a', '/campaigns/a/one', '/brands', '/brands/a', '/about']);
         $this->cache('https://default.test', ['/brands/b']);
         $this->cache('http://other.test', ['/campaigns']);
@@ -200,6 +204,7 @@ class SiteCacheTest extends TestCase
     public function test_refreshing_named_paths_on_a_shared_host_takes_the_site_s_own_pages_only(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
             'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
@@ -214,13 +219,32 @@ class SiteCacheTest extends TestCase
     public function test_refreshing_named_paths_forgets_a_page_cached_as_an_error_instead_of_rendering_it_again(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         $this->cache('http://default.test', ['/', '/gone']);
         Cache::store('array')->forever('static-cache:responses:'.md5('http://default.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
 
-        (new SiteCache($this->cacher))->refreshPaths(Site::get('default'), ['/', '/gone']);
+        $queued = (new SiteCache($this->cacher))->refreshPaths(Site::get('default'), ['/', '/gone']);
 
+        $this->assertSame(2, $queued);
         $this->assertSame(['http://default.test/'], $this->warmed());
         $this->assertSame(['/'], $this->cached('http://default.test'));
+    }
+
+    public function test_refreshing_without_background_recache_forgets_the_pages_instead(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => false]);
+        $this->cache('http://default.test', ['/', '/a', '/a?page=2', '/b']);
+        $this->cache('http://other.test', ['/', '/a']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(1, $cache->refreshPaths(Site::get('default'), ['/a']));
+        $this->assertSame(['/', '/b'], $this->cached('http://default.test'));
+
+        $this->assertSame(2, $cache->refresh(Site::get('default')));
+        $this->assertSame([], $this->cached('http://default.test'));
+        $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
+        $this->assertSame([], $this->warmed());
     }
 
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void

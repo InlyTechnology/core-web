@@ -138,7 +138,9 @@ class SiteCache
      * the site's host, under http and https, and owned as flush() owns
      * them; each path is requested once with every query string it was
      * cached under, and one cached as an error response is forgotten
-     * instead, as Statamic does. Returns how many paths were handed on.
+     * instead, as Statamic does. With `background_recache` off the pages
+     * are forgotten instead (docs/static-cache.md). Returns how many paths
+     * were handed on.
      */
     public function refresh(Site $site): int
     {
@@ -160,7 +162,7 @@ class SiteCache
             }
 
             foreach (array_keys($paths) as $path) {
-                $this->cacher->refreshUrl($path, $domain);
+                $this->renderAgain($path, $domain);
                 $queued++;
             }
         }
@@ -225,10 +227,8 @@ class SiteCache
 
     /**
      * Renders the site's cached pages at these paths again in the background,
-     * as refresh() renders the whole site: paths are named as flushPaths()
-     * names them, each is requested once with every query string it was
-     * cached under, and a path nothing is cached at is left alone. Returns
-     * how many paths were handed on.
+     * as refresh() renders the whole site (docs/static-cache.md). Returns how
+     * many paths were handed on.
      *
      * @param  iterable<string>  $paths
      */
@@ -244,7 +244,7 @@ class SiteCache
 
         foreach ($this->matchOnHost(self::host($site), [self::handle($site) => $target]) as $domain => $matched) {
             foreach (array_keys($matched) as $path) {
-                $this->cacher->refreshUrl($path, $domain);
+                $this->renderAgain($path, $domain);
                 $queued++;
             }
         }
@@ -374,6 +374,16 @@ class SiteCache
         }
 
         return $matches;
+    }
+
+    /** Has Statamic render a cached path again in the background, or forgets it while background re-caching is off. */
+    private function renderAgain(string $path, ?string $domain): void
+    {
+        if (config('statamic.static_caching.background_recache')) {
+            $this->cacher->refreshUrl($path, $domain);
+        } else {
+            $this->cacher->invalidateUrl($path, $domain);
+        }
     }
 
     /**
