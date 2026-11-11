@@ -10,17 +10,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **A save forgets the entry's copies on the other sites**: under
   `SiteScopedInvalidator`, a saved or deleted entry's origin and other
-  localizations are forgotten on their own sites, since each links to it
-  from a language switcher or `hreflang`. A copy saved alone (a new slug on
-  one site) left the other sites' pages linking to its old address until
-  their own site was next cleared. Each copy is one page forgotten, rendered
-  by its next visitor. See `docs/static-cache.md`.
-- **Forgetting pages on a shared host is faster**: `SiteCache::forget()`,
-  `flushPaths()`, `flush()` and `refresh()` resolve each site's address on
-  the host once per call instead of once per cached page, and the new
-  `SiteCache::forgetMany()` forgets pages on several sites in one pass over
-  each host. Saving an origin on fourteen path-prefixed sites spends about
-  half as long forgetting pages.
+  localizations are forgotten on their own sites too. See
+  `docs/static-cache.md` (A save on one site of a multisite install).
+- **`SiteCache::forgetMany()`** forgets pages on several sites in one call,
+  and `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()`
+  resolve each site's address once per call instead of once per cached page.
+  See `docs/static-cache.md` (Pages a snapshot change touches).
 - **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
   proposals are kept in the private bucket Cloud attaches
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
