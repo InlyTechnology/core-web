@@ -61,8 +61,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`core-web:doctor` checks the static cache**. See
   `docs/checking-a-sites-setup.md`.
 - **On Laravel Cloud, pages are rendered on the `low` queue**: with
-  `features.cloud`, `statamic.static_caching.warm_queue` is `low` where the
-  site's config and `STATAMIC_STATIC_WARM_QUEUE` name none. See
+  `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
+  `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue. See
   `docs/laravel-cloud.md`.
 
 ### Upgrade notes
@@ -110,19 +110,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   page the save renders again (under the `all` rule, one listing the entry:
   `SiteScopedInvalidator` forgets its own page at once) shows the change,
   and that `php artisan queue:failed` lists no `StaticWarmJob`.
-- **On Laravel Cloud, Statamic's renders go on the `low` queue, which a
-  worker must take.** With `features.cloud`, a save's renders under
-  background recache and `static:warm --queue` are queued on `low` where the
-  site's config and `STATAMIC_STATIC_WARM_QUEUE` name no queue; with no
-  worker on it, they never run. Find it: each Cloud environment
-  with a worker where background recache is on (the note above says where)
-  or `static:warm --queue` runs, that sets no `STATAMIC_STATIC_WARM_QUEUE`,
-  and whose `config/statamic/static_caching.php` names no `warm_queue` other
-  than Statamic's `env('STATAMIC_STATIC_WARM_QUEUE')`. Migrate: before
-  deploying, add a `low` queue to that environment's worker, or set
-  `STATAMIC_STATIC_WARM_QUEUE` to a queue it takes (`default`). Verify as in
-  the note above, in that environment, on the connection and queue
-  `php artisan core-web:doctor` names.
+- **On Laravel Cloud, Statamic queues its page renders on `low`.** With
+  `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
+  `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue, and
+  a render on a queue no worker takes never runs. Find it: each Cloud
+  environment with a queue worker. Migrate: before deploying, add a `low`
+  queue to its worker, or set `STATAMIC_STATIC_WARM_QUEUE` to a queue it
+  takes (`default`). Verify: after deploy, `php artisan config:show
+  statamic.static_caching.warm_queue` there names a queue the worker takes.
 - **A cached page served at another address than its site's keeps its old copy
   after a change kept to the sites it reaches, or a snapshot change.** A
   site's address is its `url:` in `resources/sites.yaml`, on `APP_URL` when
