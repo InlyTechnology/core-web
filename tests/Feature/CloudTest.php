@@ -12,6 +12,7 @@ use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
 use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
 use Redis;
@@ -414,6 +415,44 @@ class CloudTest extends TestCase
         CloudDefaults::apply($this->app);
 
         $this->assertNull(config('statamic.search.queue_connection'));
+    }
+
+    public function test_pages_are_rendered_again_on_the_low_queue(): void
+    {
+        $this->assertSame('low', config('statamic.static_caching.warm_queue'), 'set when the app registers');
+
+        $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', null);
+        config(['queue.default' => 'database', 'statamic.static_caching.warm_queue' => null]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('low', config('statamic.static_caching.warm_queue'));
+        $this->assertSame('low', StaticCacheDefaults::warmQueue($this->app['config']), 'the queue core-web:doctor names');
+    }
+
+    public function test_a_warm_queue_the_env_or_the_site_names_is_kept(): void
+    {
+        config(['statamic.static_caching.warm_queue' => 'renders']);
+        CloudDefaults::apply($this->app);
+
+        $this->assertSame('renders', config('statamic.static_caching.warm_queue'));
+
+        // Read by the site's config/statamic/static_caching.php, loaded before core-web registers; an empty value is the connection's default queue.
+        foreach (['default', ''] as $value) {
+            $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', $value);
+            config(['statamic.static_caching.warm_queue' => $value]);
+            CloudDefaults::apply($this->app);
+
+            $this->assertSame($value, config('statamic.static_caching.warm_queue'));
+        }
+    }
+
+    public function test_the_warm_queue_is_left_alone_off_cloud(): void
+    {
+        $this->setEnv('STATAMIC_STATIC_WARM_QUEUE', null);
+        config(['core-web.cloud.detected' => false, 'statamic.static_caching.warm_queue' => null]);
+        CloudDefaults::apply($this->app);
+
+        $this->assertNull(config('statamic.static_caching.warm_queue'));
     }
 
     public function test_on_laravel_13_a_save_updates_the_index_of_the_container_it_is_made_on(): void

@@ -48,9 +48,10 @@ The site's own choice stands, the first of these it names:
   default, so it chooses nothing).
 
 A cached config keeps what was resolved when it was cached. The worker must
-take the queue the renders go on, `warm_queue` or the connection's default
-queue (a failover connection's first connection), which `php artisan
-core-web:doctor` names, and the default connection's default queue too:
+take the queue the renders go on, `warm_queue` (`low` on Laravel Cloud, see
+[Laravel Cloud](laravel-cloud.md)) or the connection's default queue (a
+failover connection's first connection), which `php artisan core-web:doctor`
+names, and the default connection's default queue too:
 Statamic queues the further pages of a paginated page there. `php artisan
 config:show statamic.static_caching.background_recache` prints what a server
 resolved.
