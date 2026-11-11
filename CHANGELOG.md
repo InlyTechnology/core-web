@@ -32,9 +32,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   config is read once where each merge required it.
 - **The preview frame shows its hover hints only where a pointer hovers**: on
   a phone or a tablet, a tap on a marked element left its hover outline and
-  hint drawn over the page, since a touch screen holds `:hover` after a tap.
-  The tap still goes straight to the field or block, or starts typing in a
-  field that can be typed into. See
+  hint drawn over the page. See
   `docs/object-preview.md#marking-fields-and-blocks`.
 
 ### Upgrade notes
