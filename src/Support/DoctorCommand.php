@@ -284,16 +284,17 @@ class DoctorCommand extends Command
             return;
         }
 
-        $class = (string) $config->get('statamic.static_caching.invalidation.class');
+        $class = $config->get('statamic.static_caching.invalidation.class');
 
-        if (is_a($class, SiteScopedInvalidator::class, true)) {
+        if (is_string($class) && is_a($class, SiteScopedInvalidator::class, true)) {
             $this->ok('Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site\'s pages');
-        } elseif ($class === '') {
+        } elseif ($class === null) {
             $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so Statamic\'s own `all` rule applies: a save clears every site\'s pages, or renders again only those cached on the static cache\'s base URL (docs/static-cache.md)');
-        } elseif (class_exists($class) && is_a($class, Invalidator::class, true)) {
+        } elseif (is_string($class) && class_exists($class) && is_a($class, Invalidator::class, true)) {
             $this->ok("Static cache: a save is invalidated by {$class}, the site's own choice");
         } else {
-            $this->warning("Static cache: statamic.static_caching.invalidation.class names {$class}, which is no Statamic invalidator class");
+            $named = is_string($class) && $class !== '' ? $class : var_export($class, true);
+            $this->warning("Static cache: statamic.static_caching.invalidation.class names {$named}, which is no Statamic invalidator class");
         }
     }
 

@@ -354,6 +354,12 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('warn Static cache: statamic.static_caching.invalidation.class names App\\Missing\\Invalidator, which is no Statamic invalidator class')
             ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => '']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names '', which is no Statamic invalidator class")
+            ->assertSuccessful();
     }
 
     /** @param  array<string, mixed>  $config */

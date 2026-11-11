@@ -173,7 +173,7 @@ class StaticCacheDefaultsTest extends TestCase
         $this->assertSame(SiteScopedInvalidator::class, $this->invalidatorClass());
     }
 
-    protected function onTwoSitesWithTheAllRule($app): void
+    protected function onTheAllRule($app): void
     {
         $app['config']->set('statamic.static_caching.invalidation.rules', 'all');
         $app->booting(fn () => Site::setSites([
@@ -182,8 +182,8 @@ class StaticCacheDefaultsTest extends TestCase
         ]));
     }
 
-    #[DefineEnvironment('onTwoSitesWithTheAllRule')]
-    public function test_a_multisite_install_boots_with_the_site_scoped_invalidator(): void
+    #[DefineEnvironment('onTheAllRule')]
+    public function test_the_all_rule_boots_with_the_site_scoped_invalidator(): void
     {
         $this->assertSame(SiteScopedInvalidator::class, config('statamic.static_caching.invalidation.class'));
         $this->assertInstanceOf(SiteScopedInvalidator::class, app(Invalidator::class));
