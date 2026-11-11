@@ -12,7 +12,7 @@ use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
 
-/** The static cache of one site of a multisite install, whose sites share no cached pages. */
+/** The static cache of one site, taking the install's sites to share no cached pages. */
 class SiteCache
 {
     public function __construct(private Cacher $cacher) {}

@@ -5,12 +5,11 @@ namespace Inly\CoreWeb\StaticCaching;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Env;
-use Statamic\Facades\Site;
 
 /**
  * How a save reaches the static cache, decided once for every site rather than per site's config: pages rendered
- * again in the background in production with a worker taking the renders, and each site's saves kept to its own
- * pages on a multisite install. docs/static-cache.md has what each default does and how a site keeps its own.
+ * again in the background in production with a worker taking the renders, and a save under the `all` rule kept to
+ * its site's pages. docs/static-cache.md has what each default does and how a site keeps its own.
  */
 final class StaticCacheDefaults
 {
@@ -59,7 +58,7 @@ final class StaticCacheDefaults
         return $app->environment('production') && self::warmsOnAWorker($app['config']);
     }
 
-    /** Once the sites are known: SiteScopedInvalidator for a multisite install on the `all` rule, unless the site names a class. */
+    /** SiteScopedInvalidator on the `all` rule, unless the site names a class. */
     public static function scopeInvalidation(Application $app): void
     {
         $config = $app['config'];
@@ -71,12 +70,15 @@ final class StaticCacheDefaults
         $config->set('statamic.static_caching.invalidation.class', SiteScopedInvalidator::class);
     }
 
-    /** Whether the install is one SiteScopedInvalidator serves with Statamic's rule unchanged: several sites, `all`. */
+    /**
+     * Whether SiteScopedInvalidator serves the install: the `all` rule and no class of its own. On one site too, since
+     * Statamic's rule renders again only the pages cached under the static cache's base URL, which is none when that
+     * URL has a path.
+     */
     public static function scopesBySite(Repository $config): bool
     {
         return $config->get('statamic.static_caching.invalidation.class') === null
-            && $config->get('statamic.static_caching.invalidation.rules') === 'all'
-            && Site::all()->count() > 1;
+            && $config->get('statamic.static_caching.invalidation.rules') === 'all';
     }
 
     /** The queue connection Statamic sends a page's render to; an empty name is the default one, as Laravel reads it. */

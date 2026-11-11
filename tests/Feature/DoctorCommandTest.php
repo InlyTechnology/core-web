@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Illuminate\Contracts\Console\Kernel;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\Facades\Site;
 use Statamic\StaticCaching\DefaultInvalidator;
 
 class DoctorCommandTest extends TestCase
@@ -322,12 +323,18 @@ class DoctorCommandTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_a_multisite_install_on_the_all_rule_names_its_invalidator(): void
+    public function test_the_all_rule_names_its_invalidator(): void
     {
         $this->onACachedServer(['statamic.static_caching.invalidation' => ['class' => SiteScopedInvalidator::class, 'rules' => 'all']]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("ok   Static cache: a save on one site reaches that site's pages")
+            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site's pages")
+            ->assertSuccessful();
+
+        Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE']]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site's pages")
             ->assertSuccessful();
 
         config(['statamic.static_caching.invalidation.class' => DefaultInvalidator::class]);
@@ -339,7 +346,7 @@ class DoctorCommandTest extends TestCase
         config(['statamic.static_caching.invalidation.class' => null]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names no class, so Statamic's own `all` rule applies and a save on one site reaches every site's pages")
+            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names no class, so Statamic's own `all` rule applies: a save clears every site's pages, or renders again only those cached on the static cache's base URL")
             ->assertSuccessful();
 
         config(['statamic.static_caching.invalidation.class' => 'App\\Missing\\Invalidator']);

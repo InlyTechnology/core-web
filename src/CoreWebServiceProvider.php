@@ -276,7 +276,7 @@ class CoreWebServiceProvider extends ServiceProvider
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
 
-        // Once the sites are read; Statamic reads the invalidator's class each time it makes one.
+        // Statamic reads the invalidator's class each time it makes one, so set after boot it still applies.
         $this->app->booted(fn () => StaticCacheDefaults::scopeInvalidation($this->app));
 
         $this->app->singleton(SnapshotRegistry::class);

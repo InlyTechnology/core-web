@@ -11,7 +11,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **A save forgets the entry's copies on the other sites**: under
   `SiteScopedInvalidator`, a saved or deleted entry's origin and other
   localizations are forgotten on their own sites too. See
-  `docs/static-cache.md` (A save on one site of a multisite install).
+  `docs/static-cache.md` (A save under the `all` rule).
 - **`SiteCache::forgetMany()`** forgets pages on several sites in one call,
   and `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()`
   resolve each site's address once per call instead of once per cached page.
@@ -45,10 +45,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   Statamic's `background_recache` on in production where the warm queue
   connection holds jobs for a worker, unless the site names it. See
   `docs/static-cache.md` (Rendering pages again after a save).
-- **A multisite install keeps a save to its site by default**: with more than
-  one site and the `all` rule, core-web uses `SiteScopedInvalidator` unless
-  the site names an invalidation class. See `docs/static-cache.md` (A save on
-  one site of a multisite install).
+- **The `all` rule keeps a save to its site by default**: core-web uses
+  `SiteScopedInvalidator` under that rule, on one site or several, unless the
+  site names an invalidation class. Statamic's own rule rendered nothing again
+  for a site whose URL has a path. See `docs/static-cache.md` (A save under
+  the `all` rule).
 - **A navigation, asset or form save renders again the pages on every site's
   host**, and forgets those on any other host: with `background_recache`
   under `SiteScopedInvalidator`, where Statamic's rule rendered again only
@@ -107,25 +108,26 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   its own page may be forgotten at once) shows the change, and that `php
   artisan queue:failed` lists no `StaticWarmJob`.
 - **A cached page served at another address than its site's keeps its old
-  copy after an entry save or a snapshot change.** A site's address is its
-  `url:` in `resources/sites.yaml`, on `APP_URL` when that `url:` is relative
-  (`/`, `/en/`) or reads it (`{{ config:app:url }}`). Under the `all` rule an
-  entry save cleared every address by default; now the background recache
-  this release turns on renders again only the pages cached at the site's
-  address, scheme included, and `SiteScopedInvalidator`, the default on a
-  multisite install with that rule, forgets and renders a site's pages on its
-  address's host only. `SiteCache` takes `APP_URL`'s host for a relative site
-  inside a request too (a snapshot change, or a save under
-  `SiteScopedInvalidator`), where it took the host the request named. Find
-  it: on each server, `php artisan config:show app.url` and each site's
-  `url:` beside the addresses visitors use, scheme included (`http://localhost`
-  left from `.env.example`, a platform domain beside the site's own, a `www`
-  alias that is not redirected). Migrate: set `APP_URL`, or the site's `url:`,
-  to the address visitors use, and redirect any other address to it. Verify:
-  edit an existing entry, or change a record in Core that one of the site's
-  snapshots shows, then load a cached page the change reaches, at the address
-  visitors use, and see it.
-- **A multisite install on the `all` rule keeps a save to its own site by
+  copy after an entry or global save, or a snapshot change.** A site's
+  address is its `url:` in `resources/sites.yaml`, on `APP_URL` when that
+  `url:` is relative (`/`, `/en/`) or reads it (`{{ config:app:url }}`).
+  Under the `all` rule such a save cleared every address; now
+  `SiteScopedInvalidator`, the default under that rule, forgets and renders
+  a site's pages on its address's host only, under http and https, wherever
+  `background_recache` is on (production, by this release's default) and on
+  a multisite install without it. A snapshot change forgets a relative
+  site's pages on `APP_URL`'s host inside a request too, where it took the
+  host the request named. Find it: on each server, `php artisan config:show
+  app.url` and each site's `url:` beside the addresses visitors use
+  (`APP_URL` left at `http://localhost` from `.env.example` or on a platform
+  domain, a `www` alias that is not redirected). Migrate: on each server, set
+  `APP_URL` to the address visitors use (a site whose `url:` names its own
+  address needs none), and redirect any other address to it. Verify: every
+  other address redirects to the one visitors use. Load a page there, edit an
+  existing entry and, on a site with snapshots, change a record in Core that
+  one of them shows. Once the queue has drained, a page each change reaches,
+  cached before it, shows it at that address.
+- **On a multisite install, the `all` rule keeps a save to its own site by
   default.** core-web names `SiteScopedInvalidator` as the invalidation class
   where the site names none, so a page showing another site's content (a
   listing of its entries, its globals) keeps its old copy when that content
@@ -135,7 +137,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `grep -n "invalidation" config/statamic/static_caching.php`. Migrate: a
   site whose pages show another site's content names
   `\Statamic\StaticCaching\DefaultInvalidator::class` as
-  `invalidation.class`. Verify: `php artisan config:show
+  `invalidation.class`, and turns `background_recache` off unless every
+  site's pages are cached on the static cache's base URL (one host, the
+  default site at its root; `docs/static-cache.md`, A save under the `all`
+  rule). Verify: `php artisan config:show
   statamic.static_caching.invalidation` prints the class, and
   `php artisan core-web:doctor` names it.
 

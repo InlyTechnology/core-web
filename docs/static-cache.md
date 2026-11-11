@@ -25,9 +25,8 @@ With Statamic's `background_recache` on, an entry, global, navigation, asset
 or form save renders them again in the background instead, by a queued job
 each, and visitors keep the cached copy until it is replaced. A deletion, a
 term, a collection tree and a scheduled entry going live still forget them;
-on a multisite install with the `all` rule, [A save on one site of a
-multisite install](#a-save-on-one-site-of-a-multisite-install) has what goes
-at once.
+under the `all` rule, [A save under the `all` rule](#a-save-under-the-all-rule)
+has what goes at once.
 
 core-web turns `background_recache` on where the app's environment is
 `production` and the connection Statamic queues the renders on
@@ -117,19 +116,24 @@ under http and https, that page included. It forgets the pages cached on any
 other host (a `www` alias, an address no site names) instead, since a request
 names its own host and a render would be sent there.
 
-## A save on one site of a multisite install
+## A save under the `all` rule
 
 Statamic's `all` invalidation rule clears every site's pages on any save, and
 with `background_recache` on it renders again only the pages cached on the
 static cache's base URL (its `base_url`, or the current site's URL, on
-`APP_URL` when that URL is relative). On an install with more than one site
-and the `all` rule, core-web uses `SiteScopedInvalidator` instead, which keeps
-the rule to the site of what was saved. It takes the sites to share no pages:
-a site whose pages show another site's content names
-`\Statamic\StaticCaching\DefaultInvalidator::class` as its
-`invalidation.class` in `config/statamic/static_caching.php`, and a class a
-site names there stands. `php artisan config:show
-statamic.static_caching.invalidation` prints what a server resolved.
+`APP_URL` when that URL is relative). Those are none when that URL has a path
+(`https://example.com/sv/`), and leave out every site on another host. Under
+the `all` rule core-web uses `SiteScopedInvalidator` instead, on one site or
+several, which keeps the rule to the site of what was saved. A class a site
+names as its `invalidation.class` in `config/statamic/static_caching.php`
+stands. `php artisan config:show statamic.static_caching.invalidation` prints
+what a server resolved.
+
+`SiteScopedInvalidator` takes the sites to share no pages. A site whose pages
+show another site's content names
+`\Statamic\StaticCaching\DefaultInvalidator::class` there, and turns
+`background_recache` off too unless every site's pages are cached on the
+static cache's base URL: one host, the default site at its root.
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
