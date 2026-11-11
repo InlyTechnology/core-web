@@ -330,7 +330,7 @@ class SnapshotDetailsTest extends TestCase
         $snapshot = $this->snapshot();
         self::store()->refresh($snapshot);
 
-        $this->assertSame(0, self::store()->warmDetails($snapshot, seconds: 0));
+        $this->assertSame(0, self::store()->warmDetails($snapshot, seconds: Snapshot::DETAILS_TIMEOUT - 1));
         $this->assertSame(0, self::detailReads());
     }
 
@@ -361,11 +361,31 @@ class SnapshotDetailsTest extends TestCase
         $this->assertSame(1, self::store()->warmDetails($snapshot));
         $this->assertTrue(Cache::has($snapshot->key('details:1:backoff')));
         $this->assertFalse(Cache::has($snapshot->key('backoff')));
+        $this->assertFalse(Cache::has($snapshot->key('details:timeouts')));
+    }
+
+    public function test_a_third_read_timing_out_once_connected_backs_off_the_whole_snapshot(): void
+    {
+        $this->fakeCars(
+            array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}"]], range(1, 3)),
+            stubs: array_fill_keys(array_map(fn (int $id) => "core.test/api/v1/objects/car/{$id}?*", range(1, 3)), self::failedTransfer(['errno' => 28, 'connect_time' => 0.05])),
+        );
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        foreach (['1', '2'] as $id) {
+            self::store()->document($snapshot, $id);
+            $this->assertFalse(Cache::has($snapshot->key('backoff')));
+        }
+
+        self::store()->document($snapshot, '3');
+        $this->assertTrue(Cache::has($snapshot->key('backoff')));
+        $this->assertFalse(Cache::has($snapshot->key('details:3:backoff')));
     }
 
     public function test_a_read_that_cannot_connect_backs_off_the_whole_snapshot(): void
     {
-        $this->fakeCars(stubs: ['core.test/api/v1/objects/car/1?*' => self::failedTransfer(['errno' => 7, 'connect_time' => 0])]);
+        $this->fakeCars(stubs: ['core.test/api/v1/objects/car/1?*' => self::failedTransfer(['errno' => 28, 'connect_time' => 0])]);
         $snapshot = $this->snapshot();
         self::store()->refresh($snapshot);
 
@@ -391,6 +411,22 @@ class SnapshotDetailsTest extends TestCase
         $this->assertSame(0, self::store()->warmDetails($snapshot));
         $this->assertCount(3, Http::recorded());
         $this->assertFalse(Cache::has($snapshot->key('backoff')));
+    }
+
+    public function test_a_ping_reads_no_details_while_the_snapshot_or_the_document_is_backed_off(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot();
+        self::store()->document($snapshot, '1');
+        $this->fakeCars(self::resources('Takbox'));
+
+        Cache::put($snapshot->key('details:1:backoff'), true, 60);
+        self::store()->refreshOne($snapshot, '1');
+        Cache::forget($snapshot->key('details:1:backoff'));
+        Cache::put($snapshot->key('backoff'), true, 60);
+        self::store()->refreshOne($snapshot, '1');
+
+        $this->assertSame(0, self::detailReads());
     }
 
     public function test_a_ping_in_the_same_request_drops_the_details_it_has_read(): void

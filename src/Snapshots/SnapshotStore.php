@@ -59,8 +59,11 @@ final class SnapshotStore
     /** How long one core:warm reads details at most, so a whole ping's job stays short. */
     public const WARM_DETAILS_SECONDS = 30;
 
-    /** Failed reads in a row after which a core:warm stops: Core failing them all is not asked a hundred times. */
+    /** Failed reads in a row after which a core:warm stops: Core failing them all is not asked for every document. */
     private const WARM_DETAILS_FAILURES = 3;
+
+    /** Reads timed out once connected, within the retry TTL, after which the whole snapshot backs off: pages stop waiting on a Core that answers nothing in time. */
+    private const DETAILS_TIMEOUTS = 3;
 
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
@@ -175,7 +178,8 @@ final class SnapshotStore
         foreach ($this->detailsToWarm($snapshot, $documents ?? []) as $id) {
             $left = intdiv($deadline - hrtime(true), 1_000_000_000);
 
-            if ($attempts >= $limit || $failures >= self::WARM_DETAILS_FAILURES || $left < 1 || $this->cache->has($snapshot->key('backoff'))) {
+            // A read is started only with its whole timeout left, so the warm's deadline never cuts one short.
+            if ($attempts >= $limit || $failures >= self::WARM_DETAILS_FAILURES || $left < Snapshot::DETAILS_TIMEOUT || $this->cache->has($snapshot->key('backoff'))) {
                 break;
             }
 
@@ -184,7 +188,7 @@ final class SnapshotStore
             }
 
             $attempts++;
-            $succeeded = $this->rereadDetails($snapshot, $documents, $id, min(Snapshot::DETAILS_TIMEOUT, $left));
+            $succeeded = $this->rereadDetails($snapshot, $documents, $id);
             $read += (int) $succeeded;
             $failures = $succeeded ? 0 : $failures + 1;
         }
@@ -906,25 +910,24 @@ final class SnapshotStore
 
     /**
      * Reads one document's details from Core and keeps them for its row
-     * (none for a document Core no longer has); false when the read failed,
-     * which backs off the whole snapshot when Core is out of reach or
-     * refusing the site, else only this document.
+     * (none for a document Core no longer has); false when the read failed.
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|false
      */
-    private function readDetails(Snapshot $snapshot, string $id, array $row, int $timeout = Snapshot::DETAILS_TIMEOUT): array|false
+    private function readDetails(Snapshot $snapshot, string $id, array $row): array|false
     {
         try {
-            $details = $snapshot->readDetails($id, $row, $timeout) ?? [];
+            $details = $snapshot->readDetails($id, $row) ?? [];
         } catch (Throwable $e) {
             $this->warn($snapshot, 'exception:'.class_basename($e), ['id' => $id]);
-            $this->cache->put($snapshot->key(self::unreachable($e) ? 'backoff' : "details:{$id}:backoff"), true, $snapshot->retryTtl());
+            $this->backOffDetails($snapshot, $id, $e);
 
             return false;
         }
 
         $this->cache->put($snapshot->key("details:{$id}"), ['version' => self::hash($row), 'at' => now()->getTimestamp(), 'data' => $details], $snapshot->staleTtl());
+        $this->cache->forget($snapshot->key('details:timeouts'));
         unset($this->details[$snapshot->type.'|'.$id]);
 
         return $details;
@@ -937,11 +940,11 @@ final class SnapshotStore
      *
      * @param  array<string, array<string, mixed>>  $documents  every partition's documents
      */
-    private function rereadDetails(Snapshot $snapshot, array $documents, string $id, int $timeout = Snapshot::DETAILS_TIMEOUT): bool
+    private function rereadDetails(Snapshot $snapshot, array $documents, string $id): bool
     {
         $row = $documents[$id];
         $before = $this->detailsCopy($snapshot, $id);
-        $details = $this->readDetails($snapshot, $id, $row, $timeout);
+        $details = $this->readDetails($snapshot, $id, $row);
 
         if ($details === false) {
             return false;
@@ -1001,16 +1004,21 @@ final class SnapshotStore
         $missing = [];
         $aged = [];
         $documents = array_filter($documents, fn (array $row): bool => ! self::carriesDetails($snapshot, $row));
-        $copies = $documents === [] ? [] : $this->cache->many(array_map(fn (string|int $id): string => $snapshot->key("details:{$id}"), array_keys($documents)));
 
-        foreach ($documents as $id => $row) {
-            $id = (string) $id;
-            $copy = self::validCopy($copies[$snapshot->key("details:{$id}")] ?? null);
+        // A hundred copies at a time, and only their version and age kept: the details themselves are what is kept out of memory.
+        foreach (array_chunk($documents, 100, preserve_keys: true) as $chunk) {
+            $copies = $this->cache->getMultiple(array_map(fn (string|int $id): string => $snapshot->key("details:{$id}"), array_keys($chunk)));
+            $copies = is_array($copies) ? $copies : iterator_to_array($copies);
 
-            if ($copy === null || $copy['version'] !== self::hash($row)) {
-                $missing[] = $id;
-            } elseif (now()->getTimestamp() - (int) $copy['at'] >= $snapshot->freshTtl()) {
-                $aged[$id] = (int) $copy['at'];
+            foreach ($chunk as $id => $row) {
+                $id = (string) $id;
+                $copy = self::validCopy($copies[$snapshot->key("details:{$id}")] ?? null);
+
+                if ($copy === null || $copy['version'] !== self::hash($row)) {
+                    $missing[] = $id;
+                } elseif (now()->getTimestamp() - (int) $copy['at'] >= $snapshot->freshTtl()) {
+                    $aged[$id] = (int) $copy['at'];
+                }
             }
         }
 
@@ -1019,18 +1027,38 @@ final class SnapshotStore
         return [...$missing, ...array_map(strval(...), array_keys($aged))];
     }
 
+    /**
+     * Backs off the whole snapshot when a failed read says Core is out of
+     * reach or refusing the site, or after a few reads timed out once
+     * connected; else only this document.
+     */
+    private function backOffDetails(Snapshot $snapshot, string $id, Throwable $e): void
+    {
+        $slow = self::timedOutOnceConnected($e);
+        $timeouts = $slow ? (int) $this->cache->get($snapshot->key('details:timeouts')) + 1 : 0;
+
+        if ($slow) {
+            $this->cache->put($snapshot->key('details:timeouts'), $timeouts, $snapshot->retryTtl());
+        }
+
+        $whole = $slow ? $timeouts >= self::DETAILS_TIMEOUTS : self::unreachable($e);
+        $this->cache->put($snapshot->key($whole ? 'backoff' : "details:{$id}:backoff"), true, $snapshot->retryTtl());
+    }
+
     /** Whether a failed read says Core is out of reach or refusing the site, rather than failing one document. */
     private static function unreachable(Throwable $e): bool
     {
-        if ($e instanceof ConnectionException) {
-            $context = $e->getPrevious() instanceof ConnectException ? $e->getPrevious()->getHandlerContext() : [];
-
-            // A read that timed out once connected is one slow document; a failed connection is Core out of reach.
-            return ! (($context['errno'] ?? null) === 28 && (float) ($context['connect_time'] ?? 0) > 0);
-        }
-
-        return $e instanceof TokenRefused
+        return $e instanceof ConnectionException
+            || $e instanceof TokenRefused
             || ($e instanceof RequestException && in_array($e->response->status(), [401, 403, 429, 502, 503, 504], true));
+    }
+
+    /** Whether the read reached Core and then ran out of time, as cURL reports it, rather than failing to connect. */
+    private static function timedOutOnceConnected(Throwable $e): bool
+    {
+        $context = $e instanceof ConnectionException && $e->getPrevious() instanceof ConnectException ? $e->getPrevious()->getHandlerContext() : [];
+
+        return ($context['errno'] ?? null) === 28 && (float) ($context['connect_time'] ?? 0) > 0;
     }
 
     /** @return array<string, mixed> the cached details of any row, none when nothing is cached */

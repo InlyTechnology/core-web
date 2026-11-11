@@ -126,16 +126,17 @@ app(SnapshotStore::class)->document($snapshot, $id);  // the row with its detail
 - A ping that patches an object's row into the copy reads that object's
   details again too. `core:warm` reads the documents without a copy for
   their row, then the copies older than the fresh TTL, oldest first: at most
-  100 reads in 30 seconds, stopping after 3 failures in a row. Details that
+  100 reads in 30 seconds, each started with its whole timeout left, and
+  stopping after 3 failures in a row. Details that
   change while the row does not are announced to `onChange()` as a change
   to that one document, the row the same before and after; a listener that
   fails then is logged, not retried.
 - A read that fails serves the last copy. Core out of reach or refusing the
-  site (no connection, the token refused, 401, 403, 429, 502, 503 or 504)
-  backs off the whole snapshot for the retry TTL (`backoff`), and the warm
-  stops; any other failure, a read that times out once connected included,
-  backs off only that document (`details:{id}:backoff`), and the warm goes
-  on with the next. With no copy the document comes without its details,
+  site (no connection, the token refused, 401, 403, 429, 502, 503 or 504),
+  or a third read within the retry TTL that times out once connected (as
+  cURL reports it), backs off the whole snapshot for the retry TTL
+  (`backoff`), and the warm stops; any other failure backs off only that
+  document (`details:{id}:backoff`), and the warm goes on with the next. With no copy the document comes without its details,
   and the request counts as degraded, as a read with nothing cached does.
 - `core:pull` carries the details the live site has cached, in pages of at
   most 20 documents. A pinned copy never reads its details from this site's

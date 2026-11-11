@@ -30,7 +30,7 @@ final class Snapshot
 
     private int $retryTtl = 60;
 
-    /** Seconds one read of a document's details may take. */
+    /** Seconds each request of a read of a document's details may take. */
     public const DETAILS_TIMEOUT = 10;
 
     /** @var Closure(): iterable<string, array<string, mixed>> */
@@ -215,34 +215,32 @@ final class Snapshot
 
     /**
      * A document's details as Core has them now, only the fields details()
-     * names; null when Core no longer has the document. `$timeout` bounds each
-     * request of a read from fromObject()'s object, in seconds; a `read:`
-     * closure bounds its own.
+     * names; null when Core no longer has the document.
      *
      * @param  array<string, mixed>  $document
      * @return array<string, mixed>|null
      */
-    public function readDetails(string $id, array $document, int $timeout = self::DETAILS_TIMEOUT): ?array
+    public function readDetails(string $id, array $document): ?array
     {
         if ($this->readDetails === null && $this->object === null) {
             throw new LogicException("Snapshot [{$this->type}] cannot read its details: name how with details(\$fields, read: ...).");
         }
 
         $details = $this->readDetails === null
-            ? $this->objectDetails($this->object, $id, $timeout)
+            ? $this->objectDetails($this->object, $id)
             : ($this->readDetails)($id, $document);
 
         return $details === null ? null : array_intersect_key($details, array_flip($this->details));
     }
 
     /** @return array<string, mixed>|null */
-    private function objectDetails(string $type, string $id, int $timeout): ?array
+    private function objectDetails(string $type, string $id): ?array
     {
         // Without the client's retries: a render or a warm waits on it, and the last copy stands in when it fails.
         $response = app(CoreClient::class)->sendResponse('get', '/api/v1/objects/'.$type.'/'.rawurlencode($id), [
             'fields' => ['_' => implode(',', $this->details)],
             'meta' => CoreClient::ROW_META,
-        ], ['Accept' => 'application/vnd.api+json'], max(1, $timeout));
+        ], ['Accept' => 'application/vnd.api+json'], self::DETAILS_TIMEOUT);
 
         if ($response->status() === 404) {
             return null;
