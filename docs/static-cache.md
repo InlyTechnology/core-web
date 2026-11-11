@@ -60,24 +60,23 @@ Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
 `SiteCache::flush()` forgets the pages cached for one site: on its host under
-http and https, and on a shared host the pages under its path (the longest site path a page lies
-under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
-path on the site, and `SiteCache::forget()` by the absolute URLs an
-invalidator reports (a trailing `*` takes every page under one), keeping only
-those the site owns; `SiteCache::forgetMany()` does that for several sites at
-once, keyed by site handle, reading each host's cached pages once for all of
-them. `SiteCache::refresh()` renders the site's cached pages again in the
-background instead (one queued request per page), and visitors keep the
-cached copy until it is replaced; `SiteCache::refreshPaths()` does that for
-the paths it is given, named as `flushPaths()` names them, and leaves a path
-nothing is cached at alone. Each path is requested once with every query
-string it was cached under, and a page cached as an error is forgotten
-instead, as Statamic does. With `background_recache` off, both forget the
-pages instead: Statamic would keep each new render under its recache token,
-beside the old copy, which visitors would go on getting. On a shared host with
-no site at its root, a page cached outside every site's path (a 404 at `/foo`
-beside `/en` and `/sv`) is no site's, so no site's flush or refresh reaches
-it.
+http and https, and on a shared host the pages under its path (the longest site
+path a page lies under decides whose it is). `SiteCache::flushPaths()` forgets
+some of them, by path on the site, and `SiteCache::forget()` by the absolute
+URLs an invalidator reports (a trailing `*` takes every page under one),
+keeping only those the site owns; `SiteCache::forgetMany()` does that for
+several sites at once, keyed by site handle, reading each host's cached pages
+once for all of them. `SiteCache::refresh()` renders the site's cached pages
+again in the background instead (one queued request per page), and visitors
+keep the cached copy until it is replaced; `SiteCache::refreshPaths()` does
+that for the paths it is given, named as `flushPaths()` names them, and leaves
+a path nothing is cached at alone. Each path is requested once with every query
+string it was cached under, and a page cached as an error is forgotten instead,
+as Statamic does. With `background_recache` off, both forget the pages instead:
+Statamic would keep each new render under its recache token, beside the old
+copy, which visitors would go on getting. On a shared host with no site at its
+root, a page cached outside every site's path (a 404 at `/foo` beside `/en` and
+`/sv`) is no site's, so no site's flush or refresh reaches it.
 
 ## A save on one site of a multisite install
 
