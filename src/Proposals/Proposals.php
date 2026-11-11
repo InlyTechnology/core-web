@@ -242,8 +242,21 @@ class Proposals
 
     public function target(Proposal $proposal): ?ProposalTarget
     {
+        return self::resolve($proposal->target);
+    }
+
+    /** How many open proposals the user may apply, read without opening one: the CP nav shows it on every page. */
+    public function openCountFor(UserContract $user): int
+    {
+        return collect($this->store->openTargets())
+            ->filter(fn (string $key): bool => self::resolve($key)?->mayEdit($user) ?? false)
+            ->count();
+    }
+
+    private static function resolve(string $key): ?ProposalTarget
+    {
         try {
-            return ProposalTargets::resolve($proposal->target);
+            return ProposalTargets::resolve($key);
         } catch (InvalidArgumentException) {
             return null;
         }

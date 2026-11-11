@@ -19,8 +19,10 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | The static cache's store (`static_cache`), when the site has none or one on the `file` driver (Statamic's skeleton ships one) | the database store under a prefix per build (from the Vite manifests), so every replica shares one copy and a page cached by the old release while a deploy runs is never served by the new one. Clearing it (the deploy, the CP's Cache utility) empties the whole cache table. On a Redis default store (a Cloud cache cluster, phpredis) the same per-build store goes through `core_web_static_cache`, a copy of the cache's Redis connection that compresses (zstd, else lz4, else lzf): a page is hundreds of KB of HTML and compresses several times over. Only the pages are compressed, as Laravel's counters cannot `INCRBY` a compressed value, and locks stay on the plain connection. Clearing it runs `FLUSHDB` on that connection's database, which also empties the rest of the cache unless `CORE_STATIC_CACHE_REDIS_DB` gives the pages a database of their own. On any other default store, or a client that cannot compress, it is removed and the pages sit in that store | `CORE_STATIC_CACHE_REDIS_DB`; a store of another driver is kept |
 | A media disk (`media.disks`) the site defines `local`, such as Statamic's skeleton `assets` disk or a Files container kept local for another host (with `features.media`) | a media disk on the bucket, like Peak's | none |
 | Livewire's temporary uploads (`livewire.temporary_file_upload.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | a `livewire-tmp` disk on the private bucket, under a driver of its own (on an `s3` disk Livewire refuses a `multiple` field and never cleans up), so Livewire deletes uploads older than a day itself | none; a disk the site chose is kept |
+| Draft proposals (`drafts.proposals.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | that private bucket: on the default disk, the public bucket, anyone could read a staged change by its path | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
+| The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: a local index is built in the request that first searches it, on the disk of the container that reads it, and a save updates the index in the request that saves (on Laravel 13, which routes Statamic's queued `UpdateItemIndexes` listener to `sync`; on Laravel 12 it keeps its queue) | `STATAMIC_SEARCH_QUEUE_CONNECTION` set to a connection name (an empty value or `null` still gets `sync`); a connection the site's config sets is kept |
 
 Static caching is on (`half`) here as on any server, with or without the
 feature: see [Static cache](static-cache.md#the-strategy).
@@ -80,9 +82,13 @@ The site does its half once:
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
   and turn on Cloud's scheduler for `core:reconcile-cms-users`.
-- Search: a `local` index lives on one container's disk, so on Cloud it
-  needs a remote search driver; `core-web:deploy` warns about any local
-  index.
+- Search: a `local` index is a file on each container's disk. Each
+  container builds its own whole index in the request that first searches
+  it, or saves an entry, and that request waits for it. A save updates the
+  copy of the container it is made on, so the others show an edit after
+  their next restart or deploy. That holds for a few thousand documents; past
+  that, or where edits must show in search at once, use a remote search
+  driver. `core-web:deploy` warns about every local index the config names.
 
 With the maintenance flag on the database store, every request reads one
 cache row to know whether the site is down.
@@ -173,7 +179,9 @@ php artisan core-web:deploy
 ```
 
 It runs `migrate --force`, `statamic:stache:refresh`, `statamic:static:clear`
-(when a strategy is set) and `statamic:search:update --all`, then `core:warm` with
+(when a strategy is set) and `statamic:search:update --all` (on Cloud, only
+for the indexes that outlive the container: a `local` one built there would
+land on a disk no web replica reads), then `core:warm` with
 `features.snapshots` (a failed warm-up does not fail the deploy: the site
 serves the snapshots it has), then the site's own commands in
 `cloud.deploy`, and stops at the first required step that fails. On Cloud it

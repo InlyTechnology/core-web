@@ -4,11 +4,13 @@ namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Env;
 use Livewire\Livewire;
 use LogicException;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
+use Statamic\Search\UpdateItemIndexes;
 
 /**
  * The config a Statamic site needs on Laravel Cloud, whose disk every deploy resets,
@@ -90,6 +92,23 @@ final class CloudDefaults
             foreach (self::DEFAULTS as $key => [$env, $value]) {
                 self::set($config, $key, $env, $value);
             }
+
+            // Statamic queues every index build. On a worker a local index is written to the worker's disk, which no web
+            // replica reads, so each search queues another build and then finds no index. Built in the request, it is
+            // written where it is read.
+            if (blank(Env::get('STATAMIC_SEARCH_QUEUE_CONNECTION')) && blank($config->get('statamic.search.queue_connection')) && self::localSearchIndexes($config) !== []) {
+                $config->set('statamic.search.queue_connection', 'sync');
+            }
+        }
+
+        // A save updates the indexes through a queued listener, which on a worker updates the worker's copy, or rebuilds it
+        // whole in one job. While builds run in the request, the save updates the copy of the container it was made on.
+        if ($config->get('statamic.search.queue_connection') === 'sync' && class_exists(QueueRoutes::class)) {
+            $app->extend('queue.routes', function (QueueRoutes $routes): QueueRoutes {
+                $routes->set(UpdateItemIndexes::class, connection: 'sync');
+
+                return $routes;
+            });
         }
 
         // Revisions need Pro, so a Solo site (STATAMIC_PRO_ENABLED=false) has them off unless its env says otherwise.
@@ -284,6 +303,44 @@ final class CloudDefaults
 
         $config->set('filesystems.disks.'.self::UPLOADS_DISK, [...$private, 'driver' => self::UPLOADS_DRIVER]);
         $config->set('livewire.temporary_file_upload.disk', self::UPLOADS_DISK);
+    }
+
+    /**
+     * Draft proposals are kept in the private bucket: on the default disk, the public bucket on Cloud, anyone could
+     * read a staged change by its path. A disk the site chose is kept.
+     */
+    public static function keepProposalsInPrivateBucket(Repository $config): void
+    {
+        $name = (string) $config->get('core-web.cloud.uploads_disk', 'private');
+        $private = $config->get('filesystems.disks.'.$name);
+
+        if (! is_array($private) || ($private['driver'] ?? null) !== 's3' || ! blank($config->get('core-web.drafts.proposals.disk'))) {
+            return;
+        }
+
+        $config->set('core-web.drafts.proposals.disk', $name);
+    }
+
+    /**
+     * The driver of each search index, Statamic's own `cp` index included while the config names none.
+     *
+     * @return array<string, string>
+     */
+    public static function searchIndexDrivers(Repository $config): array
+    {
+        $indexes = array_filter((array) $config->get('statamic.search.indexes', []), is_array(...)) + ['cp' => ['driver' => 'local']];
+
+        return array_map(fn (array $index): string => (string) ($index['driver'] ?? 'local'), $indexes);
+    }
+
+    /**
+     * The search indexes kept in a file on the container's disk.
+     *
+     * @return list<string>
+     */
+    public static function localSearchIndexes(Repository $config): array
+    {
+        return array_keys(array_filter(self::searchIndexDrivers($config), fn (string $driver): bool => $driver === 'local'));
     }
 
     /** Whether content and users live in the database, as nothing on Cloud's disk outlives a deploy. */

@@ -223,10 +223,10 @@ class ImportContentCommand extends Command
      */
     public static function lastingSearchIndexes(): array
     {
-        return collect(config('statamic.search.indexes', []))
-            ->reject(fn (array $index): bool => in_array($index['driver'] ?? 'local', ['local', 'null'], true))
-            ->keys()
-            ->all();
+        return array_keys(array_filter(
+            CloudDefaults::searchIndexDrivers(config()),
+            fn (string $driver): bool => ! in_array($driver, ['local', 'null'], true),
+        ));
     }
 
     /** Never fatal, like the users import: the content is in. */

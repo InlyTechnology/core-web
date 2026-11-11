@@ -51,8 +51,11 @@ A cookie page picked in the earlier `consent_policy_page` field is still
 linked until the link is set. A field left empty keeps
 the default text, or `policy_url`; a non-empty `policy-url` attribute on the
 component still wins. A page with no version on the current site is not
-linked there. Saving the global must flush the cached pages, as the `all`
-invalidation rule (or `SiteScopedInvalidator`) does.
+linked there. Saving the global must clear the cached pages, as the `all`
+invalidation rule (or `SiteScopedInvalidator`) does: flushed, or rendered
+again in the background with `background_recache`. With `background_recache`
+on, Statamic's own rule renders again only the pages on the static cache's
+base URL, so sites on other hosts need `SiteScopedInvalidator`.
 
 ## The page
 

@@ -306,6 +306,47 @@ class SeoTest extends TestCase
         $this->assertSame('', trim(view('errors/404', ['response_code' => 200])->render()));
     }
 
+    public function test_the_page_not_found_entry_is_looked_up_once_for_every_view_of_the_404(): void
+    {
+        Entry::make()->id('missing')->collection('pages')->locale('default')->slug('not-found')->data(['title' => 'Lost?'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration');
+        $set->save();
+        $set->in('default')->data(['error_404_entry' => ['missing']])->save();
+        View::addLocation(__DIR__.'/../fixtures/seo-views');
+
+        $this->assertSame('Lost?', trim(view('errors/404', ['response_code' => 404])->render()));
+
+        Entry::find('missing')->merge(['title' => 'Changed'])->save();
+
+        // The layout of the same 404 reads what the error view read, not the entry again.
+        $this->assertSame('Lost?', trim(view('errors/404', ['response_code' => 404])->render()));
+    }
+
+    public function test_each_site_and_each_request_reads_its_own_page_not_found_entry(): void
+    {
+        config(['statamic.system.multisite' => true]);
+        Collection::find('pages')->sites(['default', 'other'])->save();
+        Entry::make()->id('missing')->collection('pages')->locale('default')->slug('not-found')->data(['title' => 'Lost?'])->save();
+        Entry::make()->id('saknas')->collection('pages')->locale('other')->slug('saknas')->data(['title' => 'Vilse?'])->save();
+        $set = GlobalSet::make('configuration')->title('Configuration')->sites(['default' => null, 'other' => null]);
+        $set->save();
+        $set->in('default')->data(['error_404_entry' => ['missing']])->save();
+        $set->in('other')->data(['error_404_entry' => ['saknas']])->save();
+        View::addLocation(__DIR__.'/../fixtures/seo-views');
+
+        $this->assertSame('Lost?', trim(view('errors/404', ['response_code' => 404])->render()));
+
+        Site::setCurrent('other');
+        $this->assertSame('Vilse?', trim(view('errors/404', ['response_code' => 404])->render()));
+
+        Site::setCurrent('default');
+        Entry::find('missing')->merge(['title' => 'Changed'])->save();
+        // What the worker does between two queue jobs, and Octane between two requests.
+        $this->app->forgetScopedInstances();
+
+        $this->assertSame('Changed', trim(view('errors/404', ['response_code' => 404])->render()));
+    }
+
     public function test_a_collection_s_own_fields_make_the_social_card(): void
     {
         config(['core-web.seo.social.collections' => ['articles' => ['image' => 'image', 'description' => 'excerpt', 'type' => 'article']]]);
