@@ -59,8 +59,8 @@ The whole site is flushed instead whenever the pages are not known for sure:
 Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
-`SiteCache::flush()` forgets the pages cached for one site: on its host, and on
-a shared host the pages under its path (the longest site path a page lies
+`SiteCache::flush()` forgets the pages cached for one site: on its host under
+http and https, and on a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
 path on the site, and `SiteCache::forget()` by the absolute URLs an
 invalidator reports (a trailing `*` takes every page under one), keeping only
