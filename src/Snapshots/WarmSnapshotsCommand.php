@@ -53,15 +53,18 @@ class WarmSnapshotsCommand extends Command
 
         $snapshot = $registry->get($type);
         $count = $store->refresh($snapshot);
-        $store->forget($snapshot);
 
         if ($count === null) {
+            $store->forget($snapshot);
             $this->warn("{$type}: pull failed; serving the last good snapshot.");
 
             return self::FAILURE;
         }
 
-        $this->info("{$type}: {$count} documents.");
+        $details = $snapshot->hasDetails() ? $store->warmDetails($snapshot) : null;
+        $store->forget($snapshot);
+
+        $this->info("{$type}: {$count} documents".($details === null ? '' : ", details read for {$details}").'.');
 
         return self::SUCCESS;
     }

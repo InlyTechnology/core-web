@@ -61,6 +61,12 @@ final class SearchSchema
         return array_filter((array) ($this->attributes['fields'] ?? []), is_array(...));
     }
 
+    /** @return list<string> the fields a row carries, as `fields_available` lists them */
+    public function fieldsAvailable(): array
+    {
+        return $this->list('fields_available');
+    }
+
     /** The name of the field a filter key filters, or null when no field names it. */
     public function fieldFor(string $key): ?string
     {

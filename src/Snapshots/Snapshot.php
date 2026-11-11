@@ -34,6 +34,15 @@ final class Snapshot
     /** @var (Closure(string): iterable<string, array<string, mixed>>)|null */
     private ?Closure $pullOne = null;
 
+    /** @var list<string> */
+    private array $details = [];
+
+    /** @var (Closure(string, array<string, mixed>): ?array<string, mixed>)|null */
+    private ?Closure $readDetails = null;
+
+    /** The Core object fromObject() pulls, whose details it reads too. */
+    private ?string $object = null;
+
     /** @var Closure(array<string, array<string, mixed>>): bool */
     private Closure $empty;
 
@@ -136,12 +145,15 @@ final class Snapshot
      * again by id when Core pings it. The copy core-web.search's local engine
      * searches: it holds every row, so the local engine answers as Core would,
      * and a list Core gives only in part fails the pull rather than replace
-     * the last good copy with a part of it.
+     * the last good copy with a part of it. Fields named by details() are left
+     * out of each row and read per row instead.
      */
     public function fromObject(string $type, int $pageSize = 100): self
     {
+        $this->object = $type;
+
         $this->pull = function () use ($type, $pageSize): array {
-            $pages = app(CoreClient::class)->objects($type, $pageSize);
+            $pages = app(CoreClient::class)->objects($type, $pageSize, $this->rowQuery($type));
             $rows = [];
 
             foreach ($pages as $document) {
@@ -160,13 +172,98 @@ final class Snapshot
         };
 
         $this->pullOne = function (string $id) use ($type): array {
-            $document = app(CoreClient::class)->object($type, $id);
+            $document = app(CoreClient::class)->object($type, $id, $this->rowQuery($type));
             $row = is_array($document['data'] ?? null) ? SearchRow::from($document['data']) : null;
 
             return $row === null || $row['id'] === '' ? [] : [$row['id'] => $row];
         };
 
         return $this->coreObject($type);
+    }
+
+    /**
+     * Fields too heavy to keep on every row, read per document instead
+     * (docs/registering-snapshots.md#details). `$read` reads them for a pull
+     * other than fromObject().
+     *
+     * @param  list<string>  $fields
+     * @param  (Closure(string, array<string, mixed>): ?array<string, mixed>)|null  $read
+     */
+    public function details(array $fields, ?Closure $read = null): self
+    {
+        $this->details = array_values(array_unique(array_filter(array_map(strval(...), $fields), fn (string $field): bool => $field !== '')));
+        $this->readDetails = $read;
+
+        return $this;
+    }
+
+    /** @return list<string> */
+    public function detailFields(): array
+    {
+        return $this->details;
+    }
+
+    public function hasDetails(): bool
+    {
+        return $this->details !== [];
+    }
+
+    /**
+     * A document's details as Core has them now, only the fields details()
+     * names; null when Core no longer has the document.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<string, mixed>|null
+     */
+    public function readDetails(string $id, array $document): ?array
+    {
+        if ($this->readDetails === null && $this->object === null) {
+            throw new LogicException("Snapshot [{$this->type}] cannot read its details: name how with details(\$fields, read: ...).");
+        }
+
+        $details = $this->readDetails === null
+            ? $this->objectDetails($this->object, $id)
+            : ($this->readDetails)($id, $document);
+
+        return $details === null ? null : array_intersect_key($details, array_flip($this->details));
+    }
+
+    /** @return array<string, mixed>|null */
+    private function objectDetails(string $type, string $id): ?array
+    {
+        $document = app(CoreClient::class)->object($type, $id, ['fields[_]' => implode(',', $this->details)]);
+
+        if ($document === null) {
+            return null;
+        }
+
+        $attributes = $document['data']['attributes'] ?? null;
+
+        return is_array($attributes) ? $attributes : [];
+    }
+
+    /**
+     * The Objects API parameters a row is read with: every field the object
+     * offers but the details, as its `/schema` description lists them, so a
+     * field Core adds later is pulled without the site naming it. None while
+     * the snapshot keeps no details.
+     *
+     * @return array<string, string>
+     */
+    private function rowQuery(string $type): array
+    {
+        if ($this->details === []) {
+            return [];
+        }
+
+        $available = app(CoreClient::class)->get("/api/v1/objects/{$type}/schema")['data']['attributes']['fields_available'] ?? null;
+
+        // Without the list the pull would carry every detail; failing keeps the last good copy instead.
+        if (! is_array($available) || $available === []) {
+            throw new RuntimeException("Core described no fields of [{$type}].");
+        }
+
+        return ['fields[_]' => implode(',', array_diff(array_map(strval(...), $available), $this->details))];
     }
 
     /**
@@ -198,6 +295,27 @@ final class Snapshot
         $documents = ($this->pullOne)($id);
 
         return is_array($documents) ? $documents : iterator_to_array($documents);
+    }
+
+    /**
+     * One object read again by id, each document with its details as Core
+     * has them now: what a preview of an unsaved record renders.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function pullDocumentWithDetails(string $id): array
+    {
+        $documents = $this->pullDocument($id);
+
+        if ($this->details === []) {
+            return $documents;
+        }
+
+        foreach ($documents as $documentId => $document) {
+            $documents[$documentId] = $document + ($this->readDetails((string) $documentId, $document) ?? []);
+        }
+
+        return $documents;
     }
 
     /**

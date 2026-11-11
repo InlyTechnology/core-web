@@ -114,7 +114,26 @@ final class Search
             }
         }
 
-        return app(RemoteEngine::class)->run($this->object(), $query);
+        return app(RemoteEngine::class)->run($this->object(), $query, $this->rowFields($schema));
+    }
+
+    /**
+     * The fields Core's answer carries: every one but the details the
+     * search's snapshot reads per row (Snapshot::details()), so a remote
+     * row is the size of a local one. None named while it keeps no details.
+     *
+     * @return list<string>
+     */
+    private function rowFields(SearchSchema $schema): array
+    {
+        $type = $this->config['snapshot'] ?? null;
+        $registry = app(SnapshotRegistry::class);
+
+        if (! is_string($type) || ! $registry->has($type) || ! $registry->get($type)->hasDetails() || $schema->fieldsAvailable() === []) {
+            return [];
+        }
+
+        return array_values(array_diff($schema->fieldsAvailable(), $registry->get($type)->detailFields()));
     }
 
     /** The local engine's answer, or why it cannot give one. */

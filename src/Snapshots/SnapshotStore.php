@@ -27,6 +27,9 @@ use Throwable;
  *
  * A copy `core:pull` stored is pinned: kept without expiry, and no warm,
  * ping or render replaces it until it is pulled again or released.
+ *
+ * A snapshot's details (Snapshot::details()) are kept per document beside
+ * the copy and read by document(), never with the whole copy.
  */
 final class SnapshotStore
 {
@@ -46,6 +49,12 @@ final class SnapshotStore
      */
     private const RESTORE_AFTER = 0.5;
 
+    /** The most documents one core:warm reads the details of. */
+    public const WARM_DETAILS_LIMIT = 100;
+
+    /** How long one core:warm reads details at most, so a whole ping's job stays short. */
+    public const WARM_DETAILS_SECONDS = 30;
+
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
 
@@ -57,6 +66,12 @@ final class SnapshotStore
 
     /** @var array<string, true> the snapshot types the last pin() pinned */
     private array $pinnedNow = [];
+
+    /** @var array<string, array<string, mixed>> each document's details read this request, by snapshot type and id */
+    private array $details = [];
+
+    /** Whether a document this request was served without the details it has, Core failing and none cached. */
+    private bool $detailsDegraded = false;
 
     public function __construct(
         private readonly Repository $cache,
@@ -94,6 +109,75 @@ final class SnapshotStore
         $documents = array_diff_key($read->documents, array_flip($preview['hidden']));
 
         return new SnapshotRead(array_replace($documents, $preview['documents']), $read->stale, $read->degraded);
+    }
+
+    /**
+     * One document by id with its details (docs/registering-snapshots.md#details),
+     * null when the partition holds none under it.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function document(Snapshot $snapshot, string $id, ?string $partition = null): ?array
+    {
+        $row = $this->read($snapshot, $partition)->documents[$id] ?? null;
+
+        if (! is_array($row) || ! $snapshot->hasDetails() || self::carriesDetails($snapshot, $row)) {
+            return $row;
+        }
+
+        // A previewed row of unsaved values never reads Core or writes the copy: the copy is the stored row's.
+        if (isset($this->previews[self::memo($snapshot, $partition)]['documents'][$id]) && ($this->stored($snapshot, $partition)->documents[$id] ?? null) !== $row) {
+            return $row + $this->cachedDetails($snapshot, $id);
+        }
+
+        return $row + ($this->details[$snapshot->type.'|'.$id] ??= $this->detailsOf($snapshot, $id, $row));
+    }
+
+    /**
+     * A document with whatever details are cached for it, without reading
+     * Core: what a copy for `core:pull` carries.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<string, mixed>
+     */
+    public function withCachedDetails(Snapshot $snapshot, string $id, array $document): array
+    {
+        if (! $snapshot->hasDetails() || self::carriesDetails($snapshot, $document)) {
+            return $document;
+        }
+
+        return $document + $this->cachedDetails($snapshot, $id);
+    }
+
+    /**
+     * Reads the details of the documents cached without a copy for their
+     * current row, at most `$limit` or for `$seconds`, so a visitor's page
+     * rarely waits on Core for them. Returns how many were read; the first
+     * failure stops it and backs off like a failed pull.
+     */
+    public function warmDetails(Snapshot $snapshot, int $limit = self::WARM_DETAILS_LIMIT, int $seconds = self::WARM_DETAILS_SECONDS): int
+    {
+        $documents = $snapshot->hasDetails() && $this->pinned($snapshot) === null ? $this->freshDocuments($snapshot) : null;
+        $deadline = hrtime(true) + $seconds * 1_000_000_000;
+        $read = 0;
+
+        foreach ($documents ?? [] as $id => $row) {
+            if ($read >= $limit || hrtime(true) >= $deadline || $this->cache->has($snapshot->key('backoff'))) {
+                break;
+            }
+
+            $id = (string) $id;
+
+            if (self::carriesDetails($snapshot, $row) || ($this->detailsCopy($snapshot, $id)['version'] ?? null) === self::hash($row)) {
+                continue;
+            }
+
+            if ($this->readDetails($snapshot, $id, $row) !== false) {
+                $read++;
+            }
+        }
+
+        return $read;
     }
 
     /**
@@ -227,6 +311,10 @@ final class SnapshotStore
     /** Whether any read this request had nothing to serve: a page built on it must not be kept. */
     public function servedDegraded(): bool
     {
+        if ($this->detailsDegraded) {
+            return true;
+        }
+
         foreach ($this->reads as $read) {
             if ($read->degraded) {
                 return true;
@@ -241,6 +329,12 @@ final class SnapshotStore
     {
         foreach ($snapshot->partitions() as $partition) {
             unset($this->reads[self::memo($snapshot, $partition)]);
+        }
+
+        foreach (array_keys($this->details) as $memo) {
+            if (str_starts_with($memo, $snapshot->type.'|')) {
+                unset($this->details[$memo]);
+            }
         }
     }
 
@@ -725,6 +819,89 @@ final class SnapshotStore
         }
 
         $this->cache->forever($snapshot->key('fingerprint', $partition), $fingerprint);
+    }
+
+    /**
+     * A document's details: the cached copy while it is fresh for this row,
+     * else read from Core, else the last copy when Core fails.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function detailsOf(Snapshot $snapshot, string $id, array $row): array
+    {
+        $copy = $this->detailsCopy($snapshot, $id);
+        $age = now()->getTimestamp() - (int) ($copy['at'] ?? 0);
+
+        if ($copy !== null && $copy['version'] === self::hash($row) && $age < $snapshot->freshTtl()) {
+            return $copy['data'];
+        }
+
+        // A pinned copy is another Core's data: this site's Core holds nothing to fill it with.
+        if ($this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff'))) {
+            $details = $this->readDetails($snapshot, $id, $row);
+
+            if ($details !== false) {
+                return $details;
+            }
+        }
+
+        if ($copy === null) {
+            $this->detailsDegraded = $this->detailsDegraded || $this->pinned($snapshot) === null;
+
+            return [];
+        }
+
+        return $copy['data'];
+    }
+
+    /**
+     * Reads one document's details from Core and keeps them for its row:
+     * none for a document Core no longer has, false when the read failed.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|false
+     */
+    private function readDetails(Snapshot $snapshot, string $id, array $row): array|false
+    {
+        try {
+            $details = $snapshot->readDetails($id, $row);
+        } catch (Throwable $e) {
+            $this->warn($snapshot, 'exception:'.class_basename($e), ['id' => $id]);
+            $this->cache->put($snapshot->key('backoff'), true, $snapshot->retryTtl());
+
+            return false;
+        }
+
+        if ($details === null) {
+            $this->cache->forget($snapshot->key("details:{$id}"));
+
+            return [];
+        }
+
+        $this->cache->put($snapshot->key("details:{$id}"), ['version' => self::hash($row), 'at' => now()->getTimestamp(), 'data' => $details], $snapshot->staleTtl());
+
+        return $details;
+    }
+
+    /** @return array<string, mixed> the cached details of any row, none when nothing is cached */
+    private function cachedDetails(Snapshot $snapshot, string $id): array
+    {
+        return $this->detailsCopy($snapshot, $id)['data'] ?? [];
+    }
+
+    /** @return array{version: string, at: int, data: array<string, mixed>}|null */
+    private function detailsCopy(Snapshot $snapshot, string $id): ?array
+    {
+        $copy = $this->cache->get($snapshot->key("details:{$id}"));
+
+        return is_array($copy) && is_string($copy['version'] ?? null) && is_array($copy['data'] ?? null) ? $copy : null;
+    }
+
+    /** @param  array<string, mixed>  $document */
+    private static function carriesDetails(Snapshot $snapshot, array $document): bool
+    {
+        return array_diff_key(array_flip($snapshot->detailFields()), $document) === [];
     }
 
     /**

@@ -66,7 +66,7 @@ class ObjectPreviewController
         }
 
         try {
-            [$documents, $applied] = $context->reading($state, fn (): array => $snapshot->pullDocument($id));
+            [$documents, $applied] = $context->reading($state, fn (): array => $snapshot->pullDocumentWithDetails($id));
         } catch (Throwable $exception) {
             report($exception);
 
