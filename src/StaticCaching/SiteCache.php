@@ -223,6 +223,35 @@ class SiteCache
         return $this->forgetOnHost(self::host($site), [self::handle($site) => $target]);
     }
 
+    /**
+     * Renders the site's cached pages at these paths again in the background,
+     * as refresh() renders the whole site: paths are named as flushPaths()
+     * names them, each is requested once with every query string it was
+     * cached under, and a path nothing is cached at is left alone. Returns
+     * how many paths were handed on.
+     *
+     * @param  iterable<string>  $paths
+     */
+    public function refreshPaths(Site $site, iterable $paths): int
+    {
+        $target = ['prefix' => self::prefix($site), 'exact' => [], 'under' => []];
+
+        foreach ($paths as $path) {
+            $target = self::addPath($target, (string) $path);
+        }
+
+        $queued = 0;
+
+        foreach ($this->matchOnHost(self::host($site), [self::handle($site) => $target]) as $domain => $matched) {
+            foreach (array_keys($matched) as $path) {
+                $this->cacher->refreshUrl($path, $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
+    }
+
     /** @param  list<array{Site, iterable<mixed>}>  $pages */
     private function forgetPages(array $pages): int
     {
@@ -288,19 +317,40 @@ class SiteCache
 
     /**
      * Forgets the cached pages on the host that each site's target names,
-     * reading each of the host's domains once.
+     * reading each of the host's domains once. Returns how many cached
+     * pages were forgotten, query strings counted apart.
      *
      * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
      * @param  list<array{string, string}>|null  $neighbours
      */
     private function forgetOnHost(?string $host, array $targets, ?array $neighbours = null): int
     {
+        $forgotten = 0;
+
+        foreach ($this->matchOnHost($host, $targets, $neighbours) as $domain => $matched) {
+            $this->invalidate(array_keys($matched), $domain);
+            $forgotten += array_sum($matched);
+        }
+
+        return $forgotten;
+    }
+
+    /**
+     * The cached paths on each of the host's domains that each site's target
+     * names, each with how many cached pages it has (one per query string).
+     *
+     * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
+     * @param  list<array{string, string}>|null  $neighbours
+     * @return array<string, array<string, int>>
+     */
+    private function matchOnHost(?string $host, array $targets, ?array $neighbours = null): array
+    {
         if (! $this->cacher instanceof AbstractCacher || $targets === []) {
-            return 0;
+            return [];
         }
 
         $neighbours ??= self::neighbours($host);
-        $forgotten = 0;
+        $matches = [];
 
         foreach ($this->domains($host) as $domain) {
             $matched = [];
@@ -315,15 +365,15 @@ class SiteCache
                 $onSite = self::onSite((string) $url, $target['prefix']);
 
                 if (isset($target['exact'][$onSite]) || self::under($onSite, $target['under'])) {
-                    $matched[strtok((string) $url, '?')] = true;
-                    $forgotten++;
+                    $path = strtok((string) $url, '?');
+                    $matched[$path] = ($matched[$path] ?? 0) + 1;
                 }
             }
 
-            $this->invalidate(array_keys($matched), $domain);
+            $matches[$domain] = $matched;
         }
 
-        return $forgotten;
+        return $matches;
     }
 
     /**

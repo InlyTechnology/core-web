@@ -21,8 +21,8 @@ use Statamic\StaticCaching\Cachers\ApplicationCacher;
  * and under its path, and none of another site's, whether the sites have
  * hosts of their own or share one, each under its own path; or only the
  * pages a snapshot change names, falling back to the whole site whenever
- * they are not known. Refreshing one site's pages in the background the
- * same way.
+ * they are not known. Refreshing one site's pages, or the ones it names,
+ * in the background the same way.
  */
 class SiteCacheTest extends TestCase
 {
@@ -178,6 +178,46 @@ class SiteCacheTest extends TestCase
         Cache::store('array')->forever('static-cache:responses:'.md5('http://default.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
 
         (new SiteCache($this->cacher))->refresh(Site::get('default'));
+
+        $this->assertSame(['http://default.test/'], $this->warmed());
+        $this->assertSame(['/'], $this->cached('http://default.test'));
+    }
+
+    public function test_refreshing_named_paths_queues_those_pages_with_their_query_strings_only(): void
+    {
+        Queue::fake();
+        $this->cache('http://default.test', ['/', '/campaigns', '/campaigns?brand=a', '/campaigns/a/one', '/brands', '/brands/a', '/about']);
+        $this->cache('https://default.test', ['/brands/b']);
+        $this->cache('http://other.test', ['/campaigns']);
+
+        $queued = (new SiteCache($this->cacher))->refreshPaths(Site::get('default'), ['/campaigns', 'brands/*', '/missing']);
+
+        $this->assertSame(3, $queued, '/campaigns and /brands/a on http, /brands/b on https; /missing is not cached');
+        $this->assertSame(['http://default.test/campaigns', 'http://default.test/campaigns?brand=a', 'http://default.test/brands/a', 'https://default.test/brands/b'], $this->warmed());
+        $this->assertSame(['/', '/campaigns', '/campaigns?brand=a', '/campaigns/a/one', '/brands', '/brands/a', '/about'], $this->cached('http://default.test'));
+    }
+
+    public function test_refreshing_named_paths_on_a_shared_host_takes_the_site_s_own_pages_only(): void
+    {
+        Queue::fake();
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $this->cache('http://shared.test', ['/', '/road', '/road/bike', '/other', '/other/road', '/other/road/bike']);
+
+        (new SiteCache($this->cacher))->refreshPaths(Site::get('other'), ['/', '/road/*']);
+
+        $this->assertSame(['http://shared.test/other', 'http://shared.test/other/road/bike'], $this->warmed());
+    }
+
+    public function test_refreshing_named_paths_forgets_a_page_cached_as_an_error_instead_of_rendering_it_again(): void
+    {
+        Queue::fake();
+        $this->cache('http://default.test', ['/', '/gone']);
+        Cache::store('array')->forever('static-cache:responses:'.md5('http://default.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
+
+        (new SiteCache($this->cacher))->refreshPaths(Site::get('default'), ['/', '/gone']);
 
         $this->assertSame(['http://default.test/'], $this->warmed());
         $this->assertSame(['/'], $this->cached('http://default.test'));

@@ -16,6 +16,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   and `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()`
   resolve each site's address once per call instead of once per cached page.
   See `docs/static-cache.md` (Pages a snapshot change touches).
+- **`SiteCache::refreshPaths()`** renders the named pages of a site again in
+  the background, where `refresh()` takes every page. See
+  `docs/static-cache.md` (Pages a snapshot change touches).
 - **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
   proposals are kept in the private bucket Cloud attaches
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
