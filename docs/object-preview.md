@@ -90,6 +90,10 @@ The markers print only on a page rendered for the preview frame, so a public
 or cached page carries none. A hint is drawn after the element, so an image
 is marked on its `<figure>` or another wrapper rather than on the `<img>`.
 
+The hover outline and the hint show only on a device whose main pointer can
+hover (`hover: hover`), since a touch screen keeps an element in `:hover`
+after a tap.
+
 ## A page of the site
 
 Core's preview of one of the site's own pages frames it as it is in the CMS:
