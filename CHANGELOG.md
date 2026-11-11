@@ -60,7 +60,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   (Pages a snapshot change touches).
 - **`core-web:doctor` checks the static cache**. See
   `docs/checking-a-sites-setup.md`.
-- **On Laravel Cloud, pages are rendered on the `low` queue**: with
+- **On Laravel Cloud, Statamic queues its page renders on `low`**: with
   `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
   `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue. See
   `docs/laravel-cloud.md`.
