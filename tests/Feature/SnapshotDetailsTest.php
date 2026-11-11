@@ -364,7 +364,32 @@ class SnapshotDetailsTest extends TestCase
         $this->assertFalse(Cache::has($snapshot->key('details:timeouts')));
     }
 
-    public function test_a_third_read_timing_out_once_connected_backs_off_the_whole_snapshot(): void
+    public function test_a_third_document_timing_out_once_connected_backs_off_the_whole_snapshot(): void
+    {
+        $timeout = self::failedTransfer(['errno' => 28, 'connect_time' => 0.05]);
+        $this->fakeCars(
+            array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}"]], range(1, 4)),
+            stubs: [
+                'core.test/api/v1/objects/car/1?*' => $timeout,
+                'core.test/api/v1/objects/car/2?*' => Http::response('boom', 500),
+                'core.test/api/v1/objects/car/3?*' => $timeout,
+                'core.test/api/v1/objects/car/4?*' => $timeout,
+            ],
+        );
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        foreach (['1', '2', '3'] as $id) {
+            self::store()->document($snapshot, $id);
+            $this->assertFalse(Cache::has($snapshot->key('backoff')));
+        }
+
+        self::store()->document($snapshot, '4');
+        $this->assertTrue(Cache::has($snapshot->key('backoff')));
+        $this->assertFalse(Cache::has($snapshot->key('details:4:backoff')));
+    }
+
+    public function test_one_document_timing_out_again_or_timeouts_a_retry_ttl_apart_back_off_only_their_documents(): void
     {
         $this->fakeCars(
             array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}"]], range(1, 3)),
@@ -373,14 +398,18 @@ class SnapshotDetailsTest extends TestCase
         $snapshot = $this->snapshot();
         self::store()->refresh($snapshot);
 
-        foreach (['1', '2'] as $id) {
-            self::store()->document($snapshot, $id);
-            $this->assertFalse(Cache::has($snapshot->key('backoff')));
+        foreach (range(1, 3) as $visitor) {
+            Cache::forget($snapshot->key('details:1:backoff'));
+            self::store()->document($snapshot, '1');
         }
 
+        self::store()->document($snapshot, '2');
+        $this->travel($snapshot->retryTtl())->seconds();
+        self::store()->refresh($snapshot);
         self::store()->document($snapshot, '3');
-        $this->assertTrue(Cache::has($snapshot->key('backoff')));
-        $this->assertFalse(Cache::has($snapshot->key('details:3:backoff')));
+
+        $this->assertFalse(Cache::has($snapshot->key('backoff')));
+        $this->assertTrue(Cache::has($snapshot->key('details:3:backoff')));
     }
 
     public function test_a_read_that_cannot_connect_backs_off_the_whole_snapshot(): void

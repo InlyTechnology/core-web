@@ -62,7 +62,7 @@ final class SnapshotStore
     /** Failed reads in a row after which a core:warm stops: Core failing them all is not asked for every document. */
     private const WARM_DETAILS_FAILURES = 3;
 
-    /** Reads timed out once connected, within the retry TTL, after which the whole snapshot backs off: pages stop waiting on a Core that answers nothing in time. */
+    /** Documents timing out once connected within one retry TTL, after which the whole snapshot backs off: pages stop waiting on a Core that answers nothing in time. */
     private const DETAILS_TIMEOUTS = 3;
 
     /** @var array<string, SnapshotRead> */
@@ -178,7 +178,7 @@ final class SnapshotStore
         foreach ($this->detailsToWarm($snapshot, $documents ?? []) as $id) {
             $left = intdiv($deadline - hrtime(true), 1_000_000_000);
 
-            // A read is started only with its whole timeout left, so the warm's deadline never cuts one short.
+            // A read may take its whole timeout, so one starts only while that much is left and the warm ends by its deadline.
             if ($attempts >= $limit || $failures >= self::WARM_DETAILS_FAILURES || $left < Snapshot::DETAILS_TIMEOUT || $this->cache->has($snapshot->key('backoff'))) {
                 break;
             }
@@ -1029,20 +1029,33 @@ final class SnapshotStore
 
     /**
      * Backs off the whole snapshot when a failed read says Core is out of
-     * reach or refusing the site, or after a few reads timed out once
+     * reach or refusing the site, or after a few documents timed out once
      * connected; else only this document.
      */
     private function backOffDetails(Snapshot $snapshot, string $id, Throwable $e): void
     {
-        $slow = self::timedOutOnceConnected($e);
-        $timeouts = $slow ? (int) $this->cache->get($snapshot->key('details:timeouts')) + 1 : 0;
+        $whole = self::timedOutOnceConnected($e) ? $this->timedOut($snapshot, $id) >= self::DETAILS_TIMEOUTS : self::unreachable($e);
 
-        if ($slow) {
-            $this->cache->put($snapshot->key('details:timeouts'), $timeouts, $snapshot->retryTtl());
+        $this->cache->put($snapshot->key($whole ? 'backoff' : "details:{$id}:backoff"), true, $snapshot->retryTtl());
+    }
+
+    /**
+     * Notes a document timing out once connected, in a window one retry TTL
+     * long from its first timeout, and returns how many documents have.
+     */
+    private function timedOut(Snapshot $snapshot, string $id): int
+    {
+        $now = now()->getTimestamp();
+        $window = $this->cache->get($snapshot->key('details:timeouts'));
+
+        if (! is_array($window) || ! is_array($window['ids'] ?? null) || $now - (int) ($window['since'] ?? 0) >= $snapshot->retryTtl()) {
+            $window = ['since' => $now, 'ids' => []];
         }
 
-        $whole = $slow ? $timeouts >= self::DETAILS_TIMEOUTS : self::unreachable($e);
-        $this->cache->put($snapshot->key($whole ? 'backoff' : "details:{$id}:backoff"), true, $snapshot->retryTtl());
+        $window['ids'][$id] = true;
+        $this->cache->put($snapshot->key('details:timeouts'), $window, max(1, $window['since'] + $snapshot->retryTtl() - $now));
+
+        return count($window['ids']);
     }
 
     /** Whether a failed read says Core is out of reach or refusing the site, rather than failing one document. */
