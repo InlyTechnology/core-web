@@ -66,8 +66,9 @@ It pulls every row the client reads, each stored as the engines read a row
 reads one again when Core pings it. A list Core gives only in part fails the
 pull, so the last good copy stays. The snapshot must hold every row: a
 filtered or partitioned one is not searched locally. A snapshot with
-[details](registering-snapshots.md#details) keeps them off its rows, and a
-search Core answers leaves them out of its rows too.
+[details](registering-snapshots.md#details) keeps them off its rows: a
+search on a detail is Core's to answer, and a search Core answers leaves
+them out of its rows too.
 
 ## Searching
 

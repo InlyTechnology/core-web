@@ -42,8 +42,9 @@ final class SnapshotPage
     public const RETRY_AFTER = 300;
 
     /**
-     * The document with a page here: by its id, or the first with a page
-     * that a closure picks (given the document and its id). None is a 503
+     * The document with a page here, with its details: by its id, or the
+     * first with a page that a closure picks (given the document without
+     * its details, and its id). None is a 503
      * while nothing at all can be read, since a 404 then would deindex every
      * page at once, and Statamic's 404 otherwise: Laravel's abort(404)
      * renders a layout without its cascade and fails.
@@ -60,10 +61,11 @@ final class SnapshotPage
         }
 
         $read = $this->store->read($this->snapshot, $partition);
-        $document = is_string($key) ? ($read->documents[$key] ?? null) : $this->first($read->documents, $key);
+        $id = is_string($key) ? $key : $this->first($read->documents, $key);
+        $document = $id === null ? null : ($read->documents[$id] ?? null);
 
         if ($document !== null && $this->path($document) !== null) {
-            return $document;
+            return $this->store->document($this->snapshot, $id, $partition) ?? $document;
         }
 
         abort_if($read->degraded, 503, headers: ['Retry-After' => (string) self::RETRY_AFTER]);
@@ -136,13 +138,13 @@ final class SnapshotPage
     /**
      * @param  array<string, array<string, mixed>>  $documents
      * @param  Closure(array<string, mixed>, string): bool  $pick
-     * @return array<string, mixed>|null
+     * @return string|null the id of the first document with a page that `$pick` picks
      */
-    private function first(array $documents, Closure $pick): ?array
+    private function first(array $documents, Closure $pick): ?string
     {
         foreach ($documents as $id => $document) {
             if ($this->path($document) !== null && $pick($document, (string) $id)) {
-                return $document;
+                return (string) $id;
             }
         }
 

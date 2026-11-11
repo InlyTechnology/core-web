@@ -6,7 +6,10 @@ use Closure;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
+use Inly\CoreWeb\Client\TokenRefused;
 use LogicException;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -150,10 +153,11 @@ final class SnapshotStore
     }
 
     /**
-     * Reads the details of the documents cached without a copy for their
-     * current row, at most `$limit` or for `$seconds`, so a visitor's page
-     * rarely waits on Core for them. Returns how many were read; the first
-     * failure stops it and backs off like a failed pull.
+     * Reads the details of the cached documents whose copy is missing, kept
+     * for another row, or past the snapshot's fresh lifetime (oldest first),
+     * at most `$limit` or for `$seconds`, so a visitor's page never waits on
+     * Core for them. Returns how many were read; Core failing as a whole
+     * stops it, one document failing skips that document.
      */
     public function warmDetails(Snapshot $snapshot, int $limit = self::WARM_DETAILS_LIMIT, int $seconds = self::WARM_DETAILS_SECONDS): int
     {
@@ -161,18 +165,14 @@ final class SnapshotStore
         $deadline = hrtime(true) + $seconds * 1_000_000_000;
         $read = 0;
 
-        foreach ($documents ?? [] as $id => $row) {
-            if ($read >= $limit || hrtime(true) >= $deadline || $this->cache->has($snapshot->key('backoff'))) {
+        foreach ($this->detailsToWarm($snapshot, $documents ?? []) as $id) {
+            $left = intdiv($deadline - hrtime(true), 1_000_000_000);
+
+            if ($read >= $limit || $left < 1 || $this->cache->has($snapshot->key('backoff'))) {
                 break;
             }
 
-            $id = (string) $id;
-
-            if (self::carriesDetails($snapshot, $row) || ($this->detailsCopy($snapshot, $id)['version'] ?? null) === self::hash($row)) {
-                continue;
-            }
-
-            if ($this->readDetails($snapshot, $id, $row) !== false) {
+            if (! $this->cache->has($snapshot->key("details:{$id}:backoff")) && $this->rereadDetails($snapshot, $documents, $id, min(Snapshot::DETAILS_TIMEOUT, $left))) {
                 $read++;
             }
         }
@@ -331,6 +331,12 @@ final class SnapshotStore
             unset($this->reads[self::memo($snapshot, $partition)]);
         }
 
+        $this->forgetDetails($snapshot);
+    }
+
+    /** Drop the details read this request of a snapshot's documents. */
+    private function forgetDetails(Snapshot $snapshot): void
+    {
         foreach (array_keys($this->details) as $memo) {
             if (str_starts_with($memo, $snapshot->type.'|')) {
                 unset($this->details[$memo]);
@@ -563,14 +569,35 @@ final class SnapshotStore
             return $this->refresh($snapshot);
         }
 
-        $patched = $this->writing($snapshot, fn () => $this->patch($snapshot, $id, $key, $deleted));
+        $read = [];
+        $patched = $this->writing($snapshot, function () use ($snapshot, $id, $key, $deleted, &$read): int|false|null {
+            return $this->patch($snapshot, $id, $key, $deleted, $read);
+        });
 
         // The patch could not be trusted: a full pull decides (outside the write, which it takes itself).
-        return $patched === false ? $this->refresh($snapshot) : $patched;
+        if ($patched === false) {
+            return $this->refresh($snapshot);
+        }
+
+        // A change to the details alone leaves the row as it was, so the documents the ping read have theirs read too.
+        if ($patched !== null && $read !== [] && $snapshot->hasDetails() && $this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff'))) {
+            $documents = $this->freshDocuments($snapshot) ?? [];
+
+            foreach ($read as $documentId) {
+                if (isset($documents[$documentId]) && ! self::carriesDetails($snapshot, $documents[$documentId])) {
+                    $this->rereadDetails($snapshot, $documents, $documentId);
+                }
+            }
+        }
+
+        return $patched;
     }
 
-    /** @return int|false|null the documents patched in, false when a full pull must decide, null when the read failed */
-    private function patch(Snapshot $snapshot, string $id, ?string $key, bool $deleted): int|false|null
+    /**
+     * @param  list<string>  $read  set to the ids of the documents the ping read
+     * @return int|false|null the documents patched in, false when a full pull must decide, null when the read failed
+     */
+    private function patch(Snapshot $snapshot, string $id, ?string $key, bool $deleted, array &$read): int|false|null
     {
         if ($this->pinnedElsewhere($snapshot)) {
             return 0;
@@ -594,6 +621,7 @@ final class SnapshotStore
             return false;
         }
 
+        $read = array_map(strval(...), array_keys($patch));
         $documents = $current;
 
         if ($key !== null && ! array_key_exists($key, $patch)) {
@@ -716,6 +744,8 @@ final class SnapshotStore
      */
     private function write(Snapshot $snapshot, array $documents, int $ttl, bool $lastGood, ?array $previous = null): void
     {
+        $this->forgetDetails($snapshot);
+
         foreach ($snapshot->partitions() as $partition) {
             $part = $snapshot->documentsIn($documents, $partition);
             $this->reads[self::memo($snapshot, $partition)] = new SnapshotRead($part);
@@ -822,8 +852,9 @@ final class SnapshotStore
     }
 
     /**
-     * A document's details: the cached copy while it is fresh for this row,
-     * else read from Core, else the last copy when Core fails.
+     * A document's details: the copy kept for this row whatever its age
+     * (core:warm and Core's pings keep it current), else read from Core,
+     * else the last copy when Core fails.
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
@@ -831,14 +862,13 @@ final class SnapshotStore
     private function detailsOf(Snapshot $snapshot, string $id, array $row): array
     {
         $copy = $this->detailsCopy($snapshot, $id);
-        $age = now()->getTimestamp() - (int) ($copy['at'] ?? 0);
 
-        if ($copy !== null && $copy['version'] === self::hash($row) && $age < $snapshot->freshTtl()) {
+        if ($copy !== null && $copy['version'] === self::hash($row)) {
             return $copy['data'];
         }
 
         // A pinned copy is another Core's data: this site's Core holds nothing to fill it with.
-        if ($this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff'))) {
+        if ($this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff')) && ! $this->cache->has($snapshot->key("details:{$id}:backoff"))) {
             $details = $this->readDetails($snapshot, $id, $row);
 
             if ($details !== false) {
@@ -856,32 +886,129 @@ final class SnapshotStore
     }
 
     /**
-     * Reads one document's details from Core and keeps them for its row:
-     * none for a document Core no longer has, false when the read failed.
+     * Reads one document's details from Core and keeps them for its row
+     * (none for a document Core no longer has); false when the read failed,
+     * which backs off the whole snapshot when Core is out of reach or
+     * refusing the site, else only this document.
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|false
      */
-    private function readDetails(Snapshot $snapshot, string $id, array $row): array|false
+    private function readDetails(Snapshot $snapshot, string $id, array $row, int $timeout = Snapshot::DETAILS_TIMEOUT): array|false
     {
         try {
-            $details = $snapshot->readDetails($id, $row);
+            $details = $snapshot->readDetails($id, $row, $timeout) ?? [];
         } catch (Throwable $e) {
             $this->warn($snapshot, 'exception:'.class_basename($e), ['id' => $id]);
-            $this->cache->put($snapshot->key('backoff'), true, $snapshot->retryTtl());
+            $this->cache->put($snapshot->key(self::unreachable($e) ? 'backoff' : "details:{$id}:backoff"), true, $snapshot->retryTtl());
 
             return false;
         }
 
-        if ($details === null) {
-            $this->cache->forget($snapshot->key("details:{$id}"));
-
-            return [];
-        }
-
         $this->cache->put($snapshot->key("details:{$id}"), ['version' => self::hash($row), 'at' => now()->getTimestamp(), 'data' => $details], $snapshot->staleTtl());
+        unset($this->details[$snapshot->type.'|'.$id]);
 
         return $details;
+    }
+
+    /**
+     * Reads a cached document's details again and, when they changed under
+     * the same row, tells the change listeners of that document. Returns
+     * whether the read succeeded.
+     *
+     * @param  array<string, array<string, mixed>>  $documents  every partition's documents
+     */
+    private function rereadDetails(Snapshot $snapshot, array $documents, string $id, int $timeout = Snapshot::DETAILS_TIMEOUT): bool
+    {
+        $row = $documents[$id];
+        $before = $this->detailsCopy($snapshot, $id);
+        $details = $this->readDetails($snapshot, $id, $row, $timeout);
+
+        if ($details === false) {
+            return false;
+        }
+
+        if ($before !== null && $before['version'] === self::hash($row) && $before['data'] !== $details) {
+            $this->announceDetails($snapshot, $documents, $id);
+        }
+
+        return true;
+    }
+
+    /**
+     * Tells the change listeners of a document whose details changed while
+     * its row did not: a change to that one document, the row the same
+     * before and after, since listeners read rows (dependents() finds its
+     * pages from the row). A failing listener is logged, not retried.
+     *
+     * @param  array<string, array<string, mixed>>  $documents
+     */
+    private function announceDetails(Snapshot $snapshot, array $documents, string $id): void
+    {
+        if (! $snapshot->watched()) {
+            return;
+        }
+
+        foreach ($snapshot->partitions() as $partition) {
+            $part = $snapshot->documentsIn($documents, $partition);
+
+            if (! isset($part[$id])) {
+                continue;
+            }
+
+            try {
+                $snapshot->changed($partition, $part, new SnapshotChange($snapshot, $partition, [$id => $part[$id]], [$id => $part[$id]]));
+            } catch (Throwable $e) {
+                $this->logger->warning('Core snapshot change listener failed', [
+                    'snapshot' => $snapshot->type,
+                    'partition' => $partition,
+                    'reason' => 'exception:'.class_basename($e),
+                ]);
+                report($e);
+            }
+        }
+    }
+
+    /**
+     * The ids of the cached documents whose details want reading: those
+     * without a copy for their row, then those whose copy is past the fresh
+     * lifetime, oldest first.
+     *
+     * @param  array<string, array<string, mixed>>  $documents
+     * @return list<string>
+     */
+    private function detailsToWarm(Snapshot $snapshot, array $documents): array
+    {
+        $missing = [];
+        $aged = [];
+
+        foreach ($documents as $id => $row) {
+            $id = (string) $id;
+
+            if (self::carriesDetails($snapshot, $row)) {
+                continue;
+            }
+
+            $copy = $this->detailsCopy($snapshot, $id);
+
+            if ($copy === null || $copy['version'] !== self::hash($row)) {
+                $missing[] = $id;
+            } elseif (now()->getTimestamp() - (int) $copy['at'] >= $snapshot->freshTtl()) {
+                $aged[$id] = (int) $copy['at'];
+            }
+        }
+
+        asort($aged);
+
+        return [...$missing, ...array_map(strval(...), array_keys($aged))];
+    }
+
+    /** Whether a failed read says Core is out of reach or refusing the site, rather than failing one document. */
+    private static function unreachable(Throwable $e): bool
+    {
+        return $e instanceof ConnectionException
+            || $e instanceof TokenRefused
+            || ($e instanceof RequestException && in_array($e->response->status(), [401, 403, 429, 502, 503, 504], true));
     }
 
     /** @return array<string, mixed> the cached details of any row, none when nothing is cached */

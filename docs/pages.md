@@ -21,8 +21,9 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
 ```
 
 - `find($id)` or `find(fn (array $doc, string $id) => bool)` reads the site's
-  partition and returns a document that has a page there (a closure only sees
-  documents with one). None is a **503** with `Retry-After`
+  partition and returns a document that has a page there, with its
+  [details](registering-snapshots.md#details) (a closure only sees documents
+  with one, without their details). None is a **503** with `Retry-After`
   while nothing at all can be read (a cold cache and Core unreachable), so an
   outage cannot deindex the pages, and Statamic's `NotFoundHttpException`
   otherwise: `abort(404)` renders Laravel's error view, whose layout lacks the

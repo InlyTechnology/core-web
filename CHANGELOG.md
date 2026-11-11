@@ -11,8 +11,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **Snapshot details**: `Snapshot::details([...])` names fields too large to
   keep on every row, such as a car's images. A `fromObject()` snapshot
   leaves them out of its pull and of a search Core answers, and
-  `SnapshotStore::document()` reads them for one document, cached beside the
-  copy. See `docs/registering-snapshots.md#details`.
+  `SnapshotStore::document()` and `SnapshotPage::find()` read them for one
+  document, cached beside the copy. See `docs/registering-snapshots.md#details`.
 - **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
   proposals are kept in the private bucket Cloud attaches
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the

@@ -6,8 +6,11 @@ use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Inly\CoreWeb\Search\Search;
+use Inly\CoreWeb\Search\SearchResult;
 use Inly\CoreWeb\Snapshots\Snapshot;
+use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Inly\CoreWeb\Snapshots\SnapshotExport;
+use Inly\CoreWeb\Snapshots\SnapshotPage;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Testing\FakesCore;
@@ -58,12 +61,16 @@ class SnapshotDetailsTest extends TestCase
         ];
     }
 
-    /** @param  list<array<string, mixed>>|null  $resources */
-    private function fakeCars(?array $resources = null, mixed $schema = null): void
+    /**
+     * @param  list<array<string, mixed>>|null  $resources
+     * @param  array<string, mixed>  $stubs  answered before the cars
+     */
+    private function fakeCars(?array $resources = null, mixed $schema = null, array $stubs = []): void
     {
         $resources ??= self::resources();
 
         $this->fakeCore([
+            ...$stubs,
             'core.test/api/v1/objects/car/schema*' => $schema ?? Http::response(['data' => ['type' => 'object-query-descriptions', 'id' => 'car', 'attributes' => self::describe()]]),
             'core.test/api/v1/objects/car/*' => self::coreObjectById('car', $resources),
             'core.test/api/v1/objects/car?*' => self::coreList($resources),
@@ -149,7 +156,7 @@ class SnapshotDetailsTest extends TestCase
         $this->assertSame(1, self::detailReads('1'));
     }
 
-    public function test_details_are_read_again_once_their_row_changes_or_they_are_older_than_the_fresh_ttl(): void
+    public function test_a_copy_kept_for_the_row_is_served_whatever_its_age_and_read_again_once_the_row_changes(): void
     {
         $this->fakeCars();
         $snapshot = $this->snapshot();
@@ -157,7 +164,7 @@ class SnapshotDetailsTest extends TestCase
 
         $this->travel(901)->seconds();
         $this->assertSame(['Dragkrok'], self::store()->document($snapshot, '1')['equipment']);
-        $this->assertSame(2, self::detailReads('1'));
+        $this->assertSame(1, self::detailReads('1'));
 
         $resources = self::resources('Takbox');
         $resources[0]['attributes']['price'] = 179000;
@@ -172,9 +179,11 @@ class SnapshotDetailsTest extends TestCase
     {
         $this->fakeCars();
         $snapshot = $this->snapshot();
-        $store = self::store();
-        $store->document($snapshot, '1');
-        $this->travel(901)->seconds();
+        self::store()->document($snapshot, '1');
+        $resources = self::resources();
+        $resources[0]['attributes']['price'] = 179000;
+        $this->fakeCars($resources);
+        self::store()->refresh($snapshot);
 
         $this->failCore();
 
@@ -202,7 +211,7 @@ class SnapshotDetailsTest extends TestCase
         $this->assertTrue($store->servedDegraded());
     }
 
-    public function test_a_document_core_no_longer_has_comes_without_details(): void
+    public function test_a_document_core_no_longer_has_comes_without_details_and_is_not_asked_for_again_under_the_same_row(): void
     {
         $this->fakeCars();
         $snapshot = $this->snapshot();
@@ -214,7 +223,11 @@ class SnapshotDetailsTest extends TestCase
 
         $this->assertSame(['id' => '2', 'name' => 'V60', 'make' => 'Volvo', 'price' => 349000], $store->document($snapshot, '2'));
         $this->assertFalse($store->servedDegraded());
-        $this->assertNull(Cache::get($snapshot->key('details:2')));
+        $this->assertSame([], Cache::get($snapshot->key('details:2'))['data']);
+
+        $this->fakeCars([self::resources()[0]]);
+        self::store()->document($snapshot, '2');
+        $this->assertSame(0, self::detailReads());
     }
 
     public function test_a_document_that_carries_its_details_is_served_as_it_is(): void
@@ -287,7 +300,7 @@ class SnapshotDetailsTest extends TestCase
         $this->assertSame(2, self::detailReads());
     }
 
-    public function test_warming_details_stops_at_its_limit_and_at_the_first_failure(): void
+    public function test_warming_details_stops_at_its_limit_and_when_core_fails(): void
     {
         $this->fakeCars();
         $snapshot = $this->snapshot();
@@ -301,6 +314,76 @@ class SnapshotDetailsTest extends TestCase
 
         $this->assertSame(0, self::store()->warmDetails($snapshot));
         $this->assertCount(0, Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/api/v1/objects/car/2')));
+    }
+
+    public function test_warming_details_reads_nothing_once_its_time_is_up(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        $this->assertSame(0, self::store()->warmDetails($snapshot, seconds: 0));
+        $this->assertSame(0, self::detailReads());
+    }
+
+    public function test_a_document_whose_details_fail_alone_is_skipped_and_backed_off_on_its_own(): void
+    {
+        $this->fakeCars(stubs: ['core.test/api/v1/objects/car/1?*' => Http::response('boom', 500)]);
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        $this->assertSame(1, self::store()->warmDetails($snapshot));
+        $this->assertCount(1, Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/api/v1/objects/car/1?')));
+        $this->assertTrue(Cache::has($snapshot->key('details:1:backoff')));
+        $this->assertFalse(Cache::has($snapshot->key('backoff')));
+
+        $store = self::store();
+        $this->assertSame(['Navigation'], $store->document($snapshot, '2')['equipment']);
+        $this->assertArrayNotHasKey('equipment', $store->document($snapshot, '1'));
+        $this->assertTrue($store->servedDegraded());
+        $this->assertCount(1, Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/api/v1/objects/car/1?')));
+    }
+
+    public function test_warming_reads_missing_details_first_then_the_oldest_copies(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot();
+        self::store()->document($snapshot, '1');
+        $this->travel(901)->seconds();
+        self::store()->refresh($snapshot);
+
+        $this->assertSame(1, self::store()->warmDetails($snapshot, limit: 1));
+        $this->assertSame(1, self::detailReads('2'));
+        $this->assertSame(1, self::detailReads('1'));
+
+        $this->assertSame(1, self::store()->warmDetails($snapshot, limit: 1));
+        $this->assertSame(2, self::detailReads('1'));
+        $this->assertSame(0, self::store()->warmDetails($snapshot));
+    }
+
+    public function test_details_that_change_under_the_same_row_are_announced_as_a_change_to_that_document(): void
+    {
+        $changes = [];
+        $this->fakeCars();
+        $snapshot = $this->snapshot()->onChange(function (?string $partition, array $documents, ?SnapshotChange $change) use (&$changes): void {
+            $changes[] = $change?->ids();
+        });
+        self::store()->document($snapshot, '1');
+        $this->fakeCars(self::resources('Takbox'));
+
+        $this->assertSame(0, self::store()->refreshOne($snapshot, '1'));
+
+        $this->assertSame(['Takbox'], self::store()->document($snapshot, '1')['equipment']);
+        $this->assertSame(1, self::detailReads('1'));
+        $this->assertSame([null, ['1']], $changes);
+
+        $this->travel(901)->seconds();
+        $this->fakeCars(self::resources('Takräcke'));
+        self::store()->refresh($snapshot);
+        self::store()->warmDetails($snapshot);
+
+        $this->assertSame(['Takräcke'], self::store()->document($snapshot, '1')['equipment']);
+        $this->assertSame([null, ['1'], ['1']], $changes);
     }
 
     public function test_the_export_carries_the_details_the_site_has_cached(): void
@@ -334,6 +417,42 @@ class SnapshotDetailsTest extends TestCase
         $search = Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/api/v1/objects/car?') && str_contains($request->url(), 'filter'));
         $this->assertCount(1, $search);
         $this->assertSame(['name', 'make', 'city', 'fuel', 'gearbox', 'four_wheel_drive', 'price', 'plate'], self::requestedFieldsets($search->first()[0])['_']);
+    }
+
+    public function test_a_search_on_a_detail_is_never_answered_from_the_snapshot(): void
+    {
+        $describe = self::describe();
+        $describe['fields']['equipment'] = ['type' => 'string', 'filter_key' => 'equipment'];
+        $describe['filters_available'][] = 'equipment';
+        $this->fakeCars(schema: Http::response(['data' => ['type' => 'object-query-descriptions', 'id' => 'car', 'attributes' => $describe]]));
+        $this->snapshot();
+        self::store()->refresh(app(SnapshotRegistry::class)->get('cars'));
+        config(['core-web.search.objects.cars.engine' => SearchResult::LOCAL]);
+
+        $this->assertSame([SearchResult::LOCAL, SearchResult::OK], [Search::for('cars')->search(['make' => 'Volvo'])->engine, Search::for('cars')->search(['make' => 'Volvo'])->status]);
+        $this->assertSame(SearchResult::INVALID, Search::for('cars')->search(['equipment' => 'Drag'])->status);
+    }
+
+    public function test_a_page_finds_its_document_with_the_details(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot()->pages(fn (array $document) => '/bilar/'.$document['id']);
+        $page = SnapshotPage::for($snapshot, 'default');
+
+        $this->assertSame(['Dragkrok'], $page->find('1')['equipment']);
+        $this->assertSame(['Navigation'], $page->find(fn (array $document) => $document['make'] === 'Volvo')['equipment']);
+    }
+
+    public function test_a_partitioned_document_reads_its_details_in_its_own_partition_only(): void
+    {
+        $this->fakeCars();
+        $snapshot = Snapshot::make('cars')->fromObject('car')->details(self::DETAILS)
+            ->partitionBy(fn (array $document) => $document['make'] === 'Volvo' ? 'volvo' : 'other', ['volvo', 'other']);
+        app(SnapshotRegistry::class)->register($snapshot);
+
+        $this->assertSame(['Navigation'], self::store()->document($snapshot, '2', 'volvo')['equipment']);
+        $this->assertNull(self::store()->document($snapshot, '2', 'other'));
+        $this->assertSame(1, self::detailReads());
     }
 
     public function test_details_of_a_pull_of_its_own_are_read_as_it_says(): void

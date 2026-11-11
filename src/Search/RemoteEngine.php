@@ -142,8 +142,9 @@ class RemoteEngine
 
     /**
      * Core's answer, false when Core refused the query, null when it failed.
+     *
+     * @param  list<string>  $fields  the fields each row carries; none named for every field
      */
-    /** @param  list<string>  $fields */
     protected function call(string $object, SearchQuery $query, array $fields = []): SearchResult|false|null
     {
         if (! $this->core->configured()) {

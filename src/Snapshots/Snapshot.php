@@ -4,10 +4,12 @@ namespace Inly\CoreWeb\Snapshots;
 
 use Closure;
 use Inly\CoreWeb\Client\CoreClient;
+use Inly\CoreWeb\Search\RemoteEngine;
 use Inly\CoreWeb\Search\SearchRow;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
+use Throwable;
 
 /**
  * The definition of one cached copy of Core objects: where it lives in the
@@ -27,6 +29,9 @@ final class Snapshot
     private int $staleTtl = 86400;
 
     private int $retryTtl = 60;
+
+    /** Seconds one read of a document's details may take. */
+    public const DETAILS_TIMEOUT = 10;
 
     /** @var Closure(): iterable<string, array<string, mixed>> */
     private Closure $pull;
@@ -210,43 +215,48 @@ final class Snapshot
 
     /**
      * A document's details as Core has them now, only the fields details()
-     * names; null when Core no longer has the document.
+     * names; null when Core no longer has the document. `$timeout` bounds a
+     * read from fromObject()'s object, in seconds, in one attempt.
      *
      * @param  array<string, mixed>  $document
      * @return array<string, mixed>|null
      */
-    public function readDetails(string $id, array $document): ?array
+    public function readDetails(string $id, array $document, int $timeout = self::DETAILS_TIMEOUT): ?array
     {
         if ($this->readDetails === null && $this->object === null) {
             throw new LogicException("Snapshot [{$this->type}] cannot read its details: name how with details(\$fields, read: ...).");
         }
 
         $details = $this->readDetails === null
-            ? $this->objectDetails($this->object, $id)
+            ? $this->objectDetails($this->object, $id, $timeout)
             : ($this->readDetails)($id, $document);
 
         return $details === null ? null : array_intersect_key($details, array_flip($this->details));
     }
 
     /** @return array<string, mixed>|null */
-    private function objectDetails(string $type, string $id): ?array
+    private function objectDetails(string $type, string $id, int $timeout): ?array
     {
-        $document = app(CoreClient::class)->object($type, $id, ['fields[_]' => implode(',', $this->details)]);
+        // One attempt, without the client's retries: a render or a warm waits on it, and the last copy stands in when it fails.
+        $response = app(CoreClient::class)->sendResponse('get', '/api/v1/objects/'.$type.'/'.rawurlencode($id), [
+            'fields' => ['_' => implode(',', $this->details)],
+            'meta' => CoreClient::ROW_META,
+        ], ['Accept' => 'application/vnd.api+json'], max(1, $timeout));
 
-        if ($document === null) {
+        if ($response->status() === 404) {
             return null;
         }
 
-        $attributes = $document['data']['attributes'] ?? null;
+        $attributes = $response->throw()->json('data.attributes');
 
         return is_array($attributes) ? $attributes : [];
     }
 
     /**
      * The Objects API parameters a row is read with: every field the object
-     * offers but the details, as its `/schema` description lists them, so a
-     * field Core adds later is pulled without the site naming it. None while
-     * the snapshot keeps no details.
+     * offers but the details, as its description lists them (kept like a
+     * search's, `search.schema_ttl`), so a field Core adds later is pulled
+     * without the site naming it. None while the snapshot keeps no details.
      *
      * @return array<string, string>
      */
@@ -256,14 +266,14 @@ final class Snapshot
             return [];
         }
 
-        $available = app(CoreClient::class)->get("/api/v1/objects/{$type}/schema")['data']['attributes']['fields_available'] ?? null;
+        $available = app(RemoteEngine::class)->schema($type)?->fieldsAvailable() ?? [];
 
         // Without the list the pull would carry every detail; failing keeps the last good copy instead.
-        if (! is_array($available) || $available === []) {
+        if ($available === []) {
             throw new RuntimeException("Core described no fields of [{$type}].");
         }
 
-        return ['fields[_]' => implode(',', array_diff(array_map(strval(...), $available), $this->details))];
+        return ['fields[_]' => implode(',', array_diff($available, $this->details))];
     }
 
     /**
@@ -312,7 +322,12 @@ final class Snapshot
         }
 
         foreach ($documents as $documentId => $document) {
-            $documents[$documentId] = $document + ($this->readDetails((string) $documentId, $document) ?? []);
+            try {
+                $documents[$documentId] = $document + ($this->readDetails((string) $documentId, $document) ?? []);
+            } catch (Throwable $e) {
+                // The record's unsaved values still preview; its details come from the stored copy instead.
+                report($e);
+            }
         }
 
         return $documents;

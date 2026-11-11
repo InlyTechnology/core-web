@@ -102,29 +102,46 @@ Snapshot::make('vehicles')->fromObject('vehicle')->details(['images', 'equipment
 app(SnapshotStore::class)->document($snapshot, $id);  // the row with its details, null when there is none
 ```
 
+- Only a field one document's page shows is a detail. A field a listing,
+  card, search, filter, sort, facet or sitemap uses stays on the row (a car
+  card's cover image beside the full set of images): `read()`,
+  `documents()`, a local search and every closure the snapshot is given
+  (`pages()`, `listing()`, `dependents()`, `onChange()`) see the rows
+  without details. A search that filters, sorts or facets on a detail is
+  Core's to answer.
 - A snapshot made with `fromObject()` pulls every field Core's `/schema`
-  lists in `fields_available` except the details, and reads a document's
-  details from the object with only those fields. A description that lists
-  no fields fails the pull, so the last good copy stays. Any other snapshot
-  names how with `details($fields, read: fn (string $id, array $row) => ...)`,
-  which returns the details, or null for a document Core no longer has.
-- `read()` and `documents()` return the rows without details; only
-  `document()` reads them. A document's details are read once per request
-  and kept under `details:{id}` for the stale TTL. A copy is fresh while it
-  was read for the row as it is stored now and is younger than the fresh
-  TTL; otherwise `document()` reads it again.
-- While Core fails, the read backs off like a failed pull (`backoff`, the
-  retry TTL) and the last copy is served. With no copy the document comes
-  without its details, and the request counts as degraded, as a read with
-  nothing cached does. A document Core no longer has comes without details
-  and its copy is forgotten.
-- `core:warm`, and so a whole ping, reads the details of the documents whose
-  copy was not read for their row as it is now: at most 100 of them in 30
-  seconds, stopping at the first failure.
+  lists in `fields_available` except the details (the description is kept
+  like a search's, `search.schema_ttl`), and reads a document's details from
+  the object with only those fields, with a 10-second timeout and no retry
+  but a new token on a 401.
+  A description that lists no fields fails the pull, so the last good copy
+  stays. Any other snapshot names how with
+  `details($fields, read: fn (string $id, array $row) => ...)`, which returns
+  the details, or null for a document Core no longer has.
+- `document()` and `SnapshotPage::find()` add the details. They are kept
+  under `details:{id}` for the stale TTL with the row they were read for,
+  and served whatever their age while that row is the one stored; a page
+  reads Core only when no copy was read for its row. A document Core no
+  longer has keeps an empty copy, so it is not asked for again under the
+  same row.
+- A ping that patches an object's row into the copy reads that object's
+  details again too. `core:warm` reads the documents without a copy for their row, then
+  the copies older than the fresh TTL, oldest first: at most 100 in 30
+  seconds. Details that change while the row does not are announced to
+  `onChange()` as a change to that one document, the row the same before
+  and after; a listener that fails then is logged, not retried.
+- A read that fails serves the last copy. Core out of reach or refusing the
+  site (no connection, the token refused, 401, 403, 429, 502, 503 or 504)
+  backs off the whole snapshot for the retry TTL (`backoff`), and the warm
+  stops; any other failure backs off only that document
+  (`details:{id}:backoff`), and the warm goes on with the next. With no copy
+  the document comes without its details, and the request counts as
+  degraded, as a read with nothing cached does.
 - `core:pull` carries the details the live site has cached, in pages of at
   most 20 documents. A pinned copy never reads its details from this site's
   Core; a document pulled without them is served without them.
 - An [object preview](object-preview.md) with a state reads the record with
-  its details, the state applied. A previewed document of unsaved values
-  that comes without them takes the stored document's cached copy, and never
+  its details, the state applied; when that read of the details fails, they
+  come from the stored copy. A previewed document of unsaved values that
+  comes without them takes the stored document's cached copy, and never
   reads Core or writes the copy.

@@ -133,7 +133,7 @@ final class Search
             return [];
         }
 
-        return array_values(array_diff($schema->fieldsAvailable(), $registry->get($type)->detailFields()));
+        return $schema->without($registry->get($type)->detailFields())->fieldsAvailable();
     }
 
     /** The local engine's answer, or why it cannot give one. */
@@ -145,7 +145,7 @@ final class Search
             return $snapshot;
         }
 
-        $engine = new LocalEngine($schema);
+        $engine = new LocalEngine($schema->without($snapshot->detailFields()));
 
         if (($refusal = $engine->refusal($query)) !== null) {
             return $refusal;

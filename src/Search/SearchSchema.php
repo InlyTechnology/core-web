@@ -67,6 +67,22 @@ final class SearchSchema
         return $this->list('fields_available');
     }
 
+    /**
+     * This description with the fields taken off the rows, so a filter, sort
+     * or field on them is Core's to answer: the rows of a snapshot that keeps
+     * them as details (docs/registering-snapshots.md#details).
+     *
+     * @param  list<string>  $fields
+     */
+    public function without(array $fields): self
+    {
+        if ($fields === []) {
+            return $this;
+        }
+
+        return new self(['fields_available' => array_values(array_diff($this->fieldsAvailable(), $fields))] + $this->attributes);
+    }
+
     /** The name of the field a filter key filters, or null when no field names it. */
     public function fieldFor(string $key): ?string
     {
