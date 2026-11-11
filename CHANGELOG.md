@@ -60,7 +60,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   (Pages a snapshot change touches).
 - **`core-web:doctor` checks the static cache**. See
   `docs/checking-a-sites-setup.md`.
-- **On Laravel Cloud, Statamic queues its page renders on `low`**: with
+- **On Laravel Cloud, a save's page renders are queued on `low`**: with
   `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
   `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue. See
   `docs/laravel-cloud.md`.
@@ -110,7 +110,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   page the save renders again (under the `all` rule, one listing the entry:
   `SiteScopedInvalidator` forgets its own page at once) shows the change,
   and that `php artisan queue:failed` lists no `StaticWarmJob`.
-- **On Laravel Cloud, Statamic queues its page renders on `low`.** With
+- **On Laravel Cloud, a save's page renders are queued on `low`.** With
   `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
   `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue, and
   a render on a queue no worker takes never runs. Find it: each Cloud
