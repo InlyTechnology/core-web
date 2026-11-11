@@ -543,7 +543,8 @@ return [
     | page trees, globals, terms, asset meta) are kept until an editor applies
     | or discards them in the CP: a filesystem `disk` (null for the default)
     | and a `path` on it. A host whose disk does not outlive a deploy names a
-    | bucket.
+    | private bucket, never a public one; on Laravel Cloud a null disk is the
+    | private bucket (cloud.uploads_disk).
     |
     | schema: what Core reads at `blocks` to build a draft from
     | (Inly\CoreWeb\Drafts\StatamicContentSchema): the blocks of each
@@ -964,7 +965,7 @@ return [
     |
     | uploads_disk: the private bucket Cloud attaches, where Livewire's
     | temporary uploads wait (as `livewire-tmp`, Livewire's `directory`
-    | under it) when the site chose no disk.
+    | under it) and draft proposals are kept, when the site chose no disk.
     |
     */
 

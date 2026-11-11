@@ -187,6 +187,9 @@ use Throwable;
  */
 class CoreWebServiceProvider extends ServiceProvider
 {
+    /** @var array<string, mixed>|null */
+    private ?array $packageDefaults = null;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/core-web.php', 'core-web');
@@ -212,6 +215,7 @@ class CoreWebServiceProvider extends ServiceProvider
 
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
+                CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
             }
 
             MailSender::apply($this->app);
@@ -222,37 +226,45 @@ class CoreWebServiceProvider extends ServiceProvider
                 $this->mergeSnapshotStore();
             }
 
+            // A cached config already holds the defaults merges below, since config:cache boots the providers that make them.
+            $merged = $this->app->configurationIsCached();
+
             if (self::enabled('cms_sign_in')) {
-                $this->mergeCmsSignInDefaults();
+                if (! $merged) {
+                    $this->mergeCmsSignInDefaults();
+                }
+
                 $this->mergeSsoUserProvider();
             }
 
-            if (self::enabled('consent')) {
+            if (! $merged && self::enabled('consent')) {
                 $this->mergeGroupDefaults('consent', ['vendors', 'sites']);
             }
 
-            if (self::enabled('seo')) {
+            if (! $merged && self::enabled('seo')) {
                 $this->mergeGroupDefaults('seo', []);
                 $this->mergeSocialDefaults();
             }
 
-            if (self::enabled('favicons')) {
+            if (! $merged && self::enabled('favicons')) {
                 $this->mergeGroupDefaults('favicons', []);
             }
 
-            if (self::enabled('buttons')) {
+            if (! $merged && self::enabled('buttons')) {
                 $this->mergeGroupDefaults('buttons', ['variants', 'link_types', 'core_links']);
             }
 
-            if (self::enabled('search')) {
+            if (! $merged && self::enabled('search')) {
                 $this->mergeGroupDefaults('search', ['objects']);
             }
 
             if (self::enabled('media')) {
-                $this->mergeMediaDefaults();
+                if (! $merged) {
+                    $this->mergeMediaDefaults();
+                }
 
-                // A cached config already holds the moved disks; a local one left in it was the build's choice.
-                if (self::enabled('cloud') && CloudDefaults::onCloud() && ! $this->app->configurationIsCached()) {
+                // A local disk left in a cached config was the build's choice.
+                if (! $merged && self::enabled('cloud') && CloudDefaults::onCloud()) {
                     CloudDefaults::moveLocalDisksToBucket($this->app['config']);
                 }
 
@@ -292,12 +304,22 @@ class CoreWebServiceProvider extends ServiceProvider
     }
 
     /**
+     * The package's own config file, read once: each group merge below starts from it.
+     *
+     * @return array<string, mixed>
+     */
+    private function packageDefaults(): array
+    {
+        return $this->packageDefaults ??= require __DIR__.'/../config/core-web.php';
+    }
+
+    /**
      * The package's media defaults under a site's `media` block, one group deep: a site that sets only its bucket
      * keeps the key and secret from env, the CDN and the layer. `disks` is the site's own list, taken whole.
      */
     private function mergeMediaDefaults(): void
     {
-        $defaults = (array) (require __DIR__.'/../config/core-web.php')['media'];
+        $defaults = (array) $this->packageDefaults()['media'];
         $media = (array) config('core-web.media');
 
         foreach ($defaults as $group => $default) {
@@ -317,7 +339,7 @@ class CoreWebServiceProvider extends ServiceProvider
      */
     private function mergeGroupDefaults(string $key, array $whole): void
     {
-        $defaults = (array) (require __DIR__.'/../config/core-web.php')[$key];
+        $defaults = (array) $this->packageDefaults()[$key];
         $site = (array) config("core-web.{$key}");
 
         foreach ($defaults as $group => $default) {
@@ -332,7 +354,7 @@ class CoreWebServiceProvider extends ServiceProvider
     /** The social card's `hero` and `image` keep their other defaults when a site sets only one key; a null hero is off. */
     private function mergeSocialDefaults(): void
     {
-        $defaults = (array) (require __DIR__.'/../config/core-web.php')['seo']['social'];
+        $defaults = (array) $this->packageDefaults()['seo']['social'];
         $social = (array) config('core-web.seo.social');
 
         foreach (['hero', 'image'] as $group) {
@@ -599,8 +621,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // Only for editors with open proposals they may apply, so the entry stays out of the way until there is one.
         Nav::extend(function ($nav): void {
             $user = User::current();
-            $proposals = app(Proposals::class);
-            $count = $user === null ? 0 : collect($proposals->open())->filter(fn ($proposal) => $proposals->target($proposal)?->mayEdit($user))->count();
+            $count = $user === null ? 0 : app(Proposals::class)->openCountFor($user);
 
             if ($count > 0) {
                 $nav->content(__('Proposals')." ({$count})")->route('core-web.proposals.index')->icon('git-pull-request');
@@ -718,7 +739,7 @@ class CoreWebServiceProvider extends ServiceProvider
      */
     private function mergeCmsSignInDefaults(): void
     {
-        $defaults = (require __DIR__.'/../config/core-web.php')['cms_sign_in'];
+        $defaults = $this->packageDefaults()['cms_sign_in'];
         $site = (array) config('core-web.cms_sign_in');
         $merged = array_replace($defaults, $site);
 

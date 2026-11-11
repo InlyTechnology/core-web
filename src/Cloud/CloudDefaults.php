@@ -306,6 +306,22 @@ final class CloudDefaults
     }
 
     /**
+     * Draft proposals are kept in the private bucket: on the default disk, the public bucket on Cloud, anyone could
+     * read a staged change by its path. A disk the site chose is kept.
+     */
+    public static function keepProposalsInPrivateBucket(Repository $config): void
+    {
+        $name = (string) $config->get('core-web.cloud.uploads_disk', 'private');
+        $private = $config->get('filesystems.disks.'.$name);
+
+        if (! is_array($private) || ($private['driver'] ?? null) !== 's3' || ! blank($config->get('core-web.drafts.proposals.disk'))) {
+            return;
+        }
+
+        $config->set('core-web.drafts.proposals.disk', $name);
+    }
+
+    /**
      * The driver of each search index, Statamic's own `cp` index included while the config names none.
      *
      * @return array<string, string>

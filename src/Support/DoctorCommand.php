@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Support;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\CoreWebServiceProvider;
 
 /**
@@ -46,6 +47,7 @@ class DoctorCommand extends Command
         $this->checkSchedule($features, $schedule);
         $this->checkPingSecret($features);
         $this->checkCmsAccounts($features);
+        $this->checkProposals($features);
 
         if (in_array('media', $features, true)) {
             $this->line('media: run `php artisan media:check` for the disks and the bucket.');
@@ -155,6 +157,91 @@ class DoctorCommand extends Command
         $committed
             ? $this->failure('CMS accounts: statamic.git.paths commits the users folder; accounts live on the server that created them')
             : $this->ok('CMS accounts: not committed by Statamic\'s git integration');
+    }
+
+    /** @param  list<string>  $features */
+    private function checkProposals(array $features): void
+    {
+        if (! in_array('drafts', $features, true)) {
+            return;
+        }
+
+        $disk = (string) config('core-web.drafts.proposals.disk');
+        [$holder, $held] = $disk === '' ? ['', null] : $this->diskHoldingFiles($disk);
+
+        // Every CP page counts the open proposals, so a disk that is not defined fails them all.
+        if ($disk !== '' && $held === null) {
+            $missing = $holder === $disk ? "{$disk}," : "{$disk}, scoped to {$holder},";
+            $this->failure("Proposals: core-web.drafts.proposals.disk names {$missing} which is not a defined disk");
+
+            return;
+        }
+
+        if (! in_array('cloud', $features, true) || ! CloudDefaults::onCloud()) {
+            return;
+        }
+
+        $unset = 'leave core-web.drafts.proposals.disk unset so the private bucket Cloud attaches is used';
+
+        if ($disk === '') {
+            $this->failure('Proposals: kept on the default disk, the public bucket on Cloud; attach the private bucket as core-web.cloud.uploads_disk');
+
+            return;
+        }
+
+        if (($held['driver'] ?? null) === 'local') {
+            $this->failure("Proposals: the {$disk} disk is local, so staged changes are lost on the next deploy; {$unset}");
+
+            return;
+        }
+
+        $bucket = $held['bucket'] ?? null;
+        $private = $this->diskHoldingFiles((string) config('core-web.cloud.uploads_disk', 'private'))[1]['bucket'] ?? null;
+
+        if (filled($bucket) && $bucket === $private) {
+            $this->ok("Proposals: kept on the {$disk} disk, in the private bucket");
+
+            return;
+        }
+
+        $public = collect([config('filesystems.default'), config('core-web.media.bucket.cloud_disk') ?: 'media', ...array_keys((array) config('core-web.media.disks'))])
+            ->filter(fn (mixed $name): bool => is_string($name) && $name !== '')
+            ->map(fn (string $name): array => $this->diskHoldingFiles($name));
+        $publicBuckets = $public->map(fn (array $public) => $public[1]['bucket'] ?? null)->filter();
+
+        $public->map(fn (array $public): string => $public[0])->contains($holder) || (filled($bucket) && $publicBuckets->contains($bucket))
+            ? $this->failure("Proposals: the {$disk} disk is on the public bucket, where anyone could read a staged change by its path; {$unset}")
+            : $this->warning("Proposals: kept on the {$disk} disk, which is not the private bucket Cloud attaches; make sure its bucket is private");
+    }
+
+    /**
+     * The disk that holds a disk's files, following a scoped disk to the disk it is scoped to: its name and its
+     * config, null when it is not defined. A parent given inline has no name, so the scoped disk's name is kept.
+     *
+     * @return array{0: string, 1: array<string, mixed>|null}
+     */
+    private function diskHoldingFiles(string $disk): array
+    {
+        $config = config("filesystems.disks.{$disk}");
+
+        for ($hops = 0; $hops < 5 && is_array($config) && ($config['driver'] ?? null) === 'scoped'; $hops++) {
+            $parent = $config['disk'] ?? null;
+
+            if (is_array($parent)) {
+                $config = $parent;
+
+                continue;
+            }
+
+            if (! is_string($parent) || $parent === '') {
+                break;
+            }
+
+            $disk = $parent;
+            $config = config("filesystems.disks.{$parent}");
+        }
+
+        return [$disk, is_array($config) ? $config : null];
     }
 
     private function ok(string $message): void
