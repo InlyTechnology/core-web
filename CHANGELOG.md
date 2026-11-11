@@ -107,27 +107,27 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `SiteScopedInvalidator` forgets its own page at once) shows the change,
   and that `php artisan queue:failed` lists no `StaticWarmJob`.
 - **A cached page served at another address than its site's keeps its old
-  copy after a change kept to its site, or a snapshot change.** A site's
-  address is its `url:` in `resources/sites.yaml`, on `APP_URL` when that
-  `url:` is relative (`/`, `/en/`) or reads it (`{{ config:app:url }}`).
-  Statamic's `all` rule, with `background_recache` off as it was by default,
-  cleared every address on any save. `SiteScopedInvalidator`, now the
-  default under that rule, keeps a change to its site where
-  `docs/static-cache.md` (A save under the `all` rule) says it does, and
-  there forgets or renders again the site's pages on the host of its
-  address only, under http and https. A snapshot change forgets a relative
-  site's pages on `APP_URL`'s host inside a request too, where it took the
-  host the request named. Find it: on each server, `php artisan config:show
-  app.url` and each site's `url:` beside the addresses visitors use
-  (`APP_URL` left at `http://localhost` from `.env.example` or on a platform
-  domain, a `www` alias that is not redirected). Migrate: on each
-  server, set `APP_URL` to the address visitors use (a site whose `url:` is
-  absolute takes its address from it instead), and redirect every other
-  address to the site's address. Verify: every other address redirects to
-  the site's address. Load a page there, edit an existing entry and, on a
-  site with snapshots, change a record in Core that one of them shows. Once
-  the queue has drained, a page each change reaches, cached before it, shows
-  it at that address.
+  copy after an entry, global or tree change that does not clear the whole
+  cache, or a snapshot change.** A site's address is its `url:` in
+  `resources/sites.yaml`, on `APP_URL` when that `url:` is relative (`/`,
+  `/en/`) or reads it (`{{ config:app:url }}`). Statamic's `all` rule, with
+  `background_recache` off as it was by default, cleared every address on
+  any save. `SiteScopedInvalidator`, now the default under that rule, on one
+  site too, clears the whole cache only where `docs/static-cache.md` (A save
+  under the `all` rule) says it does, and otherwise forgets or renders again
+  the site's pages on the host of its address only, under http and https. A
+  snapshot change forgets a relative site's pages on `APP_URL`'s host inside
+  a request too, where it took the host the request named. Find it: on each
+  server, `php artisan config:show app.url` and each site's `url:` beside
+  the addresses visitors use (`APP_URL` left at `http://localhost` from
+  `.env.example` or on a platform domain, a `www` alias that is not
+  redirected). Migrate: on each server, set `APP_URL` to the address
+  visitors use (a site whose `url:` is absolute takes its address from it
+  instead), and redirect every other address to the site's address. Verify:
+  every other address redirects to the site's address. Load a page there, edit
+  an existing entry and, on a site with snapshots, change a record in Core
+  that one of them shows. Once the queue has drained, a page each change
+  reaches, cached before it, shows it at that address.
 - **On a multisite install, the `all` rule keeps a save to its own site by
   default.** core-web names `SiteScopedInvalidator` as the invalidation class
   where the site names none, so a page showing another site's content (a
@@ -138,10 +138,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `grep -n "invalidation" config/statamic/static_caching.php`. Migrate: a
   site whose pages show another site's content names
   `\Statamic\StaticCaching\DefaultInvalidator::class` as
-  `invalidation.class`, and turns `background_recache` off unless every
-  site's pages are cached on the static cache's base URL
-  (`docs/static-cache.md`, A save under the `all` rule). Verify: `php
-  artisan config:show statamic.static_caching.invalidation` prints the
+  `invalidation.class`, and turns `background_recache` off unless the
+  static cache's base URL is the scheme and host every site's visitors use,
+  with no path (`docs/static-cache.md`, A save under the `all` rule). Verify:
+  `php artisan config:show statamic.static_caching.invalidation` prints the
   class, and `php artisan core-web:doctor` names it.
 
 ## v0.47.0

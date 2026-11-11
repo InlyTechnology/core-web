@@ -123,10 +123,11 @@ with `background_recache` on it renders again only the pages cached on the
 static cache's base URL: its `base_url`, or else the current site's URL, on
 `APP_URL` when that URL is relative. The current site is the one whose URL the
 address handling the save lies under (`APP_URL` on a queue worker or in a
-console command), or else the default site. Those pages are none when that URL has a path
-(`https://example.com/sv/`), and leave out every site on another host. Under
-the `all` rule core-web uses `SiteScopedInvalidator` instead, on one site or
-several, which keeps the rule to the site of what was saved. A class a site
+console command), or else the default site. Those pages are none when that
+URL has a path (`https://example.com/sv/`), and leave out every site on
+another host. Under the `all` rule core-web uses `SiteScopedInvalidator`
+instead, on one site or several, which keeps the rule to the site of what was
+saved. A class a site
 names as its `invalidation.class` in `config/statamic/static_caching.php`
 stands. `php artisan config:show statamic.static_caching.invalidation` prints
 what a server resolved.
