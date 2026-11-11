@@ -389,7 +389,7 @@ class SnapshotDetailsTest extends TestCase
         $this->assertFalse(Cache::has($snapshot->key('details:4:backoff')));
     }
 
-    public function test_one_document_timing_out_again_or_timeouts_a_retry_ttl_apart_back_off_only_their_documents(): void
+    public function test_one_document_timing_out_again_or_the_first_and_third_a_retry_ttl_apart_back_off_only_their_documents(): void
     {
         $this->fakeCars(
             array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}"]], range(1, 3)),
@@ -403,8 +403,12 @@ class SnapshotDetailsTest extends TestCase
             self::store()->document($snapshot, '1');
         }
 
+        $this->assertFalse(Cache::has($snapshot->key('backoff')));
+
+        $this->travel(intdiv($snapshot->retryTtl(), 2))->seconds();
+        self::store()->refresh($snapshot);
         self::store()->document($snapshot, '2');
-        $this->travel($snapshot->retryTtl())->seconds();
+        $this->travel($snapshot->retryTtl() - intdiv($snapshot->retryTtl(), 2))->seconds();
         self::store()->refresh($snapshot);
         self::store()->document($snapshot, '3');
 

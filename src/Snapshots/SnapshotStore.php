@@ -178,7 +178,7 @@ final class SnapshotStore
         foreach ($this->detailsToWarm($snapshot, $documents ?? []) as $id) {
             $left = intdiv($deadline - hrtime(true), 1_000_000_000);
 
-            // A read may take its whole timeout, so one starts only while that much is left and the warm ends by its deadline.
+            // A read starts only while a whole request timeout (Snapshot::DETAILS_TIMEOUT) is left.
             if ($attempts >= $limit || $failures >= self::WARM_DETAILS_FAILURES || $left < Snapshot::DETAILS_TIMEOUT || $this->cache->has($snapshot->key('backoff'))) {
                 break;
             }
@@ -1047,13 +1047,15 @@ final class SnapshotStore
     {
         $now = now()->getTimestamp();
         $window = $this->cache->get($snapshot->key('details:timeouts'));
+        $since = is_array($window) ? (int) ($window['since'] ?? 0) : 0;
 
-        if (! is_array($window) || ! is_array($window['ids'] ?? null) || $now - (int) ($window['since'] ?? 0) >= $snapshot->retryTtl()) {
+        if (! is_array($window) || ! is_array($window['ids'] ?? null) || $since > $now || $now - $since >= $snapshot->retryTtl()) {
+            $since = $now;
             $window = ['since' => $now, 'ids' => []];
         }
 
         $window['ids'][$id] = true;
-        $this->cache->put($snapshot->key('details:timeouts'), $window, max(1, $window['since'] + $snapshot->retryTtl() - $now));
+        $this->cache->put($snapshot->key('details:timeouts'), $window, max(1, $since + $snapshot->retryTtl() - $now));
 
         return count($window['ids']);
     }
