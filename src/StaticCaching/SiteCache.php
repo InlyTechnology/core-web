@@ -133,14 +133,8 @@ class SiteCache
 
     /**
      * Renders every cached page of the site again in the background, one
-     * queued request per page (Statamic's StaticWarmJob), while visitors
-     * keep getting the cached copy until it is replaced. Pages are found on
-     * the site's host, under http and https, and owned as flush() owns
-     * them; each path is requested once with every query string it was
-     * cached under, and one cached as an error response is forgotten
-     * instead, as Statamic does. With `background_recache` off the pages
-     * are forgotten instead (docs/static-cache.md). Returns how many paths
-     * were handed on.
+     * queued request per page, owned as flush() owns them
+     * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
     {
