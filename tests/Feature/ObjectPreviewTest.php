@@ -128,7 +128,7 @@ class ObjectPreviewTest extends TestCase
         $this->assertStringContainsString('<h1 data-core-field="title" data-core-editable>Spring</h1>', $html);
         $this->assertStringContainsString('<section data-core-block="1">Two</section>', $html);
         $this->assertStringContainsString('core-preview:focus', $html);
-        $this->assertStringContainsString('@media (hover: hover)', $html);
+        $this->assertStringContainsString('@media(hover: hover) {', $html);
         $this->assertStringContainsString('"https:\/\/core.test"', $html);
         $this->assertStringContainsString('<p>PREVIEW</p>', $html);
         Http::assertNotSent(fn (HttpRequest $request) => $request->hasHeader('X-Core-Preview'));

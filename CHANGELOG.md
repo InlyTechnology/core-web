@@ -30,10 +30,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   the group, media, SEO and sign-in defaults core-web merges at boot, so a
   request on a cached config no longer merges them again, and the package
   config is read once where each merge required it.
-- **The preview frame shows its hover hints only where a pointer hovers**: on
-  a phone or a tablet, a tap on a marked element left its hover outline and
-  hint drawn over the page. See
-  `docs/object-preview.md#marking-fields-and-blocks`.
+- **The preview frame shows its hover outline and hint only where a pointer
+  hovers**: on a phone or a tablet, a tap on a marked element left them drawn
+  over the page. See `docs/object-preview.md#marking-fields-and-blocks`.
 
 ### Upgrade notes
 
