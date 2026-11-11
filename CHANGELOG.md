@@ -21,6 +21,57 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `SiteCache::forgetMany()` forgets pages on several sites in one pass over
   each host. Saving an origin on fourteen path-prefixed sites spends about
   half as long forgetting pages.
+- **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
+  proposals are kept in the private bucket Cloud attaches
+  (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
+  default disk they sat in the public bucket, where a staged change and
+  `applied.json` could be read by their path. `core-web:doctor` fails while
+  proposals on Cloud would sit on the default disk, a local disk or the
+  public bucket, and on any host while `drafts.proposals.disk` names a disk
+  that is not defined, or is scoped to one that is not. See `docs/laravel-cloud.md` and
+  `docs/checking-a-sites-setup.md`.
+- **The CP nav counts proposals without opening them**: the Proposals count
+  reads which targets have an open proposal from the cache, which a save
+  clears, where every CP page read each open proposal's file (one request
+  each on a bucket). A change a save cannot clear (proposal files changed by
+  hand, another server's own `file` cache) shows within five minutes. See
+  `docs/drafts.md`.
+- **The 404 page reads its entry once**: the page-not-found entry and its
+  fields are looked up once per request, where each view the composer names
+  (`errors/404`, `layout`) looked them up again.
+- **A cached config skips the defaults merges**: `config:cache` already holds
+  the group, media, SEO and sign-in defaults core-web merges at boot, so a
+  request on a cached config no longer merges them again, and the package
+  config is read once where each merge required it.
+- **The preview frame shows its hover outline and hint only where a pointer
+  hovers**: on a phone or a tablet, a tap on a marked element left them drawn
+  over the page. See `docs/object-preview.md#marking-fields-and-blocks`.
+
+### Upgrade notes
+
+- **Open proposals on Laravel Cloud move to the private bucket.** A Cloud
+  site with `features.drafts` and no `drafts.proposals.disk` now reads
+  proposals from the private bucket, so proposals staged before the update
+  are no longer listed. Find them: on the default disk (the public bucket),
+  under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
+  that folder to the same path on the private bucket, then delete it from
+  the public one, which still serves it until then. A Cloud site that names
+  a disk on the public bucket in `drafts.proposals.disk` (such as `media`)
+  removes the setting, so the private bucket is used (other hosts then use
+  the default disk), and moves the folder the same way. Verify, on Cloud:
+  the CP's Proposals page lists them (the nav's count follows within five
+  minutes), `php artisan core-web:doctor` shows `ok Proposals`, and the old
+  path is gone from the public bucket.
+- **`core-web:doctor` can now fail a deploy.** It exits non-zero on
+  a Cloud site with `drafts` on whose proposals would sit on the default
+  disk, a local disk or the public bucket, and on any site whose
+  `drafts.proposals.disk` names a disk that is not defined, or is scoped
+  to one that is not. Find it: a
+  deploy or launch script that runs `core-web:doctor`. Migrate: on Cloud,
+  attach the private bucket (Core Cloud attaches it as `private`) and leave
+  `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
+  disk the doctor names or remove the setting. Verify: the doctor shows
+  `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
 
 ## v0.47.0
 

@@ -295,6 +295,30 @@ class CloudTest extends TestCase
         $this->assertNull(config('livewire.temporary_file_upload.disk'));
     }
 
+    public function test_draft_proposals_are_kept_in_the_private_bucket(): void
+    {
+        config(['filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'], 'core-web.drafts.proposals.disk' => null]);
+
+        CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
+
+        $this->assertSame('private', config('core-web.drafts.proposals.disk'));
+    }
+
+    public function test_draft_proposals_keep_a_disk_the_site_chose_or_stay_put_without_a_private_bucket(): void
+    {
+        config(['filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'], 'core-web.drafts.proposals.disk' => 'own']);
+        CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
+        $this->assertSame('own', config('core-web.drafts.proposals.disk'));
+
+        config(['filesystems.disks.private' => ['driver' => 'local', 'root' => '/tmp'], 'core-web.drafts.proposals.disk' => null]);
+        CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
+        $this->assertNull(config('core-web.drafts.proposals.disk'), 'a local disk does not outlive a deploy');
+
+        config(['filesystems.disks.private' => null]);
+        CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
+        $this->assertNull(config('core-web.drafts.proposals.disk'));
+    }
+
     public function test_a_solo_site_has_revisions_off_with_pro(): void
     {
         $this->setEnv('STATAMIC_PRO_ENABLED', 'false');
