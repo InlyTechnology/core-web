@@ -287,6 +287,12 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the database connection's renders queue")
             ->assertSuccessful();
+
+        config(['queue.connections.failover.connections' => []]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the failover failover connection names no connection to put the renders on')
+            ->assertSuccessful();
     }
 
     public function test_rendering_pages_again_without_a_worker_is_a_warning(): void
@@ -324,7 +330,13 @@ class DoctorCommandTest extends TestCase
         config(['statamic.static_caching.invalidation.class' => null]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names no class, so a save on one site reaches every site's pages")
+            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names no class, so Statamic's own `all` rule applies and a save on one site reaches every site's pages")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => 'App\\Missing\\Invalidator']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: statamic.static_caching.invalidation.class names App\\Missing\\Invalidator, which is no Statamic invalidator class')
             ->assertSuccessful();
     }
 

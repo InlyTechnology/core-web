@@ -25,8 +25,9 @@ With Statamic's `background_recache` on, an entry, global, navigation, asset
 or form save renders them again in the background instead, by a queued job
 each, and visitors keep the cached copy until it is replaced. A deletion, a
 term, a collection tree and a scheduled entry going live still forget them;
-on a multisite install, [A save on one site of a multisite
-install](#a-save-on-one-site-of-a-multisite-install) has what goes at once.
+on a multisite install with the `all` rule, [A save on one site of a
+multisite install](#a-save-on-one-site-of-a-multisite-install) has what goes
+at once.
 
 core-web turns `background_recache` on where the app's environment is
 `production` and the connection Statamic queues the renders on
@@ -108,6 +109,11 @@ background instead (one queued request per page), and visitors keep the
 cached copy until it is replaced. On a shared host with no site at its root,
 a page cached outside every site's path (a 404 at `/foo` beside `/en` and
 `/sv`) is no site's, so no site's flush or refresh reaches it.
+`SiteCache::refreshAll()` renders again every page cached on a site's host
+(the host its URL names, or `APP_URL`'s for a site with a relative URL), under
+http and https, that page included. It forgets the pages cached on any other
+host (a `www` alias, an address no site names) instead, since a request names
+its own host and a render would be sent there.
 
 ## A save on one site of a multisite install
 
@@ -144,8 +150,8 @@ statamic.static_caching.invalidation` prints what a server resolved.
   with or without `background_recache`: Statamic invalidates for those
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
-  a form save clears every page, or with `background_recache` renders again
-  every page cached on a site's host (under http and https). Deleting a
+  a form save clears every page, or with `background_recache` renders them
+  again as `SiteCache::refreshAll()` does. Deleting a
   navigation, an asset or a form, and saving or deleting a taxonomy term,
   always clears every page.
 - Other rules than `all` are Statamic's own.

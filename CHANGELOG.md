@@ -49,10 +49,11 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   one site and the `all` rule, core-web uses `SiteScopedInvalidator` unless
   the site names an invalidation class. See `docs/static-cache.md` (A save on
   one site of a multisite install).
-- **A navigation, asset or form save renders every site's host's pages again**: with
-  `background_recache` under `SiteScopedInvalidator`, where Statamic's rule
-  rendered again only the base URL's pages and a site on another host kept
-  its old copies. Same section.
+- **A navigation, asset or form save renders again the pages on every site's
+  host**, and forgets those on any other host: with `background_recache`
+  under `SiteScopedInvalidator`, where Statamic's rule rendered again only
+  the base URL's pages and a site on another host kept its old copies. Same
+  section.
 - **`core-web:doctor` checks the static cache**. See
   `docs/checking-a-sites-setup.md`.
 
@@ -85,8 +86,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   queue connection holds jobs for a worker, a save now renders its pages
   again in the background instead of forgetting them, and visitors see the
   old copy until a worker has run the render. A production site its worker
-  cannot reach without credentials (basic auth, an IP allow-list, DNS that
-  sends the worker elsewhere) keeps its old copies. A `false` in
+  cannot reach as an anonymous request to the page's own address (basic
+  auth, an IP allow-list, DNS that sends the worker elsewhere) keeps its old
+  copies. A `false` in
   `config/statamic/static_caching.php` no longer turns it off. Find what a
   site set itself:
   `grep -rn "background_recache" config/` and `STATAMIC_BACKGROUND_RECACHE`
@@ -96,15 +98,19 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
   `static_cache.background_recache` to `false` in `config/core-web.php` for
   every environment. Verify: on a production server, `php artisan
-  core-web:doctor` names the queue the renders go on. After deploy, production needs a worker on that queue:
-  save an entry, check that its page shows the change once the worker has
-  run, and that `php artisan queue:failed` lists no `StaticWarmJob`.
+  core-web:doctor` names the connection and queue the renders go on. After
+  deploy, production needs a worker on that queue: save an entry, then check
+  that `php artisan queue:monitor <connection>:<queue>` drains to 0, that a
+  page listing the entry (not its own page, which may be forgotten at once)
+  shows the change, and that `php artisan queue:failed` lists no
+  `StaticWarmJob`.
 - **A multisite install on the `all` rule keeps a save to its own site by
   default.** core-web names `SiteScopedInvalidator` as the invalidation class
   where the site names none, so a page showing another site's content (a
   listing of its entries, its globals) keeps its old copy when that content
-  is saved. Find such pages: `grep -rnE "site=|Site::get\(|->in\(" resources/views`,
-  and a class the site names already:
+  is saved. Find such pages:
+  `grep -rnE "(site|locale)=|->in\(" resources/views app`, and a class the
+  site names already:
   `grep -n "invalidation" config/statamic/static_caching.php`. Migrate: a
   site whose pages show another site's content names
   `\Statamic\StaticCaching\DefaultInvalidator::class` as

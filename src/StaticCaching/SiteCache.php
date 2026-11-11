@@ -170,8 +170,8 @@ class SiteCache
 
     /**
      * refresh() for every cached page on each site's host, under http and
-     * https, a page outside every site's path included. Returns how many
-     * paths were handed on.
+     * https, a page outside every site's path included; a page on a host no
+     * site names is forgotten instead. Returns how many paths were handed on.
      */
     public function refreshAll(): int
     {
@@ -180,21 +180,25 @@ class SiteCache
         }
 
         $queued = 0;
-        // Not every host the cache recorded: a request names its own (a forged Host header), and each render carries Statamic's recache token.
         $hosts = array_unique(array_filter(Sites::all()->map(fn (Site $site) => self::host($site))->values()->all()));
 
-        foreach ($hosts as $host) {
-            foreach ($this->domains($host) as $domain) {
-                $paths = [];
+        foreach (array_map(strval(...), $this->cacher->getDomains()->all()) as $domain) {
+            $paths = [];
 
-                foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                    $paths[strtok((string) $url, '?')] = true;
-                }
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                $paths[strtok((string) $url, '?')] = true;
+            }
 
-                foreach (array_keys($paths) as $path) {
-                    $this->cacher->refreshUrl($path, $domain);
-                    $queued++;
-                }
+            // A request names its own host (a forged Host header), so a render goes only to a site's, each carrying Statamic's recache token.
+            if (! in_array(parse_url($domain, PHP_URL_HOST), $hosts, true)) {
+                $this->invalidate(array_keys($paths), $domain);
+
+                continue;
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->cacher->refreshUrl($path, $domain);
+                $queued++;
             }
         }
 

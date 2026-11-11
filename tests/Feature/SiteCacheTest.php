@@ -189,7 +189,7 @@ class SiteCacheTest extends TestCase
         $this->cache('http://default.test', ['/', '/a', '/a?page=2']);
         $this->cache('https://default.test', ['/b']);
         $this->cache('http://other.test', ['/', '/gone']);
-        $this->cache('http://elsewhere.test', ['/']);
+        $this->cache('http://elsewhere.test', ['/', '/c?x=1']);
         Cache::store('array')->forever('static-cache:responses:'.md5('http://other.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
 
         $queued = (new SiteCache($this->cacher))->refreshAll();
@@ -202,7 +202,23 @@ class SiteCacheTest extends TestCase
         ], $this->warmed());
         $this->assertSame(['/', '/a', '/a?page=2'], $this->cached('http://default.test'), 'served as cached until rendered again');
         $this->assertSame(['/'], $this->cached('http://other.test'), 'an error response forgotten instead');
-        $this->assertSame(['/'], $this->cached('http://elsewhere.test'), 'a host no site is on is left alone');
+        $this->assertSame([], $this->cached('http://elsewhere.test'), 'a host no site names is forgotten, never sent a request');
+    }
+
+    public function test_refresh_all_reaches_a_page_outside_every_site_s_path_on_a_shared_host(): void
+    {
+        Queue::fake();
+        Site::setSites([
+            'en' => ['name' => 'English', 'url' => 'http://shared.test/en/', 'locale' => 'en_US'],
+            'sv' => ['name' => 'Svenska', 'url' => 'http://shared.test/sv/', 'locale' => 'sv_SE'],
+        ]);
+        $this->cache('http://shared.test', ['/en', '/sv/a', '/foo']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(1, $cache->refresh(Site::get('en')));
+        $this->assertSame(['http://shared.test/en'], $this->warmed(), 'no site\'s refresh reaches /foo');
+
+        $this->assertSame(3, $cache->refreshAll());
     }
 
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void

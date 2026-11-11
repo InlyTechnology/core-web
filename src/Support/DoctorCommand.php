@@ -11,6 +11,7 @@ use Inly\CoreWeb\StaticCaching\DefaultStrategy;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
 use Statamic\Facades\Site;
+use Statamic\StaticCaching\Invalidator;
 
 /**
  * What the switched-on features need from this environment that a site's own setup can get wrong: the Core
@@ -267,6 +268,9 @@ class DoctorCommand extends Command
 
         if (! $config->get('statamic.static_caching.background_recache')) {
             $this->ok('Static cache: a save forgets its pages, and each one\'s next visitor renders it');
+        } elseif ($connection === '') {
+            $failover = StaticCacheDefaults::warmConnection($config);
+            $this->warning("Static cache: background_recache is on, but the {$failover} failover connection names no connection to put the renders on");
         } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
             $queue = StaticCacheDefaults::warmQueue($config);
             $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");
@@ -283,10 +287,12 @@ class DoctorCommand extends Command
 
         if (is_a($class, SiteScopedInvalidator::class, true)) {
             $this->ok('Static cache: a save on one site reaches that site\'s pages');
-        } elseif ($class !== '') {
+        } elseif ($class === '') {
+            $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so Statamic\'s own `all` rule applies and a save on one site reaches every site\'s pages (docs/static-cache.md)');
+        } elseif (class_exists($class) && is_a($class, Invalidator::class, true)) {
             $this->ok("Static cache: a save is invalidated by {$class}, the site's own choice");
         } else {
-            $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so a save on one site reaches every site\'s pages; core-web\'s SiteScopedInvalidator keeps it to its own site\'s');
+            $this->warning("Static cache: statamic.static_caching.invalidation.class names {$class}, which is no Statamic invalidator class");
         }
     }
 
