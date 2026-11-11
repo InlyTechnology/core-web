@@ -13,8 +13,8 @@ use Statamic\StaticCaching\DefaultInvalidator;
  * The `all` rule one site at a time, for a multisite install whose sites
  * share no pages: Statamic's own rule clears every site's pages for a save on
  * one of them, or renders again those on the static cache's base URL. What
- * Statamic reports without a site still goes to its rule; docs/static-cache.md
- * has the details.
+ * Statamic reports without a site clears every site's pages, or renders again
+ * those on every host; docs/static-cache.md has the details.
  */
 class SiteScopedInvalidator extends DefaultInvalidator
 {
@@ -24,6 +24,13 @@ class SiteScopedInvalidator extends DefaultInvalidator
         $sites = $this->rules === 'all' ? $this->sitesOf($item) : [];
 
         if ($sites === []) {
+            // Statamic's rule renders again only the base URL's pages, so a site on another host would keep its old copy.
+            if ($this->rules === 'all' && $this->refreshing) {
+                (new SiteCache($this->cacher))->refreshAll();
+
+                return;
+            }
+
             parent::invalidate($item);
 
             return;

@@ -183,6 +183,26 @@ class SiteCacheTest extends TestCase
         $this->assertSame(['/'], $this->cached('http://default.test'));
     }
 
+    public function test_refresh_all_queues_each_page_on_every_host_and_scheme(): void
+    {
+        Queue::fake();
+        $this->cache('http://default.test', ['/', '/a', '/a?page=2']);
+        $this->cache('https://default.test', ['/b']);
+        $this->cache('http://other.test', ['/', '/gone']);
+        Cache::store('array')->forever('static-cache:responses:'.md5('http://other.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
+
+        $queued = (new SiteCache($this->cacher))->refreshAll();
+
+        $this->assertSame(5, $queued, 'each path once, with its query strings');
+        $this->assertSame([
+            'http://default.test/', 'http://default.test/a', 'http://default.test/a?page=2',
+            'https://default.test/b',
+            'http://other.test/',
+        ], $this->warmed());
+        $this->assertSame(['/', '/a', '/a?page=2'], $this->cached('http://default.test'), 'served as cached until rendered again');
+        $this->assertSame(['/'], $this->cached('http://other.test'), 'an error response forgotten instead');
+    }
+
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void
     {
         $this->app->instance(SiteCache::class, new SiteCache($this->cacher));

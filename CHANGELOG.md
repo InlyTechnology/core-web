@@ -41,6 +41,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **The preview frame shows its hover outline and hint only where a pointer
   hovers**: on a phone or a tablet, a tap on a marked element left them drawn
   over the page. See `docs/object-preview.md#marking-fields-and-blocks`.
+- **Pages render again after a save in production**: core-web turns
+  Statamic's `background_recache` on in production where the warm queue
+  connection holds jobs for a worker, unless the site names it. See
+  `docs/static-cache.md` (Rendering pages again after a save).
+- **A multisite install keeps a save to its site by default**: with more than
+  one site and the `all` rule, core-web uses `SiteScopedInvalidator` unless
+  the site names an invalidation class. See `docs/static-cache.md` (A save on
+  one site of a multisite install).
+- **A navigation, asset or form save renders every host's pages again**: with
+  `background_recache` under `SiteScopedInvalidator`, where Statamic's rule
+  rendered again only the base URL's pages and a site on another host kept
+  its old copies. Same section.
+- **`core-web:doctor` checks the static cache**. See
+  `docs/checking-a-sites-setup.md`.
 
 ### Upgrade notes
 
@@ -67,6 +81,21 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
   disk the doctor names or remove the setting. Verify: the doctor shows
   `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
+- **Background recache and the multisite invalidator are on by default.** In
+  production, where the warm queue connection holds jobs for a worker, a
+  save now renders its pages again in the background instead of forgetting
+  them, and a multisite install on the `all` rule keeps a save to its own
+  site. Find what a site set itself:
+  `grep -n "background_recache\|invalidation" config/statamic/static_caching.php`
+  and `STATAMIC_BACKGROUND_RECACHE` in each environment. Migrate: a line
+  that only turns these on can go; to keep pages forgotten after a save, set
+  `static_cache.background_recache` to `false` in `config/core-web.php`; to
+  keep Statamic's rule on a multisite install, name
+  `\Statamic\StaticCaching\DefaultInvalidator::class` as
+  `invalidation.class`. Verify: `php artisan core-web:doctor` on each server
+  shows the `Static cache` lines you expect. After deploy, production needs
+  a worker on the queue the doctor names, or the pages a save renders again
+  keep their old copies until one runs.
 
 ## v0.47.0
 

@@ -3,7 +3,9 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Contracts\Console\Kernel;
+use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\StaticCaching\DefaultInvalidator;
 
 class DoctorCommandTest extends TestCase
 {
@@ -247,6 +249,70 @@ class DoctorCommandTest extends TestCase
     private function onCloudWithDrafts(array $config): void
     {
         config(['core-web.features.drafts' => true, 'core-web.features.cloud' => true, 'core-web.cloud.detected' => true, ...$config]);
+    }
+
+    public function test_the_static_cache_off_on_a_server_is_a_warning(): void
+    {
+        $this->app['env'] = 'production';
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: off, as STATAMIC_STATIC_CACHING_STRATEGY or the site\'s config chose')
+            ->assertSuccessful();
+    }
+
+    public function test_a_save_rendering_pages_again_names_the_queue_a_worker_must_take(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the redis connection's default queue (needs a worker on that queue)")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.warm_queue' => 'warm']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the redis connection's warm queue")
+            ->assertSuccessful();
+    }
+
+    public function test_rendering_pages_again_without_a_worker_is_a_warning(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true, 'statamic.static_caching.warm_queue_connection' => 'sync']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the sync connection (sync) runs its jobs without a worker')
+            ->assertSuccessful();
+    }
+
+    public function test_a_save_forgetting_its_pages_passes(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => false]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save forgets its pages, and each one's next visitor renders it")
+            ->assertSuccessful();
+    }
+
+    public function test_a_multisite_install_on_the_all_rule_names_its_invalidator(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.invalidation' => ['class' => SiteScopedInvalidator::class, 'rules' => 'all']]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save on one site reaches that site's pages")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => DefaultInvalidator::class]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: statamic.static_caching.invalidation.class names '.DefaultInvalidator::class)
+            ->assertSuccessful();
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function onACachedServer(array $config): void
+    {
+        $this->app['env'] = 'production';
+        config(['statamic.static_caching.strategy' => 'half', ...$config]);
     }
 
     public function test_it_is_registered_once_a_feature_is_on(): void

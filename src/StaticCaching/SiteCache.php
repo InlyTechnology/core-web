@@ -169,6 +169,35 @@ class SiteCache
     }
 
     /**
+     * refresh() for every cached page on every host the cache holds pages
+     * for, under http and https; a host is listed once a page on it is
+     * cached. Returns how many paths were handed on.
+     */
+    public function refreshAll(): int
+    {
+        if (! $this->cacher instanceof AbstractCacher) {
+            return 0;
+        }
+
+        $queued = 0;
+
+        foreach ($this->cacher->getDomains()->all() as $domain) {
+            $paths = [];
+
+            foreach ($this->cacher->getUrls((string) $domain)->all() as $url) {
+                $paths[strtok((string) $url, '?')] = true;
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->cacher->refreshUrl($path, (string) $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
+    }
+
+    /**
      * Forgets the site's cached pages at these absolute URLs (what an
      * invalidator reports; a trailing `*` takes every page under one), as
      * flushPaths() does: under http and https, with any query string, and

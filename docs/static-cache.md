@@ -18,6 +18,35 @@ rendering it. Only `full` is served by the web server without PHP, and Cloud
 has no web server rewrites for it. `php artisan config:show
 statamic.static_caching.strategy` prints what a server resolved.
 
+## Rendering pages again after a save
+
+A save forgets the pages it touches, and each one's next visitor renders it.
+With Statamic's `background_recache` on, a save renders them again in the
+background instead, by a queued job each, and visitors keep the cached copy
+until it is replaced.
+
+core-web turns `background_recache` on where the app's environment is
+`production` and the connection Statamic queues the renders on
+(`warm_queue_connection`, or `queue.default`) holds its jobs for a worker. It
+stays off on a `sync`, `null`, `deferred` or `background` connection, which
+runs the job inside the save, after it, or never, and in every other
+environment: each render is a request from the worker to the page's own
+address that sends no credentials, so a staging behind basic auth would keep
+its old copies.
+
+The site's own choice stands, the first of these it names:
+
+- `STATAMIC_BACKGROUND_RECACHE` in the env, `false` included;
+- `static_cache.background_recache` in `config/core-web.php`, `true` or
+  `false`, in every environment;
+- `true` in its `config/statamic/static_caching.php` (`false` is Statamic's
+  default, so it chooses nothing).
+
+A cached config keeps what was resolved when it was cached. The worker must
+take the queue the renders go on, `warm_queue` or the connection's default
+queue, which `php artisan core-web:doctor` names. `php artisan config:show
+statamic.static_caching.background_recache` prints what a server resolved.
+
 ## Pages a snapshot change touches
 
 A snapshot moving saves no entry, so Statamic's invalidation never hears of
@@ -77,16 +106,13 @@ a page cached outside every site's path (a 404 at `/foo` beside `/en` and
 Statamic's `all` invalidation rule clears every site's pages on any save, and
 with `background_recache` on it renders again only the pages cached on the
 static cache's base URL (its `base_url`, or the current site's URL). On an
-install whose sites share no pages, `SiteScopedInvalidator` keeps the rule to
-the site of what was saved:
-
-```php
-// config/statamic/static_caching.php
-'invalidation' => [
-    'class' => \Inly\CoreWeb\StaticCaching\SiteScopedInvalidator::class,
-    'rules' => 'all',
-],
-```
+install with more than one site and the `all` rule, core-web uses
+`SiteScopedInvalidator` instead, which keeps the rule to the site of what was
+saved. It takes the sites to share no pages: a site whose pages show another
+site's content names `\Statamic\StaticCaching\DefaultInvalidator::class` as
+its `invalidation.class` in `config/statamic/static_caching.php`, and a class
+a site names there stands. `php artisan config:show
+statamic.static_caching.invalidation` prints what a server resolved.
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
@@ -103,17 +129,15 @@ the site of what was saved:
   (under http and https), so the next visitor sees the change, and the
   site's other pages are rendered again in the background
   by a queued job each; a saved global renders all of the site's pages
-  again that way. Turn it on only with a queue worker: on the `sync` queue
-  every page renders inside the save. Statamic saves an entry's
-  localizations with it, so saving an origin renders each copy's site again
-  as well.
+  again that way. Statamic saves an entry's localizations with it, so saving
+  an origin renders each copy's site again as well.
 - A deleted entry, global, collection tree or navigation tree, a collection
   tree save and a scheduled entry going live flush the site's pages at once,
   with or without `background_recache`: Statamic invalidates for those
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
-  a form save is left to Statamic's rule, which clears every page, or with
-  `background_recache` renders again those on the base URL. Deleting a
+  a form save clears every page, or with `background_recache` renders again
+  every cached page, on each host the cache holds pages for. Deleting a
   navigation, an asset or a form, and saving or deleting a taxonomy term,
   always clears every page.
 - Other rules than `all` are Statamic's own.

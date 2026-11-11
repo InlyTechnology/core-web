@@ -7,10 +7,15 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\StaticCaching\DefaultStrategy;
+use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
+use Statamic\Facades\Site;
 
 /**
  * What the switched-on features need from this environment that a site's own setup can get wrong: the Core
- * client, a real queue, the scheduler. Runs offline, so a deploy or a launch check can call it anywhere.
+ * client, a real queue, the scheduler, how a save reaches the static cache. Runs offline, so a deploy or a launch
+ * check can call it anywhere.
  */
 class DoctorCommand extends Command
 {
@@ -48,6 +53,7 @@ class DoctorCommand extends Command
         $this->checkPingSecret($features);
         $this->checkCmsAccounts($features);
         $this->checkProposals($features);
+        $this->checkStaticCache();
 
         if (in_array('media', $features, true)) {
             $this->line('media: run `php artisan media:check` for the disks and the bucket.');
@@ -242,6 +248,42 @@ class DoctorCommand extends Command
         }
 
         return [$disk, is_array($config) ? $config : null];
+    }
+
+    /** How a save reaches the static cache here, by docs/static-cache.md's defaults or the site's own choice. */
+    private function checkStaticCache(): void
+    {
+        $config = $this->laravel['config'];
+
+        if (blank($config->get('statamic.static_caching.strategy'))) {
+            if (! $this->laravel->environment(DefaultStrategy::UNCACHED_ENVIRONMENTS)) {
+                $this->warning('Static cache: off, as STATAMIC_STATIC_CACHING_STRATEGY or the site\'s config chose');
+            }
+
+            return;
+        }
+
+        $connection = StaticCacheDefaults::warmConnection($config);
+
+        if (! $config->get('statamic.static_caching.background_recache')) {
+            $this->ok('Static cache: a save forgets its pages, and each one\'s next visitor renders it');
+        } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
+            $queue = $config->get('statamic.static_caching.warm_queue') ?? $config->get("queue.connections.{$connection}.queue") ?? 'default';
+            $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");
+        } else {
+            $driver = $config->get("queue.connections.{$connection}.driver") ?? 'not defined';
+            $this->warning("Static cache: background_recache is on, but the {$connection} connection ({$driver}) runs its jobs without a worker: in the request that saves, after it, or never");
+        }
+
+        if ($config->get('statamic.static_caching.invalidation.rules') !== 'all' || Site::all()->count() < 2) {
+            return;
+        }
+
+        $class = (string) $config->get('statamic.static_caching.invalidation.class');
+
+        is_a($class, SiteScopedInvalidator::class, true)
+            ? $this->ok('Static cache: a save on one site reaches that site\'s pages')
+            : $this->warning('Static cache: statamic.static_caching.invalidation.class names '.($class === '' ? 'no class' : $class).'; core-web\'s SiteScopedInvalidator keeps a save to its own site\'s pages');
     }
 
     private function ok(string $message): void
