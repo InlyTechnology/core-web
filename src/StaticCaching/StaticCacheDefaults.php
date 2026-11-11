@@ -79,16 +79,38 @@ final class StaticCacheDefaults
             && Site::all()->count() > 1;
     }
 
-    /** The queue connection Statamic sends a page's render to. */
+    /** The queue connection Statamic sends a page's render to; an empty name is the default one, as Laravel reads it. */
     public static function warmConnection(Repository $config): string
     {
-        return (string) ($config->get('statamic.static_caching.warm_queue_connection') ?? $config->get('queue.default'));
+        return (string) ($config->get('statamic.static_caching.warm_queue_connection') ?: $config->get('queue.default'));
     }
 
-    /** Whether the warm connection holds its jobs for a worker, rather than running them in the request or dropping them. */
+    /** The connection a render's job lands on: the warm connection, or a failover connection's first one, which takes the jobs while it is up. */
+    public static function workerConnection(Repository $config): string
+    {
+        $connection = self::warmConnection($config);
+
+        if ($config->get("queue.connections.{$connection}.driver") !== 'failover') {
+            return $connection;
+        }
+
+        $first = $config->get("queue.connections.{$connection}.connections")[0] ?? null;
+
+        return is_string($first) ? $first : '';
+    }
+
+    /** The queue a worker takes the renders from: `warm_queue`, or the connection's default queue. */
+    public static function warmQueue(Repository $config): string
+    {
+        return (string) ($config->get('statamic.static_caching.warm_queue')
+            ?: $config->get('queue.connections.'.self::workerConnection($config).'.queue')
+            ?: 'default');
+    }
+
+    /** Whether the renders' connection holds its jobs for a worker, rather than running them in the request or dropping them. */
     public static function warmsOnAWorker(Repository $config): bool
     {
-        $driver = $config->get('queue.connections.'.self::warmConnection($config).'.driver');
+        $driver = $config->get('queue.connections.'.self::workerConnection($config).'.driver');
 
         return is_string($driver) && ! in_array($driver, self::WORKERLESS_DRIVERS, true);
     }

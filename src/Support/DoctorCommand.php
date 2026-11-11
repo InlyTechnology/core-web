@@ -263,12 +263,12 @@ class DoctorCommand extends Command
             return;
         }
 
-        $connection = StaticCacheDefaults::warmConnection($config);
+        $connection = StaticCacheDefaults::workerConnection($config);
 
         if (! $config->get('statamic.static_caching.background_recache')) {
             $this->ok('Static cache: a save forgets its pages, and each one\'s next visitor renders it');
         } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
-            $queue = $config->get('statamic.static_caching.warm_queue') ?? $config->get("queue.connections.{$connection}.queue") ?? 'default';
+            $queue = StaticCacheDefaults::warmQueue($config);
             $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");
         } else {
             $driver = $config->get("queue.connections.{$connection}.driver") ?? 'not defined';
@@ -281,9 +281,13 @@ class DoctorCommand extends Command
 
         $class = (string) $config->get('statamic.static_caching.invalidation.class');
 
-        is_a($class, SiteScopedInvalidator::class, true)
-            ? $this->ok('Static cache: a save on one site reaches that site\'s pages')
-            : $this->warning('Static cache: statamic.static_caching.invalidation.class names '.($class === '' ? 'no class' : $class).'; core-web\'s SiteScopedInvalidator keeps a save to its own site\'s pages');
+        if (is_a($class, SiteScopedInvalidator::class, true)) {
+            $this->ok('Static cache: a save on one site reaches that site\'s pages');
+        } elseif ($class !== '') {
+            $this->ok("Static cache: a save is invalidated by {$class}, the site's own choice");
+        } else {
+            $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so a save on one site reaches every site\'s pages; core-web\'s SiteScopedInvalidator keeps it to its own site\'s');
+        }
     }
 
     private function ok(string $message): void

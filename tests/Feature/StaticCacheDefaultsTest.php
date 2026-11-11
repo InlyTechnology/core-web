@@ -80,9 +80,25 @@ class StaticCacheDefaultsTest extends TestCase
         $this->assertFalse($this->recacheIn('production', 'redis', ['statamic.static_caching.warm_queue_connection' => 'sync']));
     }
 
+    public function test_an_empty_warm_connection_is_the_default_one(): void
+    {
+        $this->assertTrue($this->recacheIn('production', 'redis', ['statamic.static_caching.warm_queue_connection' => '']));
+        $this->assertFalse($this->recacheIn('production', 'sync', ['statamic.static_caching.warm_queue_connection' => '']));
+    }
+
+    public function test_a_failover_connection_is_judged_by_its_first_connection(): void
+    {
+        $failover = fn (array $connections) => ['queue.connections.failover' => ['driver' => 'failover', 'connections' => $connections]];
+
+        $this->assertTrue($this->recacheIn('production', 'failover', $failover(['database', 'deferred'])));
+        $this->assertFalse($this->recacheIn('production', 'failover', $failover(['deferred', 'database'])));
+        $this->assertFalse($this->recacheIn('production', 'failover', $failover([])));
+    }
+
     public function test_the_env_naming_it_stands(): void
     {
         $this->setEnv('false');
+        $this->assertFalse($this->recacheIn('production', 'redis'));
         $this->assertFalse($this->recacheIn('production', 'redis', ['core-web.static_cache.background_recache' => true]));
 
         $this->setEnv('true');

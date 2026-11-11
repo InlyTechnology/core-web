@@ -14,7 +14,7 @@ use Statamic\StaticCaching\DefaultInvalidator;
  * share no pages: Statamic's own rule clears every site's pages for a save on
  * one of them, or renders again those on the static cache's base URL. What
  * Statamic reports without a site clears every site's pages, or renders again
- * those on every host; docs/static-cache.md has the details.
+ * those on each site's host; docs/static-cache.md has the details.
  */
 class SiteScopedInvalidator extends DefaultInvalidator
 {

@@ -169,9 +169,9 @@ class SiteCache
     }
 
     /**
-     * refresh() for every cached page on every host the cache holds pages
-     * for, under http and https; a host is listed once a page on it is
-     * cached. Returns how many paths were handed on.
+     * refresh() for every cached page on each site's host, under http and
+     * https, a page outside every site's path included. Returns how many
+     * paths were handed on.
      */
     public function refreshAll(): int
     {
@@ -180,17 +180,21 @@ class SiteCache
         }
 
         $queued = 0;
+        // Not every host the cache recorded: a request names its own (a forged Host header), and each render carries Statamic's recache token.
+        $hosts = array_unique(array_filter(Sites::all()->map(fn (Site $site) => self::host($site))->values()->all()));
 
-        foreach ($this->cacher->getDomains()->all() as $domain) {
-            $paths = [];
+        foreach ($hosts as $host) {
+            foreach ($this->domains($host) as $domain) {
+                $paths = [];
 
-            foreach ($this->cacher->getUrls((string) $domain)->all() as $url) {
-                $paths[strtok((string) $url, '?')] = true;
-            }
+                foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                    $paths[strtok((string) $url, '?')] = true;
+                }
 
-            foreach (array_keys($paths) as $path) {
-                $this->cacher->refreshUrl($path, (string) $domain);
-                $queued++;
+                foreach (array_keys($paths) as $path) {
+                    $this->cacher->refreshUrl($path, $domain);
+                    $queued++;
+                }
             }
         }
 

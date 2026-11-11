@@ -16,8 +16,8 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   from `.env.example`, or a server whose `.env` was copied from it stays uncached. See `docs/static-cache.md`.
 - **A save reaches the static cache by core-web's defaults**: pages rendered again in the background in production
   with a queue worker, and `SiteScopedInvalidator` on a multisite install with the `all` rule. Never set
-  `background_recache` or `invalidation.class` in `config/statamic/static_caching.php` to get them; turn one off as
-  `docs/static-cache.md` says, and run a worker on the warm queue `core-web:doctor` names.
+  `background_recache` or `invalidation.class` in `config/statamic/static_caching.php` to get them; turn one off and
+  run the worker as `docs/static-cache.md` says.
 - **The package is changed in its own repository** (InlyTechnology/core-web), released as a tag and pulled in
   with `composer update inly/core-web`. Never a copy under `packages/`, never an edit in `vendor/`. A site
   needing something core-web almost does: propose the change to core-web.

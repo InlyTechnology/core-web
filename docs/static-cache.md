@@ -21,9 +21,12 @@ statamic.static_caching.strategy` prints what a server resolved.
 ## Rendering pages again after a save
 
 A save forgets the pages it touches, and each one's next visitor renders it.
-With Statamic's `background_recache` on, a save renders them again in the
-background instead, by a queued job each, and visitors keep the cached copy
-until it is replaced.
+With Statamic's `background_recache` on, an entry, global, navigation, asset
+or form save renders them again in the background instead, by a queued job
+each, and visitors keep the cached copy until it is replaced. A deletion, a
+term, a collection tree and a scheduled entry going live still forget them;
+on a multisite install, [A save on one site of a multisite
+install](#a-save-on-one-site-of-a-multisite-install) has what goes at once.
 
 core-web turns `background_recache` on where the app's environment is
 `production` and the connection Statamic queues the renders on
@@ -32,7 +35,9 @@ stays off on a `sync`, `null`, `deferred` or `background` connection, which
 runs the job inside the save, after it, or never, and in every other
 environment: each render is a request from the worker to the page's own
 address that sends no credentials, so a staging behind basic auth would keep
-its old copies.
+its old copies. A production site its worker cannot reach that way (behind
+basic auth, an IP allow-list, or DNS that resolves the site's address
+elsewhere from the worker) keeps them too, and turns it off below.
 
 The site's own choice stands, the first of these it names:
 
@@ -44,8 +49,11 @@ The site's own choice stands, the first of these it names:
 
 A cached config keeps what was resolved when it was cached. The worker must
 take the queue the renders go on, `warm_queue` or the connection's default
-queue, which `php artisan core-web:doctor` names. `php artisan config:show
-statamic.static_caching.background_recache` prints what a server resolved.
+queue (a failover connection's first connection), which `php artisan
+core-web:doctor` names, and the default connection's default queue too:
+Statamic queues the further pages of a paginated page there. `php artisan
+config:show statamic.static_caching.background_recache` prints what a server
+resolved.
 
 ## Pages a snapshot change touches
 
@@ -137,7 +145,7 @@ statamic.static_caching.invalidation` prints what a server resolved.
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
   a form save clears every page, or with `background_recache` renders again
-  every cached page, on each host the cache holds pages for. Deleting a
+  every page cached on a site's host (under http and https). Deleting a
   navigation, an asset or a form, and saving or deleting a taxonomy term,
   always clears every page.
 - Other rules than `all` are Statamic's own.

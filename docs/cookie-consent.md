@@ -51,7 +51,7 @@ A cookie page picked in the earlier `consent_policy_page` field is still
 linked until the link is set. A field left empty keeps
 the default text, or `policy_url`; a non-empty `policy-url` attribute on the
 component still wins. A page with no version on the current site is not
-linked there. Saving the global must clear the cached pages, as the `all`
+linked there. Saving the global must reach the cached pages, as the `all`
 invalidation rule does ([Static cache](static-cache.md#a-save-on-one-site-of-a-multisite-install)).
 
 ## The page
