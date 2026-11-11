@@ -120,8 +120,10 @@ names its own host and a render would be sent there.
 
 Statamic's `all` invalidation rule clears every site's pages on any save, and
 with `background_recache` on it renders again only the pages cached on the
-static cache's base URL (its `base_url`, or the current site's URL, on
-`APP_URL` when that URL is relative). Those are none when that URL has a path
+static cache's base URL: its `base_url`, or else the current site's URL, on
+`APP_URL` when that URL is relative. The current site is the one whose URL the
+address handling the save lies under (`APP_URL` on a queue worker), or else
+the default site. Those pages are none when that URL has a path
 (`https://example.com/sv/`), and leave out every site on another host. Under
 the `all` rule core-web uses `SiteScopedInvalidator` instead, on one site or
 several, which keeps the rule to the site of what was saved. A class a site
@@ -133,9 +135,8 @@ what a server resolved.
 show another site's content names
 `\Statamic\StaticCaching\DefaultInvalidator::class` there, and turns
 `background_recache` off too unless every site's pages are cached on the
-static cache's base URL: every site on one host, one of them at its root, and
-that site's address (`APP_URL` for a relative `url:`) the one visitors use,
-scheme included.
+static cache's base URL: the scheme and host every site's visitors use, with
+no path.
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
@@ -146,8 +147,8 @@ scheme included.
   global also forgets the pages of every site whose copy of the set inherits
   its values (`origin`), directly or through another copy. Where it would
   forget them all at once (without `background_recache`, and for the cases
-  below that flush), a save that reaches every site, as any save does on one
-  site, clears the whole cache instead, as Statamic's rule does.
+  below that flush), a save or deletion that reaches every site, as any does
+  on one site, clears the whole cache instead, as Statamic's rule does.
 - With `background_recache` on, a saved entry's own page on its site, and a
   moved page's old address with the pages under it, are forgotten at once
   (under http and https), so the next visitor sees the change, and the

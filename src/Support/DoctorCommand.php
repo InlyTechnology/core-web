@@ -286,8 +286,8 @@ class DoctorCommand extends Command
 
         $class = $config->get('statamic.static_caching.invalidation.class');
 
-        if (is_string($class) && is_a($class, SiteScopedInvalidator::class, true)) {
-            $this->ok('Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site\'s pages');
+        if ($class === SiteScopedInvalidator::class) {
+            $this->ok('Static cache: SiteScopedInvalidator keeps an entry, global or collection tree save to its own site\'s pages');
         } elseif ($class === null) {
             $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so Statamic\'s own `all` rule applies: a save clears every site\'s pages, or renders again only those cached on the static cache\'s base URL (docs/static-cache.md)');
         } elseif (is_string($class) && class_exists($class) && is_a($class, Invalidator::class, true)) {

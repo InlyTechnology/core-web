@@ -176,10 +176,6 @@ class StaticCacheDefaultsTest extends TestCase
     protected function onTheAllRule($app): void
     {
         $app['config']->set('statamic.static_caching.invalidation.rules', 'all');
-        $app->booting(fn () => Site::setSites([
-            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
-            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'sv_SE'],
-        ]));
     }
 
     #[DefineEnvironment('onTheAllRule')]

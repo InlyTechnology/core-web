@@ -328,13 +328,13 @@ class DoctorCommandTest extends TestCase
         $this->onACachedServer(['statamic.static_caching.invalidation' => ['class' => SiteScopedInvalidator::class, 'rules' => 'all']]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site's pages")
+            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or collection tree save to its own site's pages")
             ->assertSuccessful();
 
         Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE']]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or tree save to its own site's pages")
+            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or collection tree save to its own site's pages")
             ->assertSuccessful();
 
         config(['statamic.static_caching.invalidation.class' => DefaultInvalidator::class]);
