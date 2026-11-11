@@ -251,10 +251,12 @@ class SiteCacheTest extends TestCase
         ]);
         $this->app['url']->setRequest(Request::create('http://alias.test/'));
         $this->cache('http://default.test', ['/a', '/b']);
+        $this->cache('http://alias.test', ['/a']);
         $cache = new SiteCache($this->cacher);
 
         $this->assertSame(1, $cache->forget(Site::get('default'), ['http://alias.test/a', 'http://other.test/b']));
         $this->assertSame(['/b'], $this->cached('http://default.test'), "never another site's address");
+        $this->assertSame(['/a'], $this->cached('http://alias.test'), "forgotten on the site's host only");
         $this->assertTrue($cache->owns(Site::get('default'), 'http://alias.test/b'));
         $this->assertFalse($cache->owns(Site::get('default'), 'http://other.test/b'));
     }

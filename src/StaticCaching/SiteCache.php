@@ -404,7 +404,7 @@ class SiteCache
         return false;
     }
 
-    /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
+    /** Whether an absolute URL is on the site: on its host as onHost() takes it, and on a shared host under its path, as flush() decides. */
     public function owns(Site $site, string $url): bool
     {
         if (! self::onHost($site, $url)) {
