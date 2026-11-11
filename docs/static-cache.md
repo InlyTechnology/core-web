@@ -97,23 +97,24 @@ The whole site is flushed instead whenever the pages are not known for sure:
 Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
-`SiteCache::flush()` forgets the pages cached for one site: on its host, and on
-a shared host the pages under its path (the longest site path a page lies
-under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
-path on the site, and `SiteCache::forget()` by the absolute URLs an
-invalidator reports (a trailing `*` takes every page under one), keeping only
-those the site owns; `SiteCache::forgetMany()` does that for several sites at
-once, keyed by site handle, reading each host's cached pages once for all of
-them. `SiteCache::refresh()` renders the site's cached pages again in the
-background instead (one queued request per page), and visitors keep the
-cached copy until it is replaced. On a shared host with no site at its root,
-a page cached outside every site's path (a 404 at `/foo` beside `/en` and
-`/sv`) is no site's, so no site's flush or refresh reaches it.
-`SiteCache::refreshAll()` renders again every page cached on a site's host
-(the host its URL names, or `APP_URL`'s for a site with a relative URL), under
-http and https, that page included. It forgets the pages cached on any other
-host (a `www` alias, an address no site names) instead, since a request names
-its own host and a render would be sent there.
+`SiteCache::flush()` forgets the pages cached for one site: on its host (the
+host its URL names, or `APP_URL`'s for a site with a relative URL, never the
+one a request names), and on a shared host the pages under its path (the
+longest site path a page lies under decides whose it is).
+`SiteCache::flushPaths()` forgets some of them, by path on the site, and
+`SiteCache::forget()` by the absolute URLs an invalidator reports (a trailing
+`*` takes every page under one), keeping only those the site owns;
+`SiteCache::forgetMany()` does that for several sites at once, keyed by site
+handle, reading each host's cached pages once for all of them.
+`SiteCache::refresh()` renders the site's cached pages again in the background
+instead (one queued request per page), and visitors keep the cached copy until
+it is replaced. On a shared host with no site at its root, a page cached
+outside every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no
+site's, so no site's flush or refresh reaches it. `SiteCache::refreshAll()`
+renders again every page cached on a site's host, under http and https, that
+page included. It forgets the pages cached on any other host (a `www` alias, an
+address no site names) instead, since a request names its own host and a render
+would be sent there.
 
 ## A save on one site of a multisite install
 
@@ -150,8 +151,8 @@ statamic.static_caching.invalidation` prints what a server resolved.
   with or without `background_recache`: Statamic invalidates for those
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
-  a form save clears every page, or with `background_recache` renders them
-  again as `SiteCache::refreshAll()` does. Deleting a
+  a form save clears every page, or with `background_recache` hands them to
+  `SiteCache::refreshAll()`. Deleting a
   navigation, an asset or a form, and saving or deleting a taxonomy term,
   always clears every page.
 - Other rules than `all` are Statamic's own.

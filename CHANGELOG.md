@@ -54,6 +54,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   under `SiteScopedInvalidator`, where Statamic's rule rendered again only
   the base URL's pages and a site on another host kept its old copies. Same
   section.
+- **`SiteCache` puts a site with a relative URL on `APP_URL`'s host**, as
+  Statamic's cacher does, where it took the host a request named, and
+  matches a site's host whatever its case. See `docs/static-cache.md`
+  (Pages a snapshot change touches).
 - **`core-web:doctor` checks the static cache**. See
   `docs/checking-a-sites-setup.md`.
 
@@ -82,28 +86,26 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
   disk the doctor names or remove the setting. Verify: the doctor shows
   `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
-- **Background recache is on in production by default.** Where the warm
-  queue connection holds jobs for a worker, a save now renders its pages
-  again in the background instead of forgetting them, and visitors see the
-  old copy until a worker has run the render. A production site its worker
-  cannot reach as an anonymous request to the page's own address (basic
-  auth, an IP allow-list, DNS that sends the worker elsewhere) keeps its old
-  copies. A `false` in
-  `config/statamic/static_caching.php` no longer turns it off. Find what a
-  site set itself:
-  `grep -rn "background_recache" config/` and `STATAMIC_BACKGROUND_RECACHE`
-  in each environment. Migrate: delete a `background_recache` line in
-  `config/statamic/static_caching.php` that only turns it on or works it out
-  from the environment; to keep pages forgotten after a save, set
-  `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
+- **Background recache is on in production by default.** Where the warm queue
+  connection holds jobs for a worker, a save now renders its pages again in
+  the background instead of forgetting them, and visitors see the old copy
+  until a worker has run the render. A production site its worker cannot reach
+  as an anonymous request to the page's own address (basic auth, an IP
+  allow-list, DNS that sends the worker elsewhere) keeps its old copies. A
+  `false` in `config/statamic/static_caching.php` no longer turns it off. Find
+  what a site set itself: `grep -rn "background_recache" config/` and
+  `STATAMIC_BACKGROUND_RECACHE` in each environment. Migrate: delete a
+  `background_recache` line in `config/statamic/static_caching.php` that only
+  turns it on or works it out from the environment; to keep pages forgotten
+  after a save, set `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
   `static_cache.background_recache` to `false` in `config/core-web.php` for
   every environment. Verify: on a production server, `php artisan
   core-web:doctor` names the connection and queue the renders go on. After
   deploy, production needs a worker on that queue: save an entry, then check
   that `php artisan queue:monitor <connection>:<queue>` drains to 0, that a
-  page listing the entry (not its own page, which may be forgotten at once)
-  shows the change, and that `php artisan queue:failed` lists no
-  `StaticWarmJob`.
+  page the save renders again (under the `all` rule, one listing the entry;
+  its own page may be forgotten at once) shows the change, and that `php
+  artisan queue:failed` lists no `StaticWarmJob`.
 - **A multisite install on the `all` rule keeps a save to its own site by
   default.** core-web names `SiteScopedInvalidator` as the invalidation class
   where the site names none, so a page showing another site's content (a

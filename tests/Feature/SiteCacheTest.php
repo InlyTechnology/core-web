@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -219,6 +220,27 @@ class SiteCacheTest extends TestCase
         $this->assertSame(['http://shared.test/en'], $this->warmed(), 'no site\'s refresh reaches /foo');
 
         $this->assertSame(3, $cache->refreshAll());
+        $this->assertContains('http://shared.test/foo', $this->warmed());
+    }
+
+    public function test_a_relative_site_is_on_the_app_url_s_host_whatever_host_the_request_names(): void
+    {
+        Queue::fake();
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'en' => ['name' => 'English', 'url' => '/en/', 'locale' => 'en_US'],
+        ]);
+        $this->app['url']->setRequest(Request::create('http://forged.test/'));
+        $this->cache('http://default.test', ['/', '/en/a']);
+        $this->cache('http://forged.test', ['/', '/en/a']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(2, $cache->refreshAll());
+        $this->assertSame(['http://default.test/', 'http://default.test/en/a'], $this->warmed());
+        $this->assertSame([], $this->cached('http://forged.test'), 'forgotten, never sent a request');
+
+        $cache->flush(Site::get('en'));
+        $this->assertSame(['/'], $this->cached('http://default.test'));
     }
 
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void

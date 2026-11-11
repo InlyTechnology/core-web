@@ -7,6 +7,7 @@ use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
 use Statamic\Facades\Site as Sites;
+use Statamic\Facades\URL;
 use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
@@ -279,7 +280,7 @@ class SiteCache
                 $wildcard = str_ends_with($url, '*');
                 $address = $wildcard ? substr($url, 0, -1) : $url;
 
-                if (parse_url($address, PHP_URL_HOST) !== $host) {
+                if (strtolower((string) parse_url($address, PHP_URL_HOST)) !== $host) {
                     continue;
                 }
 
@@ -461,9 +462,12 @@ class SiteCache
         return '/'.trim(substr('/'.trim((string) parse_url($url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
     }
 
+    /** As Statamic's cacher reads its base URL: a relative site is on APP_URL's host, never the one a request names. */
     private static function host(Site $site): ?string
     {
-        return parse_url($site->absoluteUrl(), PHP_URL_HOST) ?: null;
+        $url = URL::isAbsolute($site->url()) ? $site->url() : (string) config('app.url');
+
+        return strtolower((string) parse_url($url, PHP_URL_HOST)) ?: null;
     }
 
     /** The path a site sits under on its host ('/second'), '' at the root. */
