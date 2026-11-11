@@ -8,12 +8,116 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
+  proposals are kept in the private bucket Cloud attaches
+  (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
+  default disk they sat in the public bucket, where a staged change and
+  `applied.json` could be read by their path. `core-web:doctor` fails while
+  proposals on Cloud would sit on the default disk, a local disk or the
+  public bucket, and on any host while `drafts.proposals.disk` names a disk
+  that is not defined, or is scoped to one that is not. See `docs/laravel-cloud.md` and
+  `docs/checking-a-sites-setup.md`.
+- **The CP nav counts proposals without opening them**: the Proposals count
+  reads which targets have an open proposal from the cache, which a save
+  clears, where every CP page read each open proposal's file (one request
+  each on a bucket). A change a save cannot clear (proposal files changed by
+  hand, another server's own `file` cache) shows within five minutes. See
+  `docs/drafts.md`.
+- **The 404 page reads its entry once**: the page-not-found entry and its
+  fields are looked up once per request, where each view the composer names
+  (`errors/404`, `layout`) looked them up again.
+- **A cached config skips the defaults merges**: `config:cache` already holds
+  the group, media, SEO and sign-in defaults core-web merges at boot, so a
+  request on a cached config no longer merges them again, and the package
+  config is read once where each merge required it.
 - **The preview frame shows its hover hints only where a pointer hovers**: on
   a phone or a tablet, a tap on a marked element left its hover outline and
   hint drawn over the page, since a touch screen holds `:hover` after a tap.
   The tap still goes straight to the field or block, or starts typing in a
   field that can be typed into. See
   `docs/object-preview.md#marking-fields-and-blocks`.
+
+### Upgrade notes
+
+- **Open proposals on Laravel Cloud move to the private bucket.** A Cloud
+  site with `features.drafts` and no `drafts.proposals.disk` now reads
+  proposals from the private bucket, so proposals staged before the update
+  are no longer listed. Find them: on the default disk (the public bucket),
+  under `core-web/proposals/` (or `drafts.proposals.path`). Migrate: copy
+  that folder to the same path on the private bucket, then delete it from
+  the public one, which still serves it until then. A Cloud site that names
+  a disk on the public bucket in `drafts.proposals.disk` (such as `media`)
+  removes the setting, so the private bucket is used (other hosts then use
+  the default disk), and moves the folder the same way. Verify, on Cloud:
+  the CP's Proposals page lists them (the nav's count follows within five
+  minutes), `php artisan core-web:doctor` shows `ok Proposals`, and the old
+  path is gone from the public bucket.
+- **`core-web:doctor` can now fail a deploy.** It exits non-zero on
+  a Cloud site with `drafts` on whose proposals would sit on the default
+  disk, a local disk or the public bucket, and on any site whose
+  `drafts.proposals.disk` names a disk that is not defined, or is scoped
+  to one that is not. Find it: a
+  deploy or launch script that runs `core-web:doctor`. Migrate: on Cloud,
+  attach the private bucket (Core Cloud attaches it as `private`) and leave
+  `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
+  disk the doctor names or remove the setting. Verify: the doctor shows
+  `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
+
+## v0.47.0
+
+- **Core previews the site's own pages**: with `features.preview` and
+  `features.content`, Core's preview frame shows one of the site's pages as
+  it is in the CMS, its working copy included, where the page itself refuses
+  to be framed. Core asks for a signed link at
+  `GET /api/core/v1/page-preview/{id}` (Statamic connector API v1.7) and
+  frames `/core-preview/page/{id}`, rendered like the object preview. These
+  two routes need no `features.snapshots`. See `docs/object-preview.md`.
+- `ObjectPreviewController::coreOrigin()` is deprecated: call
+  `PreviewFrame::coreOrigin()` instead. It still works.
+
+## v0.46.0
+
+- **A save refreshes its own site only**: with `background_recache` on,
+  `SiteScopedInvalidator` forgets the saved entry's page on its site at once
+  (under http and https) and renders the rest of that site's cached pages
+  again in the background (`SiteCache::refresh()`). Statamic's `all` rule
+  renders again every page cached on the static cache's base URL, which is
+  every site's pages when the sites share that host (hundreds of renders for
+  one save on an install with many sites), while pages on other hosts kept
+  their stale copies. Without `background_recache` the saved site's pages
+  are flushed. See `docs/static-cache.md`.
+- **A global reaches the sites that inherit it**: a global saved on one site
+  now also flushes (or refreshes) the pages of every site whose copy of the
+  set reads its values through an origin, directly or through another copy.
+  They kept showing the old values.
+- **A site's flush forgets each page once**: `SiteCache::flush()` and
+  `flushPaths()` forget a page once with every query string it was cached
+  under, where they forgot it once per cached query string, each time
+  reading the cacher's whole URL list again.
+
+### Upgrade notes
+
+- **`/*` no longer takes a site's home page.** `SiteCache::flushPaths()` with
+  `/*` forgot the site's root page with the pages under it; it now forgets
+  only the pages under it, as every prefix does (`/brands/*` never takes
+  `/brands`). Find it: search the site's snapshot `dependents()` closures
+  and `flushPaths()` calls for `'/*'`. Migrate: return `'/'` beside `'/*'`
+  where the home page shows the data too. Verify: change one such document
+  and see the home page rendered with the new value.
+
+## v0.45.0
+
+- **Local search indexes work on Laravel Cloud**: with `features.cloud`,
+  Statamic builds a `local` search index on the `sync` queue, so the
+  container that searches builds its own copy in that request. Queued on a
+  worker, the index was written to the worker's disk, which no web replica
+  reads: every search queued another build (one job per 100 documents) and
+  then failed on the missing index. On Laravel 13 a save updates the index
+  of the container it is made on, not the worker's copy, and
+  `core-web:deploy` on Cloud rebuilds only the indexes that outlive the
+  container. A connection the site sets (`STATAMIC_SEARCH_QUEUE_CONNECTION`,
+  or `search.queue_connection` in its config) is kept. See
+  `docs/laravel-cloud.md`.
 
 ## v0.44.0
 

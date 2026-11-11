@@ -62,7 +62,62 @@ whose pages you cannot name.
 `SiteCache::flush()` forgets the pages cached for one site: on its host, and on
 a shared host the pages under its path (the longest site path a page lies
 under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
-path on the site.
+path on the site, and `SiteCache::forget()` by the absolute URLs an
+invalidator reports (a trailing `*` takes every page under one), keeping only
+those the site owns. `SiteCache::refresh()` renders the site's cached pages
+again in the background instead (one queued request per page), and visitors
+keep the cached copy until it is replaced. On a shared host with no site at
+its root, a page cached outside every site's path (a 404 at `/foo` beside
+`/en` and `/sv`) is no site's, so no site's flush or refresh reaches it.
+
+## A save on one site of a multisite install
+
+Statamic's `all` invalidation rule clears every site's pages on any save, and
+with `background_recache` on it renders again only the pages cached on the
+static cache's base URL (its `base_url`, or the current site's URL). On an
+install whose sites share no pages, `SiteScopedInvalidator` keeps the rule to
+the site of what was saved:
+
+```php
+// config/statamic/static_caching.php
+'invalidation' => [
+    'class' => \Inly\CoreWeb\StaticCaching\SiteScopedInvalidator::class,
+    'rules' => 'all',
+],
+```
+
+- An entry, a global, a collection tree or a deleted navigation tree on one
+  site forgets that site's pages, on its host under http and https. The other
+  sites' pages stay. A global also forgets the pages of every site whose
+  copy of the set inherits its values (`origin`), directly or through
+  another copy. Without `background_recache`, a save that reaches every site
+  clears the whole cache at once, as Statamic's rule does.
+- With `background_recache` on, a saved entry's own page on its site, and a
+  moved page's old address with the pages under it, are forgotten at once
+  (under http and https), so the next visitor sees the change, and the
+  site's other pages are rendered again in the background
+  by a queued job each; a saved global renders all of the site's pages
+  again that way. Turn it on only with a queue worker: on the `sync` queue
+  every page renders inside the save. A localized entry's copies on other
+  sites are refreshed when each copy is saved, which Statamic does with its
+  origin.
+- A deleted entry, global, collection tree or navigation tree, a collection
+  tree save and a scheduled entry going live flush the site's pages at once,
+  with or without `background_recache`: Statamic invalidates for those
+  instead of refreshing.
+- A navigation save (Statamic reports it without its site), an asset save or
+  a form save is left to Statamic's rule, which clears every page, or with
+  `background_recache` renders again those on the base URL. Deleting a
+  navigation, an asset or a form, and saving or deleting a taxonomy term,
+  always clears every page.
+- Other rules than `all` are Statamic's own.
+
+A moved page's old address comes from the entry's original values. It is
+missed for a localized copy whose slug comes from its origin, and on a Stache
+whose cache store is `array`, which resets those values before `EntrySaved`
+is reported. With `background_recache` on, the old address is then rendered
+again with the rest of its site: with the `half` strategy its cached copy
+becomes the 404 it now answers, and its queued render ends as a failed job.
 
 ## Ad and analytics parameters
 

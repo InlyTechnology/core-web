@@ -15,15 +15,39 @@ use Statamic\Facades\Site;
  */
 final class NotFoundPage
 {
+    /** @var array<string, array{0: Entry, 1: array<string, mixed>}|null> by site handle, once one view has looked them up */
+    private array $found = [];
+
     public static function register(): void
     {
+        // Scoped, so a queue worker or an Octane request starts without the entry the last one found.
+        app()->scoped(self::class, fn (): self => new self);
+
         View::composer((array) config('core-web.seo.not_found.views', ['errors/404', 'layout']), function (\Illuminate\View\View $view): void {
-            if ((int) ($view['response_code'] ?? 0) !== 404 || ($entry = self::entry()) === null) {
+            if ((int) ($view['response_code'] ?? 0) !== 404 || ($found = self::found()) === null) {
                 return;
             }
 
-            $view->with($entry->toAugmentedArray())->with('page', $entry);
+            $view->with($found[1])->with('page', $found[0]);
         });
+    }
+
+    /**
+     * The entry and its augmented fields, looked up once per request: every view the composer names renders the 404.
+     *
+     * @return array{0: Entry, 1: array<string, mixed>}|null
+     */
+    private static function found(): ?array
+    {
+        $memo = app(self::class);
+        $site = Site::current()->handle();
+
+        if (! array_key_exists($site, $memo->found)) {
+            $entry = self::entry();
+            $memo->found[$site] = $entry === null ? null : [$entry, $entry->toAugmentedArray()];
+        }
+
+        return $memo->found[$site];
     }
 
     public static function entry(): ?Entry

@@ -20,6 +20,7 @@ use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
+use Statamic\Facades\CP\Nav as CpNav;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
@@ -258,6 +259,68 @@ class ProposalsTest extends TestCase
 
         $this->assertCount(0, Storage::disk('local')->files('core-web/proposals/open'));
         $this->assertSame(Proposal::DISCARDED, $this->proposals()->find($result['id'])->status);
+    }
+
+    public function test_the_cp_nav_counts_the_open_proposals_an_editor_may_apply(): void
+    {
+        $this->withRealNav();
+        $target = NavTarget::make('main', 'default');
+        $result = $this->proposals()->propose($this->author(), $target, array_reverse($target->current()), Proposals::base($target));
+
+        $this->actingAs($this->user('viewer@example.com', super: false));
+        $this->assertNotContains('Proposals (1)', $this->navItems(), 'Someone who may not edit the nav is not shown it.');
+
+        $this->actingAs($this->user('eva@example.com'));
+        $this->assertContains('Proposals (1)', $this->navItems());
+
+        $this->proposals()->discard($result['id'], $this->user('eva@example.com'));
+
+        $this->assertEmpty(array_filter($this->navItems(), fn (string $item) => str_starts_with($item, 'Proposals')), 'A decided proposal leaves the count at once.');
+
+        $this->proposals()->propose($this->author(), $target, array_reverse($target->current()), Proposals::base($target));
+        $this->assertContains('Proposals (1)', $this->navItems());
+
+        Storage::disk('local')->deleteDirectory('core-web/proposals/open');
+        $this->assertContains('Proposals (1)', $this->navItems(), 'The nav opens no proposal file once the count is cached.');
+    }
+
+    public function test_the_open_targets_are_read_from_the_files_once_until_a_save(): void
+    {
+        $store = app(ProposalStore::class);
+        $nav = NavTarget::make('main', 'default');
+        $this->proposals()->propose($this->author(), $nav, array_reverse($nav->current()), Proposals::base($nav));
+
+        $this->assertSame(['nav:main:default'], $store->openTargets());
+
+        Storage::disk('local')->deleteDirectory('core-web/proposals/open');
+        $this->assertSame(['nav:main:default'], $store->openTargets(), 'A second read opens no file.');
+
+        $global = GlobalTarget::make('settings', 'default');
+        $this->proposals()->propose($this->author(), $global, ['phone' => '456'], Proposals::base($global));
+
+        $this->assertSame(['global:settings:default'], app(ProposalStore::class)->openTargets(), 'A save has the next read go to the files.');
+    }
+
+    public function test_each_proposals_disk_caches_its_own_open_targets(): void
+    {
+        Storage::fake('second');
+        config(['core-web.drafts.proposals.disk' => 'second']);
+        $global = GlobalTarget::make('settings', 'default');
+        $this->proposals()->propose($this->author(), $global, ['phone' => '456'], Proposals::base($global));
+
+        config(['core-web.drafts.proposals.disk' => null]);
+        $nav = NavTarget::make('main', 'default');
+        $this->proposals()->propose($this->author(), $nav, array_reverse($nav->current()), Proposals::base($nav));
+        $this->assertSame(['nav:main:default'], app(ProposalStore::class)->openTargets());
+
+        config(['core-web.drafts.proposals.disk' => 'second']);
+        $this->assertSame(['global:settings:default'], app(ProposalStore::class)->openTargets());
+    }
+
+    /** @return list<string> */
+    private function navItems(): array
+    {
+        return CpNav::build()->flatMap(fn (array $section) => $section['items'])->map->display()->values()->all();
     }
 
     public function test_a_global_proposal_is_validated_against_its_blueprint(): void

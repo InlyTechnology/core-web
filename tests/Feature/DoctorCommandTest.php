@@ -135,6 +135,120 @@ class DoctorCommandTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_proposals_on_the_default_disk_on_cloud_fail(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts(['core-web.drafts.proposals.disk' => null]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: kept on the default disk')
+            ->assertFailed();
+    }
+
+    public function test_proposals_on_a_local_disk_on_cloud_fail(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts(['core-web.drafts.proposals.disk' => 'local']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the local disk is local')
+            ->assertFailed();
+    }
+
+    public function test_proposals_in_the_private_bucket_on_cloud_pass(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts(['filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'], 'core-web.drafts.proposals.disk' => 'private']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Proposals: kept on the private disk, in the private bucket')
+            ->assertSuccessful();
+    }
+
+    public function test_proposals_on_the_public_bucket_on_cloud_fail(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts([
+            'filesystems.disks.media' => ['driver' => 's3', 'bucket' => 'fls-public'],
+            'filesystems.disks.drafts' => ['driver' => 's3', 'bucket' => 'fls-public', 'root' => 'drafts'],
+            'core-web.drafts.proposals.disk' => 'media',
+        ]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the media disk is on the public bucket')
+            ->assertFailed();
+
+        config(['core-web.drafts.proposals.disk' => 'drafts']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the drafts disk is on the public bucket')
+            ->assertFailed();
+
+        config(['filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'media', 'prefix' => 'staged'], 'core-web.drafts.proposals.disk' => 'staged']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is on the public bucket')
+            ->assertFailed();
+    }
+
+    public function test_proposals_on_a_scoped_disk_are_judged_by_the_disk_it_is_scoped_to(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts([
+            'filesystems.disks.private' => ['driver' => 's3', 'bucket' => 'fls-private'],
+            'filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'private', 'prefix' => 'staged'],
+            'core-web.drafts.proposals.disk' => 'staged',
+        ]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Proposals: kept on the staged disk, in the private bucket')
+            ->assertSuccessful();
+
+        config(['filesystems.disks.staged.disk' => 'local']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is local')
+            ->assertFailed();
+
+        config(['filesystems.disks.staged.disk' => ['driver' => 's3', 'bucket' => 'fls-public'], 'filesystems.disks.media' => ['driver' => 's3', 'bucket' => 'fls-public']]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: the staged disk is on the public bucket')
+            ->assertFailed();
+    }
+
+    public function test_proposals_on_another_bucket_on_cloud_are_a_warning(): void
+    {
+        $this->app['env'] = 'production';
+        $this->onCloudWithDrafts(['filesystems.disks.own' => ['driver' => 's3', 'bucket' => 'own-bucket'], 'core-web.drafts.proposals.disk' => 'own']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Proposals: kept on the own disk, which is not the private bucket Cloud attaches')
+            ->assertSuccessful();
+    }
+
+    public function test_a_proposals_disk_that_is_not_defined_fails_on_any_host(): void
+    {
+        $this->app['env'] = 'production';
+        config(['core-web.features.drafts' => true, 'core-web.drafts.proposals.disk' => 'missing']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names missing, which is not a defined disk')
+            ->assertFailed();
+
+        config(['filesystems.disks.staged' => ['driver' => 'scoped', 'disk' => 'missing', 'prefix' => 'staged'], 'core-web.drafts.proposals.disk' => 'staged']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('fail Proposals: core-web.drafts.proposals.disk names staged, scoped to missing, which is not a defined disk')
+            ->assertFailed();
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function onCloudWithDrafts(array $config): void
+    {
+        config(['core-web.features.drafts' => true, 'core-web.features.cloud' => true, 'core-web.cloud.detected' => true, ...$config]);
+    }
+
     public function test_it_is_registered_once_a_feature_is_on(): void
     {
         $this->assertArrayHasKey('core-web:doctor', app(Kernel::class)->all());
