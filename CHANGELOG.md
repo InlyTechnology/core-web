@@ -106,6 +106,17 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   page the save renders again (under the `all` rule, one listing the entry;
   its own page may be forgotten at once) shows the change, and that `php
   artisan queue:failed` lists no `StaticWarmJob`.
+- **A site with a relative URL has its pages forgotten on `APP_URL`'s
+  host.** A save or a snapshot change handled inside a request (on a `sync`
+  queue) forgot the site's pages on the host the request named; `SiteCache`
+  now forgets them on `APP_URL`'s host, as Statamic's cacher does. A server
+  whose `APP_URL` is not the address visitors use (`http://localhost` left
+  from `.env.example`, a platform domain beside the site's own) keeps their
+  old copies. Find it: a relative `url:` in `resources/sites.yaml` (`/`,
+  `/en/`), and on each server `php artisan config:show app.url` beside the
+  address visitors use. Migrate: set `APP_URL` to that address, or give the
+  site an absolute URL. Verify: save an entry, then load a cached page of its
+  site that the save reaches and see the change.
 - **A multisite install on the `all` rule keeps a save to its own site by
   default.** core-web names `SiteScopedInvalidator` as the invalidation class
   where the site names none, so a page showing another site's content (a

@@ -243,6 +243,36 @@ class SiteCacheTest extends TestCase
         $this->assertSame(['/'], $this->cached('http://default.test'));
     }
 
+    public function test_a_relative_site_forgets_on_its_host_what_an_invalidator_reports_on_the_request_s(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'en_US'],
+        ]);
+        $this->app['url']->setRequest(Request::create('http://alias.test/'));
+        $this->cache('http://default.test', ['/a', '/b']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(1, $cache->forget(Site::get('default'), ['http://alias.test/a', 'http://other.test/b']));
+        $this->assertSame(['/b'], $this->cached('http://default.test'), "never another site's address");
+        $this->assertTrue($cache->owns(Site::get('default'), 'http://alias.test/b'));
+        $this->assertFalse($cache->owns(Site::get('default'), 'http://other.test/b'));
+    }
+
+    public function test_a_site_s_host_matches_whatever_its_case(): void
+    {
+        Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://Shared.test/', 'locale' => 'sv_SE']]);
+        $this->cache('http://shared.test', ['/', '/a', '/b']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertTrue($cache->owns(Site::get('default'), 'http://Shared.test/a'));
+        $this->assertSame(1, $cache->forget(Site::get('default'), ['http://Shared.test/a']));
+        $this->assertSame(['/', '/b'], $this->cached('http://shared.test'));
+
+        $cache->flush(Site::get('default'));
+        $this->assertSame([], $this->cached('http://shared.test'));
+    }
+
     public function test_a_change_flushes_the_pages_its_documents_name_and_the_snapshot_s_sitemap(): void
     {
         $this->app->instance(SiteCache::class, new SiteCache($this->cacher));

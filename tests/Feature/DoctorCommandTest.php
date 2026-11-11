@@ -293,6 +293,12 @@ class DoctorCommandTest extends TestCase
         $this->artisan('core-web:doctor')
             ->expectsOutputToContain('warn Static cache: background_recache is on, but the failover failover connection names no connection to put the renders on')
             ->assertSuccessful();
+
+        config(['statamic.static_caching.warm_queue_connection' => null, 'queue.default' => '']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but neither warm_queue_connection nor queue.default names a connection to put the renders on')
+            ->assertSuccessful();
     }
 
     public function test_rendering_pages_again_without_a_worker_is_a_warning(): void

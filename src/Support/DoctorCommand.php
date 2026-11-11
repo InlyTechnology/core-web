@@ -268,9 +268,11 @@ class DoctorCommand extends Command
 
         if (! $config->get('statamic.static_caching.background_recache')) {
             $this->ok('Static cache: a save forgets its pages, and each one\'s next visitor renders it');
-        } elseif ($connection === '' && $config->get('queue.connections.'.StaticCacheDefaults::warmConnection($config).'.driver') === 'failover') {
+        } elseif ($connection === '') {
             $failover = StaticCacheDefaults::warmConnection($config);
-            $this->warning("Static cache: background_recache is on, but the {$failover} failover connection names no connection to put the renders on");
+            $this->warning($failover === ''
+                ? 'Static cache: background_recache is on, but neither warm_queue_connection nor queue.default names a connection to put the renders on'
+                : "Static cache: background_recache is on, but the {$failover} failover connection names no connection to put the renders on");
         } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
             $queue = StaticCacheDefaults::warmQueue($config);
             $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");

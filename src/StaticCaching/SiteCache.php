@@ -280,7 +280,7 @@ class SiteCache
                 $wildcard = str_ends_with($url, '*');
                 $address = $wildcard ? substr($url, 0, -1) : $url;
 
-                if (strtolower((string) parse_url($address, PHP_URL_HOST)) !== $host) {
+                if (! self::onHost($site, $address)) {
                     continue;
                 }
 
@@ -407,13 +407,28 @@ class SiteCache
     /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
     public function owns(Site $site, string $url): bool
     {
-        $host = self::host($site);
-
-        if (parse_url($url, PHP_URL_HOST) !== $host) {
+        if (! self::onHost($site, $url)) {
             return false;
         }
 
-        return self::owner(self::neighbours($host), $url) === self::handle($site);
+        return self::owner(self::neighbours(self::host($site)), $url) === self::handle($site);
+    }
+
+    /**
+     * Whether an absolute URL is on the site's host. A site with a relative
+     * URL also takes the host Statamic made its URLs on (the request's), as
+     * an invalidator reports them there: the page is still forgotten on the
+     * site's host, and forgetting sends no request.
+     */
+    private static function onHost(Site $site, string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if ($host === self::host($site)) {
+            return true;
+        }
+
+        return ! URL::isAbsolute($site->url()) && $host === strtolower((string) parse_url($site->absoluteUrl(), PHP_URL_HOST));
     }
 
     /**

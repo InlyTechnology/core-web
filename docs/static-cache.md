@@ -103,30 +103,32 @@ one a request names), and on a shared host the pages under its path (the
 longest site path a page lies under decides whose it is).
 `SiteCache::flushPaths()` forgets some of them, by path on the site, and
 `SiteCache::forget()` by the absolute URLs an invalidator reports (a trailing
-`*` takes every page under one), keeping only those the site owns;
-`SiteCache::forgetMany()` does that for several sites at once, keyed by site
-handle, reading each host's cached pages once for all of them.
-`SiteCache::refresh()` renders the site's cached pages again in the background
-instead (one queued request per page), and visitors keep the cached copy until
-it is replaced. On a shared host with no site at its root, a page cached
-outside every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no
-site's, so no site's flush or refresh reaches it. `SiteCache::refreshAll()`
-renders again every page cached on a site's host, under http and https, that
-page included. It forgets the pages cached on any other host (a `www` alias, an
-address no site names) instead, since a request names its own host and a render
-would be sent there.
+`*` takes every page under one), keeping only those the site owns (for a site
+with a relative URL, on its host or the request's, where Statamic makes its
+URLs) and forgetting them on its host; `SiteCache::forgetMany()` does that for
+several sites at once, keyed by site handle, reading each host's cached pages
+once for all of them. `SiteCache::refresh()` renders the site's cached pages
+again in the background instead (one queued request per page), and visitors
+keep the cached copy until it is replaced. On a shared host with no site at
+its root, a page cached outside every site's path (a 404 at `/foo` beside
+`/en` and `/sv`) is no site's, so no site's flush or refresh reaches it.
+`SiteCache::refreshAll()` renders again every page cached on a site's host,
+under http and https, that page included. It forgets the pages cached on any
+other host (a `www` alias, an address no site names) instead, since a request
+names its own host and a render would be sent there.
 
 ## A save on one site of a multisite install
 
 Statamic's `all` invalidation rule clears every site's pages on any save, and
 with `background_recache` on it renders again only the pages cached on the
-static cache's base URL (its `base_url`, or the current site's URL). On an
-install with more than one site and the `all` rule, core-web uses
-`SiteScopedInvalidator` instead, which keeps the rule to the site of what was
-saved. It takes the sites to share no pages: a site whose pages show another
-site's content names `\Statamic\StaticCaching\DefaultInvalidator::class` as
-its `invalidation.class` in `config/statamic/static_caching.php`, and a class
-a site names there stands. `php artisan config:show
+static cache's base URL (its `base_url`, or the current site's URL, on
+`APP_URL` when that URL is relative). On an install with more than one site
+and the `all` rule, core-web uses `SiteScopedInvalidator` instead, which keeps
+the rule to the site of what was saved. It takes the sites to share no pages:
+a site whose pages show another site's content names
+`\Statamic\StaticCaching\DefaultInvalidator::class` as its
+`invalidation.class` in `config/statamic/static_caching.php`, and a class a
+site names there stands. `php artisan config:show
 statamic.static_caching.invalidation` prints what a server resolved.
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
@@ -152,9 +154,8 @@ statamic.static_caching.invalidation` prints what a server resolved.
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
   a form save clears every page, or with `background_recache` hands them to
-  `SiteCache::refreshAll()`. Deleting a
-  navigation, an asset or a form, and saving or deleting a taxonomy term,
-  always clears every page.
+  `SiteCache::refreshAll()`. Deleting a navigation, an asset or a form, and
+  saving or deleting a taxonomy term, always clears every page.
 - Other rules than `all` are Statamic's own.
 
 A moved page's old address comes from the entry's original values. It is
