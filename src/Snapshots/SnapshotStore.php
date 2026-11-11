@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Snapshots;
 
 use Closure;
+use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
@@ -57,6 +58,9 @@ final class SnapshotStore
 
     /** How long one core:warm reads details at most, so a whole ping's job stays short. */
     public const WARM_DETAILS_SECONDS = 30;
+
+    /** Failed reads in a row after which a core:warm stops: Core failing them all is not asked a hundred times. */
+    private const WARM_DETAILS_FAILURES = 3;
 
     /** @var array<string, SnapshotRead> */
     private array $reads = [];
@@ -155,26 +159,34 @@ final class SnapshotStore
     /**
      * Reads the details of the cached documents whose copy is missing, kept
      * for another row, or past the snapshot's fresh lifetime (oldest first),
-     * at most `$limit` or for `$seconds`, so a visitor's page never waits on
-     * Core for them. Returns how many were read; Core failing as a whole
-     * stops it, one document failing skips that document.
+     * at most `$limit` reads or for `$seconds`, so a visitor's page rarely
+     * waits on Core for them. Returns how many were read; Core failing as a
+     * whole, or three reads in a row, stops it, and one document failing
+     * skips that document.
      */
     public function warmDetails(Snapshot $snapshot, int $limit = self::WARM_DETAILS_LIMIT, int $seconds = self::WARM_DETAILS_SECONDS): int
     {
-        $documents = $snapshot->hasDetails() && $this->pinned($snapshot) === null ? $this->freshDocuments($snapshot) : null;
+        $documents = $snapshot->hasDetails() && $this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff')) ? $this->freshDocuments($snapshot) : null;
         $deadline = hrtime(true) + $seconds * 1_000_000_000;
+        $attempts = 0;
         $read = 0;
+        $failures = 0;
 
         foreach ($this->detailsToWarm($snapshot, $documents ?? []) as $id) {
             $left = intdiv($deadline - hrtime(true), 1_000_000_000);
 
-            if ($read >= $limit || $left < 1 || $this->cache->has($snapshot->key('backoff'))) {
+            if ($attempts >= $limit || $failures >= self::WARM_DETAILS_FAILURES || $left < 1 || $this->cache->has($snapshot->key('backoff'))) {
                 break;
             }
 
-            if (! $this->cache->has($snapshot->key("details:{$id}:backoff")) && $this->rereadDetails($snapshot, $documents, $id, min(Snapshot::DETAILS_TIMEOUT, $left))) {
-                $read++;
+            if ($this->cache->has($snapshot->key("details:{$id}:backoff"))) {
+                continue;
             }
+
+            $attempts++;
+            $succeeded = $this->rereadDetails($snapshot, $documents, $id, min(Snapshot::DETAILS_TIMEOUT, $left));
+            $read += (int) $succeeded;
+            $failures = $succeeded ? 0 : $failures + 1;
         }
 
         return $read;
@@ -570,8 +582,9 @@ final class SnapshotStore
         }
 
         $read = [];
-        $patched = $this->writing($snapshot, function () use ($snapshot, $id, $key, $deleted, &$read): int|false|null {
-            return $this->patch($snapshot, $id, $key, $deleted, $read);
+        $documents = [];
+        $patched = $this->writing($snapshot, function () use ($snapshot, $id, $key, $deleted, &$read, &$documents): int|false|null {
+            return $this->patch($snapshot, $id, $key, $deleted, $read, $documents);
         });
 
         // The patch could not be trusted: a full pull decides (outside the write, which it takes itself).
@@ -580,11 +593,13 @@ final class SnapshotStore
         }
 
         // A change to the details alone leaves the row as it was, so the documents the ping read have theirs read too.
-        if ($patched !== null && $read !== [] && $snapshot->hasDetails() && $this->pinned($snapshot) === null && ! $this->cache->has($snapshot->key('backoff'))) {
-            $documents = $this->freshDocuments($snapshot) ?? [];
-
+        if ($patched !== null && $snapshot->hasDetails() && $this->pinned($snapshot) === null) {
             foreach ($read as $documentId) {
-                if (isset($documents[$documentId]) && ! self::carriesDetails($snapshot, $documents[$documentId])) {
+                if ($this->cache->has($snapshot->key('backoff'))) {
+                    break;
+                }
+
+                if (isset($documents[$documentId]) && ! self::carriesDetails($snapshot, $documents[$documentId]) && ! $this->cache->has($snapshot->key("details:{$documentId}:backoff"))) {
                     $this->rereadDetails($snapshot, $documents, $documentId);
                 }
             }
@@ -595,9 +610,10 @@ final class SnapshotStore
 
     /**
      * @param  list<string>  $read  set to the ids of the documents the ping read
+     * @param  array<string, array<string, mixed>>  $after  set to every document once the patch is in
      * @return int|false|null the documents patched in, false when a full pull must decide, null when the read failed
      */
-    private function patch(Snapshot $snapshot, string $id, ?string $key, bool $deleted, array &$read): int|false|null
+    private function patch(Snapshot $snapshot, string $id, ?string $key, bool $deleted, array &$read, array &$after): int|false|null
     {
         if ($this->pinnedElsewhere($snapshot)) {
             return 0;
@@ -632,6 +648,8 @@ final class SnapshotStore
         $documents = array_replace($documents, $patch);
 
         if (self::sameDocuments($current, $documents, [...array_keys($patch), ...($key === null ? [] : [$key])])) {
+            $after = $current;
+
             return 0;
         }
 
@@ -645,6 +663,7 @@ final class SnapshotStore
         }
 
         $this->write($snapshot, $documents, $snapshot->freshTtl(), lastGood: true, previous: $current);
+        $after = $documents;
 
         return count($patch);
     }
@@ -981,15 +1000,12 @@ final class SnapshotStore
     {
         $missing = [];
         $aged = [];
+        $documents = array_filter($documents, fn (array $row): bool => ! self::carriesDetails($snapshot, $row));
+        $copies = $documents === [] ? [] : $this->cache->many(array_map(fn (string|int $id): string => $snapshot->key("details:{$id}"), array_keys($documents)));
 
         foreach ($documents as $id => $row) {
             $id = (string) $id;
-
-            if (self::carriesDetails($snapshot, $row)) {
-                continue;
-            }
-
-            $copy = $this->detailsCopy($snapshot, $id);
+            $copy = self::validCopy($copies[$snapshot->key("details:{$id}")] ?? null);
 
             if ($copy === null || $copy['version'] !== self::hash($row)) {
                 $missing[] = $id;
@@ -1006,8 +1022,14 @@ final class SnapshotStore
     /** Whether a failed read says Core is out of reach or refusing the site, rather than failing one document. */
     private static function unreachable(Throwable $e): bool
     {
-        return $e instanceof ConnectionException
-            || $e instanceof TokenRefused
+        if ($e instanceof ConnectionException) {
+            $context = $e->getPrevious() instanceof ConnectException ? $e->getPrevious()->getHandlerContext() : [];
+
+            // A read that timed out once connected is one slow document; a failed connection is Core out of reach.
+            return ! (($context['errno'] ?? null) === 28 && (float) ($context['connect_time'] ?? 0) > 0);
+        }
+
+        return $e instanceof TokenRefused
             || ($e instanceof RequestException && in_array($e->response->status(), [401, 403, 429, 502, 503, 504], true));
     }
 
@@ -1020,8 +1042,12 @@ final class SnapshotStore
     /** @return array{version: string, at: int, data: array<string, mixed>}|null */
     private function detailsCopy(Snapshot $snapshot, string $id): ?array
     {
-        $copy = $this->cache->get($snapshot->key("details:{$id}"));
+        return self::validCopy($this->cache->get($snapshot->key("details:{$id}")));
+    }
 
+    /** @return array{version: string, at: int, data: array<string, mixed>}|null */
+    private static function validCopy(mixed $copy): ?array
+    {
         return is_array($copy) && is_string($copy['version'] ?? null) && is_array($copy['data'] ?? null) ? $copy : null;
     }
 

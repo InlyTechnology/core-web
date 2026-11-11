@@ -68,9 +68,9 @@ final class SearchSchema
     }
 
     /**
-     * This description with the fields taken off the rows, so a filter, sort
-     * or field on them is Core's to answer: the rows of a snapshot that keeps
-     * them as details (docs/registering-snapshots.md#details).
+     * This description with the fields taken off the rows, so a filter,
+     * sort, facet or search field on them is never answered from the rows: a
+     * snapshot that keeps them as details (docs/registering-snapshots.md#details).
      *
      * @param  list<string>  $fields
      */

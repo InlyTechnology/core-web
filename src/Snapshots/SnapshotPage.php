@@ -43,11 +43,11 @@ final class SnapshotPage
 
     /**
      * The document with a page here, with its details: by its id, or the
-     * first with a page that a closure picks (given the document without
-     * its details, and its id). None is a 503
-     * while nothing at all can be read, since a 404 then would deindex every
-     * page at once, and Statamic's 404 otherwise: Laravel's abort(404)
-     * renders a layout without its cascade and fails.
+     * first with a page that a closure picks (given the document without its
+     * details, and its id). None is a 503 while nothing at all can be read,
+     * since a 404 then would deindex every page at once, and Statamic's 404
+     * otherwise: Laravel's abort(404) renders a layout without its cascade
+     * and fails.
      *
      * @param  string|Closure(array<string, mixed>, string): bool  $key
      * @return array<string, mixed>

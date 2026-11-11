@@ -2,6 +2,8 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Promise\Create;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -84,6 +86,12 @@ class SnapshotDetailsTest extends TestCase
         app(SnapshotRegistry::class)->register($snapshot, pings: ['car']);
 
         return $snapshot;
+    }
+
+    /** @param  array<string, mixed>  $context  what cURL says of the request, as Guzzle hands it on */
+    private static function failedTransfer(array $context): \Closure
+    {
+        return fn (HttpRequest $request) => Create::rejectionFor(new ConnectException('cURL error', $request->toPsrRequest(), null, $context));
     }
 
     /** A new store is a new request: nothing is memoised. */
@@ -342,6 +350,91 @@ class SnapshotDetailsTest extends TestCase
         $this->assertArrayNotHasKey('equipment', $store->document($snapshot, '1'));
         $this->assertTrue($store->servedDegraded());
         $this->assertCount(1, Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/api/v1/objects/car/1?')));
+    }
+
+    public function test_a_read_that_times_out_once_connected_backs_off_only_its_document(): void
+    {
+        $this->fakeCars(stubs: ['core.test/api/v1/objects/car/1?*' => self::failedTransfer(['errno' => 28, 'connect_time' => 0.05])]);
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        $this->assertSame(1, self::store()->warmDetails($snapshot));
+        $this->assertTrue(Cache::has($snapshot->key('details:1:backoff')));
+        $this->assertFalse(Cache::has($snapshot->key('backoff')));
+    }
+
+    public function test_a_read_that_cannot_connect_backs_off_the_whole_snapshot(): void
+    {
+        $this->fakeCars(stubs: ['core.test/api/v1/objects/car/1?*' => self::failedTransfer(['errno' => 7, 'connect_time' => 0])]);
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+
+        $this->assertSame(0, self::store()->warmDetails($snapshot));
+        $this->assertTrue(Cache::has($snapshot->key('backoff')));
+        $this->assertSame(0, self::detailReads('2'));
+    }
+
+    public function test_failed_reads_count_toward_the_warm_s_limit_and_three_in_a_row_stop_it(): void
+    {
+        $this->fakeCars(array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}"]], range(1, 6)));
+        $snapshot = $this->snapshot();
+        self::store()->refresh($snapshot);
+        $this->failCore(500);
+
+        $this->assertSame(0, self::store()->warmDetails($snapshot, limit: 2));
+        $this->assertCount(2, Http::recorded());
+
+        Cache::forget($snapshot->key('details:1:backoff'));
+        Cache::forget($snapshot->key('details:2:backoff'));
+        $this->failCore(500);
+
+        $this->assertSame(0, self::store()->warmDetails($snapshot));
+        $this->assertCount(3, Http::recorded());
+        $this->assertFalse(Cache::has($snapshot->key('backoff')));
+    }
+
+    public function test_a_ping_in_the_same_request_drops_the_details_it_has_read(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot();
+        $store = self::store();
+        $store->document($snapshot, '1');
+        $resources = self::resources('Takbox');
+        $resources[0]['attributes']['price'] = 179000;
+        $this->fakeCars($resources);
+
+        $store->refreshOne($snapshot, '1');
+
+        $this->assertSame(['Takbox'], $store->document($snapshot, '1')['equipment']);
+    }
+
+    public function test_the_object_s_description_is_read_once_for_every_pull(): void
+    {
+        $this->fakeCars();
+        $snapshot = $this->snapshot();
+
+        $snapshot->pullDocuments();
+        $snapshot->pullDocuments();
+        $snapshot->pullDocument('1');
+
+        $this->assertCount(1, Http::recorded(fn (HttpRequest $request) => str_contains($request->url(), '/schema')));
+    }
+
+    public function test_warming_reads_the_oldest_copies_first(): void
+    {
+        $this->fakeCars(array_map(fn (int $id) => ['type' => 'car', 'id' => (string) $id, 'attributes' => ['name' => "Car {$id}", 'equipment' => []]], range(1, 3)));
+        $snapshot = $this->snapshot();
+        self::store()->document($snapshot, '2');
+        $this->travel(10)->seconds();
+        self::store()->document($snapshot, '3');
+        $this->travel(10)->seconds();
+        self::store()->document($snapshot, '1');
+        $this->travel(901)->seconds();
+        self::store()->refresh($snapshot);
+
+        self::store()->warmDetails($snapshot, limit: 2);
+
+        $this->assertSame([1, 2, 2], [self::detailReads('1'), self::detailReads('2'), self::detailReads('3')]);
     }
 
     public function test_warming_reads_missing_details_first_then_the_oldest_copies(): void
