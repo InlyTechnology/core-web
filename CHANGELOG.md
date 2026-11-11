@@ -105,22 +105,22 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   that `php artisan queue:monitor <connection>:<queue>` drains to 0, that a
   page the save renders again (under the `all` rule, one listing the entry:
   `SiteScopedInvalidator` forgets its own page at once) shows the change,
-  and that `php
-  artisan queue:failed` lists no `StaticWarmJob`.
+  and that `php artisan queue:failed` lists no `StaticWarmJob`.
 - **A cached page served at another address than its site's keeps its old
-  copy after a change the `all` rule keeps to its site, or a snapshot
-  change.** A site's address is its `url:` in `resources/sites.yaml`, on
-  `APP_URL` when that `url:` is relative (`/`, `/en/`) or reads it
-  (`{{ config:app:url }}`). Statamic's `all` rule, with `background_recache`
-  off as it was by default, cleared every address on such a change;
-  `SiteScopedInvalidator`, now the default under that rule, forgets or
-  renders again a site's pages on the host of its address only, under http
-  and https (`docs/static-cache.md`, A save under the `all` rule). A
-  snapshot change forgets a relative site's pages on `APP_URL`'s host inside
-  a request too, where it took the host the request named. Find it: on each server, `php artisan
-  config:show app.url` and each site's `url:` beside the addresses visitors
-  use (`APP_URL` left at `http://localhost` from `.env.example` or on a
-  platform domain, a `www` alias that is not redirected). Migrate: on each
+  copy after a change kept to its site, or a snapshot change.** A site's
+  address is its `url:` in `resources/sites.yaml`, on `APP_URL` when that
+  `url:` is relative (`/`, `/en/`) or reads it (`{{ config:app:url }}`).
+  Statamic's `all` rule, with `background_recache` off as it was by default,
+  cleared every address on any save. `SiteScopedInvalidator`, now the
+  default under that rule, keeps a change to its site where
+  `docs/static-cache.md` (A save under the `all` rule) says it does, and
+  there forgets or renders again the site's pages on the host of its
+  address only, under http and https. A snapshot change forgets a relative
+  site's pages on `APP_URL`'s host inside a request too, where it took the
+  host the request named. Find it: on each server, `php artisan config:show
+  app.url` and each site's `url:` beside the addresses visitors use
+  (`APP_URL` left at `http://localhost` from `.env.example` or on a platform
+  domain, a `www` alias that is not redirected). Migrate: on each
   server, set `APP_URL` to the address visitors use (a site whose `url:` is
   absolute takes its address from it instead), and redirect every other
   address to the site's address. Verify: every other address redirects to

@@ -5,7 +5,6 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Illuminate\Contracts\Console\Kernel;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
-use Statamic\Facades\Site;
 use Statamic\StaticCaching\DefaultInvalidator;
 
 class DoctorCommandTest extends TestCase
@@ -328,13 +327,13 @@ class DoctorCommandTest extends TestCase
         $this->onACachedServer(['statamic.static_caching.invalidation' => ['class' => SiteScopedInvalidator::class, 'rules' => 'all']]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or collection tree save to its own site's pages")
+            ->expectsOutputToContain('ok   Static cache: SiteScopedInvalidator keeps the `all` rule to the site of what was saved (docs/static-cache.md, A save under the `all` rule)')
             ->assertSuccessful();
 
-        Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE']]);
+        config(['statamic.static_caching.invalidation.class' => SiteScopedInvalidatorOfTheSite::class]);
 
         $this->artisan('core-web:doctor')
-            ->expectsOutputToContain("ok   Static cache: SiteScopedInvalidator keeps an entry, global or collection tree save to its own site's pages")
+            ->expectsOutputToContain('ok   Static cache: a save is invalidated by '.SiteScopedInvalidatorOfTheSite::class.", the site's own choice")
             ->assertSuccessful();
 
         config(['statamic.static_caching.invalidation.class' => DefaultInvalidator::class]);
@@ -374,3 +373,5 @@ class DoctorCommandTest extends TestCase
         $this->assertArrayHasKey('core-web:doctor', app(Kernel::class)->all());
     }
 }
+
+class SiteScopedInvalidatorOfTheSite extends SiteScopedInvalidator {}
