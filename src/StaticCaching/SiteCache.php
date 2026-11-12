@@ -133,12 +133,8 @@ class SiteCache
 
     /**
      * Renders every cached page of the site again in the background, one
-     * queued request per page (Statamic's StaticWarmJob), while visitors
-     * keep getting the cached copy until it is replaced. Pages are found on
-     * the site's host, under http and https, and owned as flush() owns
-     * them; each path is requested once with every query string it was
-     * cached under, and one cached as an error response is forgotten
-     * instead, as Statamic does. Returns how many paths were handed on.
+     * queued request per page, owned as flush() owns them
+     * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
     {
@@ -160,7 +156,7 @@ class SiteCache
             }
 
             foreach (array_keys($paths) as $path) {
-                $this->cacher->refreshUrl($path, $domain);
+                $this->renderAgain($path, $domain);
                 $queued++;
             }
         }
@@ -221,6 +217,33 @@ class SiteCache
         }
 
         return $this->forgetOnHost(self::host($site), [self::handle($site) => $target]);
+    }
+
+    /**
+     * Renders the site's cached pages at these paths again in the background,
+     * as refresh() renders the whole site (docs/static-cache.md). Returns how
+     * many paths were handed on.
+     *
+     * @param  iterable<string>  $paths
+     */
+    public function refreshPaths(Site $site, iterable $paths): int
+    {
+        $target = ['prefix' => self::prefix($site), 'exact' => [], 'under' => []];
+
+        foreach ($paths as $path) {
+            $target = self::addPath($target, (string) $path);
+        }
+
+        $queued = 0;
+
+        foreach ($this->matchOnHost(self::host($site), [self::handle($site) => $target]) as $domain => $matched) {
+            foreach (array_keys($matched) as $path) {
+                $this->renderAgain($path, $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
     }
 
     /** @param  list<array{Site, iterable<mixed>}>  $pages */
@@ -288,19 +311,40 @@ class SiteCache
 
     /**
      * Forgets the cached pages on the host that each site's target names,
-     * reading each of the host's domains once.
+     * reading each of the host's domains once. Returns how many cached
+     * pages were forgotten, query strings counted apart.
      *
      * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
      * @param  list<array{string, string}>|null  $neighbours
      */
     private function forgetOnHost(?string $host, array $targets, ?array $neighbours = null): int
     {
+        $forgotten = 0;
+
+        foreach ($this->matchOnHost($host, $targets, $neighbours) as $domain => $matched) {
+            $this->invalidate(array_keys($matched), $domain);
+            $forgotten += array_sum($matched);
+        }
+
+        return $forgotten;
+    }
+
+    /**
+     * The cached paths on each of the host's domains that each site's target
+     * names, each with how many cached pages it has (one per query string).
+     *
+     * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
+     * @param  list<array{string, string}>|null  $neighbours
+     * @return array<string, array<string, int>>
+     */
+    private function matchOnHost(?string $host, array $targets, ?array $neighbours = null): array
+    {
         if (! $this->cacher instanceof AbstractCacher || $targets === []) {
-            return 0;
+            return [];
         }
 
         $neighbours ??= self::neighbours($host);
-        $forgotten = 0;
+        $matches = [];
 
         foreach ($this->domains($host) as $domain) {
             $matched = [];
@@ -315,15 +359,25 @@ class SiteCache
                 $onSite = self::onSite((string) $url, $target['prefix']);
 
                 if (isset($target['exact'][$onSite]) || self::under($onSite, $target['under'])) {
-                    $matched[strtok((string) $url, '?')] = true;
-                    $forgotten++;
+                    $path = strtok((string) $url, '?');
+                    $matched[$path] = ($matched[$path] ?? 0) + 1;
                 }
             }
 
-            $this->invalidate(array_keys($matched), $domain);
+            $matches[$domain] = $matched;
         }
 
-        return $forgotten;
+        return $matches;
+    }
+
+    /** Has Statamic render a cached path again in the background, or forgets it while background re-caching is off. */
+    private function renderAgain(string $path, ?string $domain): void
+    {
+        if (config('statamic.static_caching.background_recache')) {
+            $this->cacher->refreshUrl($path, $domain);
+        } else {
+            $this->cacher->invalidateUrl($path, $domain);
+        }
     }
 
     /**
