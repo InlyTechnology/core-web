@@ -126,6 +126,7 @@ class SiteCacheTest extends TestCase
     public function test_a_site_whose_handle_is_digits_owns_its_pages(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'en_GB'],
             '2026' => ['name' => 'Campaign', 'url' => 'http://shared.test/sv/', 'locale' => 'sv_SE'],
@@ -138,6 +139,7 @@ class SiteCacheTest extends TestCase
         $this->assertSame(1, $cache->forget($site, ['http://shared.test/sv/a']));
         $this->assertSame(1, $cache->forgetMany([2026 => ['http://shared.test/sv/b']]));
         $this->assertSame(1, $cache->refresh($site));
+        $this->assertSame(['http://shared.test/sv'], $this->warmed());
 
         $cache->flush($site);
         $this->assertSame(['/', '/a'], $this->cached('http://shared.test'));

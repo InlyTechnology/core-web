@@ -133,8 +133,7 @@ class SiteCache
     }
 
     /**
-     * Renders every cached page of the site again in the background, one
-     * queued request per page, owned as flush() owns them
+     * Refreshes the site's cached pages, owned as flush() owns them
      * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
@@ -258,9 +257,9 @@ class SiteCache
     }
 
     /**
-     * Renders the site's cached pages at these paths again in the background,
-     * as refresh() renders the whole site (docs/static-cache.md). Returns how
-     * many paths were handed on.
+     * refresh() for the site's cached pages at these paths, named as
+     * flushPaths() names them (docs/static-cache.md). Returns how many paths
+     * were handed on.
      *
      * @param  iterable<string>  $paths
      */
