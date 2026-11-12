@@ -120,8 +120,9 @@ address no site names) instead, since a request names its own host and a render
 would be sent there. `refresh()`, `refreshPaths()` and `refreshAll()` request
 each path once with every query string it was cached under, and forget a page
 cached as an error instead, as Statamic does. With `background_recache` off
-they forget the pages instead: Statamic would keep each new render under its
-recache token, beside the old copy, which visitors would go on getting.
+they request nothing and forget the pages: Statamic would keep each new render
+under its recache token, beside the old copy, which visitors would go on
+getting.
 
 ## A save under the `all` rule
 

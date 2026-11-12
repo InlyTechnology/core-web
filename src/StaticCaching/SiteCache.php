@@ -165,9 +165,8 @@ class SiteCache
     }
 
     /**
-     * refresh() for every cached page on each site's host, under http and
-     * https, a page outside every site's path included; a page on a host no
-     * site names is forgotten instead. Returns how many paths were handed on.
+     * refresh() for every cached page on each site's host
+     * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refreshAll(): int
     {

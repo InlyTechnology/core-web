@@ -19,8 +19,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`SiteCache::refreshPaths()`** renders the named pages of a site again in
   the background, where `refresh()` takes every page. See
   `docs/static-cache.md` (Pages a snapshot change touches).
-- **`SiteCache::refreshAll()`** renders again every page cached on a site's
-  host, where `refresh()` takes one site's. See `docs/static-cache.md`
+- **`SiteCache::refreshAll()`** renders again the pages cached on every
+  site's host, where `refresh()` takes one site's. See `docs/static-cache.md`
   (Pages a snapshot change touches).
 - **`SiteCache::refresh()` forgets the pages while `background_recache` is
   off**, where it queued renders whose results visitors never got. See
