@@ -190,6 +190,7 @@ class SiteCacheTest extends TestCase
     public function test_refresh_all_queues_each_page_on_each_site_s_host_and_scheme(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         $this->cache('http://default.test', ['/', '/a', '/a?page=2']);
         $this->cache('https://default.test', ['/b']);
         $this->cache('http://other.test', ['/', '/gone']);
@@ -230,6 +231,7 @@ class SiteCacheTest extends TestCase
     public function test_a_relative_site_is_on_the_app_url_s_host_whatever_host_the_request_names(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
             'en' => ['name' => 'English', 'url' => '/en/', 'locale' => 'en_US'],
@@ -337,6 +339,9 @@ class SiteCacheTest extends TestCase
         $this->assertSame(2, $cache->refresh(Site::get('default')));
         $this->assertSame([], $this->cached('http://default.test'));
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
+
+        $this->assertSame(2, $cache->refreshAll());
+        $this->assertSame([], $this->cached('http://other.test'));
         $this->assertSame([], $this->warmed());
     }
 

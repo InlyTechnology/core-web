@@ -113,15 +113,15 @@ keep the cached copy until it is replaced; `SiteCache::refreshPaths()` does
 that for the paths it is given, named as `flushPaths()` names them, and leaves
 a path nothing is cached at alone. Each path is requested once with every query
 string it was cached under, and a page cached as an error is forgotten instead,
-as Statamic does. With `background_recache` off, both forget the pages instead:
+as Statamic does. On a host with no site at its root, a page cached outside
+every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no site's, so no
+site's flush or refresh reaches it. `SiteCache::refreshAll()` renders again
+every page cached on a site's host, under http and https, that page included.
+It forgets the pages cached on any other host (a `www` alias, an address no
+site names) instead, since a request names its own host and a render would be
+sent there. With `background_recache` off, all three forget the pages instead:
 Statamic would keep each new render under its recache token, beside the old
-copy, which visitors would go on getting. On a host with no site at its root, a
-page cached outside every site's path (a 404 at `/foo` beside `/en` and `/sv`)
-is no site's, so no site's flush or refresh reaches it.
-`SiteCache::refreshAll()` renders again every page cached on a site's host,
-under http and https, that page included. It forgets the pages cached on any
-other host (a `www` alias, an address no site names) instead, since a request
-names its own host and a render would be sent there.
+copy, which visitors would go on getting.
 
 ## A save under the `all` rule
 

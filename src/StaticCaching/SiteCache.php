@@ -194,7 +194,7 @@ class SiteCache
             }
 
             foreach (array_keys($paths) as $path) {
-                $this->cacher->refreshUrl($path, $domain);
+                $this->renderAgain($path, $domain);
                 $queued++;
             }
         }
