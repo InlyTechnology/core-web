@@ -126,12 +126,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   composer.json README.md` finds one; and such a template: locally, with
   `STATAMIC_STATIC_CACHING_STRATEGY=half` and
   `STATAMIC_BACKGROUND_RECACHE=true` in `.env`, check that `php artisan
-  config:show statamic.static_caching.background_recache` shows `true` (if
-  not, set it to `true` in `config/statamic/static_caching.php` for the
-  check), run `php artisan statamic:static:clear`, then for a page of each
-  template and of each block in use run `curl -s
-  '<address>?__recache=check-7f3a' > /dev/null` and `curl -s
-  '<address>?__recache=plain' | grep -c check-7f3a` (the site's
+  config:show statamic.static_caching` shows `strategy` `half` and
+  `background_recache` `true` (if not, set them in
+  `config/statamic/static_caching.php` for the check), run `php artisan
+  statamic:static:clear`, then for a page of each template and of each
+  block in use run `curl -s '<address>?__recache=check-7f3a' > /dev/null`
+  and `curl -s '<address>?__recache=plain' | grep -c check-7f3a` (the site's
   `recache_token_parameter` in place of `__recache` if it names one), where
   a count above 0 marks a page with such a template. Migrate: delete a
   `background_recache` line in `config/statamic/static_caching.php` that
@@ -142,15 +142,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   only missing pages `--uncached`; and have such a page read and print the
   query or address inside `@nocache`
   ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
-  Verify: the local check prints 0 for each page it checked; then take the
-  two lines out of `.env` and any `true` set for the check. On a production
-  server, `php artisan core-web:doctor` names the connection and queue the
-  renders go on. After deploy, production needs a worker on that queue: save
-  an entry, then check that `php artisan queue:monitor <connection>:<queue>`
-  drains to 0, that a page the save renders again (under the `all` rule, one
-  listing the entry: `SiteScopedInvalidator` forgets its own page at once)
-  shows the change, and that `php artisan queue:failed` lists no
-  `StaticWarmJob`.
+  Verify: the local check prints 0 for each page it checked; then put
+  `.env` and `config/statamic/static_caching.php` back as they were. On a
+  production server, `php artisan core-web:doctor` names the connection and
+  queue the renders go on. After deploy, production needs a worker on that
+  queue: save an entry, then check that `php artisan queue:monitor
+  <connection>:<queue>` drains to 0, that a page the save renders again
+  (under the `all` rule, one listing the entry: `SiteScopedInvalidator`
+  forgets its own page at once) shows the change, and that `php artisan
+  queue:failed` lists no `StaticWarmJob`.
 - **On Laravel Cloud, a save's page renders are queued on `low`.** With
   `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
   `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue, and
