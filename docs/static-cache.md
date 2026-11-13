@@ -126,10 +126,10 @@ keeps a list of the cached URLs for each domain. A clear (a save's flush, an
 invalidated URL, the CP's Invalidate) deletes only the pages it finds on that
 list. A page a visitor caches while a clear runs can be stored after the
 clear took its URL off the list. Every later visit is then served that copy,
-and no save or Invalidate reaches it until it expires or its store is
-emptied (`cache:clear`, or `statamic:static:clear` with a dedicated
-`static_cache` store). The same address with a trailing slash or another
-query string is cached apart, so it can show the current page.
+and no save or Invalidate reaches it until it expires or the store holding
+it is emptied: `statamic:static:clear` with a dedicated `static_cache`
+store, `cache:clear` without one. The same address with a trailing slash
+or another query string is cached apart, so it can show the current page.
 
 core-web runs `GuardedApplicationCacher` in its place, which serves a cached
 page only when the request that rendered it started after the page was last
@@ -138,10 +138,10 @@ cleared:
 - Each clear records when it ended, whether its pages were on the list or
   not: a flush of the whole cache, a path with every query string on it,
   and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
-  `SiteCache` records the paths it flushes, and a site's whole path when it
-  flushes the site, except for a site with another site under its path on
-  the same host (a site at `/` beside `/en`): there only the pages found on
-  the list are recorded.
+  `SiteCache` records the paths and wildcards it flushes, and a site's whole
+  path when it flushes the site, except where another site's pages on the
+  same host lie at or under them (`/*` on a site at `/` beside `/en`):
+  there only the pages found on the list are recorded.
 - A cached page is stored with the time its request started
   (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
   covers it ended, or less than a second after (servers' clocks differ
@@ -157,11 +157,14 @@ cleared:
 A hit reads the page and these records in one call to the cache store. A
 path's record lasts an hour longer than the static cache's `expiry`, and
 without one until its store is emptied. A wildcard's record goes with a
-later flush of the whole cache or a later, wider wildcard.
+later flush of the whole cache or a later, wider wildcard; with an
+`expiry`, a later wildcard on the domain also drops one older than a
+path's record lasts.
 
 `static_cache.guard: false` keeps Statamic's own cacher, which serves any
-copy the guard was keeping out again: flush the static cache after turning
-it off. The `full` strategy has a cacher of its own and is unchanged.
+copy the guard was keeping out again: empty the store holding them after
+turning it off, as above. The `full` strategy has a cacher of its own and
+is unchanged.
 
 ## Ad and analytics parameters
 

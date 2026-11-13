@@ -180,6 +180,7 @@ class GuardedApplicationCacherTest extends TestCase
     {
         $cacher = $this->guarded()->waitingNoLonger();
         $this->cache($cacher, 'http://default.test/blog/one', 'one', at: 0);
+        $this->unlist('http://default.test');
         $this->store->lock('static-cache:urls', 10)->acquire();
 
         $this->now += 10;
@@ -188,10 +189,61 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertNull($this->served($cacher, 'http://default.test/blog/one'));
     }
 
+    public function test_a_wildcard_that_waited_for_the_lock_keeps_a_newer_one_written_meanwhile(): void
+    {
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'http://default.test/blog/one', 'one', at: 1.5);
+        $this->unlist('http://default.test');
+        $this->store->whenLocking(function () use ($cacher) {
+            $this->now += 2;
+            $cacher->recordClears('http://default.test', [], ['/blog/']);
+        });
+
+        $cacher->recordClears('http://default.test', [], ['/blog/']);
+
+        $this->assertSame(['/blog/' => $this->now], $this->store->get(self::under('http://default.test')));
+        $this->assertNull($this->served($cacher, 'http://default.test/blog/one'));
+    }
+
+    public function test_an_older_wider_wildcard_keeps_a_newer_narrower_one(): void
+    {
+        $cacher = $this->guarded();
+        $cacher->invalidateUrls(['http://default.test/*']);
+        $wider = $this->now;
+
+        $this->now += 10;
+        $cacher->invalidateUrls(['http://default.test/blog/*']);
+
+        $this->assertSame(['/' => $wider, '/blog/' => $this->now], $this->store->get(self::under('http://default.test')));
+    }
+
+    public function test_a_wildcard_older_than_a_paths_record_lasts_goes_with_the_next(): void
+    {
+        $cacher = $this->guarded(['expiry' => 10]);
+        $cacher->invalidateUrls(['http://default.test/blog/*']);
+
+        $this->now += 70 * 60;
+        $cacher->invalidateUrls(['http://default.test/news/*']);
+
+        $this->assertSame(['/news/' => $this->now], $this->store->get(self::under('http://default.test')));
+    }
+
+    public function test_a_flush_leaves_the_wildcards_alone_while_the_url_list_is_locked(): void
+    {
+        $cacher = $this->guarded()->waitingNoLonger();
+        $cacher->invalidateUrls(['http://default.test/blog/*']);
+        $this->store->lock('static-cache:urls', 10)->acquire();
+
+        $this->now += 10;
+        $cacher->flush();
+
+        $this->assertSame(['/blog/' => $this->now - 10], $this->store->get(self::under('http://default.test')));
+    }
+
     public function test_a_flush_or_a_wider_wildcard_drops_the_wildcards_it_covers(): void
     {
         $cacher = $this->guarded();
-        $under = 'static-cache:core-web:cleared-under:'.md5('http://default.test');
+        $under = self::under('http://default.test');
 
         $cacher->invalidateUrls(['http://default.test/blog/*', 'http://default.test/news/*']);
         $this->now += 10;
@@ -281,6 +333,26 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame('a', $this->served($cacher, 'http://shared.test/a'));
     }
 
+    public function test_a_sites_paths_and_wildcards_leave_another_sites_pages_on_its_host_alone(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'http://shared.test/a', 'a', at: 0);
+        $this->cache($cacher, 'http://shared.test/other', 'other', at: 0);
+        $this->cache($cacher, 'http://shared.test/other/b', 'b', at: 0);
+        $this->unlist('http://shared.test');
+
+        $this->now += 10;
+        (new SiteCache($cacher))->flushPaths(Site::get('default'), ['/a', '/other', '/*']);
+
+        $this->assertNull($this->served($cacher, 'http://shared.test/a'));
+        $this->assertSame('other', $this->served($cacher, 'http://shared.test/other'));
+        $this->assertSame('b', $this->served($cacher, 'http://shared.test/other/b'));
+    }
+
     public function test_the_half_strategy_runs_the_guarded_cacher_unless_turned_off(): void
     {
         config(['statamic.static_caching.strategy' => 'half']);
@@ -346,6 +418,11 @@ class GuardedApplicationCacherTest extends TestCase
         return $cacher->hasCachedPage($request) ? $cacher->getCachedPage($request)->content : null;
     }
 
+    private static function under(string $domain): string
+    {
+        return 'static-cache:core-web:cleared-under:'.md5($domain);
+    }
+
     /** Drops the domain's URL list and keeps its pages: what a lost write to the list leaves. */
     private function unlist(string $domain): void
     {
@@ -375,14 +452,35 @@ class ClockedCacher extends GuardedApplicationCacher
     }
 }
 
-/** An array store that runs a visitor's request in the middle of a clear, right after the first page it forgets. */
+/**
+ * An array store that runs another request in the middle of a clear: right after the first page it forgets, or before
+ * the next lock it is asked for.
+ */
 class InterleavingStore extends ArrayStore
 {
     private ?Closure $visitor = null;
 
+    private ?Closure $locker = null;
+
     public function whenForgetting(Closure $visitor): void
     {
         $this->visitor = $visitor;
+    }
+
+    public function whenLocking(Closure $locker): void
+    {
+        $this->locker = $locker;
+    }
+
+    public function lock($name, $seconds = 0, $owner = null)
+    {
+        if ($this->locker !== null) {
+            $locker = $this->locker;
+            $this->locker = null;
+            $locker();
+        }
+
+        return parent::lock($name, $seconds, $owner);
     }
 
     public function forget($key)

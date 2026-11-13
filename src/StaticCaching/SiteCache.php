@@ -137,11 +137,7 @@ class SiteCache
 
         $prefix = self::prefix($site);
 
-        // A site with another under its path cannot name its whole path without that site's pages.
-        $nested = $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
-            && ($prefix === '' || str_starts_with(self::prefix($other).'/', $prefix.'/')));
-
-        if (! $nested) {
+        if (! self::reachesOthers($neighbours, $site, $prefix.'/')) {
             $this->record($site, $prefix === '' ? [] : [$prefix], [$prefix.'/']);
         }
     }
@@ -280,11 +276,19 @@ class SiteCache
 
         foreach (array_keys($exact) as $path) {
             $onHost = $prefix.($path === '/' && $prefix !== '' ? '' : $path);
-            $named[$onHost] = true;
-            $named[rtrim($onHost, '/').'/'] = true;
+
+            if (self::owner($neighbours, $onHost)?->handle() === $site->handle()) {
+                $named[$onHost] = true;
+                $named[rtrim($onHost, '/').'/'] = true;
+            }
         }
 
-        $this->record($site, array_keys($named), array_map(fn (string $under) => $prefix.$under, $prefixes));
+        $under = array_filter(
+            array_map(fn (string $under) => $prefix.$under, $prefixes),
+            fn (string $under) => ! self::reachesOthers($neighbours, $site, $under),
+        );
+
+        $this->record($site, array_keys($named), array_values($under));
 
         return $forgotten;
     }
@@ -358,6 +362,19 @@ class SiteCache
         return Sites::all()
             ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
             ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+    }
+
+    /**
+     * Whether a page under this path on the site's host ('/blog/') can be another site's: such a clear is recorded only
+     * for the pages found on the URL list.
+     *
+     * @param  Collection<array-key, Site>  $neighbours
+     */
+    private static function reachesOthers(Collection $neighbours, Site $site, string $under): bool
+    {
+        return self::owner($neighbours, $under)?->handle() !== $site->handle()
+            || $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
+                && str_starts_with(self::prefix($other).'/', $under));
     }
 
     /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */

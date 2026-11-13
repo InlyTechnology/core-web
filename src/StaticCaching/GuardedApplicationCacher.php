@@ -74,15 +74,21 @@ class GuardedApplicationCacher extends ApplicationCacher
                 ->reject(fn ($value, $key) => in_array($key, ['date', 'x-powered-by', 'cache-control', 'expires', 'set-cookie']))
                 ->all();
 
-            $this->cache->putMany([
+            $values = [
                 $this->normalizeKey('responses:'.$key) => [
                     'content' => $value,
                     'headers' => $headers,
                     'status' => $event->response->getStatusCode(),
                     'started' => $started,
                 ],
-                $this->normalizeKey('generated-at:'.$key) => now()->getTimestamp(),
-            ], $this->pageExpiry());
+            ];
+
+            // Only a Statamic with getGeneratedAt() reads this key and forgets it with the page.
+            if (method_exists(ApplicationCacher::class, 'getGeneratedAt')) {
+                $values[$this->normalizeKey('generated-at:'.$key)] = now()->getTimestamp();
+            }
+
+            $this->cache->putMany($values, $this->pageExpiry());
         });
     }
 
@@ -203,7 +209,8 @@ class GuardedApplicationCacher extends ApplicationCacher
     }
 
     /**
-     * Writes the domain's wildcard records, keeping only those a newer flush or a newer, wider prefix does not cover.
+     * Writes the domain's wildcard records, keeping only those no newer flush or newer, wider prefix covers, and none
+     * older than a path's record lasts.
      *
      * @param  array<string, float>  $cleared  prefix => when it was cleared
      */
@@ -211,11 +218,21 @@ class GuardedApplicationCacher extends ApplicationCacher
     {
         $key = $this->underKey($domain);
 
+        if ($cleared === [] && $this->cache->get($key) === null) {
+            return;
+        }
+
         $write = function () use ($key, $cleared, $flushed) {
-            $under = [...(array) $this->cache->get($key, []), ...$cleared];
+            $under = (array) $this->cache->get($key, []);
+            $lasting = $this->getDefaultExpiration() ? $this->now() - ($this->getDefaultExpiration() + self::RECORD_MARGIN) * 60 : 0.0;
+
+            // The later clear wins: one that waited for the lock can be older than one written while it waited.
+            foreach ($cleared as $prefix => $at) {
+                $under[$prefix] = max((float) ($under[$prefix] ?? 0), $at);
+            }
 
             foreach ($under as $prefix => $at) {
-                $covered = (float) $at <= $flushed;
+                $covered = (float) $at <= max($flushed, $lasting);
 
                 foreach ($under as $wider => $later) {
                     $covered = $covered || ($wider !== $prefix && Str::startsWith((string) $prefix, (string) $wider) && $later >= $at);
@@ -229,15 +246,19 @@ class GuardedApplicationCacher extends ApplicationCacher
             $under === [] ? $this->cache->forget($key) : $this->cache->forever($key, $under);
         };
 
-        // A domain with records is listed, so a flush of the whole cache drops them. Unlocked rather than lost: a record
-        // left out would let the pages under it be served stale.
-        $this->withUrlsLocked(function () use ($domain, $cleared, $write) {
+        // A domain with records is listed, so a flush of the whole cache drops them. A record is written unlocked rather
+        // than lost, as one left out would let the pages under it be served stale; a prune without the lock is skipped.
+        $locked = $this->withUrlsLocked(function () use ($domain, $cleared, $write) {
             if ($cleared !== []) {
                 $this->cacheDomain($domain);
             }
 
             $write();
-        }) || $write();
+        });
+
+        if (! $locked && $cleared !== []) {
+            $write();
+        }
     }
 
     /**
