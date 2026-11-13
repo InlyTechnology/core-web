@@ -61,6 +61,9 @@ final class CloudDefaults
     /** The Redis connection the static cache's pages go through on a Redis default store: the cache's own, compressing. */
     public const STATIC_CACHE_CONNECTION = 'core_web_static_cache';
 
+    /** The queue Statamic renders a page again on, where neither the env nor the site's config names one. */
+    public const WARM_QUEUE = 'low';
+
     /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
     public const PEAK_DISKS = ['favicons', 'social_images'];
 
@@ -91,6 +94,11 @@ final class CloudDefaults
         if (! $resolved) {
             foreach (self::DEFAULTS as $key => [$env, $value]) {
                 self::set($config, $key, $env, $value);
+            }
+
+            // A save queues a render for each page it reaches, which on the default queue would hold up the site's other jobs (a ping's refresh, form mail).
+            if (Env::getRepository()->get('STATAMIC_STATIC_WARM_QUEUE') === null && blank($config->get('statamic.static_caching.warm_queue'))) {
+                $config->set('statamic.static_caching.warm_queue', self::WARM_QUEUE);
             }
 
             // Statamic queues every index build. On a worker a local index is written to the worker's disk, which no web
