@@ -157,10 +157,11 @@ cleared:
   and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
   `SiteCache` records the paths and wildcards it forgets, leaving out those
   another site owns, and a flush of a site records a clear of all the
-  site's pages; so do `refresh()` and `refreshPaths()` while
-  `background_recache` is off, when they forget the pages too. A wildcard
-  with another site under it (`/*` on a site at `/` beside `/en`) records a
-  clear of all its own site's pages instead.
+  site's pages. While `background_recache` is off, `refresh()` and
+  `refreshPaths()` forget the pages too, and record what `flush()` and
+  `flushPaths()` record. A wildcard with another site under it (`/*` on a
+  site at `/` beside `/en`) records a clear of all its own site's pages
+  instead.
 - A cached page is stored with the time its request started
   (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
   covers it ended, or less than a second after (servers' clocks differ
@@ -170,8 +171,9 @@ cleared:
 - A page whose URL cannot be written onto the list within 10 seconds, the
   wait for the list's lock, is not kept. Statamic writes the list without
   its lock then, and two such writes can lose a URL.
-- A refresh with `background_recache` records no clear: visitors keep the
-  cached copy until the queued render replaces it.
+- A refresh with `background_recache` records no clear for the pages it
+  renders again: visitors keep the cached copy until the queued render
+  replaces it.
 
 A hit reads the page and these records in one call to the cache store. A
 path's record lasts an hour longer than the static cache's `expiry`, and

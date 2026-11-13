@@ -364,7 +364,7 @@ class GuardedApplicationCacherTest extends TestCase
         $this->shareHost();
         $cacher = $this->guarded();
 
-        foreach (['a', 'b', 'c', 'other/d', 'other/e'] as $path) {
+        foreach (['a', 'b', 'c', 'w/y', 'x/y', 'other/d', 'other/e'] as $path) {
             $this->cache($cacher, "http://shared.test/{$path}", $path, at: 0);
         }
 
@@ -372,13 +372,15 @@ class GuardedApplicationCacherTest extends TestCase
 
         $this->now += 10;
         $cache = new SiteCache($cacher);
-        $cache->forget(Site::get('default'), ['http://shared.test/a']);
+        $cache->forget(Site::get('default'), ['http://shared.test/a', 'http://shared.test/w/*']);
         $cache->forgetMany(['other' => ['http://shared.test/other/d']]);
-        $cache->refreshPaths(Site::get('default'), ['/b']);
+        $cache->refreshPaths(Site::get('default'), ['/b', '/x/*']);
 
         $this->assertNull($this->served($cacher, 'http://shared.test/a'));
+        $this->assertNull($this->served($cacher, 'http://shared.test/w/y'));
         $this->assertNull($this->served($cacher, 'http://shared.test/other/d'));
         $this->assertNull($this->served($cacher, 'http://shared.test/b'));
+        $this->assertNull($this->served($cacher, 'http://shared.test/x/y'));
         $this->assertSame('c', $this->served($cacher, 'http://shared.test/c'));
         $this->assertSame('other/e', $this->served($cacher, 'http://shared.test/other/e'));
 
