@@ -217,17 +217,6 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame(['/' => $wider, '/blog/' => $this->now], $this->store->get(self::under('http://default.test')));
     }
 
-    public function test_a_wildcard_older_than_a_paths_record_lasts_goes_with_the_next(): void
-    {
-        $cacher = $this->guarded(['expiry' => 10]);
-        $cacher->invalidateUrls(['http://default.test/blog/*']);
-
-        $this->now += 70 * 60;
-        $cacher->invalidateUrls(['http://default.test/news/*']);
-
-        $this->assertSame(['/news/' => $this->now], $this->store->get(self::under('http://default.test')));
-    }
-
     public function test_a_flush_leaves_the_wildcards_alone_while_the_url_list_is_locked(): void
     {
         $cacher = $this->guarded()->waitingNoLonger();
@@ -289,7 +278,7 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertNull($this->store->get($record));
     }
 
-    public function test_a_site_flush_records_its_whole_host_and_named_paths_their_own(): void
+    public function test_a_site_flush_records_all_its_pages_and_named_paths_their_own(): void
     {
         $cacher = $this->guarded();
         $this->cache($cacher, 'http://default.test/a', 'a', at: 0);
@@ -310,47 +299,63 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame('b', $this->served($cacher, 'http://other.test/b'));
     }
 
-    public function test_a_site_with_another_under_its_path_records_only_the_pages_it_finds(): void
+    public function test_a_site_flush_takes_all_its_pages_and_none_of_another_sites_under_its_path(): void
     {
-        Site::setSites([
-            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
-            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
-        ]);
+        $this->shareHost();
         $cacher = $this->guarded();
         $this->cache($cacher, 'http://shared.test/a', 'a', at: 0);
+        $this->cache($cacher, 'https://shared.test/otherwise?x=1', 'otherwise', at: 0);
         $this->cache($cacher, 'http://shared.test/other/b', 'b', at: 0);
-        $this->cache($cacher, 'http://shared.test/otherwise', 'otherwise', at: 0);
         $this->unlist('http://shared.test');
+        $this->unlist('https://shared.test');
 
         $this->now += 10;
+        (new SiteCache($cacher))->flush(Site::get('default'));
+
+        $this->assertNull($this->served($cacher, 'http://shared.test/a'));
+        $this->assertNull($this->served($cacher, 'https://shared.test/otherwise?x=1'));
+        $this->assertSame('b', $this->served($cacher, 'http://shared.test/other/b'));
+
         (new SiteCache($cacher))->flush(Site::get('other'));
 
         $this->assertNull($this->served($cacher, 'http://shared.test/other/b'));
-        $this->assertSame('otherwise', $this->served($cacher, 'http://shared.test/otherwise'));
-
-        (new SiteCache($cacher))->flush(Site::get('default'));
-
-        $this->assertSame('a', $this->served($cacher, 'http://shared.test/a'));
     }
 
-    public function test_a_sites_paths_and_wildcards_leave_another_sites_pages_on_its_host_alone(): void
+    public function test_a_sites_paths_and_wildcards_leave_another_sites_pages_under_its_path_alone(): void
     {
-        Site::setSites([
-            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
-            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
-        ]);
+        $this->shareHost();
         $cacher = $this->guarded();
-        $this->cache($cacher, 'http://shared.test/a', 'a', at: 0);
+        $this->cache($cacher, 'http://shared.test/products/p', 'p', at: 0);
         $this->cache($cacher, 'http://shared.test/other', 'other', at: 0);
         $this->cache($cacher, 'http://shared.test/other/b', 'b', at: 0);
+        $this->cache($cacher, 'http://shared.test/other/x/c', 'c', at: 0);
         $this->unlist('http://shared.test');
 
         $this->now += 10;
-        (new SiteCache($cacher))->flushPaths(Site::get('default'), ['/a', '/other', '/*']);
+        (new SiteCache($cacher))->flushPaths(Site::get('default'), ['/other', '/other/x/*']);
 
-        $this->assertNull($this->served($cacher, 'http://shared.test/a'));
         $this->assertSame('other', $this->served($cacher, 'http://shared.test/other'));
+        $this->assertSame('c', $this->served($cacher, 'http://shared.test/other/x/c'));
+        $this->assertSame('p', $this->served($cacher, 'http://shared.test/products/p'));
+
+        (new SiteCache($cacher))->flushPaths(Site::get('default'), ['/*']);
+
+        $this->assertNull($this->served($cacher, 'http://shared.test/products/p'));
         $this->assertSame('b', $this->served($cacher, 'http://shared.test/other/b'));
+        $this->assertSame('other', $this->served($cacher, 'http://shared.test/other'));
+    }
+
+    public function test_a_cached_page_says_when_it_was_generated(): void
+    {
+        if (! method_exists(ApplicationCacher::class, 'getGeneratedAt')) {
+            $this->markTestSkipped('Statamic before 6.41 keeps no generated-at time.');
+        }
+
+        $this->freezeSecond();
+        $cacher = $this->guarded();
+        $this->cache($cacher, self::PAGE, 'v1', at: 0);
+
+        $this->assertSame(now()->getTimestamp(), $cacher->getGeneratedAt(self::PAGE));
     }
 
     public function test_the_half_strategy_runs_the_guarded_cacher_unless_turned_off(): void
@@ -379,6 +384,15 @@ class GuardedApplicationCacherTest extends TestCase
         $this->store($cacher, $request, 'rendered before the flush');
 
         $this->assertNull($this->served($cacher, self::PAGE));
+    }
+
+    /** A site at the root of shared.test and one under its path, /other. */
+    private function shareHost(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://shared.test/other/', 'locale' => 'sv_SE'],
+        ]);
     }
 
     /** @param  array<string, mixed>  $config */

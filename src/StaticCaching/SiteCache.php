@@ -135,11 +135,7 @@ class SiteCache
             $this->invalidate(array_keys($paths), $domain);
         }
 
-        $prefix = self::prefix($site);
-
-        if (! self::reachesOthers($neighbours, $site, $prefix.'/')) {
-            $this->record($site, $prefix === '' ? [] : [$prefix], [$prefix.'/']);
-        }
+        $this->recordSite($site);
     }
 
     /**
@@ -283,12 +279,29 @@ class SiteCache
             }
         }
 
-        $under = array_filter(
-            array_map(fn (string $under) => $prefix.$under, $prefixes),
-            fn (string $under) => ! self::reachesOthers($neighbours, $site, $under),
-        );
+        $under = [];
+        $whole = false;
 
-        $this->record($site, array_keys($named), array_values($under));
+        foreach ($prefixes as $onSite) {
+            $onHost = $prefix.$onSite;
+
+            if (self::owner($neighbours, $onHost)?->handle() !== $site->handle()) {
+                continue;
+            }
+
+            // A prefix with another site under it cannot be named without that site's pages: the whole site is.
+            if (self::nestsOthers($neighbours, $site, $onHost)) {
+                $whole = true;
+            } else {
+                $under[] = $onHost;
+            }
+        }
+
+        $this->record($site, array_keys($named), $under);
+
+        if ($whole) {
+            $this->recordSite($site);
+        }
 
         return $forgotten;
     }
@@ -310,6 +323,14 @@ class SiteCache
 
         foreach (['http', 'https'] as $scheme) {
             $this->cacher->recordClears("{$scheme}://{$host}", $paths, $prefixes);
+        }
+    }
+
+    /** Records the clear of every page the site owns for the guarded cacher: docs/static-cache.md#pages-cached-while-a-clear-runs. */
+    private function recordSite(Site $site): void
+    {
+        if ($this->cacher instanceof GuardedApplicationCacher) {
+            $this->cacher->recordSiteClear($site->handle());
         }
     }
 
@@ -350,6 +371,12 @@ class SiteCache
         return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
     }
 
+    /** The site a cached page belongs to: the one with the longest path on the page's host that the page lies under. */
+    public static function siteOf(string $url): ?Site
+    {
+        return self::owner(self::sitesOn(parse_url($url, PHP_URL_HOST)), $url);
+    }
+
     /**
      * The sites on the site's host, longest path first.
      *
@@ -357,24 +384,26 @@ class SiteCache
      */
     private static function neighbours(Site $site): Collection
     {
-        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+        return self::sitesOn(parse_url($site->absoluteUrl(), PHP_URL_HOST));
+    }
 
+    /** @return Collection<array-key, Site> the sites on the host, longest path first */
+    private static function sitesOn(string|false|null $host): Collection
+    {
         return Sites::all()
             ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
             ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
     }
 
     /**
-     * Whether a page under this path on the site's host ('/blog/') can be another site's: such a clear is recorded only
-     * for the pages found on the URL list.
+     * Whether another site on the host sits under this path ('/' beside a site at '/en').
      *
      * @param  Collection<array-key, Site>  $neighbours
      */
-    private static function reachesOthers(Collection $neighbours, Site $site, string $under): bool
+    private static function nestsOthers(Collection $neighbours, Site $site, string $under): bool
     {
-        return self::owner($neighbours, $under)?->handle() !== $site->handle()
-            || $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
-                && str_starts_with(self::prefix($other).'/', $under));
+        return $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
+            && str_starts_with(self::prefix($other).'/', $under));
     }
 
     /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */

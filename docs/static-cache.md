@@ -138,10 +138,10 @@ cleared:
 - Each clear records when it ended, whether its pages were on the list or
   not: a flush of the whole cache, a path with every query string on it,
   and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
-  `SiteCache` records the paths and wildcards it flushes, and a site's whole
-  path when it flushes the site, except where another site's pages on the
-  same host lie at or under them (`/*` on a site at `/` beside `/en`):
-  there only the pages found on the list are recorded.
+  `SiteCache` records the paths and wildcards it flushes, leaving out those
+  another site owns, and a flush of a site records a clear of all the
+  site's pages. A wildcard with another site under it (`/*` on a site at
+  `/` beside `/en`) records a clear of all its own site's pages instead.
 - A cached page is stored with the time its request started
   (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
   covers it ended, or less than a second after (servers' clocks differ
@@ -157,9 +157,8 @@ cleared:
 A hit reads the page and these records in one call to the cache store. A
 path's record lasts an hour longer than the static cache's `expiry`, and
 without one until its store is emptied. A wildcard's record goes with a
-later flush of the whole cache or a later, wider wildcard; with an
-`expiry`, a later wildcard on the domain also drops one older than a
-path's record lasts.
+later flush of the whole cache or a later, wider wildcard. A site's record,
+one per site, stays until its store is emptied.
 
 `static_cache.guard: false` keeps Statamic's own cacher, which serves any
 copy the guard was keeping out again: empty the store holding them after

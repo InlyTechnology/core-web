@@ -167,6 +167,12 @@ class GuardedApplicationCacher extends ApplicationCacher
         }
     }
 
+    /** Every page the site owns (SiteCache::siteOf()) cached before now is a miss. */
+    public function recordSiteClear(string $site): void
+    {
+        $this->cache->forever($this->siteKey($site), $this->now());
+    }
+
     public function cacheUrl($key, $url, $domain = null)
     {
         $this->listUrl($key, $url, $domain);
@@ -209,8 +215,7 @@ class GuardedApplicationCacher extends ApplicationCacher
     }
 
     /**
-     * Writes the domain's wildcard records, keeping only those no newer flush or newer, wider prefix covers, and none
-     * older than a path's record lasts.
+     * Writes the domain's wildcard records, keeping only those no newer flush or newer, wider prefix covers.
      *
      * @param  array<string, float>  $cleared  prefix => when it was cleared
      */
@@ -224,7 +229,6 @@ class GuardedApplicationCacher extends ApplicationCacher
 
         $write = function () use ($key, $cleared, $flushed) {
             $under = (array) $this->cache->get($key, []);
-            $lasting = $this->getDefaultExpiration() ? $this->now() - ($this->getDefaultExpiration() + self::RECORD_MARGIN) * 60 : 0.0;
 
             // The later clear wins: one that waited for the lock can be older than one written while it waited.
             foreach ($cleared as $prefix => $at) {
@@ -232,7 +236,7 @@ class GuardedApplicationCacher extends ApplicationCacher
             }
 
             foreach ($under as $prefix => $at) {
-                $covered = (float) $at <= max($flushed, $lasting);
+                $covered = (float) $at <= $flushed;
 
                 foreach ($under as $wider => $later) {
                     $covered = $covered || ($wider !== $prefix && Str::startsWith((string) $prefix, (string) $wider) && $later >= $at);
@@ -246,8 +250,8 @@ class GuardedApplicationCacher extends ApplicationCacher
             $under === [] ? $this->cache->forget($key) : $this->cache->forever($key, $under);
         };
 
-        // A domain with records is listed, so a flush of the whole cache drops them. A record is written unlocked rather
-        // than lost, as one left out would let the pages under it be served stale; a prune without the lock is skipped.
+        // Listed under the lock, the domain's records go with a flush of the whole cache. Without the lock a record is
+        // still written, unlisted, as one left out would let the pages under it be served stale; a prune is skipped.
         $locked = $this->withUrlsLocked(function () use ($domain, $cleared, $write) {
             if ($cleared !== []) {
                 $this->cacheDomain($domain);
@@ -263,7 +267,8 @@ class GuardedApplicationCacher extends ApplicationCacher
 
     /**
      * The page cached at the URL, or null when there is none, or its request started before a clear that covers it
-     * ended: of the whole cache, of its path with any query string, or of a prefix its path and query lie under.
+     * ended: of the whole cache, of the site it belongs to, of its path with any query string, or of a prefix its
+     * path and query lie under.
      *
      * @return array<string, mixed>|null
      */
@@ -278,6 +283,10 @@ class GuardedApplicationCacher extends ApplicationCacher
             'under' => $this->underKey($domain),
         ];
 
+        if ($site = SiteCache::siteOf($url)) {
+            $keys['site'] = $this->siteKey($site->handle());
+        }
+
         $values = $this->cache->many(array_values($keys));
         $page = $values[$keys['page']] ?? null;
 
@@ -286,7 +295,7 @@ class GuardedApplicationCacher extends ApplicationCacher
             return null;
         }
 
-        $cleared = max((float) ($values[$keys['all']] ?? 0), (float) ($values[$keys['path']] ?? 0));
+        $cleared = (float) collect($keys)->only(['all', 'site', 'path'])->map(fn (string $key) => (float) ($values[$key] ?? 0))->max();
 
         foreach ((array) ($values[$keys['under']] ?? []) as $prefix => $at) {
             if (Str::startsWith($path, (string) $prefix)) {
@@ -341,6 +350,11 @@ class GuardedApplicationCacher extends ApplicationCacher
     private function clearedKey(string $domain, string $path): string
     {
         return $this->normalizeKey('core-web:cleared:'.$this->makeHash($domain.(explode('?', $path, 2)[0] ?: '/')));
+    }
+
+    private function siteKey(string $site): string
+    {
+        return $this->normalizeKey('core-web:cleared-site:'.$site);
     }
 
     private function underKey(string $domain): string
