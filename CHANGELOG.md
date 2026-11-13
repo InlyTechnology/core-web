@@ -16,6 +16,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   rendered once more on its next visit. `static_cache.guard: false` keeps
   Statamic's own. See
   `docs/static-cache.md#pages-cached-while-a-clear-runs`.
+- **The Cloud form submissions migration rolls back as the driver's does**:
+  its `down()` deletes the table's rows before turning `id` back into an
+  integer, as statamic/eloquent-driver 5.12.6 now does.
 - **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
   proposals are kept in the private bucket Cloud attaches
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the
