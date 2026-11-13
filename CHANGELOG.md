@@ -124,20 +124,26 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   in each environment; a warm, in the host's deploy script or where `grep
   -rnE "static:warm|StaticWarm" routes/ bootstrap/ config/ app/
   composer.json README.md` finds one; and such a template: locally, with
-  `STATAMIC_STATIC_CACHING_STRATEGY=half` and `STATAMIC_BACKGROUND_RECACHE=true`
-  in `.env`, run `php artisan statamic:static:clear`, then for each kind of
-  page `curl -s '<address>?__recache=check-7f3a' > /dev/null` (the site's
-  `recache_token_parameter` in place of `__recache` if it names one) and
-  `curl -s '<address>' | grep -c check-7f3a`; a count above 0 is such a
-  page. Migrate: delete a `background_recache` line in
-  `config/statamic/static_caching.php` that only turns it on or works it out
-  from the environment; to keep pages forgotten after a save, set
-  `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
-  `static_cache.background_recache` to `false` in `config/core-web.php` for
-  every environment; give a warm that should fill only missing pages
-  `--uncached`; and have such a page read and print the query or address
-  inside `@nocache` ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
-  Verify: the local check prints 0 for each page it found. On a production
+  `STATAMIC_STATIC_CACHING_STRATEGY=half` and
+  `STATAMIC_BACKGROUND_RECACHE=true` in `.env`, check that `php artisan
+  config:show statamic.static_caching.background_recache` shows `true` (if
+  not, set it to `true` in `config/statamic/static_caching.php` for the
+  check), run `php artisan statamic:static:clear`, then for a page of each
+  template and of each block in use run `curl -s
+  '<address>?__recache=check-7f3a' > /dev/null` and `curl -s
+  '<address>?__recache=plain' | grep -c check-7f3a` (the site's
+  `recache_token_parameter` in place of `__recache` if it names one), where
+  a count above 0 marks a page with such a template. Migrate: delete a
+  `background_recache` line in `config/statamic/static_caching.php` that
+  only turns it on or works it out from the environment; to keep pages
+  forgotten after a save, set `STATAMIC_BACKGROUND_RECACHE=false` on that
+  server, or `static_cache.background_recache` to `false` in
+  `config/core-web.php` for every environment; give a warm that should fill
+  only missing pages `--uncached`; and have such a page read and print the
+  query or address inside `@nocache`
+  ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
+  Verify: the local check prints 0 for each page it checked; then take the
+  two lines out of `.env` and any `true` set for the check. On a production
   server, `php artisan core-web:doctor` names the connection and queue the
   renders go on. After deploy, production needs a worker on that queue: save
   an entry, then check that `php artisan queue:monitor <connection>:<queue>`
