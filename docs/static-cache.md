@@ -56,12 +56,13 @@ Statamic queues the further pages of a paginated page there. `php artisan
 config:show statamic.static_caching.background_recache` prints what a server
 resolved.
 
-With it on, `php artisan statamic:static:warm` renders again every page it
-lists, cached or not, since Statamic adds its render token to each address;
-`--uncached` warms only the pages not cached yet. Laravel's paginator leaves
-that token out of its links (`withQueryString()`), as Statamic's own does.
-Anything else that prints a page's query or full address (`current_full_url`,
-`request()->fullUrl()`) renders inside `@nocache`, as for
+With it on, Statamic requests each render, a save's or a warm's, with its
+render token in the address, so `php artisan statamic:static:warm` renders
+again every page it lists, cached or not; `--uncached` warms only the pages
+not cached yet. Laravel's paginator leaves that token out of its links
+(`withQueryString()`), as Statamic's own does. Anything else that reads a
+page's query or full address (`current_full_url`, `request()->fullUrl()`)
+renders inside `@nocache`, as for
 [ad and analytics parameters](#ad-and-analytics-parameters), or the cached
 copy hands on the token, with which anyone can render any page over its
 cached copy.
