@@ -170,9 +170,9 @@ cleared:
 - A page whose URL cannot be written onto the list within 10 seconds, the
   wait for the list's lock, is not kept. Statamic writes the list without
   its lock then, and two such writes can lose a URL.
-- A refresh with `background_recache` records a clear only where it forgets
-  a page cached as an error: that page's path, with every query string on
-  it, so no copy of the path is served until it is rendered again.
+- A refresh with `background_recache` records a clear where it forgets a
+  page cached as an error: that page's path, with every query string on it,
+  so no copy of the path is served until it is rendered again.
 
 A hit reads the page and these records in one call to the cache store. A
 path's record lasts an hour longer than the static cache's `expiry`, and
