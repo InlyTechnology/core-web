@@ -22,6 +22,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`SiteCache::refresh()` forgets the pages while `background_recache` is
   off**, where it queued renders whose results visitors never got. See
   `docs/static-cache.md` (Pages a snapshot change touches).
+- **The Cloud form submissions migration rolls back as the driver's does**:
+  its `down()` deletes the table's rows before turning `id` back into an
+  integer, as statamic/eloquent-driver 5.12.6 now does. A site gets it when
+  it publishes `--tag=core-web-cloud-migrations` again with `--force`.
 - **Snapshot details**: `Snapshot::details([...])` names fields too large to
   keep on every row, such as a car's images. A `fromObject()` snapshot
   leaves them out of its pull and of a search Core answers, and
