@@ -119,6 +119,39 @@ is reported. With `background_recache` on, the old address is then rendered
 again with the rest of its site: with the `half` strategy its cached copy
 becomes the 404 it now answers, and its queued render ends as a failed job.
 
+## Pages cached while a clear runs
+
+Statamic's `half` cacher stores each cached page under a key of its own and
+keeps a list of the cached URLs for each domain. A clear (a save's flush, an
+invalidated URL, the CP's Invalidate) deletes only the pages it finds on that
+list. A page a visitor caches while a clear runs can be stored after the
+clear took its URL off the list. Every later visit is then served that copy,
+and no save or Invalidate reaches it until the whole store is emptied
+(`statamic:static:clear`). The same address with a trailing slash or a query
+string shows the current page, since those are cached apart.
+
+core-web runs `GuardedApplicationCacher` in its place, which serves a cached
+page only when the request that rendered it started after the page was last
+cleared:
+
+- Each clear records when it ended: a flush of the whole cache, a URL with
+  every query string on it, and a wildcard (`/blog/*`) for the pages under
+  it. The record is written whether the URL was on the list or not.
+- Each cached page records when its request started. A page whose request
+  started before a clear that covers it ended, or less than a second after
+  (servers' clocks differ slightly), is a miss: it is rendered again and
+  listed. A page cached before core-web ran this cacher has no start
+  recorded, so it is rendered again once.
+- A page whose URL cannot be written onto the list within 10 seconds, the
+  wait for the list's lock, is not kept. Statamic writes the list without
+  its lock then, and two such writes can lose a URL.
+- Refreshing pages with `background_recache` records no clear: visitors keep
+  the cached copy until the queued render replaces it.
+
+A hit reads the page and these records in one call to the cache store.
+`static_cache.guard: false` keeps Statamic's own cacher. The `full` strategy
+has a cacher of its own and is unchanged.
+
 ## Ad and analytics parameters
 
 Statamic caches a page once per query string, so every click from a campaign

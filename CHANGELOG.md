@@ -8,6 +8,14 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A page cached while a clear runs no longer stays cached for good**: on
+  the `half` strategy, Statamic could store a page whose URL a running clear
+  had just taken off its list, and no later save or Invalidate reached it.
+  core-web's cacher now serves a cached page only when its request started
+  after the page was last cleared, so each page cached before the update is
+  rendered once more on its next visit. `static_cache.guard: false` keeps
+  Statamic's own. See
+  `docs/static-cache.md#pages-cached-while-a-clear-runs`.
 - **Draft proposals stay private on Laravel Cloud**: with `features.cloud`,
   proposals are kept in the private bucket Cloud attaches
   (`cloud.uploads_disk`) when `drafts.proposals.disk` names none. On the

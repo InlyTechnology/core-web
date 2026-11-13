@@ -98,6 +98,7 @@ use Inly\CoreWeb\Snapshots\SnapshotStore;
 use Inly\CoreWeb\Snapshots\UncacheableWhileDegraded;
 use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\DefaultStrategy;
+use Inly\CoreWeb\StaticCaching\GuardedApplicationCacher;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
@@ -134,6 +135,7 @@ use Statamic\Events\RevisionDeleted;
 use Statamic\Events\RevisionSaved;
 use Statamic\Events\RevisionSaving;
 use Statamic\Events\StacheCleared;
+use Statamic\Events\StaticCacheCleared;
 use Statamic\Events\TaxonomyDeleted;
 use Statamic\Events\TaxonomySaved;
 use Statamic\Events\TermDeleted;
@@ -148,6 +150,7 @@ use Statamic\Fields\FieldsetRepository;
 use Statamic\Http\Controllers\CP\Assets\ThumbnailController;
 use Statamic\Statamic;
 use Statamic\StaticCaching\Cacher;
+use Statamic\StaticCaching\StaticCacheManager;
 use Throwable;
 
 /**
@@ -203,6 +206,14 @@ class CoreWebServiceProvider extends ServiceProvider
                 fn ($app, array $config) => $manager->createS3Driver($config),
             ));
         }
+
+        // Statamic's `half` cacher, unless the site turns the guard off: docs/static-cache.md#pages-cached-while-a-clear-runs.
+        $this->callAfterResolving(StaticCacheManager::class, fn (StaticCacheManager $manager) => $manager->extend(
+            'application',
+            fn ($app, array $config) => config('core-web.static_cache.guard', true)
+                ? new GuardedApplicationCacher($manager->cacheStore(), $config)
+                : $manager->createApplicationDriver($config),
+        ));
 
         // Before any provider boots, once the app's config (and a test's environment) is in place; at once when registered late.
         $merge = function (): void {
@@ -413,6 +424,15 @@ class CoreWebServiceProvider extends ServiceProvider
         // Ungated: a site's own preview route calls Preview::mark(), and nothing changes for a response it did not mark.
         // The router prepares a route's answer before Statamic's static cache decides on it.
         Event::listen(ResponsePrepared::class, fn (ResponsePrepared $event) => Preview::keepOutOfCaches($event->request, $event->response));
+
+        // The store's flush (statamic:static:clear, the CP's Cache utility) takes the guarded cacher's records with it.
+        Event::listen(StaticCacheCleared::class, function (): void {
+            $cacher = $this->app->make(Cacher::class);
+
+            if ($cacher instanceof GuardedApplicationCacher) {
+                $cacher->recordFlush();
+            }
+        });
 
         if (filled(config('statamic.static_caching.strategy'))) {
             // A marked route's error page is prepared only after the static cache decided on it, so it is marked inside too.
