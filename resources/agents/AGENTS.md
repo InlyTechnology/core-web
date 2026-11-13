@@ -44,6 +44,10 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   deploy**, right after `statamic:stache:refresh`, as `php artisan core:warm || true`.
 - **Bump a snapshot's `version()`** whenever the document shape it stores changes, or the old shape is served
   until it expires.
+- **A field only one record's page shows (a car's images, its equipment) is a snapshot detail**:
+  `->details([...])` on the snapshot, read on that page with `SnapshotPage::find()` or
+  `SnapshotStore::document()`. Never a second snapshot or a live read of the same object for it. A field a
+  listing, card, search, filter or sitemap uses stays on the row.
 - Snapshot sitemaps are listed in the robots view with `{{ core_sitemaps }}`.
 - **Locally, data comes from the live site, not from production Core**: `content:pull` (with `content_sync`)
   brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
