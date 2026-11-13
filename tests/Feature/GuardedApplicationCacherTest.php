@@ -8,6 +8,7 @@ use Illuminate\Cache\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Events\ResponsePrepared;
+use Illuminate\Support\Facades\Queue;
 use Inly\CoreWeb\StaticCaching\GuardedApplicationCacher;
 use Inly\CoreWeb\StaticCaching\SiteCache;
 use Inly\CoreWeb\Tests\TestCase;
@@ -357,6 +358,53 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame('other', $this->served($cacher, 'http://shared.test/other'));
     }
 
+    public function test_forgetting_and_rendering_again_without_background_recache_record_the_pages_they_take(): void
+    {
+        config(['statamic.static_caching.background_recache' => false]);
+        $this->shareHost();
+        $cacher = $this->guarded();
+
+        foreach (['a', 'b', 'c', 'other/d', 'other/e'] as $path) {
+            $this->cache($cacher, "http://shared.test/{$path}", $path, at: 0);
+        }
+
+        $this->unlist('http://shared.test');
+
+        $this->now += 10;
+        $cache = new SiteCache($cacher);
+        $cache->forget(Site::get('default'), ['http://shared.test/a']);
+        $cache->forgetMany(['other' => ['http://shared.test/other/d']]);
+        $cache->refreshPaths(Site::get('default'), ['/b']);
+
+        $this->assertNull($this->served($cacher, 'http://shared.test/a'));
+        $this->assertNull($this->served($cacher, 'http://shared.test/other/d'));
+        $this->assertNull($this->served($cacher, 'http://shared.test/b'));
+        $this->assertSame('c', $this->served($cacher, 'http://shared.test/c'));
+        $this->assertSame('other/e', $this->served($cacher, 'http://shared.test/other/e'));
+
+        $cache->refresh(Site::get('other'));
+
+        $this->assertNull($this->served($cacher, 'http://shared.test/other/e'));
+        $this->assertSame('c', $this->served($cacher, 'http://shared.test/c'));
+    }
+
+    public function test_rendering_again_in_the_background_keeps_serving_the_cached_pages(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'http://default.test/a', 'a', at: 0);
+        $this->cache($cacher, 'http://default.test/b', 'b', at: 0);
+
+        $this->now += 10;
+        $cache = new SiteCache($cacher);
+        $cache->refreshPaths(Site::get('default'), ['/a']);
+        $cache->refresh(Site::get('default'));
+
+        $this->assertSame('a', $this->served($cacher, 'http://default.test/a'));
+        $this->assertSame('b', $this->served($cacher, 'http://default.test/b'));
+    }
+
     public function test_of_two_sites_at_one_address_the_one_whose_url_names_its_host_owns_the_page(): void
     {
         Site::setSites([
@@ -433,7 +481,7 @@ class GuardedApplicationCacherTest extends TestCase
 
             foreach (['http://default.test', 'https://example.de'] as $host) {
                 foreach (['/', '/x', '/en', '/en/x?y=1', '/enx', '/at/x', '/fr/x', '/sub/en/x'] as $path) {
-                    $this->assertSame(Site::findByUrl($host.$path)?->handle(), SiteCache::siteOf($host.$path)?->handle(), $host.$path.' on '.$root);
+                    $this->assertSame(Site::findByUrl($host.$path)?->handle(), SiteCache::siteOf($host.$path), $host.$path.' on '.$root);
                 }
             }
         }

@@ -283,8 +283,8 @@ class GuardedApplicationCacher extends ApplicationCacher
             'under' => $this->underKey($domain),
         ];
 
-        if ($site = SiteCache::siteOf($url)) {
-            $keys['site'] = $this->siteKey($site->handle());
+        if (($site = SiteCache::siteOf($url)) !== null) {
+            $keys['site'] = $this->siteKey($site);
         }
 
         $values = $this->cache->many(array_values($keys));

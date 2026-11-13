@@ -61,6 +61,28 @@ final class SearchSchema
         return array_filter((array) ($this->attributes['fields'] ?? []), is_array(...));
     }
 
+    /** @return list<string> the fields a row carries, as `fields_available` lists them */
+    public function fieldsAvailable(): array
+    {
+        return $this->list('fields_available');
+    }
+
+    /**
+     * This description with the fields taken off the rows, so a filter,
+     * sort, facet or search field on them is never answered from the rows: a
+     * snapshot that keeps them as details (docs/registering-snapshots.md#details).
+     *
+     * @param  list<string>  $fields
+     */
+    public function without(array $fields): self
+    {
+        if ($fields === []) {
+            return $this;
+        }
+
+        return new self(['fields_available' => array_values(array_diff($this->fieldsAvailable(), $fields))] + $this->attributes);
+    }
+
     /** The name of the field a filter key filters, or null when no field names it. */
     public function fieldFor(string $key): ?string
     {
