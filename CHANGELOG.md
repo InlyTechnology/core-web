@@ -118,8 +118,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `false` in `config/statamic/static_caching.php` no longer turns it off, and
   `statamic:static:warm` renders again every page it lists, cached or not.
   Find what a site set itself: `grep -rn "background_recache" config/` and
-  `STATAMIC_BACKGROUND_RECACHE` in each environment, and a warm a deploy or
-  schedule runs: `grep -rn "static:warm" routes/ bin/ *.sh`. Migrate: delete a
+  `STATAMIC_BACKGROUND_RECACHE` in each environment, and a warm the host's
+  deploy script runs or `grep -rn "static:warm" routes/ bootstrap/ config/
+  README.md` finds. Migrate: delete a
   `background_recache` line in `config/statamic/static_caching.php` that only
   turns it on or works it out from the environment; to keep pages forgotten
   after a save, set `STATAMIC_BACKGROUND_RECACHE=false` on that server, or

@@ -23,8 +23,7 @@ final class TrackingQueryStrings
         $tracking = array_values(array_filter((array) $config->get('core-web.static_cache.tracking_query_strings', []), 'is_string'));
         $strategy = $config->get('statamic.static_caching.strategy');
 
-        // `full` fills nocache regions from the browser, which sends the address it has, parameters and all: Statamic
-        // looks the regions up under that address and finds none, since they were stored under the one without them.
+        // Off `full` the tracking parameters are disallowed, so links leave them out too.
         $leftOut = $strategy === 'full' ? [] : $tracking;
 
         // A cached link carrying the token would let anyone render any page over its cached copy.
@@ -38,6 +37,8 @@ final class TrackingQueryStrings
             Paginator::queryStringResolver(fn (): array => array_diff_key(app('request')->query(), array_flip($leftOut)));
         }
 
+        // `full` fills nocache regions from the browser, which sends the address it has, parameters and all: Statamic
+        // looks the regions up under that address and finds none, since they were stored under the one without them.
         if ($tracking === [] || $strategy === 'full') {
             return;
         }

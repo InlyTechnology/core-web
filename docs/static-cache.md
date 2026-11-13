@@ -59,8 +59,12 @@ resolved.
 With it on, `php artisan statamic:static:warm` renders again every page it
 lists, cached or not, since Statamic adds its render token to each address;
 `--uncached` warms only the pages not cached yet. Laravel's paginator leaves
-that token out of its links (`withQueryString()`), as Statamic's own does, so
-no cached page hands it on.
+that token out of its links (`withQueryString()`), as Statamic's own does.
+Anything else that prints a page's query or full address (`current_full_url`,
+`request()->fullUrl()`) renders inside `@nocache`, as for
+[ad and analytics parameters](#ad-and-analytics-parameters), or the cached
+copy hands on the token, with which anyone can render any page over its
+cached copy.
 
 ## Pages a snapshot change touches
 
