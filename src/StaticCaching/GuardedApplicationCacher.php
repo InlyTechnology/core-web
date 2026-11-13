@@ -2,36 +2,30 @@
 
 namespace Inly\CoreWeb\StaticCaching;
 
+use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Events\ResponsePrepared;
-use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Event;
 use Statamic\StaticCaching\Cachers\ApplicationCacher;
 use Statamic\StaticCaching\Page;
 use Statamic\Support\Str;
 
-/**
- * Statamic's `half` cacher, serving a cached page only when its request started after the page was last cleared.
- *
- * Statamic clears pages through its URL list, and a page cached while a clear runs can be stored without a place on
- * it, out of every later clear's reach. Each clear here records when it ended and each page when its request started.
- * See docs/static-cache.md#pages-cached-while-a-clear-runs.
- */
+/** Statamic's `half` cacher, serving a cached page only when its request started after the page was last cleared: docs/static-cache.md#pages-cached-while-a-clear-runs. */
 class GuardedApplicationCacher extends ApplicationCacher
 {
     /** Seconds after a clear in which a request still counts as started before it, as servers' clocks differ slightly. */
     public const CLOCK_MARGIN = 1.0;
+
+    /** Minutes a path's clear outlives the pages' own expiry, for a render that started before it and was stored after. */
+    private const RECORD_MARGIN = 60;
 
     /** Seconds a write to the URL list waits for its lock, as Statamic's own; none is written without it. */
     protected int $lockWait = 10;
 
     /** @var array{url: string, page: array<string, mixed>}|null */
     private ?array $found = null;
-
-    /** The page key the cachePage() under way could not list. */
-    private ?string $unlisted = null;
 
     public function hasCachedPage(Request $request)
     {
@@ -59,46 +53,58 @@ class GuardedApplicationCacher extends ApplicationCacher
         }
 
         $key = $this->makeHash($url);
-        $started = (float) ($request->server('REQUEST_TIME_FLOAT') ?: self::now());
+        $started = $this->startOf($request);
 
-        $this->unlisted = null;
-        parent::cachePage($request, $content);
-        $unlisted = $this->unlisted === $key;
-        $this->unlisted = null;
+        if (! $this->listUrl($key, ...$this->getPathAndDomain($url))) {
+            return;
+        }
 
-        // After Statamic's own listener, which stores the page: a time written first could vouch for an older copy.
+        $value = $this->normalizeContent($content);
         $handled = false;
 
-        Event::listen(ResponsePrepared::class, function () use ($key, $started, $unlisted, &$handled) {
+        // Statamic's own store, with the start kept in the page's value: no other request's start can vouch for this copy.
+        Event::listen(ResponsePrepared::class, function (ResponsePrepared $event) use ($key, $value, $started, &$handled) {
             if ($handled) {
                 return;
             }
 
             $handled = true;
 
-            if ($unlisted) {
-                $this->cache->forget($this->normalizeKey('responses:'.$key));
+            $headers = collect($event->response->headers->all())
+                ->reject(fn ($value, $key) => in_array($key, ['date', 'x-powered-by', 'cache-control', 'expires', 'set-cookie']))
+                ->all();
 
-                return;
-            }
-
-            $this->getDefaultExpiration()
-                ? $this->cache->put($this->startedKey($key), $started, now()->addMinutes($this->getDefaultExpiration()))
-                : $this->cache->forever($this->startedKey($key), $started);
+            $this->cache->putMany([
+                $this->normalizeKey('responses:'.$key) => [
+                    'content' => $value,
+                    'headers' => $headers,
+                    'status' => $event->response->getStatusCode(),
+                    'started' => $started,
+                ],
+                $this->normalizeKey('generated-at:'.$key) => now()->getTimestamp(),
+            ], $this->pageExpiry());
         });
     }
 
     public function flush()
     {
+        $domains = $this->getDomains()->all();
+
         parent::flush();
 
-        $this->recordFlush();
+        $flushed = $this->recordFlush();
+
+        foreach ($domains as $domain) {
+            $this->recordUnder((string) $domain, [], $flushed);
+        }
     }
 
-    /** Every page cached before now is a miss: for a clear of the whole store, which takes these records with it. */
-    public function recordFlush(): void
+    /** Every page cached before now is a miss. */
+    public function recordFlush(): float
     {
-        $this->cache->forever($this->normalizeKey('core-web:cleared'), self::now());
+        $this->cache->forever($this->normalizeKey('core-web:cleared'), $now = $this->now());
+
+        return $now;
     }
 
     public function invalidateUrl($url, $domain = null)
@@ -109,55 +115,55 @@ class GuardedApplicationCacher extends ApplicationCacher
 
         parent::invalidateUrl($url, $domain);
 
-        $this->cache->forever($this->clearedKey($domain, $url), self::now());
+        $this->recordClears($domain, [$url]);
     }
 
     public function invalidateUrls($urls)
     {
         parent::invalidateUrls($urls);
 
-        $now = self::now();
-        $paths = [];
-        $prefixes = [];
+        $clears = [];
 
         foreach (collect($urls) as $url) {
-            if (Str::contains($url, '*')) {
-                [$prefix, $domain] = $this->getPathAndDomain(substr($url, 0, -1));
-                $prefixes[$domain][$prefix] = $now;
-
-                continue;
-            }
-
-            [$path, $domain] = $this->getPathAndDomain($url);
-            $paths[$this->clearedKey($domain, $path)] = $now;
+            $wildcard = Str::contains($url, '*');
+            [$path, $domain] = $this->getPathAndDomain($wildcard ? substr($url, 0, -1) : $url);
+            $clears[$domain][$wildcard ? 'prefixes' : 'paths'][] = $path;
         }
+
+        foreach ($clears as $domain => $clear) {
+            $this->recordClears($domain, $clear['paths'] ?? [], $clear['prefixes'] ?? []);
+        }
+    }
+
+    /**
+     * Records that the pages at these paths on the domain, with any query string, and the pages under these prefixes
+     * were cleared now, whether they were on the URL list or not.
+     *
+     * @param  list<string>  $paths
+     * @param  list<string>  $prefixes
+     */
+    public function recordClears(string $domain, array $paths, array $prefixes = []): void
+    {
+        $now = $this->now();
 
         if ($paths !== []) {
-            $this->cache->putMany($paths);
+            $records = [];
+
+            foreach ($paths as $path) {
+                $records[$this->clearedKey($domain, $path)] = $now;
+            }
+
+            $this->cache->putMany($records, $this->recordExpiry());
         }
 
-        foreach ($prefixes as $domain => $cleared) {
-            $key = $this->normalizeKey('core-web:cleared-under:'.$this->makeHash($domain));
-            $write = fn () => $this->cache->forever($key, [...(array) $this->cache->get($key, []), ...$cleared]);
-
-            // Unlocked rather than lost: a record left out would let the pages under it be served stale.
-            $this->withUrlsLocked($write) || $write();
+        if ($prefixes !== []) {
+            $this->recordUnder($domain, array_fill_keys($prefixes, $now), (float) $this->cache->get($this->normalizeKey('core-web:cleared'), 0));
         }
     }
 
     public function cacheUrl($key, $url, $domain = null)
     {
-        $domain ??= $this->getBaseUrl();
-        $url = Str::removeLeft($url, $domain);
-
-        $listed = $this->withUrlsLocked(function () use ($key, $url, $domain) {
-            $this->cacheDomain($domain);
-            $this->cache->forever($this->getUrlsCacheKey($domain), $this->getUrls($domain)->put($key, $url)->all());
-        });
-
-        if (! $listed) {
-            $this->unlisted = $key;
-        }
+        $this->listUrl($key, $url, $domain);
     }
 
     public function forgetUrl($key, $domain = null)
@@ -165,7 +171,7 @@ class GuardedApplicationCacher extends ApplicationCacher
         $this->forgetUrls([$key], $domain);
     }
 
-    /** A list left as it was keeps a URL whose page is already gone, which costs one render. */
+    /** Skipped when the lock times out: the entry left on the list names a page already forgotten. */
     public function forgetUrls($keys, $domain = null)
     {
         if (empty($keys)) {
@@ -178,32 +184,84 @@ class GuardedApplicationCacher extends ApplicationCacher
         ));
     }
 
+    /** The clock of every record, the same as a request's start (REQUEST_TIME_FLOAT). */
+    protected function now(): float
+    {
+        return microtime(true);
+    }
+
+    /** Whether the URL is on the list, written only under its lock. */
+    private function listUrl(string $key, string $url, ?string $domain): bool
+    {
+        $domain ??= $this->getBaseUrl();
+        $url = Str::removeLeft($url, $domain);
+
+        return $this->withUrlsLocked(function () use ($key, $url, $domain) {
+            $this->cacheDomain($domain);
+            $this->cache->forever($this->getUrlsCacheKey($domain), $this->getUrls($domain)->put($key, $url)->all());
+        });
+    }
+
+    /**
+     * Writes the domain's wildcard records, keeping only those a newer flush or a newer, wider prefix does not cover.
+     *
+     * @param  array<string, float>  $cleared  prefix => when it was cleared
+     */
+    private function recordUnder(string $domain, array $cleared, float $flushed): void
+    {
+        $key = $this->underKey($domain);
+
+        $write = function () use ($key, $cleared, $flushed) {
+            $under = [...(array) $this->cache->get($key, []), ...$cleared];
+
+            foreach ($under as $prefix => $at) {
+                $covered = (float) $at <= $flushed;
+
+                foreach ($under as $wider => $later) {
+                    $covered = $covered || ($wider !== $prefix && Str::startsWith((string) $prefix, (string) $wider) && $later >= $at);
+                }
+
+                if ($covered) {
+                    unset($under[$prefix]);
+                }
+            }
+
+            $under === [] ? $this->cache->forget($key) : $this->cache->forever($key, $under);
+        };
+
+        // A domain with records is listed, so a flush of the whole cache drops them. Unlocked rather than lost: a record
+        // left out would let the pages under it be served stale.
+        $this->withUrlsLocked(function () use ($domain, $cleared, $write) {
+            if ($cleared !== []) {
+                $this->cacheDomain($domain);
+            }
+
+            $write();
+        }) || $write();
+    }
+
     /**
      * The page cached at the URL, or null when there is none, or its request started before a clear that covers it
-     * ended: of the whole cache, of its path with any query string, or of a wildcard it lies under.
+     * ended: of the whole cache, of its path with any query string, or of a prefix its path and query lie under.
      *
      * @return array<string, mixed>|null
      */
     private function current(string $url): ?array
     {
-        $key = $this->makeHash($url);
         [$path, $domain] = $this->getPathAndDomain($url);
-        $path = self::withoutQuery($path);
 
         $keys = [
-            'page' => $this->normalizeKey('responses:'.$key),
-            'started' => $this->startedKey($key),
+            'page' => $this->normalizeKey('responses:'.$this->makeHash($url)),
             'all' => $this->normalizeKey('core-web:cleared'),
             'path' => $this->clearedKey($domain, $path),
-            'under' => $this->normalizeKey('core-web:cleared-under:'.$this->makeHash($domain)),
+            'under' => $this->underKey($domain),
         ];
 
         $values = $this->cache->many(array_values($keys));
         $page = $values[$keys['page']] ?? null;
-        $started = $values[$keys['started']] ?? null;
 
         // A page cached without its start (by Statamic's own cacher, before this one) cannot show when it was rendered.
-        if (! is_array($page) || ! is_numeric($started)) {
+        if (! is_array($page) || ! is_numeric($page['started'] ?? null)) {
             return null;
         }
 
@@ -215,7 +273,19 @@ class GuardedApplicationCacher extends ApplicationCacher
             }
         }
 
-        return (float) $started >= $cleared + self::CLOCK_MARGIN ? $page : null;
+        return (float) $page['started'] >= $cleared + self::CLOCK_MARGIN ? $page : null;
+    }
+
+    /** When the request started; when the runtime gives no start, when the app booted, then now. */
+    private function startOf(Request $request): float
+    {
+        $started = $request->server('REQUEST_TIME_FLOAT');
+
+        if (is_numeric($started)) {
+            return (float) $started;
+        }
+
+        return defined('LARAVEL_START') ? (float) LARAVEL_START : $this->now();
     }
 
     private function withUrlsLocked(callable $callback): bool
@@ -235,24 +305,25 @@ class GuardedApplicationCacher extends ApplicationCacher
         }
     }
 
-    private function startedKey(string $key): string
+    private function pageExpiry(): ?DateTimeInterface
     {
-        return $this->normalizeKey('core-web:started:'.$key);
+        return $this->getDefaultExpiration() ? now()->addMinutes($this->getDefaultExpiration()) : null;
+    }
+
+    /** As long as a page started before the clear can be kept: stored after it, then kept for its expiry. */
+    private function recordExpiry(): ?DateTimeInterface
+    {
+        return $this->getDefaultExpiration() ? now()->addMinutes($this->getDefaultExpiration() + self::RECORD_MARGIN) : null;
     }
 
     /** One record for a path and every query string on it, as invalidateUrl() forgets them all. */
     private function clearedKey(string $domain, string $path): string
     {
-        return $this->normalizeKey('core-web:cleared:'.$this->makeHash($domain.self::withoutQuery($path)));
+        return $this->normalizeKey('core-web:cleared:'.$this->makeHash($domain.(explode('?', $path, 2)[0] ?: '/')));
     }
 
-    private static function withoutQuery(string $path): string
+    private function underKey(string $domain): string
     {
-        return explode('?', $path, 2)[0] ?: '/';
-    }
-
-    private static function now(): float
-    {
-        return Date::now()->getPreciseTimestamp(6) / 1_000_000;
+        return $this->normalizeKey('core-web:cleared-under:'.$this->makeHash($domain));
     }
 }

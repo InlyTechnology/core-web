@@ -126,31 +126,42 @@ keeps a list of the cached URLs for each domain. A clear (a save's flush, an
 invalidated URL, the CP's Invalidate) deletes only the pages it finds on that
 list. A page a visitor caches while a clear runs can be stored after the
 clear took its URL off the list. Every later visit is then served that copy,
-and no save or Invalidate reaches it until the whole store is emptied
-(`statamic:static:clear`). The same address with a trailing slash or a query
-string shows the current page, since those are cached apart.
+and no save or Invalidate reaches it until it expires or its store is
+emptied (`cache:clear`, or `statamic:static:clear` with a dedicated
+`static_cache` store). The same address with a trailing slash or another
+query string is cached apart, so it can show the current page.
 
 core-web runs `GuardedApplicationCacher` in its place, which serves a cached
 page only when the request that rendered it started after the page was last
 cleared:
 
-- Each clear records when it ended: a flush of the whole cache, a URL with
-  every query string on it, and a wildcard (`/blog/*`) for the pages under
-  it. The record is written whether the URL was on the list or not.
-- Each cached page records when its request started. A page whose request
-  started before a clear that covers it ended, or less than a second after
-  (servers' clocks differ slightly), is a miss: it is rendered again and
-  listed. A page cached before core-web ran this cacher has no start
-  recorded, so it is rendered again once.
+- Each clear records when it ended, whether its pages were on the list or
+  not: a flush of the whole cache, a path with every query string on it,
+  and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
+  `SiteCache` records the paths it flushes, and a site's whole path when it
+  flushes the site, except for a site with another site under its path on
+  the same host (a site at `/` beside `/en`): there only the pages found on
+  the list are recorded.
+- A cached page is stored with the time its request started
+  (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
+  covers it ended, or less than a second after (servers' clocks differ
+  slightly), is a miss: it is rendered again and listed. A page cached
+  before core-web ran this cacher has no start, so it is rendered again
+  once.
 - A page whose URL cannot be written onto the list within 10 seconds, the
   wait for the list's lock, is not kept. Statamic writes the list without
   its lock then, and two such writes can lose a URL.
-- Refreshing pages with `background_recache` records no clear: visitors keep
-  the cached copy until the queued render replaces it.
+- A refresh with `background_recache` records no clear: visitors keep the
+  cached copy until the queued render replaces it.
 
-A hit reads the page and these records in one call to the cache store.
-`static_cache.guard: false` keeps Statamic's own cacher. The `full` strategy
-has a cacher of its own and is unchanged.
+A hit reads the page and these records in one call to the cache store. A
+path's record lasts an hour longer than the static cache's `expiry`, and
+without one until its store is emptied. A wildcard's record goes with a
+later flush of the whole cache or a later, wider wildcard.
+
+`static_cache.guard: false` keeps Statamic's own cacher, which serves any
+copy the guard was keeping out again: flush the static cache after turning
+it off. The `full` strategy has a cacher of its own and is unchanged.
 
 ## Ad and analytics parameters
 

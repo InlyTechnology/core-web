@@ -11,10 +11,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **A page cached while a clear runs no longer stays cached for good**: on
   the `half` strategy, Statamic could store a page whose URL a running clear
   had just taken off its list, and no later save or Invalidate reached it.
-  core-web's cacher now serves a cached page only when its request started
-  after the page was last cleared, so each page cached before the update is
-  rendered once more on its next visit. `static_cache.guard: false` keeps
-  Statamic's own. See
+  core-web's cacher renders such a page again, and each page cached before
+  the update is rendered once more on its next visit.
+  `static_cache.guard: false` keeps Statamic's own. See
   `docs/static-cache.md#pages-cached-while-a-clear-runs`.
 - **The Cloud form submissions migration rolls back as the driver's does**:
   its `down()` deletes the table's rows before turning `id` back into an

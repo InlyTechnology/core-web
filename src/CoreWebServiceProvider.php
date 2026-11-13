@@ -210,7 +210,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // Statamic's `half` cacher, unless the site turns the guard off: docs/static-cache.md#pages-cached-while-a-clear-runs.
         $this->callAfterResolving(StaticCacheManager::class, fn (StaticCacheManager $manager) => $manager->extend(
             'application',
-            fn ($app, array $config) => config('core-web.static_cache.guard', true)
+            fn ($app, array $config) => config('core-web.static_cache.guard', true) !== false
                 ? new GuardedApplicationCacher($manager->cacheStore(), $config)
                 : $manager->createApplicationDriver($config),
         ));
@@ -425,7 +425,7 @@ class CoreWebServiceProvider extends ServiceProvider
         // The router prepares a route's answer before Statamic's static cache decides on it.
         Event::listen(ResponsePrepared::class, fn (ResponsePrepared $event) => Preview::keepOutOfCaches($event->request, $event->response));
 
-        // The store's flush (statamic:static:clear, the CP's Cache utility) takes the guarded cacher's records with it.
+        // A dedicated static cache store is emptied after the cacher's flush, taking its record with it.
         Event::listen(StaticCacheCleared::class, function (): void {
             $cacher = $this->app->make(Cacher::class);
 

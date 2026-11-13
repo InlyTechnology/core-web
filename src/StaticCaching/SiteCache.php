@@ -134,6 +134,16 @@ class SiteCache
 
             $this->invalidate(array_keys($paths), $domain);
         }
+
+        $prefix = self::prefix($site);
+
+        // A site with another under its path cannot name its whole path without that site's pages.
+        $nested = $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
+            && ($prefix === '' || str_starts_with(self::prefix($other).'/', $prefix.'/')));
+
+        if (! $nested) {
+            $this->record($site, $prefix === '' ? [] : [$prefix], [$prefix.'/']);
+        }
     }
 
     /**
@@ -266,7 +276,37 @@ class SiteCache
             $this->invalidate(array_keys($matched), $domain);
         }
 
+        $named = [];
+
+        foreach (array_keys($exact) as $path) {
+            $onHost = $prefix.($path === '/' && $prefix !== '' ? '' : $path);
+            $named[$onHost] = true;
+            $named[rtrim($onHost, '/').'/'] = true;
+        }
+
+        $this->record($site, array_keys($named), array_map(fn (string $under) => $prefix.$under, $prefixes));
+
         return $forgotten;
+    }
+
+    /**
+     * Records the clear for the guarded cacher on the site's host, under http and https, whether its pages were
+     * listed or not: docs/static-cache.md#pages-cached-while-a-clear-runs.
+     *
+     * @param  list<string>  $paths  on the host, each with any query string
+     * @param  list<string>  $prefixes  on the host, for the pages under each
+     */
+    private function record(Site $site, array $paths, array $prefixes): void
+    {
+        if (! $this->cacher instanceof GuardedApplicationCacher) {
+            return;
+        }
+
+        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
+
+        foreach (['http', 'https'] as $scheme) {
+            $this->cacher->recordClears("{$scheme}://{$host}", $paths, $prefixes);
+        }
     }
 
     /**

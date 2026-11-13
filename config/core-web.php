@@ -164,10 +164,8 @@ return [
     | for an address carrying them. While pages are cached, pagination links
     | (`withQueryString()`) leave them out too.
     |
-    | guard: on the `half` strategy, a cached page is served only when its
-    | request started after the page was last cleared, so a page cached while
-    | a clear ran is rendered again rather than kept past every later clear.
-    | false keeps Statamic's own cacher. See
+    | guard: keeps a page cached while a clear ran from outliving every later
+    | clear on the `half` strategy; false keeps Statamic's own cacher. See
     | docs/static-cache.md#pages-cached-while-a-clear-runs.
     |
     */
