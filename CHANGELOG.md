@@ -11,7 +11,7 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **A save forgets the entry's copies on the other sites**: under
   `SiteScopedInvalidator`, a saved or deleted entry's origin and other
   localizations are forgotten on their own sites too. See
-  `docs/static-cache.md` (A save on one site of a multisite install).
+  `docs/static-cache.md` (A save under the `all` rule).
 - **`SiteCache::forgetMany()`** forgets pages on several sites in one call,
   and `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()`
   resolve each site's address once per call instead of once per cached page.
@@ -19,6 +19,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **`SiteCache::refreshPaths()`** renders the named pages of a site again in
   the background, where `refresh()` takes every page. See
   `docs/static-cache.md` (Pages a snapshot change touches).
+- **`SiteCache::refreshAll()`** renders again the pages cached on every
+  site's host, where `refresh()` takes one site's. See `docs/static-cache.md`
+  (Pages a snapshot change touches).
 - **`SiteCache::refresh()` forgets the pages while `background_recache` is
   off**, where it queued renders whose results visitors never got. See
   `docs/static-cache.md` (Pages a snapshot change touches).
@@ -56,6 +59,30 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 - **The preview frame shows its hover outline and hint only where a pointer
   hovers**: on a phone or a tablet, a tap on a marked element left them drawn
   over the page. See `docs/object-preview.md#marking-fields-and-blocks`.
+- **Pages render again after a save in production**: core-web turns
+  Statamic's `background_recache` on in production where the warm queue
+  connection holds jobs for a worker, unless the site names it, and Laravel's
+  paginator leaves Statamic's render token out of its links while it is on.
+  See `docs/static-cache.md` (Rendering pages again after a save).
+- **The `all` rule keeps a save to its site by default**: core-web uses
+  `SiteScopedInvalidator` under that rule, on one site or several, unless the
+  site names an invalidation class. See `docs/static-cache.md` (A save under
+  the `all` rule).
+- **A navigation, asset or form save renders again the pages on every site's
+  host**, and forgets those on any other host: with `background_recache`
+  under `SiteScopedInvalidator`, where Statamic's rule rendered again only
+  the base URL's pages and a site on another host kept its old copies. Same
+  section.
+- **`SiteCache` puts a site with a relative URL on `APP_URL`'s host**, as
+  Statamic's cacher does, where it took the host a request named, and
+  matches a site's host whatever its case. See `docs/static-cache.md`
+  (Pages a snapshot change touches).
+- **`core-web:doctor` checks the static cache**. See
+  `docs/checking-a-sites-setup.md`.
+- **On Laravel Cloud, a save's page renders are queued on `low`**: with
+  `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
+  `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue. See
+  `docs/laravel-cloud.md`.
 
 ### Upgrade notes
 
@@ -82,6 +109,93 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `drafts.proposals.disk` unset, as in the note above; elsewhere, define the
   disk the doctor names or remove the setting. Verify: the doctor shows
   `ok Proposals` on Cloud and no `fail Proposals` anywhere, and exits 0.
+- **Background recache is on in production by default.** Where the warm queue
+  connection holds jobs for a worker, a save now renders its pages again in
+  the background instead of forgetting them, and visitors see the old copy
+  until a worker has run the render. A production site its worker cannot reach
+  as an anonymous request to the page's own address (basic auth, an IP
+  allow-list, DNS that sends the worker elsewhere) keeps its old copies. A
+  `false` in `config/statamic/static_caching.php` no longer turns it off,
+  `statamic:static:warm` renders again every page it lists, cached or not,
+  and a template that prints query parameters it does not name or the page's
+  full address, unless it reads and prints them inside `@nocache`, puts
+  Statamic's render token in the cached copy. Find: the site's own choice,
+  `grep -rn "background_recache" config/` and `STATAMIC_BACKGROUND_RECACHE`
+  in each environment; a warm, in the host's deploy script or where `grep
+  -rnE "static:warm|StaticWarm" routes/ bootstrap/ config/ app/
+  composer.json README.md` finds one; and such a template: locally, with
+  `STATAMIC_STATIC_CACHING_STRATEGY=half` and
+  `STATAMIC_BACKGROUND_RECACHE=true` in `.env`, check that `php artisan
+  config:show statamic.static_caching` shows `strategy` `half` and
+  `background_recache` `true` (if not, set them in
+  `config/statamic/static_caching.php` for the check), run `php artisan
+  statamic:static:clear`, then for a page of each template and of each
+  block in use run `curl -s '<address>?__recache=check-7f3a' > /dev/null`
+  and `curl -s '<address>?__recache=plain' | grep -c check-7f3a` (the site's
+  `recache_token_parameter` in place of `__recache` if it names one), where
+  a count above 0 marks a page with such a template. Migrate: delete a
+  `background_recache` line in `config/statamic/static_caching.php` that
+  only turns it on or works it out from the environment; to keep pages
+  forgotten after a save, set `STATAMIC_BACKGROUND_RECACHE=false` on that
+  server, or `static_cache.background_recache` to `false` in
+  `config/core-web.php` for every environment; give a warm that should fill
+  only missing pages `--uncached`; and have such a page read and print the
+  query or address inside `@nocache`
+  ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
+  Verify: the local check prints 0 for each page it checked; then put
+  `.env` and `config/statamic/static_caching.php` back as they were. On a
+  production server, `php artisan core-web:doctor` names the connection and
+  queue the renders go on. After deploy, production needs a worker on that
+  queue: save an entry, then check that `php artisan queue:monitor
+  <connection>:<queue>` drains to 0, that a page the save renders again
+  (under the `all` rule, one listing the entry: `SiteScopedInvalidator`
+  forgets its own page at once) shows the change, and that `php artisan
+  queue:failed` lists no `StaticWarmJob`.
+- **On Laravel Cloud, a save's page renders are queued on `low`.** With
+  `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
+  `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue, and
+  a render on a queue no worker takes never runs. Find it: each Cloud
+  environment with a queue worker. Migrate: before deploying, add a `low`
+  queue to its worker, or set `STATAMIC_STATIC_WARM_QUEUE` to a queue it
+  takes (`default`). Verify: after deploy, `php artisan config:show
+  statamic.static_caching.warm_queue` there names a queue the worker takes.
+- **A cached page served at another address than its site's keeps its old copy
+  after a change kept to the sites it reaches, or a snapshot change.** A
+  site's address is its `url:` in `resources/sites.yaml`, on `APP_URL` when
+  that `url:` is relative (`/`, `/en/`) or reads it (`{{ config:app:url }}`).
+  Statamic's `all` rule, with `background_recache` off as it was by default,
+  cleared every address on any save. `SiteScopedInvalidator`, now the default
+  under that rule, on one site too, keeps an entry, global, collection tree or
+  deleted navigation tree change to the address of each site it reaches, on
+  that address's host under http and https, wherever it does not clear the
+  whole cache (`docs/static-cache.md`, A save under the `all` rule). A
+  snapshot change forgets a relative site's pages on `APP_URL`'s host inside a
+  request too, where it took the host the request named. Find it: on each
+  server, `php artisan config:show app.url` and each site's `url:` beside the
+  addresses visitors use (`APP_URL` left at `http://localhost` from
+  `.env.example` or on a platform domain, a `www` alias that is not
+  redirected). Migrate: on each server, set `APP_URL` to the address visitors
+  use (a site whose `url:` is absolute takes its address from it instead), and
+  redirect every other address to the site's address. Verify: every other
+  address redirects to the site's address. Load a page there, edit an existing
+  entry and, on a site with snapshots, change a record in Core that one of
+  them shows. Once the queue has drained, a page each change reaches, cached
+  before it, shows it at that address.
+- **On a multisite install, the `all` rule keeps a save to its own site by
+  default.** core-web names `SiteScopedInvalidator` as the invalidation class
+  where the site names none, so a page showing another site's content (a
+  listing of its entries, its globals) keeps its old copy when that content
+  is saved. Find such pages:
+  `grep -rnE "(site|locale)=|->in\(" resources/views app`, and a class the
+  site names already:
+  `grep -n "invalidation" config/statamic/static_caching.php`. Migrate: a
+  site whose pages show another site's content names
+  `\Statamic\StaticCaching\DefaultInvalidator::class` as
+  `invalidation.class`, and turns `background_recache` off unless the
+  static cache's base URL is the scheme and host every site's visitors use,
+  with no path (`docs/static-cache.md`, A save under the `all` rule). Verify:
+  `php artisan config:show statamic.static_caching.invalidation` prints the
+  class, and `php artisan core-web:doctor` names it.
 
 ## v0.47.0
 

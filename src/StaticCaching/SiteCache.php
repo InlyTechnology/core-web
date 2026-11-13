@@ -7,11 +7,12 @@ use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
 use Statamic\Facades\Site as Sites;
+use Statamic\Facades\URL;
 use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
 
-/** The static cache of one site of a multisite install, whose sites share no cached pages. */
+/** The static cache of one site, taking the install's sites to share no cached pages. */
 class SiteCache
 {
     public function __construct(private Cacher $cacher) {}
@@ -132,8 +133,7 @@ class SiteCache
     }
 
     /**
-     * Renders every cached page of the site again in the background, one
-     * queued request per page, owned as flush() owns them
+     * Refreshes the site's cached pages, owned as flush() owns them
      * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
@@ -153,6 +153,42 @@ class SiteCache
                 if (self::owner($neighbours, (string) $url) === self::handle($site)) {
                     $paths[strtok((string) $url, '?')] = true;
                 }
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->renderAgain($path, $domain);
+                $queued++;
+            }
+        }
+
+        return $queued;
+    }
+
+    /**
+     * refresh() for every cached page on each site's host
+     * (docs/static-cache.md). Returns how many paths were handed on.
+     */
+    public function refreshAll(): int
+    {
+        if (! $this->cacher instanceof AbstractCacher) {
+            return 0;
+        }
+
+        $queued = 0;
+        $hosts = array_unique(array_filter(Sites::all()->map(fn (Site $site) => self::host($site))->values()->all()));
+
+        foreach (array_map(strval(...), $this->cacher->getDomains()->all()) as $domain) {
+            $paths = [];
+
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                $paths[strtok((string) $url, '?')] = true;
+            }
+
+            // A request names its own host (a forged Host header), so a render goes only to a site's, each carrying Statamic's recache token.
+            if (! in_array(parse_url($domain, PHP_URL_HOST), $hosts, true)) {
+                $this->invalidate(array_keys($paths), $domain);
+
+                continue;
             }
 
             foreach (array_keys($paths) as $path) {
@@ -220,9 +256,9 @@ class SiteCache
     }
 
     /**
-     * Renders the site's cached pages at these paths again in the background,
-     * as refresh() renders the whole site (docs/static-cache.md). Returns how
-     * many paths were handed on.
+     * refresh() for the site's cached pages at these paths, named as
+     * flushPaths() names them (docs/static-cache.md). Returns how many paths
+     * were handed on.
      *
      * @param  iterable<string>  $paths
      */
@@ -265,7 +301,7 @@ class SiteCache
                 $wildcard = str_ends_with($url, '*');
                 $address = $wildcard ? substr($url, 0, -1) : $url;
 
-                if (parse_url($address, PHP_URL_HOST) !== $host) {
+                if (! self::onHost($site, $address)) {
                     continue;
                 }
 
@@ -420,16 +456,31 @@ class SiteCache
         return false;
     }
 
-    /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
+    /** Whether an absolute URL is on the site: on its host as onHost() takes it, and on a shared host under its path, as flush() decides. */
     public function owns(Site $site, string $url): bool
     {
-        $host = self::host($site);
-
-        if (parse_url($url, PHP_URL_HOST) !== $host) {
+        if (! self::onHost($site, $url)) {
             return false;
         }
 
-        return self::owner(self::neighbours($host), $url) === self::handle($site);
+        return self::owner(self::neighbours(self::host($site)), $url) === self::handle($site);
+    }
+
+    /**
+     * Whether an absolute URL is on the site's host. A site with a relative
+     * URL also takes the host Statamic made its URLs on (the request's), as
+     * an invalidator reports them there: the page is still forgotten on the
+     * site's host, and forgetting sends no request.
+     */
+    private static function onHost(Site $site, string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if ($host === self::host($site)) {
+            return true;
+        }
+
+        return ! URL::isAbsolute($site->url()) && $host === strtolower((string) parse_url($site->absoluteUrl(), PHP_URL_HOST));
     }
 
     /**
@@ -478,9 +529,12 @@ class SiteCache
         return '/'.trim(substr('/'.trim((string) parse_url($url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
     }
 
+    /** As Statamic's cacher reads its base URL: a relative site is on APP_URL's host, never the one a request names. */
     private static function host(Site $site): ?string
     {
-        return parse_url($site->absoluteUrl(), PHP_URL_HOST) ?: null;
+        $url = URL::isAbsolute($site->url()) ? $site->url() : (string) config('app.url');
+
+        return strtolower((string) parse_url($url, PHP_URL_HOST)) ?: null;
     }
 
     /** The path a site sits under on its host ('/second'), '' at the root. */

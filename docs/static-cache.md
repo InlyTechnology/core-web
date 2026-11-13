@@ -18,6 +18,55 @@ rendering it. Only `full` is served by the web server without PHP, and Cloud
 has no web server rewrites for it. `php artisan config:show
 statamic.static_caching.strategy` prints what a server resolved.
 
+## Rendering pages again after a save
+
+A save forgets the pages it touches, and each one's next visitor renders it.
+With Statamic's `background_recache` on, an entry, global, navigation, asset
+or form save renders them again in the background instead, by a queued job
+each, and visitors keep the cached copy until it is replaced. A deletion, a
+term, a collection tree and a scheduled entry going live still forget them;
+under the `all` rule, [A save under the `all` rule](#a-save-under-the-all-rule)
+has what goes at once.
+
+core-web turns `background_recache` on where the app's environment is
+`production` and the connection Statamic queues the renders on
+(`warm_queue_connection`, or `queue.default`) holds its jobs for a worker. It
+stays off on a `sync`, `null`, `deferred` or `background` connection, which
+runs the job inside the save, after it, or never, and in every other
+environment: each render is a request from the worker to the page's own
+address that sends no credentials, so a staging behind basic auth would keep
+its old copies. A production site its worker cannot reach that way (behind
+basic auth, an IP allow-list, or DNS that resolves the site's address
+elsewhere from the worker) keeps them too, and turns it off below.
+
+The site's own choice stands, the first of these it names:
+
+- `STATAMIC_BACKGROUND_RECACHE` in the env, `false` included;
+- `static_cache.background_recache` in `config/core-web.php`, `true` or
+  `false`, in every environment;
+- `true` in its `config/statamic/static_caching.php` (`false` is Statamic's
+  default, so it chooses nothing).
+
+A cached config keeps what was resolved when it was cached. The worker must
+take the queue the renders go on, `warm_queue` (`low` on Laravel Cloud, see
+[Laravel Cloud](laravel-cloud.md)) or the connection's default queue (a
+failover connection's first connection), which `php artisan core-web:doctor`
+names, and the default connection's default queue too:
+Statamic queues the further pages of a paginated page there. `php artisan
+config:show statamic.static_caching.background_recache` prints what a server
+resolved.
+
+With it on, Statamic requests each render, a save's or a warm's, with its
+render token in the address, so `php artisan statamic:static:warm` renders
+again every page it lists, cached or not; `--uncached` warms only the pages
+not cached yet. Laravel's paginator leaves that token out of its links
+(`withQueryString()`), as Statamic's own does. Anything else that prints
+query parameters it does not name or the page's full address
+(`current_full_url`, `request()->fullUrl()`) reads and prints them inside
+`@nocache`, as for [ad and analytics parameters](#ad-and-analytics-parameters),
+or the cached copy hands on the token, with which anyone can render any page
+over its cached copy.
+
 ## Pages a snapshot change touches
 
 A snapshot moving saves no entry, so Statamic's invalidation never hears of
@@ -59,40 +108,53 @@ The whole site is flushed instead whenever the pages are not known for sure:
 Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
-`SiteCache::flush()` forgets the pages cached for one site: on its host under
-http and https, and on a shared host the pages under its path (the longest site
-path a page lies under decides whose it is). `SiteCache::flushPaths()` forgets
-some of them, by path on the site, and `SiteCache::forget()` by the absolute
-URLs an invalidator reports (a trailing `*` takes every page under one),
-keeping only those the site owns; `SiteCache::forgetMany()` does that for
+`SiteCache::flush()` forgets the pages cached for one site: on its host (the
+host its URL names, or `APP_URL`'s for a site with a relative URL, never the
+one a request names) under http and https, and on a shared host the pages under
+its path (the longest site path a page lies under decides whose it is).
+`SiteCache::flushPaths()` forgets some of them, by path on the site, and
+`SiteCache::forget()` by the absolute URLs an invalidator reports (a trailing
+`*` takes every page under one), keeping only those the site owns (for a site
+with a relative URL, on its host or the request's, where Statamic makes its
+URLs) and forgetting them on its host; `SiteCache::forgetMany()` does that for
 several sites at once, keyed by site handle, reading each host's cached pages
 once for all of them. `SiteCache::refresh()` renders the site's cached pages
 again in the background instead (one queued request per page), and visitors
 keep the cached copy until it is replaced; `SiteCache::refreshPaths()` does
 that for the paths it is given, named as `flushPaths()` names them, and leaves
-a path nothing is cached at alone. Each path is requested once with every query
-string it was cached under, and a page cached as an error is forgotten instead,
-as Statamic does. With `background_recache` off, both forget the pages instead:
-Statamic would keep each new render under its recache token, beside the old
-copy, which visitors would go on getting. On a shared host with no site at its
-root, a page cached outside every site's path (a 404 at `/foo` beside `/en` and
-`/sv`) is no site's, so no site's flush or refresh reaches it.
+a path nothing is cached at alone. On a host with no site at its root, a page
+cached outside every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no
+site's, so no site's flush or refresh reaches it. `SiteCache::refreshAll()`
+renders again every page cached on a site's host, under http and https, that
+page included. It forgets the pages cached on any other host (a `www` alias, an
+address no site names) instead, since a request names its own host and a render
+would be sent there. `refresh()`, `refreshPaths()` and `refreshAll()` request
+each path once with every query string it was cached under, and forget a page
+cached as an error instead, as Statamic does. With `background_recache` off
+they request nothing and forget the pages: Statamic would keep each new render
+under its recache token, beside the old copy, which visitors would go on
+getting.
 
-## A save on one site of a multisite install
+## A save under the `all` rule
 
 Statamic's `all` invalidation rule clears every site's pages on any save, and
 with `background_recache` on it renders again only the pages cached on the
-static cache's base URL (its `base_url`, or the current site's URL). On an
-install whose sites share no pages, `SiteScopedInvalidator` keeps the rule to
-the site of what was saved:
+static cache's base URL: its `base_url`, or else the current site's URL, on
+`APP_URL` when that URL is relative. The current site is the one whose URL the
+address handling the save lies under (`APP_URL` on a queue worker or in a
+console command), or else the default site. Those pages are none when that URL
+has a path (`https://example.com/sv/`), and leave out every site on another
+host. Under the `all` rule core-web uses `SiteScopedInvalidator` instead, on
+one site or several, which keeps the rule to the site of what was saved. A
+class a site names as its `invalidation.class` in
+`config/statamic/static_caching.php` stands. `php artisan config:show
+statamic.static_caching.invalidation` prints what a server resolved.
 
-```php
-// config/statamic/static_caching.php
-'invalidation' => [
-    'class' => \Inly\CoreWeb\StaticCaching\SiteScopedInvalidator::class,
-    'rules' => 'all',
-],
-```
+`SiteScopedInvalidator` takes the sites to share no pages. A site whose pages
+show another site's content names
+`\Statamic\StaticCaching\DefaultInvalidator::class` there, and turns
+`background_recache` off too unless the static cache's base URL is the scheme
+and host every site's visitors use, with no path.
 
 - An entry, a global, a collection tree or a deleted navigation tree on one
   site forgets that site's pages, on its host under http and https. The other
@@ -101,27 +163,25 @@ the site of what was saved:
   links to it from a language switcher or `hreflang`, so it is forgotten on
   its own site, and its next visitor renders it with the new address. A
   global also forgets the pages of every site whose copy of the set inherits
-  its values (`origin`), directly or through another copy. Without
-  `background_recache`, a save that reaches every site clears the whole
-  cache at once, as Statamic's rule does.
+  its values (`origin`), directly or through another copy. Where it would
+  forget them all at once (without `background_recache`, and for the cases
+  below that flush), a change that reaches every site, as any does on one
+  site, clears the whole cache instead, as Statamic's rule does.
 - With `background_recache` on, a saved entry's own page on its site, and a
   moved page's old address with the pages under it, are forgotten at once
   (under http and https), so the next visitor sees the change, and the
   site's other pages are rendered again in the background
   by a queued job each; a saved global renders all of the site's pages
-  again that way. Turn it on only with a queue worker: on the `sync` queue
-  every page renders inside the save. Statamic saves an entry's
-  localizations with it, so saving an origin renders each copy's site again
-  as well.
+  again that way. Statamic saves an entry's localizations with it, so saving
+  an origin renders each copy's site again as well.
 - A deleted entry, global, collection tree or navigation tree, a collection
   tree save and a scheduled entry going live flush the site's pages at once,
   with or without `background_recache`: Statamic invalidates for those
   instead of refreshing.
 - A navigation save (Statamic reports it without its site), an asset save or
-  a form save is left to Statamic's rule, which clears every page, or with
-  `background_recache` renders again those on the base URL. Deleting a
-  navigation, an asset or a form, and saving or deleting a taxonomy term,
-  always clears every page.
+  a form save clears every page, or with `background_recache` hands them to
+  `SiteCache::refreshAll()`. Deleting a navigation, an asset or a form, and
+  saving or deleting a taxonomy term, always clears every page.
 - Other rules than `all` are Statamic's own.
 
 A moved page's old address comes from the entry's original values. It is

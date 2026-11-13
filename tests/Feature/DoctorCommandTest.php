@@ -3,7 +3,9 @@
 namespace Inly\CoreWeb\Tests\Feature;
 
 use Illuminate\Contracts\Console\Kernel;
+use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
 use Inly\CoreWeb\Tests\TestCase;
+use Statamic\StaticCaching\DefaultInvalidator;
 
 class DoctorCommandTest extends TestCase
 {
@@ -249,8 +251,136 @@ class DoctorCommandTest extends TestCase
         config(['core-web.features.drafts' => true, 'core-web.features.cloud' => true, 'core-web.cloud.detected' => true, ...$config]);
     }
 
+    public function test_the_static_cache_off_on_a_server_is_a_warning(): void
+    {
+        $this->app['env'] = 'production';
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: off, as STATAMIC_STATIC_CACHING_STRATEGY or the site\'s config chose')
+            ->assertSuccessful();
+    }
+
+    public function test_a_save_rendering_pages_again_names_the_queue_a_worker_must_take(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the redis connection's default queue (needs a worker on that queue)")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.warm_queue' => 'warm']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the redis connection's warm queue")
+            ->assertSuccessful();
+    }
+
+    public function test_a_failover_connection_names_the_connection_its_renders_land_on(): void
+    {
+        $this->onACachedServer([
+            'statamic.static_caching.background_recache' => true,
+            'statamic.static_caching.warm_queue_connection' => 'failover',
+            'queue.connections.failover' => ['driver' => 'failover', 'connections' => ['database', 'deferred']],
+            'queue.connections.database' => ['driver' => 'database', 'queue' => 'renders'],
+        ]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save renders its pages again on the database connection's renders queue")
+            ->assertSuccessful();
+
+        config(['queue.connections.failover.connections' => []]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the failover failover connection names no connection to put the renders on')
+            ->assertSuccessful();
+    }
+
+    public function test_rendering_pages_again_with_no_connection_named_is_a_warning(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true, 'statamic.static_caching.warm_queue_connection' => null, 'queue.default' => '']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but neither warm_queue_connection nor queue.default names a connection to put the renders on')
+            ->assertSuccessful();
+    }
+
+    public function test_rendering_pages_again_without_a_worker_is_a_warning(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true, 'statamic.static_caching.warm_queue_connection' => 'sync']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the sync connection (sync) runs its jobs without a worker')
+            ->assertSuccessful();
+    }
+
+    public function test_rendering_pages_again_on_an_undefined_connection_is_a_warning(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true, 'statamic.static_caching.warm_queue_connection' => 'renders']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the renders connection it puts the renders on is not defined in config/queue.php')
+            ->assertSuccessful();
+    }
+
+    public function test_a_save_forgetting_its_pages_passes(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => false]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("ok   Static cache: a save forgets its pages, and each one's next visitor renders it")
+            ->assertSuccessful();
+    }
+
+    public function test_the_all_rule_names_its_invalidator(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.invalidation' => ['class' => SiteScopedInvalidator::class, 'rules' => 'all']]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Static cache: SiteScopedInvalidator keeps the `all` rule to the site of what was saved (docs/static-cache.md, A save under the `all` rule)')
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => SiteScopedInvalidatorOfTheSite::class]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Static cache: a save is invalidated by '.SiteScopedInvalidatorOfTheSite::class.", the site's own choice")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => DefaultInvalidator::class]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('ok   Static cache: a save is invalidated by '.DefaultInvalidator::class.", the site's own choice")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => null]);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names no class, so Statamic's own `all` rule applies: a save clears every site's pages, or renders again only those cached on the static cache's base URL")
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => 'App\\Missing\\Invalidator']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: statamic.static_caching.invalidation.class names App\\Missing\\Invalidator, which is no Statamic invalidator class')
+            ->assertSuccessful();
+
+        config(['statamic.static_caching.invalidation.class' => '']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain("warn Static cache: statamic.static_caching.invalidation.class names '', which is no Statamic invalidator class")
+            ->assertSuccessful();
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function onACachedServer(array $config): void
+    {
+        $this->app['env'] = 'production';
+        config(['statamic.static_caching.strategy' => 'half', ...$config]);
+    }
+
     public function test_it_is_registered_once_a_feature_is_on(): void
     {
         $this->assertArrayHasKey('core-web:doctor', app(Kernel::class)->all());
     }
 }
+
+class SiteScopedInvalidatorOfTheSite extends SiteScopedInvalidator {}

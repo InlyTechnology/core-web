@@ -164,6 +164,9 @@ return [
     | for an address carrying them. While pages are cached, pagination links
     | (`withQueryString()`) leave them out too.
     |
+    | background_recache: true or false in every environment, null for
+    | core-web's default (docs/static-cache.md).
+    |
     */
 
     'static_cache' => [
@@ -181,6 +184,7 @@ return [
             // HubSpot ads tracking, one combination per ad, keyword and network
             'hsa_acc', 'hsa_cam', 'hsa_grp', 'hsa_ad', 'hsa_src', 'hsa_tgt', 'hsa_kw', 'hsa_mt', 'hsa_net', 'hsa_ver',
         ],
+        'background_recache' => null,
     ],
 
     /*

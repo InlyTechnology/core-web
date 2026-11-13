@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -125,6 +126,7 @@ class SiteCacheTest extends TestCase
     public function test_a_site_whose_handle_is_digits_owns_its_pages(): void
     {
         Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => 'http://shared.test/', 'locale' => 'en_GB'],
             '2026' => ['name' => 'Campaign', 'url' => 'http://shared.test/sv/', 'locale' => 'sv_SE'],
@@ -137,6 +139,7 @@ class SiteCacheTest extends TestCase
         $this->assertSame(1, $cache->forget($site, ['http://shared.test/sv/a']));
         $this->assertSame(1, $cache->forgetMany([2026 => ['http://shared.test/sv/b']]));
         $this->assertSame(1, $cache->refresh($site));
+        $this->assertSame(['http://shared.test/sv'], $this->warmed());
 
         $cache->flush($site);
         $this->assertSame(['/', '/a'], $this->cached('http://shared.test'));
@@ -184,6 +187,100 @@ class SiteCacheTest extends TestCase
 
         $this->assertSame(['http://default.test/'], $this->warmed());
         $this->assertSame(['/'], $this->cached('http://default.test'));
+    }
+
+    public function test_refresh_all_queues_each_page_on_each_site_s_host_and_scheme(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        $this->cache('http://default.test', ['/', '/a', '/a?page=2']);
+        $this->cache('https://default.test', ['/b']);
+        $this->cache('http://other.test', ['/', '/gone']);
+        $this->cache('http://elsewhere.test', ['/', '/c?x=1']);
+        Cache::store('array')->forever('static-cache:responses:'.md5('http://other.test/gone'), ['content' => '', 'headers' => [], 'status' => 404]);
+
+        $queued = (new SiteCache($this->cacher))->refreshAll();
+
+        $this->assertSame(5, $queued, 'each path once, with its query strings');
+        $this->assertSame([
+            'http://default.test/', 'http://default.test/a', 'http://default.test/a?page=2',
+            'https://default.test/b',
+            'http://other.test/',
+        ], $this->warmed());
+        $this->assertSame(['/', '/a', '/a?page=2'], $this->cached('http://default.test'), 'served as cached until rendered again');
+        $this->assertSame(['/'], $this->cached('http://other.test'), 'an error response forgotten instead');
+        $this->assertSame([], $this->cached('http://elsewhere.test'), 'a host no site names is forgotten, never sent a request');
+    }
+
+    public function test_refresh_all_reaches_a_page_outside_every_site_s_path_on_a_shared_host(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        Site::setSites([
+            'en' => ['name' => 'English', 'url' => 'http://shared.test/en/', 'locale' => 'en_US'],
+            'sv' => ['name' => 'Svenska', 'url' => 'http://shared.test/sv/', 'locale' => 'sv_SE'],
+        ]);
+        $this->cache('http://shared.test', ['/en', '/sv/a', '/foo']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(1, $cache->refresh(Site::get('en')));
+        $this->assertSame(['http://shared.test/en'], $this->warmed(), 'no site\'s refresh reaches /foo');
+
+        $this->assertSame(3, $cache->refreshAll());
+        $this->assertContains('http://shared.test/foo', $this->warmed());
+    }
+
+    public function test_a_relative_site_is_on_the_app_url_s_host_whatever_host_the_request_names(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'en' => ['name' => 'English', 'url' => '/en/', 'locale' => 'en_US'],
+        ]);
+        $this->app['url']->setRequest(Request::create('http://forged.test/'));
+        $this->cache('http://default.test', ['/', '/en/a']);
+        $this->cache('http://forged.test', ['/', '/en/a']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(2, $cache->refreshAll());
+        $this->assertSame(['http://default.test/', 'http://default.test/en/a'], $this->warmed());
+        $this->assertSame([], $this->cached('http://forged.test'), 'forgotten, never sent a request');
+
+        $cache->flush(Site::get('en'));
+        $this->assertSame(['/'], $this->cached('http://default.test'));
+    }
+
+    public function test_a_relative_site_forgets_on_its_host_what_an_invalidator_reports_on_the_request_s(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://other.test/', 'locale' => 'en_US'],
+        ]);
+        $this->app['url']->setRequest(Request::create('http://alias.test/'));
+        $this->cache('http://default.test', ['/a', '/b']);
+        $this->cache('http://alias.test', ['/a']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertSame(1, $cache->forget(Site::get('default'), ['http://alias.test/a', 'http://other.test/b']));
+        $this->assertSame(['/b'], $this->cached('http://default.test'), "never another site's address");
+        $this->assertSame(['/a'], $this->cached('http://alias.test'), "forgotten on the site's host only");
+        $this->assertTrue($cache->owns(Site::get('default'), 'http://alias.test/b'));
+        $this->assertFalse($cache->owns(Site::get('default'), 'http://other.test/b'));
+    }
+
+    public function test_a_site_s_host_matches_whatever_its_case(): void
+    {
+        Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://Shared.test/', 'locale' => 'sv_SE']]);
+        $this->cache('http://shared.test', ['/', '/a', '/b']);
+        $cache = new SiteCache($this->cacher);
+
+        $this->assertTrue($cache->owns(Site::get('default'), 'http://Shared.test/a'));
+        $this->assertSame(1, $cache->forget(Site::get('default'), ['http://Shared.test/a']));
+        $this->assertSame(['/', '/b'], $this->cached('http://shared.test'));
+
+        $cache->flush(Site::get('default'));
+        $this->assertSame([], $this->cached('http://shared.test'));
     }
 
     public function test_refreshing_named_paths_queues_those_pages_with_their_query_strings_only(): void
@@ -244,6 +341,9 @@ class SiteCacheTest extends TestCase
         $this->assertSame(2, $cache->refresh(Site::get('default')));
         $this->assertSame([], $this->cached('http://default.test'));
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
+
+        $this->assertSame(2, $cache->refreshAll());
+        $this->assertSame([], $this->cached('http://other.test'));
         $this->assertSame([], $this->warmed());
     }
 
