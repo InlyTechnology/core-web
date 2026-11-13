@@ -164,9 +164,15 @@ return [
     | for an address carrying them. While pages are cached, pagination links
     | (`withQueryString()`) leave them out too.
     |
+    | guard: keeps a page cached while a clear ran from outliving every later
+    | clear on the `half` strategy; false keeps Statamic's own cacher. See
+    | docs/static-cache.md#pages-cached-while-a-clear-runs.
+    |
     */
 
     'static_cache' => [
+        'guard' => true,
+
         'tracking_query_strings' => [
             // Google Analytics and campaign tags
             'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', '_gl',

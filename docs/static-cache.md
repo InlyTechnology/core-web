@@ -60,23 +60,25 @@ Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
 `SiteCache::flush()` forgets the pages cached for one site: on its host under
-http and https, and on a shared host the pages under its path (the longest site
-path a page lies under decides whose it is). `SiteCache::flushPaths()` forgets
-some of them, by path on the site, and `SiteCache::forget()` by the absolute
-URLs an invalidator reports (a trailing `*` takes every page under one),
-keeping only those the site owns; `SiteCache::forgetMany()` does that for
-several sites at once, keyed by site handle, reading each host's cached pages
-once for all of them. `SiteCache::refresh()` renders the site's cached pages
-again in the background instead (one queued request per page), and visitors
-keep the cached copy until it is replaced; `SiteCache::refreshPaths()` does
-that for the paths it is given, named as `flushPaths()` names them, and leaves
-a path nothing is cached at alone. Each path is requested once with every query
-string it was cached under, and a page cached as an error is forgotten instead,
-as Statamic does. With `background_recache` off, both forget the pages instead:
-Statamic would keep each new render under its recache token, beside the old
-copy, which visitors would go on getting. On a shared host with no site at its
-root, a page cached outside every site's path (a 404 at `/foo` beside `/en` and
-`/sv`) is no site's, so no site's flush or refresh reaches it.
+http and https, and on a shared host the pages under its path (a page is the
+first site's on its host whose path it lies under: a site whose URL names its
+host before one at a relative URL, then the longest path, as Statamic's
+`Sites::findByUrl()` orders them). `SiteCache::flushPaths()` forgets some of
+them, by path on the site, and `SiteCache::forget()` by the absolute URLs an
+invalidator reports (a trailing `*` takes every page under one), keeping only
+those the site owns; `SiteCache::forgetMany()` does that for several sites at
+once, keyed by site handle, reading each host's cached pages once for all of
+them. `SiteCache::refresh()` renders the site's cached pages again in the
+background instead (one queued request per page), and visitors keep the cached
+copy until it is replaced; `SiteCache::refreshPaths()` does that for the paths
+it is given, named as `flushPaths()` names them, and leaves a path nothing is
+cached at alone. Each path is requested once with every query string it was
+cached under, and a page cached as an error is forgotten instead, as Statamic
+does. With `background_recache` off, both forget the pages instead: Statamic
+would keep each new render under its recache token, beside the old copy, which
+visitors would go on getting. On a shared host with no site at its root, a page
+cached outside every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no
+site's, so no site's flush or refresh reaches it.
 
 ## A save on one site of a multisite install
 
@@ -133,6 +135,55 @@ becomes the 404 it now answers, and its queued render ends as a failed job.
 The pages under a moved page move with it, but their copies on other sites
 are not forgotten: they link to the old addresses until their own site is
 next cleared.
+
+## Pages cached while a clear runs
+
+Statamic's `half` cacher stores each cached page under a key of its own and
+keeps a list of the cached URLs for each domain. A clear (a save's flush, an
+invalidated URL, the CP's Invalidate) deletes only the pages it finds on that
+list. A page a visitor caches while a clear runs can be stored after the
+clear took its URL off the list. Every later visit is then served that copy,
+and no save or Invalidate reaches it until it expires or the store holding
+it is emptied: `statamic:static:clear` with a dedicated `static_cache`
+store, `cache:clear` without one. The same address with a trailing slash
+or another query string is cached apart, so it can show the current page.
+
+core-web runs `GuardedApplicationCacher` in its place, which serves a cached
+page only when the request that rendered it started after the page was last
+cleared:
+
+- Each clear records when it ended, whether its pages were on the list or
+  not: a flush of the whole cache, a path with every query string on it,
+  and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
+  `SiteCache` records the paths and wildcards it forgets, leaving out those
+  another site owns, and a flush of a site records a clear of all the
+  site's pages. While `background_recache` is off, `refresh()` records what
+  `flush()` records, and `refreshPaths()` what `flushPaths()` records. A
+  wildcard with another site under it (`/*` on a site at `/` beside `/en`)
+  records a clear of all its own site's pages instead.
+- A cached page is stored with the time its request started
+  (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
+  covers it ended, or less than a second after (servers' clocks differ
+  slightly), is a miss: it is rendered again and listed. A page cached
+  before core-web ran this cacher has no start, so it is rendered again
+  once.
+- A page whose URL cannot be written onto the list within 10 seconds, the
+  wait for the list's lock, is not kept. Statamic writes the list without
+  its lock then, and two such writes can lose a URL.
+- A refresh with `background_recache` records a clear where it forgets a
+  page cached as an error: that page's path, with every query string on it,
+  so no copy of the path is served until it is rendered again.
+
+A hit reads the page and these records in one call to the cache store. A
+path's record lasts an hour longer than the static cache's `expiry`, and
+without one until its store is emptied. A wildcard's record goes with a
+later flush of the whole cache or a later, wider wildcard. A site's record,
+one per site, stays until its store is emptied.
+
+`static_cache.guard: false` keeps Statamic's own cacher, which serves any
+copy the guard was keeping out again: empty the store holding them after
+turning it off, as above. The `full` strategy has a cacher of its own and
+is unchanged.
 
 ## Ad and analytics parameters
 
