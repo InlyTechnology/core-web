@@ -60,17 +60,17 @@ Correctness beats savings: return `null` from `dependents()` for a document
 whose pages you cannot name.
 
 `SiteCache::flush()` forgets the pages cached for one site: on its host, and on
-a shared host the pages under its path (a page is the site's that Statamic
-renders it as: a site whose URL names its host before one at a relative URL,
-then the longest site path the page lies under). `SiteCache::flushPaths()`
-forgets some of them, by path on the site, and `SiteCache::forget()` by the
-absolute URLs an invalidator reports (a trailing `*` takes every page under
-one), keeping only those the site owns. `SiteCache::refresh()` renders the
-site's cached pages again in the background instead (one queued request per
-page), and visitors keep the cached copy until it is replaced. On a shared host
-with no site at its root, a page cached outside every site's path (a 404 at
-`/foo` beside `/en` and `/sv`) is no site's, so no site's flush or refresh
-reaches it.
+a shared host the pages under its path (a page is the first site's on its host
+whose path it lies under: a site whose URL names its host before one at a
+relative URL, then the longest path, as Statamic's `Sites::findByUrl()` orders
+them). `SiteCache::flushPaths()` forgets some of them, by path on the site, and
+`SiteCache::forget()` by the absolute URLs an invalidator reports (a trailing
+`*` takes every page under one), keeping only those the site owns.
+`SiteCache::refresh()` renders the site's cached pages again in the background
+instead (one queued request per page), and visitors keep the cached copy until
+it is replaced. On a shared host with no site at its root, a page cached
+outside every site's path (a 404 at `/foo` beside `/en` and `/sv`) is no
+site's, so no site's flush or refresh reaches it.
 
 ## A save on one site of a multisite install
 

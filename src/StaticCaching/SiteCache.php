@@ -375,7 +375,7 @@ class SiteCache
         return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
     }
 
-    /** The site a cached page belongs to: the one Statamic renders it as, of the sites on its host placed() orders. */
+    /** The site a cached page belongs to: the first site on its host, in placed() order, whose path the page lies under. */
     public static function siteOf(string $url): ?Site
     {
         return self::owner(self::sitesOn(parse_url($url, PHP_URL_HOST)), $url);
@@ -398,10 +398,11 @@ class SiteCache
     }
 
     /**
-     * Every site with its host and path, as Statamic's Sites::findByUrl() orders them: a site whose URL names its host
-     * first, then the longest path. A relative URL is placed on one resolved root, as each site's absoluteUrl() would
-     * be most of what a cache hit costs. Kept while the request's root stays the same and Sites::all() is the same
-     * collection, which setSites() replaces; a site changed in place is not seen.
+     * Every site with its host and path, in the order Statamic's Sites::findByUrl() takes: a site whose URL names its
+     * host first, then the longest path. Unlike findByUrl(), a site's scheme is not compared, so a site at an http://
+     * URL comes first for its host's https:// pages too. A relative URL is placed on one resolved root, as each site's
+     * absoluteUrl() would be most of what a cache hit costs. Kept while the request's root stays the same and
+     * Sites::all() is the same collection, which setSites() replaces; a site changed in place is not seen.
      *
      * @return list<array{site: Site, host: string|false|null, prefix: string}>
      */
@@ -418,7 +419,7 @@ class SiteCache
             $placed = $sites
                 ->map(function (Site $site) use ($baseHost, $basePath): array {
                     $url = $site->url();
-                    $relative = str_starts_with($url, '/') && ! str_starts_with($url, '//');
+                    $relative = str_starts_with($url, '/');
 
                     return [
                         'site' => $site,

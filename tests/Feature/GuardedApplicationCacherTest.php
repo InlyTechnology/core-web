@@ -410,7 +410,7 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertNull($this->served($cacher, 'https://example.de/en/x'));
     }
 
-    public function test_a_page_belongs_to_the_site_statamic_renders_it_as(): void
+    public function test_a_page_on_a_sites_own_scheme_belongs_to_the_site_find_by_url_names(): void
     {
         Site::setSites([
             'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
