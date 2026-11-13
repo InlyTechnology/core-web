@@ -117,28 +117,30 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   allow-list, DNS that sends the worker elsewhere) keeps its old copies. A
   `false` in `config/statamic/static_caching.php` no longer turns it off,
   `statamic:static:warm` renders again every page it lists, cached or not,
-  and a template that reads the page's query or full address outside
-  `@nocache` puts Statamic's render token in the cached copy. Find: the
-  site's own choice, `grep -rn "background_recache" config/` and
-  `STATAMIC_BACKGROUND_RECACHE` in each environment; a warm, in the host's
-  deploy script or where `grep -rn "static:warm" routes/ bootstrap/ config/
-  app/ composer.json README.md` finds one; and such a template, `grep -rnE
-  "current_full_url|get_post|fullUrl|url\(\)->full|getQueryString|request\(\)->query\(\)"
-  resources/views`. Migrate: delete a `background_recache` line in
+  and a template that prints the page's whole query or full address, unless
+  it reads and prints it inside `@nocache`, puts Statamic's render token in
+  the cached copy. Find: the site's own choice, `grep -rn
+  "background_recache" config/` and `STATAMIC_BACKGROUND_RECACHE` in each
+  environment; a warm, in the host's deploy script or where `grep -rnE
+  "static:warm|StaticWarm" routes/ bootstrap/ config/ app/ composer.json
+  README.md` finds one; and such a template, where this finds one:
+  `grep -rnE 'current_full_url|get_post|fullUrl|full\(\)|getQueryString|getRequestUri|getUri\(\)|(request\(\)->|Request::|\$request->)((query|all|input)\(\)|except\()' resources/views`.
+  Migrate: delete a `background_recache` line in
   `config/statamic/static_caching.php` that only turns it on or works it out
   from the environment; to keep pages forgotten after a save, set
   `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
   `static_cache.background_recache` to `false` in `config/core-web.php` for
   every environment; give a warm that should fill only missing pages
-  `--uncached`; and move what such a template reads outside `@nocache` into
-  it ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
+  `--uncached`; and move such a template's read and print into a `@nocache`
+  partial ([Static cache](docs/static-cache.md#rendering-pages-again-after-a-save)).
   Verify: on a production server, `php artisan core-web:doctor` names the
-  connection and queue the renders go on. After
-  deploy, production needs a worker on that queue: save an entry, then check
-  that `php artisan queue:monitor <connection>:<queue>` drains to 0, that a
-  page the save renders again (under the `all` rule, one listing the entry:
-  `SiteScopedInvalidator` forgets its own page at once) shows the change,
-  and that `php artisan queue:failed` lists no `StaticWarmJob`.
+  connection and queue the renders go on. After deploy, production needs a
+  worker on that queue: save an entry, then check that `php artisan
+  queue:monitor <connection>:<queue>` drains to 0, that a page the save
+  renders again (under the `all` rule, one listing the entry:
+  `SiteScopedInvalidator` forgets its own page at once) shows the change and
+  `curl -s <its address> | grep -c __recache` prints 0, and that `php artisan
+  queue:failed` lists no `StaticWarmJob`.
 - **On Laravel Cloud, a save's page renders are queued on `low`.** With
   `features.cloud`, `statamic.static_caching.warm_queue` is `low` unless
   `STATAMIC_STATIC_WARM_QUEUE` is set or the site's config gives a queue, and
