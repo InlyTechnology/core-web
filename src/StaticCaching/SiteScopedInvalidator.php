@@ -52,6 +52,26 @@ class SiteScopedInvalidator extends DefaultInvalidator
             $cache->forget($site, $urls);
             $cache->refresh($site);
         }
+
+        if ($item instanceof Entry) {
+            $this->forgetLocalizations($cache, $item);
+        }
+    }
+
+    /** Each other copy of the entry links to it from a language switcher or hreflang, so it is forgotten on its own site. */
+    private function forgetLocalizations(SiteCache $cache, Entry $entry): void
+    {
+        $root = $entry->root();
+        $urls = [];
+
+        foreach ($root->descendants()->merge([$root]) as $localization) {
+            if ($localization->id() !== $entry->id() && ! $localization->isRedirect()) {
+                $urls[$localization->locale()][] = $localization->absoluteUrl();
+            }
+        }
+
+        // One pass over each host's cached pages for every copy: an origin's save reports each of its copies too.
+        $cache->forgetMany($urls);
     }
 
     /** @return list<Site> */

@@ -8,6 +8,24 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A save forgets the entry's copies on the other sites**: under
+  `SiteScopedInvalidator`, a saved or deleted entry's origin and other
+  localizations are forgotten on their own sites too. See
+  `docs/static-cache.md` (A save on one site of a multisite install).
+- **`SiteCache::forgetMany()`** forgets pages on several sites in one call,
+  and `SiteCache::forget()`, `flushPaths()`, `flush()` and `refresh()`
+  resolve each site's address once per call instead of once per cached page.
+  See `docs/static-cache.md` (Pages a snapshot change touches).
+- **`SiteCache::refreshPaths()`** renders the named pages of a site again in
+  the background, where `refresh()` takes every page. See
+  `docs/static-cache.md` (Pages a snapshot change touches).
+- **`SiteCache::refresh()` forgets the pages while `background_recache` is
+  off**, where it queued renders whose results visitors never got. See
+  `docs/static-cache.md` (Pages a snapshot change touches).
+- **The Cloud form submissions migration rolls back as the driver's does**:
+  its `down()` deletes the table's rows before turning `id` back into an
+  integer, as statamic/eloquent-driver 5.12.6 now does. A site gets it when
+  it publishes `--tag=core-web-cloud-migrations` again with `--force`.
 - **Snapshot details**: `Snapshot::details([...])` names fields too large to
   keep on every row, such as a car's images. A `fromObject()` snapshot
   leaves them out of its pull and of a search Core answers, and

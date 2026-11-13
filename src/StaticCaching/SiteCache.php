@@ -3,7 +3,6 @@
 namespace Inly\CoreWeb\StaticCaching;
 
 use Closure;
-use Illuminate\Support\Collection;
 use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
@@ -116,18 +115,14 @@ class SiteCache
             return;
         }
 
-        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $neighbours = self::neighbours($site);
+        $host = self::host($site);
+        $neighbours = self::neighbours($host);
 
-        foreach ($this->cacher->getDomains() as $domain) {
-            if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
-                continue;
-            }
-
+        foreach ($this->domains($host) as $domain) {
             $paths = [];
 
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
+                if (self::owner($neighbours, (string) $url) === self::handle($site)) {
                     $paths[strtok((string) $url, '?')] = true;
                 }
             }
@@ -138,12 +133,8 @@ class SiteCache
 
     /**
      * Renders every cached page of the site again in the background, one
-     * queued request per page (Statamic's StaticWarmJob), while visitors
-     * keep getting the cached copy until it is replaced. Pages are found on
-     * the site's host, under http and https, and owned as flush() owns
-     * them; each path is requested once with every query string it was
-     * cached under, and one cached as an error response is forgotten
-     * instead, as Statamic does. Returns how many paths were handed on.
+     * queued request per page, owned as flush() owns them
+     * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
     {
@@ -151,25 +142,21 @@ class SiteCache
             return 0;
         }
 
-        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $neighbours = self::neighbours($site);
+        $host = self::host($site);
+        $neighbours = self::neighbours($host);
         $queued = 0;
 
-        foreach ($this->cacher->getDomains() as $domain) {
-            if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
-                continue;
-            }
-
+        foreach ($this->domains($host) as $domain) {
             $paths = [];
 
             foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                if (self::owner($neighbours, (string) $url)?->handle() === $site->handle()) {
+                if (self::owner($neighbours, (string) $url) === self::handle($site)) {
                     $paths[strtok((string) $url, '?')] = true;
                 }
             }
 
             foreach (array_keys($paths) as $path) {
-                $this->cacher->refreshUrl($path, $domain);
+                $this->renderAgain($path, $domain);
                 $queued++;
             }
         }
@@ -187,27 +174,29 @@ class SiteCache
      */
     public function forget(Site $site, iterable $urls): int
     {
-        $prefix = self::prefix($site);
-        $paths = [];
+        return $this->forgetPages([[$site, $urls]]);
+    }
 
-        foreach ($urls as $url) {
-            // An unrouted entry reports a null URL: it has no page to forget.
-            if (! is_string($url)) {
-                continue;
+    /**
+     * forget() for several sites at once, keyed by site handle: each host's
+     * cached pages are read once for all of them, so sites sharing a host
+     * cost one pass. Returns how many were forgotten.
+     *
+     * @param  array<string, iterable<mixed>>  $urls
+     */
+    public function forgetMany(array $urls): int
+    {
+        $pages = [];
+
+        foreach ($urls as $handle => $siteUrls) {
+            $site = Sites::get((string) $handle);
+
+            if ($site !== null) {
+                $pages[] = [$site, $siteUrls];
             }
-
-            $wildcard = str_ends_with($url, '*');
-            $address = $wildcard ? substr($url, 0, -1) : $url;
-
-            if (! $this->owns($site, $address)) {
-                continue;
-            }
-
-            $path = '/'.trim(substr('/'.trim((string) parse_url($address, PHP_URL_PATH), '/'), strlen($prefix)), '/');
-            $paths[] = $wildcard ? rtrim($path, '/').'/*' : $path;
         }
 
-        return $paths === [] ? 0 : $this->flushPaths($site, $paths);
+        return $this->forgetPages($pages);
     }
 
     /**
@@ -221,52 +210,174 @@ class SiteCache
      */
     public function flushPaths(Site $site, iterable $paths): int
     {
-        if (! $this->cacher instanceof AbstractCacher) {
-            return 0;
-        }
-
-        $exact = [];
-        $prefixes = [];
+        $target = ['prefix' => self::prefix($site), 'exact' => [], 'under' => []];
 
         foreach ($paths as $path) {
-            $path = '/'.trim((string) $path, '/');
+            $target = self::addPath($target, (string) $path);
+        }
 
-            if (str_ends_with($path, '*')) {
-                $prefixes[] = rtrim(substr($path, 0, -1), '/').'/';
-            } else {
-                $exact[$path] = true;
+        return $this->forgetOnHost(self::host($site), [self::handle($site) => $target]);
+    }
+
+    /**
+     * Renders the site's cached pages at these paths again in the background,
+     * as refresh() renders the whole site (docs/static-cache.md). Returns how
+     * many paths were handed on.
+     *
+     * @param  iterable<string>  $paths
+     */
+    public function refreshPaths(Site $site, iterable $paths): int
+    {
+        $target = ['prefix' => self::prefix($site), 'exact' => [], 'under' => []];
+
+        foreach ($paths as $path) {
+            $target = self::addPath($target, (string) $path);
+        }
+
+        $queued = 0;
+
+        foreach ($this->matchOnHost(self::host($site), [self::handle($site) => $target]) as $domain => $matched) {
+            foreach (array_keys($matched) as $path) {
+                $this->renderAgain($path, $domain);
+                $queued++;
             }
         }
 
-        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-        $prefix = self::prefix($site);
-        $neighbours = self::neighbours($site);
-        $forgotten = 0;
+        return $queued;
+    }
 
-        foreach ($this->cacher->getDomains() as $domain) {
-            if (parse_url((string) $domain, PHP_URL_HOST) !== $host) {
-                continue;
-            }
+    /** @param  list<array{Site, iterable<mixed>}>  $pages */
+    private function forgetPages(array $pages): int
+    {
+        $targets = [];
+        $neighbours = [];
 
-            $matched = [];
+        foreach ($pages as [$site, $urls]) {
+            $host = self::host($site);
+            $prefix = self::prefix($site);
 
-            foreach ($this->cacher->getUrls($domain)->all() as $url) {
-                if (self::owner($neighbours, (string) $url)?->handle() !== $site->handle()) {
+            foreach ($urls as $url) {
+                // An unrouted entry reports a null URL: it has no page to forget.
+                if (! is_string($url)) {
                     continue;
                 }
 
-                $onSite = '/'.trim(substr('/'.trim((string) parse_url((string) $url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
+                $wildcard = str_ends_with($url, '*');
+                $address = $wildcard ? substr($url, 0, -1) : $url;
 
-                if (isset($exact[$onSite]) || self::under($onSite, $prefixes)) {
-                    $matched[strtok((string) $url, '?')] = true;
-                    $forgotten++;
+                if (parse_url($address, PHP_URL_HOST) !== $host) {
+                    continue;
                 }
-            }
 
-            $this->invalidate(array_keys($matched), $domain);
+                $neighbours[$host] ??= self::neighbours($host);
+
+                if (self::owner($neighbours[$host], $address) !== self::handle($site)) {
+                    continue;
+                }
+
+                $path = self::onSite($address, $prefix);
+                $targets[$host][self::handle($site)] = self::addPath(
+                    $targets[$host][self::handle($site)] ?? ['prefix' => $prefix, 'exact' => [], 'under' => []],
+                    $wildcard ? rtrim($path, '/').'/*' : $path,
+                );
+            }
+        }
+
+        $forgotten = 0;
+
+        foreach ($targets as $host => $sites) {
+            $forgotten += $this->forgetOnHost($host, $sites, $neighbours[$host]);
         }
 
         return $forgotten;
+    }
+
+    /**
+     * @param  array{prefix: string, exact: array<string, true>, under: list<string>}  $target
+     * @return array{prefix: string, exact: array<string, true>, under: list<string>}
+     */
+    private static function addPath(array $target, string $path): array
+    {
+        $path = '/'.trim($path, '/');
+
+        if (str_ends_with($path, '*')) {
+            $target['under'][] = rtrim(substr($path, 0, -1), '/').'/';
+        } else {
+            $target['exact'][$path] = true;
+        }
+
+        return $target;
+    }
+
+    /**
+     * Forgets the cached pages on the host that each site's target names,
+     * reading each of the host's domains once. Returns how many cached
+     * pages were forgotten, query strings counted apart.
+     *
+     * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
+     * @param  list<array{string, string}>|null  $neighbours
+     */
+    private function forgetOnHost(?string $host, array $targets, ?array $neighbours = null): int
+    {
+        $forgotten = 0;
+
+        foreach ($this->matchOnHost($host, $targets, $neighbours) as $domain => $matched) {
+            $this->invalidate(array_keys($matched), $domain);
+            $forgotten += array_sum($matched);
+        }
+
+        return $forgotten;
+    }
+
+    /**
+     * The cached paths on each of the host's domains that each site's target
+     * names, each with how many cached pages it has (one per query string).
+     *
+     * @param  array<string, array{prefix: string, exact: array<string, true>, under: list<string>}>  $targets  keyed by site handle
+     * @param  list<array{string, string}>|null  $neighbours
+     * @return array<string, array<string, int>>
+     */
+    private function matchOnHost(?string $host, array $targets, ?array $neighbours = null): array
+    {
+        if (! $this->cacher instanceof AbstractCacher || $targets === []) {
+            return [];
+        }
+
+        $neighbours ??= self::neighbours($host);
+        $matches = [];
+
+        foreach ($this->domains($host) as $domain) {
+            $matched = [];
+
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                $target = $targets[self::owner($neighbours, (string) $url) ?? ''] ?? null;
+
+                if ($target === null) {
+                    continue;
+                }
+
+                $onSite = self::onSite((string) $url, $target['prefix']);
+
+                if (isset($target['exact'][$onSite]) || self::under($onSite, $target['under'])) {
+                    $path = strtok((string) $url, '?');
+                    $matched[$path] = ($matched[$path] ?? 0) + 1;
+                }
+            }
+
+            $matches[$domain] = $matched;
+        }
+
+        return $matches;
+    }
+
+    /** Has Statamic render a cached path again in the background, or forgets it while background re-caching is off. */
+    private function renderAgain(string $path, ?string $domain): void
+    {
+        if (config('statamic.static_caching.background_recache')) {
+            $this->cacher->refreshUrl($path, $domain);
+        } else {
+            $this->cacher->invalidateUrl($path, $domain);
+        }
     }
 
     /**
@@ -280,6 +391,19 @@ class SiteCache
         foreach ($paths as $path) {
             $this->cacher->invalidateUrl($path, $domain);
         }
+    }
+
+    /**
+     * The cached domains on the host, under http and https.
+     *
+     * @return list<string>
+     */
+    private function domains(?string $host): array
+    {
+        return array_values(array_filter(
+            array_map(strval(...), $this->cacher->getDomains()->all()),
+            fn (string $domain) => parse_url($domain, PHP_URL_HOST) === $host,
+        ));
     }
 
     /** @param  list<string>  $prefixes */
@@ -299,41 +423,64 @@ class SiteCache
     /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
     public function owns(Site $site, string $url): bool
     {
-        if (parse_url($url, PHP_URL_HOST) !== parse_url($site->absoluteUrl(), PHP_URL_HOST)) {
+        $host = self::host($site);
+
+        if (parse_url($url, PHP_URL_HOST) !== $host) {
             return false;
         }
 
-        return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
+        return self::owner(self::neighbours($host), $url) === self::handle($site);
     }
 
     /**
-     * The sites on the site's host, longest path first.
+     * The handle and path of each site on the host, longest path first: a
+     * site's URL is resolved once per pass rather than once per cached page.
      *
-     * @return Collection<array-key, Site>
+     * @return list<array{string, string}>
      */
-    private static function neighbours(Site $site): Collection
+    private static function neighbours(?string $host): array
     {
-        $host = parse_url($site->absoluteUrl(), PHP_URL_HOST);
-
         return Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+            ->filter(fn (Site $other) => self::host($other) === $host)
+            ->map(fn (Site $other) => [self::handle($other), self::prefix($other)])
+            ->sortByDesc(fn (array $other) => strlen($other[1]))
+            ->values()
+            ->all();
     }
 
-    /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */
-    private static function owner(iterable $sites, string $url): ?Site
+    /** A site's handle as a string: a handle of digits (`2026:` in sites.yaml) is read as an int. */
+    private static function handle(Site $site): string
+    {
+        return (string) $site->handle();
+    }
+
+    /**
+     * The handle of the site a URL's path lies under.
+     *
+     * @param  list<array{string, string}>  $sites  the handle and path of each site on the URL's host, longest path first
+     */
+    private static function owner(array $sites, string $url): ?string
     {
         $path = '/'.trim((string) parse_url($url, PHP_URL_PATH), '/');
 
-        foreach ($sites as $site) {
-            $prefix = self::prefix($site);
-
+        foreach ($sites as [$handle, $prefix]) {
             if ($prefix === '' || $path === $prefix || str_starts_with($path, $prefix.'/')) {
-                return $site;
+                return $handle;
             }
         }
 
         return null;
+    }
+
+    /** A URL's path on the site under this path ('/campaigns' for '/sv/campaigns' under '/sv'). */
+    private static function onSite(string $url, string $prefix): string
+    {
+        return '/'.trim(substr('/'.trim((string) parse_url($url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
+    }
+
+    private static function host(Site $site): ?string
+    {
+        return parse_url($site->absoluteUrl(), PHP_URL_HOST) ?: null;
     }
 
     /** The path a site sits under on its host ('/second'), '' at the root. */
