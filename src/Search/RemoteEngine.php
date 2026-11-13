@@ -22,9 +22,10 @@ class RemoteEngine
 {
     public function __construct(protected CoreClient $core) {}
 
-    public function run(string $object, SearchQuery $query): SearchResult
+    /** @param  list<string>  $fields  the fields each row carries; none named for every field */
+    public function run(string $object, SearchQuery $query, array $fields = []): SearchResult
     {
-        $key = 'core_web_search:'.$object.':'.$query->key();
+        $key = 'core_web_search:'.$object.':'.$query->key().($fields === [] ? '' : ':'.sha1(implode(',', $fields)));
         $kept = $this->kept($key);
         $page = $query->page;
         $size = $query->pageSize ?? 25;
@@ -34,7 +35,7 @@ class RemoteEngine
         }
 
         // Core failed a moment ago: answer at once rather than have every visitor wait out the timeout again.
-        $result = $this->down($object) ? null : $this->call($object, $query);
+        $result = $this->down($object) ? null : $this->call($object, $query, $fields);
 
         if ($result instanceof SearchResult) {
             $this->keep($key, $result->toArray(), (int) config('core-web.search.ttl', 60));
@@ -141,15 +142,17 @@ class RemoteEngine
 
     /**
      * Core's answer, false when Core refused the query, null when it failed.
+     *
+     * @param  list<string>  $fields  the fields each row carries; none named for every field
      */
-    protected function call(string $object, SearchQuery $query): SearchResult|false|null
+    protected function call(string $object, SearchQuery $query, array $fields = []): SearchResult|false|null
     {
         if (! $this->core->configured()) {
             return null;
         }
 
         try {
-            $response = $this->send(self::path($object), $query->toApi() + ['meta' => CoreClient::ROW_META]);
+            $response = $this->send(self::path($object), $query->toApi() + ['meta' => CoreClient::ROW_META] + ($fields === [] ? [] : ['fields' => ['_' => implode(',', $fields)]]));
         } catch (ConnectionException|TokenRefused $e) {
             Log::warning('Core search failed.', ['object' => $object, 'exception' => $e::class, 'message' => $e->getMessage()]);
             $this->markDown($object);
