@@ -313,6 +313,15 @@ class DoctorCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_rendering_pages_again_on_an_undefined_connection_is_a_warning(): void
+    {
+        $this->onACachedServer(['statamic.static_caching.background_recache' => true, 'statamic.static_caching.warm_queue_connection' => 'renders']);
+
+        $this->artisan('core-web:doctor')
+            ->expectsOutputToContain('warn Static cache: background_recache is on, but the renders connection it puts the renders on is not defined in config/queue.php')
+            ->assertSuccessful();
+    }
+
     public function test_a_save_forgetting_its_pages_passes(): void
     {
         $this->onACachedServer(['statamic.static_caching.background_recache' => false]);

@@ -56,6 +56,12 @@ Statamic queues the further pages of a paginated page there. `php artisan
 config:show statamic.static_caching.background_recache` prints what a server
 resolved.
 
+With it on, `php artisan statamic:static:warm` renders again every page it
+lists, cached or not, since Statamic adds its render token to each address;
+`--uncached` warms only the pages not cached yet. Laravel's paginator leaves
+that token out of its links (`withQueryString()`), as Statamic's own does, so
+no cached page hands it on.
+
 ## Pages a snapshot change touches
 
 A snapshot moving saves no entry, so Statamic's invalidation never hears of

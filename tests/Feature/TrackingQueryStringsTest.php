@@ -68,6 +68,19 @@ class TrackingQueryStringsTest extends TestCase
         $this->assertSame('/news?utm_source=newsletter&page=2', $this->nextPageUrl());
     }
 
+    public function test_with_background_recache_pagination_links_leave_out_the_render_token(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'full',
+            'statamic.static_caching.background_recache' => true,
+            'statamic.static_caching.recache_token_parameter' => '__recache',
+        ]);
+        TrackingQueryStrings::apply(config());
+        $this->app->instance('request', Request::create('/news?q=boats&__recache=secret&gclid=abc'));
+
+        $this->assertSame('/news?q=boats&gclid=abc&page=2', $this->nextPageUrl());
+    }
+
     public function test_the_full_strategy_is_left_alone(): void
     {
         config([

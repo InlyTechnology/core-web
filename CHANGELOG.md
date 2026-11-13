@@ -61,8 +61,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   over the page. See `docs/object-preview.md#marking-fields-and-blocks`.
 - **Pages render again after a save in production**: core-web turns
   Statamic's `background_recache` on in production where the warm queue
-  connection holds jobs for a worker, unless the site names it. See
-  `docs/static-cache.md` (Rendering pages again after a save).
+  connection holds jobs for a worker, unless the site names it, and Laravel's
+  paginator leaves Statamic's render token out of its links while it is on.
+  See `docs/static-cache.md` (Rendering pages again after a save).
 - **The `all` rule keeps a save to its site by default**: core-web uses
   `SiteScopedInvalidator` under that rule, on one site or several, unless the
   site names an invalidation class. See `docs/static-cache.md` (A save under
@@ -114,14 +115,17 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   until a worker has run the render. A production site its worker cannot reach
   as an anonymous request to the page's own address (basic auth, an IP
   allow-list, DNS that sends the worker elsewhere) keeps its old copies. A
-  `false` in `config/statamic/static_caching.php` no longer turns it off. Find
-  what a site set itself: `grep -rn "background_recache" config/` and
-  `STATAMIC_BACKGROUND_RECACHE` in each environment. Migrate: delete a
+  `false` in `config/statamic/static_caching.php` no longer turns it off, and
+  `statamic:static:warm` renders again every page it lists, cached or not.
+  Find what a site set itself: `grep -rn "background_recache" config/` and
+  `STATAMIC_BACKGROUND_RECACHE` in each environment, and a warm a deploy or
+  schedule runs: `grep -rn "static:warm" routes/ bin/ *.sh`. Migrate: delete a
   `background_recache` line in `config/statamic/static_caching.php` that only
   turns it on or works it out from the environment; to keep pages forgotten
   after a save, set `STATAMIC_BACKGROUND_RECACHE=false` on that server, or
   `static_cache.background_recache` to `false` in `config/core-web.php` for
-  every environment. Verify: on a production server, `php artisan
+  every environment; give a warm that should fill only missing pages
+  `--uncached`. Verify: on a production server, `php artisan
   core-web:doctor` names the connection and queue the renders go on. After
   deploy, production needs a worker on that queue: save an entry, then check
   that `php artisan queue:monitor <connection>:<queue>` drains to 0, that a

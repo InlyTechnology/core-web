@@ -275,8 +275,9 @@ class DoctorCommand extends Command
         } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
             $queue = StaticCacheDefaults::warmQueue($config);
             $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");
+        } elseif (blank($driver = $config->get("queue.connections.{$connection}.driver"))) {
+            $this->warning("Static cache: background_recache is on, but the {$connection} connection it puts the renders on is not defined in config/queue.php");
         } else {
-            $driver = $config->get("queue.connections.{$connection}.driver") ?? 'not defined';
             $this->warning("Static cache: background_recache is on, but the {$connection} connection ({$driver}) runs its jobs without a worker: in the request that saves, after it, or never");
         }
 
