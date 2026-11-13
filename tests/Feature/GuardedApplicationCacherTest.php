@@ -390,6 +390,55 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertNull($this->served($cacher, 'https://www.example.test/x'));
     }
 
+    public function test_a_site_whose_url_names_its_host_owns_the_pages_under_a_relative_sites_path(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'en' => ['name' => 'En', 'url' => '/en/', 'locale' => 'en_GB'],
+            'de' => ['name' => 'De', 'url' => 'https://example.de/', 'locale' => 'de_DE'],
+        ]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'https://example.de/en/x', 'x', at: 0);
+        $this->unlist('https://example.de');
+
+        // A flush queued on the host's own root, where the relative sites resolve to it as well.
+        $this->now += 10;
+        $this->onRequest('https://example.de/cp');
+        (new SiteCache($cacher))->flush(Site::get('de'));
+
+        $this->onRequest('https://example.de/en/x');
+        $this->assertNull($this->served($cacher, 'https://example.de/en/x'));
+    }
+
+    public function test_a_page_belongs_to_the_site_statamic_renders_it_as(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'en' => ['name' => 'En', 'url' => '/en/', 'locale' => 'en_GB'],
+            'de' => ['name' => 'De', 'url' => 'https://example.de/', 'locale' => 'de_DE'],
+            'at' => ['name' => 'At', 'url' => 'https://example.de/at/', 'locale' => 'de_AT'],
+            'fr' => ['name' => 'Fr', 'url' => '{{ config:app.url }}/fr/', 'locale' => 'fr_FR'],
+        ]);
+        $roots = [
+            'http://default.test/x' => [],
+            'https://example.de/x' => [],
+            'http://default.test/index.php/x' => ['SCRIPT_NAME' => '/index.php', 'SCRIPT_FILENAME' => '/var/www/public/index.php'],
+            'http://default.test/sub/index.php/x' => ['SCRIPT_NAME' => '/sub/index.php', 'SCRIPT_FILENAME' => '/var/www/public/sub/index.php'],
+        ];
+
+        foreach ($roots as $root => $server) {
+            $request = Request::create($root, server: $server);
+            $this->app->instance('request', $request);
+            $this->app['url']->setRequest($request);
+
+            foreach (['http://default.test', 'https://example.de'] as $host) {
+                foreach (['/', '/x', '/en', '/en/x?y=1', '/enx', '/at/x', '/fr/x', '/sub/en/x'] as $path) {
+                    $this->assertSame(Site::findByUrl($host.$path)?->handle(), SiteCache::siteOf($host.$path)?->handle(), $host.$path.' on '.$root);
+                }
+            }
+        }
+    }
+
     public function test_a_cached_page_says_when_it_was_generated(): void
     {
         if (! method_exists(ApplicationCacher::class, 'getGeneratedAt')) {

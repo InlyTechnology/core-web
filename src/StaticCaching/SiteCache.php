@@ -8,6 +8,7 @@ use Inly\CoreWeb\Sitemaps\SnapshotSitemaps;
 use Inly\CoreWeb\Snapshots\SnapshotChange;
 use Psr\Log\LoggerInterface;
 use Statamic\Facades\Site as Sites;
+use Statamic\Facades\URL;
 use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
@@ -109,8 +110,8 @@ class SiteCache
      * Forgets every cached page of the site, on whichever of its hosts it
      * was cached. Sites may share a host, each under its own path
      * (https://example.com and https://example.com/second): a cached page
-     * belongs to the site with the longest path it lies under, so flushing
-     * one leaves the others' pages alone.
+     * belongs to the site siteOf() names, so flushing one leaves the others'
+     * pages alone.
      */
     public function flush(Site $site): void
     {
@@ -374,14 +375,14 @@ class SiteCache
         return self::owner(self::neighbours($site), $url)?->handle() === $site->handle();
     }
 
-    /** The site a cached page belongs to: the one with the longest path on the page's host that the page lies under. */
+    /** The site a cached page belongs to: the one Statamic renders it as, of the sites on its host placed() orders. */
     public static function siteOf(string $url): ?Site
     {
         return self::owner(self::sitesOn(parse_url($url, PHP_URL_HOST)), $url);
     }
 
     /**
-     * The sites on the site's host, longest path first.
+     * The sites on the site's host, in placed() order.
      *
      * @return list<array{site: Site, host: string|false|null, prefix: string}>
      */
@@ -390,16 +391,17 @@ class SiteCache
         return self::sitesOn(parse_url($site->absoluteUrl(), PHP_URL_HOST));
     }
 
-    /** @return list<array{site: Site, host: string|false|null, prefix: string}> the sites on the host, longest path first */
+    /** @return list<array{site: Site, host: string|false|null, prefix: string}> the sites on the host, in placed() order */
     private static function sitesOn(string|false|null $host): array
     {
         return array_values(array_filter(self::placed(), fn (array $placed) => $placed['host'] === $host));
     }
 
     /**
-     * Every site with its host and path, longest path first, and of two at one address the one whose URL names its
-     * host. Kept while the sites and the request's root stay the same, as each site's absoluteUrl() is most of what a
-     * cache hit costs otherwise.
+     * Every site with its host and path, as Statamic's Sites::findByUrl() orders them: a site whose URL names its host
+     * first, then the longest path. A relative URL is placed on one resolved root, as each site's absoluteUrl() would
+     * be most of what a cache hit costs. Kept while the request's root stays the same and Sites::all() is the same
+     * collection, which setSites() replaces; a site changed in place is not seen.
      *
      * @return list<array{site: Site, host: string|false|null, prefix: string}>
      */
@@ -409,18 +411,23 @@ class SiteCache
         $sites = Sites::all();
 
         if (self::$placed === null || self::$placed['root'] !== $root || self::$placed['sites'] !== $sites) {
+            $base = URL::makeAbsolute('/');
+            $baseHost = parse_url($base, PHP_URL_HOST);
+            $basePath = rtrim((string) parse_url($base, PHP_URL_PATH), '/');
+
             $placed = $sites
-                ->map(function (Site $site): array {
-                    $url = $site->absoluteUrl();
+                ->map(function (Site $site) use ($baseHost, $basePath): array {
+                    $url = $site->url();
+                    $relative = str_starts_with($url, '/') && ! str_starts_with($url, '//');
 
                     return [
                         'site' => $site,
-                        'host' => parse_url($url, PHP_URL_HOST),
-                        'prefix' => rtrim((string) parse_url($url, PHP_URL_PATH), '/'),
-                        'named' => str_contains($site->url(), '://'),
+                        'host' => $relative ? $baseHost : parse_url($url, PHP_URL_HOST),
+                        'prefix' => rtrim($relative ? $basePath.$url : (string) parse_url($url, PHP_URL_PATH), '/'),
+                        'named' => ! $relative,
                     ];
                 })
-                ->sortByDesc(fn (array $placed) => [strlen($placed['prefix']), (int) $placed['named']])
+                ->sortByDesc(fn (array $placed) => [(int) $placed['named'], strlen($placed['prefix'])])
                 ->map(fn (array $placed) => ['site' => $placed['site'], 'host' => $placed['host'], 'prefix' => $placed['prefix']])
                 ->values()
                 ->all();
@@ -447,7 +454,7 @@ class SiteCache
         return false;
     }
 
-    /** @param  list<array{site: Site, host: string|false|null, prefix: string}>  $sites  the sites on the URL's host, longest path first */
+    /** @param  list<array{site: Site, host: string|false|null, prefix: string}>  $sites  the sites on the URL's host, in placed() order */
     private static function owner(array $sites, string $url): ?Site
     {
         $path = '/'.trim((string) parse_url($url, PHP_URL_PATH), '/');
