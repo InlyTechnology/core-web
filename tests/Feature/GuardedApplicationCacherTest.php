@@ -217,6 +217,18 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame(['/' => $wider, '/blog/' => $this->now], $this->store->get(self::under('http://default.test')));
     }
 
+    public function test_a_wildcard_outlives_the_pages_expiry_and_an_hour(): void
+    {
+        $cacher = $this->guarded(['expiry' => 10]);
+        $cacher->invalidateUrls(['http://default.test/blog/*']);
+        $blog = $this->now;
+
+        $this->now += 71 * 60;
+        $cacher->invalidateUrls(['http://default.test/news/*']);
+
+        $this->assertSame(['/blog/' => $blog, '/news/' => $this->now], $this->store->get(self::under('http://default.test')));
+    }
+
     public function test_a_flush_leaves_the_wildcards_alone_while_the_url_list_is_locked(): void
     {
         $cacher = $this->guarded()->waitingNoLonger();
@@ -345,6 +357,39 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame('other', $this->served($cacher, 'http://shared.test/other'));
     }
 
+    public function test_of_two_sites_at_one_address_the_one_whose_url_names_its_host_owns_the_page(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE'],
+            'de' => ['name' => 'De', 'url' => 'https://example.de/', 'locale' => 'de_DE'],
+        ]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'https://example.de/x', 'x', at: 0);
+        $this->unlist('https://example.de');
+
+        $this->now += 10;
+        $this->onRequest('http://default.test/cp');
+        (new SiteCache($cacher))->flush(Site::get('de'));
+
+        $this->onRequest('https://example.de/x');
+        $this->assertNull($this->served($cacher, 'https://example.de/x'));
+    }
+
+    public function test_a_site_at_a_relative_url_owns_its_pages_on_the_host_that_serves_them(): void
+    {
+        Site::setSites(['default' => ['name' => 'Default', 'url' => '/', 'locale' => 'sv_SE']]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'https://www.example.test/x', 'x', at: 0);
+        $this->unlist('https://www.example.test');
+
+        $this->now += 10;
+        $this->onRequest('https://example.test/cp');
+        (new SiteCache($cacher))->flush(Site::get('default'));
+
+        $this->onRequest('https://www.example.test/x');
+        $this->assertNull($this->served($cacher, 'https://www.example.test/x'));
+    }
+
     public function test_a_cached_page_says_when_it_was_generated(): void
     {
         if (! method_exists(ApplicationCacher::class, 'getGeneratedAt')) {
@@ -435,6 +480,14 @@ class GuardedApplicationCacherTest extends TestCase
     private static function under(string $domain): string
     {
         return 'static-cache:core-web:cleared-under:'.md5($domain);
+    }
+
+    /** Serves the rest of the test as a request to the URL, which a site's relative URL resolves against. */
+    private function onRequest(string $url): void
+    {
+        $request = Request::create($url);
+        $this->app->instance('request', $request);
+        $this->app['url']->setRequest($request);
     }
 
     /** Drops the domain's URL list and keeps its pages: what a lost write to the list leaves. */

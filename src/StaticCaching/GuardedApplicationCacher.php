@@ -251,7 +251,7 @@ class GuardedApplicationCacher extends ApplicationCacher
         };
 
         // Listed under the lock, the domain's records go with a flush of the whole cache. Without the lock a record is
-        // still written, unlisted, as one left out would let the pages under it be served stale; a prune is skipped.
+        // still written, unlisted, as one left out would let the pages under it be served stale; a flush's prune is skipped.
         $locked = $this->withUrlsLocked(function () use ($domain, $cleared, $write) {
             if ($cleared !== []) {
                 $this->cacheDomain($domain);

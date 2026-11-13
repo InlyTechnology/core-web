@@ -15,6 +15,9 @@ use Statamic\StaticCaching\Cachers\AbstractCacher;
 /** The static cache of one site of a multisite install, whose sites share no cached pages. */
 class SiteCache
 {
+    /** @var array{root: string, sites: Collection<array-key, Site>, placed: list<array{site: Site, host: string|false|null, prefix: string}>}|null */
+    private static ?array $placed = null;
+
     public function __construct(private Cacher $cacher) {}
 
     /**
@@ -380,42 +383,80 @@ class SiteCache
     /**
      * The sites on the site's host, longest path first.
      *
-     * @return Collection<array-key, Site>
+     * @return list<array{site: Site, host: string|false|null, prefix: string}>
      */
-    private static function neighbours(Site $site): Collection
+    private static function neighbours(Site $site): array
     {
         return self::sitesOn(parse_url($site->absoluteUrl(), PHP_URL_HOST));
     }
 
-    /** @return Collection<array-key, Site> the sites on the host, longest path first */
-    private static function sitesOn(string|false|null $host): Collection
+    /** @return list<array{site: Site, host: string|false|null, prefix: string}> the sites on the host, longest path first */
+    private static function sitesOn(string|false|null $host): array
     {
-        return Sites::all()
-            ->filter(fn (Site $other) => parse_url($other->absoluteUrl(), PHP_URL_HOST) === $host)
-            ->sortByDesc(fn (Site $other) => strlen(self::prefix($other)));
+        return array_values(array_filter(self::placed(), fn (array $placed) => $placed['host'] === $host));
+    }
+
+    /**
+     * Every site with its host and path, longest path first, and of two at one address the one whose URL names its
+     * host. Kept while the sites and the request's root stay the same, as each site's absoluteUrl() is most of what a
+     * cache hit costs otherwise.
+     *
+     * @return list<array{site: Site, host: string|false|null, prefix: string}>
+     */
+    private static function placed(): array
+    {
+        $root = url()->to('/');
+        $sites = Sites::all();
+
+        if (self::$placed === null || self::$placed['root'] !== $root || self::$placed['sites'] !== $sites) {
+            $placed = $sites
+                ->map(function (Site $site): array {
+                    $url = $site->absoluteUrl();
+
+                    return [
+                        'site' => $site,
+                        'host' => parse_url($url, PHP_URL_HOST),
+                        'prefix' => rtrim((string) parse_url($url, PHP_URL_PATH), '/'),
+                        'named' => str_contains($site->url(), '://'),
+                    ];
+                })
+                ->sortByDesc(fn (array $placed) => [strlen($placed['prefix']), (int) $placed['named']])
+                ->map(fn (array $placed) => ['site' => $placed['site'], 'host' => $placed['host'], 'prefix' => $placed['prefix']])
+                ->values()
+                ->all();
+
+            self::$placed = ['root' => $root, 'sites' => $sites, 'placed' => $placed];
+        }
+
+        return self::$placed['placed'];
     }
 
     /**
      * Whether another site on the host sits under this path ('/' beside a site at '/en').
      *
-     * @param  Collection<array-key, Site>  $neighbours
+     * @param  list<array{site: Site, host: string|false|null, prefix: string}>  $neighbours
      */
-    private static function nestsOthers(Collection $neighbours, Site $site, string $under): bool
+    private static function nestsOthers(array $neighbours, Site $site, string $under): bool
     {
-        return $neighbours->contains(fn (Site $other) => $other->handle() !== $site->handle()
-            && str_starts_with(self::prefix($other).'/', $under));
+        foreach ($neighbours as $other) {
+            if ($other['site']->handle() !== $site->handle() && str_starts_with($other['prefix'].'/', $under)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    /** @param  iterable<Site>  $sites  the sites on the URL's host, longest path first */
-    private static function owner(iterable $sites, string $url): ?Site
+    /** @param  list<array{site: Site, host: string|false|null, prefix: string}>  $sites  the sites on the URL's host, longest path first */
+    private static function owner(array $sites, string $url): ?Site
     {
         $path = '/'.trim((string) parse_url($url, PHP_URL_PATH), '/');
 
-        foreach ($sites as $site) {
-            $prefix = self::prefix($site);
+        foreach ($sites as $placed) {
+            $prefix = $placed['prefix'];
 
             if ($prefix === '' || $path === $prefix || str_starts_with($path, $prefix.'/')) {
-                return $site;
+                return $placed['site'];
             }
         }
 

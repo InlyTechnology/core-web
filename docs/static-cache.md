@@ -61,7 +61,8 @@ whose pages you cannot name.
 
 `SiteCache::flush()` forgets the pages cached for one site: on its host, and on
 a shared host the pages under its path (the longest site path a page lies
-under decides whose it is). `SiteCache::flushPaths()` forgets some of them, by
+under decides whose it is, and of two sites at one address, the one whose
+URL names its host). `SiteCache::flushPaths()` forgets some of them, by
 path on the site, and `SiteCache::forget()` by the absolute URLs an
 invalidator reports (a trailing `*` takes every page under one), keeping only
 those the site owns. `SiteCache::refresh()` renders the site's cached pages
