@@ -107,8 +107,8 @@ class SiteCache
     }
 
     /**
-     * Forgets every cached page of the site, on whichever of its hosts it
-     * was cached. Sites may share a host, each under its own path
+     * Forgets every cached page of the site, on its host under http and
+     * https. Sites may share a host, each under its own path
      * (https://example.com and https://example.com/second): a cached page
      * belongs to the first site on the host, in placed() order, whose path it
      * lies under, so flushing one leaves the others' pages alone.

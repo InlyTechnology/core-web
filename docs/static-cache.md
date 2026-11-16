@@ -223,9 +223,9 @@ cleared:
   records what `flush()` records, `refreshPaths()` what `flushPaths()`
   records, and `refreshAll()` flushes the whole cache; with it on,
   `refreshAll()` records a clear of every page on each host no site names,
-  whose pages it forgets. A
-  wildcard with another site under it (`/*` on a site at `/` beside `/en`)
-  records a clear of all its own site's pages instead.
+  whose pages it forgets. A wildcard with another site under it (`/*` on a
+  site at `/` beside `/en`) records a clear of all its own site's pages
+  instead.
 - A cached page is stored with the time its request started
   (`REQUEST_TIME_FLOAT`). A page whose request started before a clear that
   covers it ended, or less than a second after (servers' clocks differ
