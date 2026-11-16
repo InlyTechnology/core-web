@@ -39,10 +39,10 @@ class ArchivedLinks extends Check
     private const ARCHIVE_TODAY_PAGES = ['submit', 'search', 'wip'];
 
     /** A Wayback snapshot path saved without its host, which 404s on the site: an address or a host and path follow the timestamp. */
-    private const RELATIVE_WAYBACK = '~^/web/\d{4,14}(?:\*|[a-z]{2}_)?/(?:https?:|[a-z0-9-]+(?:\.[a-z0-9-]+)+/)~i';
+    private const RELATIVE_WAYBACK = '~^/web/\d{4,14}(?:\*|[a-z]{2}_)?/(?:https?:|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/)~i';
 
-    /** What ends a sentence after a link written in text, never part of the link. */
-    private const TRAILING = '.,;:!?)';
+    /** What ends a sentence after a link written in text, never part of the link; a `)` only when the link opens none. */
+    private const TRAILING = '.,;:!?';
 
     public function key(): string
     {
@@ -123,7 +123,7 @@ class ArchivedLinks extends Check
             foreach (self::links($string['value']) as $found) {
                 $archive = self::archive($found);
                 $resolved = self::resolve($archive['original'], $site);
-                $replacement = $resolved !== null && $found === rtrim(trim($string['value']), self::TRAILING)
+                $replacement = $resolved !== null && $found === self::trimTrailing($string['value'])
                     ? $this->replacement($blueprint, $string['path'], (string) $resolved['entry']->id(), $resolved['suffix'])
                     : null;
                 $fixable = $writable && $inField && $replacement !== null;
@@ -150,7 +150,7 @@ class ArchivedLinks extends Check
 
         foreach (array_values($branches) as $index => $branch) {
             $at = ltrim("{$prefix}.{$index}", '.');
-            $url = trim((string) ($branch['url'] ?? ''));
+            $url = self::trimTrailing((string) ($branch['url'] ?? ''));
             $archive = $url !== '' && blank($branch['entry'] ?? null) ? self::archive($url) : null;
 
             if ($archive !== null) {
@@ -213,6 +213,23 @@ class ArchivedLinks extends Check
         return app(Proposals::class)->propose($author, $target, $value, $base);
     }
 
+    /** A link without the punctuation that ends a sentence after it: a closing `)` stays when the link opened one (`Foo_(bar)`). */
+    private static function trimTrailing(string $value): string
+    {
+        $value = trim($value);
+
+        do {
+            $before = $value;
+            $value = rtrim($value, self::TRAILING);
+
+            if (str_ends_with($value, ')') && substr_count($value, ')') > substr_count($value, '(')) {
+                $value = substr($value, 0, -1);
+            }
+        } while ($value !== $before);
+
+        return $value;
+    }
+
     /**
      * The archive links in a string: the string itself when it is one link with nothing around it, or each one written in its text.
      *
@@ -221,7 +238,7 @@ class ArchivedLinks extends Check
     private static function links(string $value): array
     {
         $value = trim($value);
-        $whole = rtrim($value, self::TRAILING);
+        $whole = self::trimTrailing($value);
 
         if (preg_match('~\s~', $whole) !== 1 && self::archive($whole) !== null) {
             return [$whole];
@@ -231,7 +248,7 @@ class ArchivedLinks extends Check
             return [];
         }
 
-        $links = array_map(fn (string $url) => rtrim($url, self::TRAILING), $m[0]);
+        $links = array_map(fn (string $url) => self::trimTrailing($url), $m[0]);
 
         return array_values(array_unique(array_filter($links, fn (string $url) => self::archive($url) !== null)));
     }

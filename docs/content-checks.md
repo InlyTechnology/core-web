@@ -44,7 +44,7 @@ full addresses are found. It also looks for `archive.today`, `archive.ph`,
 page and their own `submit`, `search` and `wip` pages),
 `webcache.googleusercontent.com` and `cachedview.nl` (past their front page).
 A leading `www.` is ignored, and so is punctuation that ends a sentence after
-a link. A value that is one link with nothing around it
+a link (a closing parenthesis stays when the link opened one). A value that is one link with nothing around it
 is that link; any other value is read as text, and each archive link written
 in it is a finding of its own. Each finding's `details.original` is the
 address the archive copied, read from the archive URL

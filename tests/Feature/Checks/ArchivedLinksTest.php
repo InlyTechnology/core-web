@@ -152,6 +152,7 @@ class ArchivedLinksTest extends TestCase
             'cachedview' => ['https://cachedview.nl/#https://site.example/a', 'https://site.example/a'],
             'wayback path without its host' => ['/web/20250512152946/https://site.example/a', 'https://site.example/a'],
             'wayback path without its host or scheme' => ['/web/2024/site.example/a', 'http://site.example/a'],
+            'a link that ends in a parenthesis it opened' => ['https://web.archive.org/web/2020/https://en.wikipedia.org/wiki/Foo_(bar)', 'https://en.wikipedia.org/wiki/Foo_(bar)'],
             'a full stop after the link' => ['https://web.archive.org/web/2020/https://site.example/a/.', 'https://site.example/a/'],
         ];
     }
@@ -178,6 +179,7 @@ class ArchivedLinksTest extends TestCase
             'google cache home' => ['https://webcache.googleusercontent.com'],
             'a path under /web/ that names no address' => ['/web/about'],
             'a site file under /web/' => ['/web/2024/report.pdf'],
+            'a site folder under /web/ with a dot in its name' => ['/web/2024/report.v2/x'],
             'archive.org /web/' => ['https://archive.org/web/'],
             'wayback front page' => ['https://web.archive.org/web/'],
             'archive.ph submit' => ['https://archive.ph/submit/'],
@@ -288,6 +290,21 @@ class ArchivedLinksTest extends TestCase
         $this->assertSame('https://web.archive.org/web/20250512152946/http://default.test/kontakt/', $entry->get('cta_link'), 'The live page is left as it is.');
         $this->assertSame('entry::'.$this->contact->id(), $entry->fromWorkingCopy()->get('cta_link'));
         $this->assertSame('statamic://entry::'.$this->contact->id().'?amne=dack#form', $entry->fromWorkingCopy()->get('body')[0]['content'][0]['marks'][0]['attrs']['href']);
+    }
+
+    public function test_a_link_field_ending_in_sentence_punctuation_is_fixed_to_the_bare_entry_reference(): void
+    {
+        $page = $this->page('punkt', [
+            'title' => 'Punkt',
+            'cta_link' => 'https://web.archive.org/web/20250512152946/http://default.test/kontakt/.',
+        ]);
+        $finding = $this->findings()->where('subject', 'entry:'.$page->id())->firstWhere('path', 'cta_link');
+
+        $this->assertTrue($finding['fixable']);
+
+        app(ContentChecks::class)->fix('archived-links', $finding['id'], $this->author());
+
+        $this->assertSame('entry::'.$this->contact->id(), Entry::find($page->id())->fromWorkingCopy()->get('cta_link'));
     }
 
     public function test_an_archived_copy_of_another_sites_page_is_left_for_an_editor(): void
