@@ -218,7 +218,9 @@ cleared:
   `SiteCache` records the paths and wildcards it forgets, leaving out those
   another site owns, and a flush of a site records a clear of all the
   site's pages. While `background_recache` is off, `refresh()` records what
-  `flush()` records, and `refreshPaths()` what `flushPaths()` records. A
+  `flush()` records, `refreshPaths()` what `flushPaths()` records, and
+  `refreshAll()` flushes the whole cache; with it on, `refreshAll()` records
+  a clear of every page on each host no site names, whose pages it forgets. A
   wildcard with another site under it (`/*` on a site at `/` beside `/en`)
   records a clear of all its own site's pages instead.
 - A cached page is stored with the time its request started
