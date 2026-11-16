@@ -6,7 +6,7 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
-## Unreleased
+## v0.48.0
 
 - **The `core_snapshot` widget can link to Core**: `core_link` (a path in
   Core, such as `/schools`) puts an **Edit in Core** button in the widget's
