@@ -13,7 +13,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   each named with the address the archive copied. A link to an archived copy
   of one of the site's own pages is fixed to the entry, in a draft or a
   proposal; any other is left for an editor. It is in the default
-  `checks.checks`. See `docs/content-checks.md#archived-links`.
+  `checks.checks`; a site whose `config/core-web.php` sets `checks` keeps
+  its own list and adds `ArchivedLinks::class` to it. See `docs/content-checks.md#archived-links`.
 
 ## v0.48.0
 

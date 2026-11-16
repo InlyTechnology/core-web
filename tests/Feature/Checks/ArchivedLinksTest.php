@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Tests\Feature\Checks;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Inly\CoreWeb\Checks\ContentChecks;
+use Inly\CoreWeb\Checks\ContentWalk;
 use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftProvenance;
 use Inly\CoreWeb\Drafts\DraftRefused;
@@ -17,6 +18,7 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
 use Statamic\Facades\User;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
@@ -46,6 +48,7 @@ class ArchivedLinksTest extends TestCase
             ['handle' => 'cta_link', 'field' => ['type' => 'link']],
             ['handle' => 'body', 'field' => ['type' => 'bard']],
             ['handle' => 'intro', 'field' => ['type' => 'textarea']],
+            ['handle' => 'seo', 'field' => ['type' => 'textarea']],
         ]])->save();
 
         $this->contact = $this->page('kontakt', ['title' => 'Kontakt']);
@@ -147,7 +150,7 @@ class ArchivedLinksTest extends TestCase
             'archive.md' => ['https://www.archive.md/o/AbCd1/https://site.example/a', 'https://site.example/a'],
             'google cache, no id' => ['https://webcache.googleusercontent.com/search?q=cache:site.example/a', 'http://site.example/a'],
             'cachedview' => ['https://cachedview.nl/#https://site.example/a', 'https://site.example/a'],
-            'wayback home' => ['https://web.archive.org/', null],
+            'wayback path without its host' => ['/web/20250512152946/https://site.example/a', 'https://site.example/a'],
         ];
     }
 
@@ -160,6 +163,88 @@ class ArchivedLinksTest extends TestCase
 
         $this->assertNotNull($finding, "{$url} was not found.");
         $this->assertSame($original, $finding['details']['original']);
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function notArchivedCopies(): array
+    {
+        return [
+            'wayback home' => ['https://web.archive.org/'],
+            'wayback save' => ['https://web.archive.org/save/https://site.example/a'],
+            'wayback.archive.org home' => ['https://wayback.archive.org/'],
+            'archive.ph home' => ['https://archive.ph/'],
+            'google cache home' => ['https://webcache.googleusercontent.com'],
+            'a path under /web/ that names no address' => ['/web/about'],
+        ];
+    }
+
+    #[DataProvider('notArchivedCopies')]
+    public function test_an_archive_url_that_is_no_copy_of_a_page_is_left_alone(string $url): void
+    {
+        $page = $this->page('om-oss', ['title' => 'Om oss', 'cta_link' => $url]);
+
+        $this->assertSame([], $this->findings()->where('subject', 'entry:'.$page->id())->values()->all());
+    }
+
+    public function test_every_archive_link_in_a_text_is_found_even_one_it_starts_with(): void
+    {
+        $page = $this->page('om-oss', [
+            'title' => 'Om oss',
+            'intro' => 'https://web.archive.org/web/2025/https://other.example/ is our old site, and https://archive.ph/newest/https://other.example/b/ too.',
+            'seo' => "https://web.archive.org/web/2025/https://other.example/c/\nmore text",
+        ]);
+
+        $findings = $this->findings()->where('subject', 'entry:'.$page->id());
+
+        $this->assertEqualsCanonicalizing(
+            ['https://other.example/', 'https://other.example/b/'],
+            $findings->where('path', 'intro')->pluck('details.original')->all(),
+        );
+        $this->assertSame(['https://other.example/c/'], $findings->where('path', 'seo')->pluck('details.original')->values()->all());
+        $this->assertFalse($findings->contains('fixable', true));
+    }
+
+    public function test_an_archived_address_on_another_scheme_or_with_www_is_read_on_the_sites_own(): void
+    {
+        Site::setSites(['default' => ['name' => 'Default', 'url' => 'https://default.test/', 'locale' => 'sv_SE']]);
+
+        $page = $this->page('om-oss', [
+            'title' => 'Om oss',
+            'cta_link' => 'https://web.archive.org/web/2025/http://default.test/kontakt/',
+            'body' => $this->bardLink('https://web.archive.org/web/2025/https://www.default.test/kontakt#karta'),
+        ]);
+        $findings = $this->findings()->where('subject', 'entry:'.$page->id())->keyBy('path');
+
+        $this->assertTrue($findings['cta_link']['fixable']);
+        $this->assertSame('entry::'.$this->contact->id(), $findings['cta_link']['details']['replacement']);
+        $this->assertSame('statamic://entry::'.$this->contact->id().'#karta', $findings['body.0.content.0.marks.0.attrs.href']['details']['replacement']);
+    }
+
+    public function test_a_global_link_outside_the_globals_blueprint_is_left_for_an_editor(): void
+    {
+        $this->global([
+            'text' => $this->bardLink('https://web.archive.org/web/2025/http://default.test/kontakt'),
+            'legacy' => $this->bardLink('https://web.archive.org/web/2025/http://default.test/kontakt'),
+        ]);
+        $findings = $this->findings()->where('subject', 'global:footer:default')->keyBy('path');
+
+        $this->assertTrue($findings['text.0.content.0.marks.0.attrs.href']['fixable']);
+        $this->assertFalse($findings['legacy.0.content.0.marks.0.attrs.href']['fixable'], 'A proposal cannot hold a key the blueprint lacks.');
+    }
+
+    public function test_a_global_fix_rereads_only_its_own_global(): void
+    {
+        $this->global(['text' => $this->bardLink('https://web.archive.org/web/2025/http://default.test/kontakt')]);
+        $this->page('om-oss', ['title' => 'Om oss', 'cta_link' => 'https://web.archive.org/web/2025/http://default.test/kontakt']);
+        $this->nav([['url' => 'https://web.archive.org/web/2025/http://default.test/kontakt', 'title' => 'Kontakt']]);
+
+        $read = ContentWalk::scoped('global:footer:default', fn () => [
+            'entries' => collect(ContentWalk::entries())->count(),
+            'globals' => collect(ContentWalk::globals())->map(fn (array $global) => "{$global['handle']}:{$global['site']}")->all(),
+            'navs' => collect(ContentWalk::navTrees())->count(),
+        ]);
+
+        $this->assertSame(['entries' => 0, 'globals' => ['footer:default'], 'navs' => 0], $read);
     }
 
     public function test_other_archive_org_pages_and_other_links_are_left_alone(): void
@@ -244,6 +329,11 @@ class ArchivedLinksTest extends TestCase
         $this->assertSame('nav:main:default', $result['target']);
         $this->assertSame('https://web.archive.org/web/2025/http://default.test/kontakt', Nav::find('main')->in('default')->tree()[0]['url'], 'The nav waits for an editor to apply it.');
         $this->assertSame(['nav:main:default'], app(ProposalStore::class)->openTargets());
+
+        $proposed = app(ProposalStore::class)->openFor('nav:main:default')->value;
+        $this->assertSame($this->contact->id(), $proposed[0]['entry']);
+        $this->assertArrayNotHasKey('url', $proposed[0]);
+        $this->assertSame('https://web.archive.org/web/2025/https://other.example/', $proposed[1]['url'], 'A link the fix cannot make is left as it is.');
     }
 
     public function test_an_archived_own_page_in_a_global_is_fixed_in_a_proposal(): void
@@ -257,6 +347,10 @@ class ArchivedLinksTest extends TestCase
 
         $this->assertSame('global:footer:default', $result['target']);
         $this->assertSame('https://web.archive.org/web/2025/http://default.test/kontakt', GlobalSet::find('footer')->in('default')->get('text')[0]['content'][0]['marks'][0]['attrs']['href'], 'The global waits for an editor to apply it.');
+
+        $proposed = app(ProposalStore::class)->openFor('global:footer:default')->value;
+        $this->assertSame('statamic://entry::'.$this->contact->id(), $proposed['text'][0]['content'][0]['marks'][0]['attrs']['href']);
+        $this->assertSame('123', $proposed['phone']);
     }
 
     public function test_a_findings_id_is_stable_across_runs(): void

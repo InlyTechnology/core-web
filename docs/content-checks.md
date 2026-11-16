@@ -34,17 +34,30 @@ never passes through a site's CI, and a site that keeps its content in the
 database (on Laravel Cloud) has no files to search, so `archived-links` reads
 the stored content.
 
-It looks for `web.archive.org`, `wayback.archive.org` and `archive.org/web/`
-(archive.org's other pages are its own), `archive.today`, `archive.ph`,
+It looks for the Wayback Machine's snapshots under `/web/` on
+`web.archive.org`, `wayback.archive.org` and `archive.org` (their other
+pages, such as `/save/` or the front page, are the archive's own), and for a
+link that is a snapshot path saved without its host
+(`/web/20250512152946/https://…`), which 404s on the site. It also looks for `archive.today`, `archive.ph`,
 `archive.is`, `archive.li`, `archive.vn`, `archive.md`,
-`webcache.googleusercontent.com` and `cachedview.nl`, with or without `www.`:
-in a value that is the link, and in text that writes one out. Each finding's
-`details.original` is the address the archive copied, read from the archive
-URL (`https://web.archive.org/web/20250512152946if_/https://site.se/page/` is
+`webcache.googleusercontent.com` and `cachedview.nl`, past their front page.
+A leading `www.` is ignored. A value that is one link with nothing around it
+is that link; any other value is read as text, and each archive link written
+in it is a finding of its own. Each finding's `details.original` is the
+address the archive copied, read from the archive URL
+(`https://web.archive.org/web/20250512152946if_/https://site.se/page/` is
 `https://site.se/page/`), and null when the URL does not carry it (an
-archive.today short link). The address is matched to an entry as
-`own-url-links` matches a typed URL, so it has to start with one of the
-site's URLs as configured, scheme included.
+archive.today short link).
+
+The address is matched to an entry as `own-url-links` matches a typed URL.
+An archive keeps the scheme and host the page had then, so an address on one
+of the site's hosts, with or without `www.` and on either scheme, is read
+again on that site's own scheme and host: an archived
+`http://www.site.se/page/` of `https://site.se` is fixed to the entry. A
+Bard link whose visible text is the archive URL gives two findings: the
+link, which can be fixed, and its text, for an editor. In a global, only a
+value under one of the global's blueprint fields can be fixed, since a
+proposal holds nothing else.
 
 ## Core reads checks and proposes (API v1.2)
 

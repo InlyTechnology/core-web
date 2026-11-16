@@ -15,8 +15,10 @@ use Inly\CoreWeb\Drafts\EntryFields;
 use Inly\CoreWeb\Proposals\Proposals;
 use Inly\CoreWeb\Proposals\Targets\GlobalTarget;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Globals\Variables;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
 use Statamic\Fields\Blueprint;
 
 /**
@@ -27,9 +29,14 @@ class ArchivedLinks extends Check
 {
     use PointsLinksAtEntries;
 
+    private const WAYBACK = ['web.archive.org', 'wayback.archive.org', 'archive.org'];
+
     private const ARCHIVE_TODAY = ['archive.today', 'archive.ph', 'archive.is', 'archive.li', 'archive.vn', 'archive.md'];
 
     private const CACHES = ['webcache.googleusercontent.com', 'cachedview.nl'];
+
+    /** A Wayback snapshot path saved without its host, which 404s on the site. */
+    private const RELATIVE_WAYBACK = '~^/web/\d{1,14}(?:\*|[a-z]{2}_)?/(?:https?:|[a-z0-9-]+\.[a-z])~i';
 
     public function key(): string
     {
@@ -48,7 +55,7 @@ class ArchivedLinks extends Check
         }
 
         foreach (ContentWalk::globals() as $global) {
-            yield from $this->inGlobal($global['handle'], $global['site']);
+            yield from $this->inGlobal($global['handle'], $global['site'], $global['variables']);
         }
 
         foreach (ContentWalk::navTrees() as $nav) {
@@ -62,7 +69,7 @@ class ArchivedLinks extends Check
         $draft = EntryFields::draftOf($entry);
         $writable = DraftableCollections::writable($entry->collectionHandle()) && $entry->revisionsEnabled();
 
-        return $this->inValues(EntryFields::stored($draft), $draft->blueprint(), $entry->locale(), $writable, fn (string $path, string $message, array $details, bool $fixable) => new Finding(
+        return $this->inValues(EntryFields::stored($draft), $draft->blueprint(), $entry->locale(), $writable, false, fn (string $path, string $message, array $details, bool $fixable) => new Finding(
             check: $this->key(),
             subject: 'entry:'.$entry->id(),
             path: $path,
@@ -76,21 +83,16 @@ class ArchivedLinks extends Check
     }
 
     /** @return list<Finding> */
-    private function inGlobal(string $handle, string $site): array
+    private function inGlobal(string $handle, string $site, Variables $variables): array
     {
-        $variables = GlobalSet::find($handle)?->in($site);
-
-        if ($variables === null) {
-            return [];
-        }
-
-        return $this->inValues($variables->data()->all(), $variables->blueprint(), $site, true, fn (string $path, string $message, array $details, bool $fixable) => new Finding(
+        // A global's proposal holds only its blueprint's fields, so a link under any other key is an editor's.
+        return $this->inValues($variables->data()->all(), $variables->blueprint(), $site, true, true, fn (string $path, string $message, array $details, bool $fixable) => new Finding(
             check: $this->key(),
             subject: "global:{$handle}:{$site}",
             path: $path,
             message: $message,
             site: $site,
-            label: GlobalSet::find($handle)?->title(),
+            label: $variables->globalSet()?->title(),
             cpUrl: $variables->editUrl(),
             details: $details,
             fixable: $fixable,
@@ -101,26 +103,30 @@ class ArchivedLinks extends Check
      * Every archive link in stored values, fixable where the whole value is the link and its field can hold an entry reference.
      *
      * @param  array<mixed>  $values
+     * @param  bool  $blueprintFieldsOnly  whether only a value under one of the blueprint's fields can be fixed
      * @param  callable(string, string, array<string, mixed>, bool): Finding  $finding  made from the path, message, details and fixable
      * @return list<Finding>
      */
-    private function inValues(array $values, ?Blueprint $blueprint, string $site, bool $writable, callable $finding): array
+    private function inValues(array $values, ?Blueprint $blueprint, string $site, bool $writable, bool $blueprintFieldsOnly, callable $finding): array
     {
         $findings = [];
 
         foreach (ContentWalk::strings($values) as $string) {
+            $inField = ! $blueprintFieldsOnly || ($blueprint?->hasField(explode('.', $string['path'])[0]) ?? false);
+
             foreach (self::links($string['value']) as $found) {
                 $archive = self::archive($found);
-                $resolved = $archive['original'] === null ? null : SiteLinks::resolve($archive['original'], $site);
+                $resolved = self::resolve($archive['original'], $site);
                 $replacement = $resolved !== null && $found === trim($string['value'])
                     ? $this->replacement($blueprint, $string['path'], (string) $resolved['entry']->id(), $resolved['suffix'])
                     : null;
+                $fixable = $writable && $inField && $replacement !== null;
 
                 $findings[] = $finding(
                     $string['path'],
-                    self::message($archive, $resolved['entry'] ?? null),
+                    self::message($archive, $resolved['entry'] ?? null, $fixable),
                     [...self::details($found, $archive, $resolved), 'replacement' => $replacement],
-                    $writable && $replacement !== null,
+                    $fixable,
                 );
             }
         }
@@ -142,19 +148,19 @@ class ArchivedLinks extends Check
             $archive = $url !== '' && blank($branch['entry'] ?? null) ? self::archive($url) : null;
 
             if ($archive !== null) {
-                $resolved = $archive['original'] === null ? null : SiteLinks::resolve($archive['original'], $site);
-                $holds = $resolved !== null && $this->navHolds($handle, $resolved['entry']);
+                $resolved = self::resolve($archive['original'], $site);
+                $fixable = $resolved !== null && $resolved['suffix'] === '' && $this->navHolds($handle, $resolved['entry']);
 
                 $findings[] = new Finding(
                     check: $this->key(),
                     subject: "nav:{$handle}:{$site}",
                     path: $at,
-                    message: 'The menu item “'.($branch['title'] ?? $url).'”: '.lcfirst(self::message($archive, $resolved['entry'] ?? null)),
+                    message: 'The menu item “'.($branch['title'] ?? $url).'”: '.lcfirst(self::message($archive, $resolved['entry'] ?? null, $fixable)),
                     site: $site,
                     label: Nav::find($handle)?->title(),
                     cpUrl: Nav::find($handle)?->showUrl(),
                     details: [...self::details($url, $archive, $resolved), 'suffix' => $resolved['suffix'] ?? null],
-                    fixable: $holds && $resolved['suffix'] === '',
+                    fixable: $fixable,
                 );
             }
 
@@ -185,7 +191,7 @@ class ArchivedLinks extends Check
     private function fixGlobal(string $handle, string $site, DraftAuthor $author): array
     {
         $target = GlobalTarget::make($handle, $site);
-        $fixes = array_filter($this->inGlobal($handle, $site), fn (Finding $finding) => $finding->fixable);
+        $fixes = array_filter($this->inGlobal($handle, $site, GlobalSet::find($handle)->in($site)), fn (Finding $finding) => $finding->fixable);
 
         if ($fixes === []) {
             throw new DraftRefused('not_fixable', __('core-web::drafts.nothing_to_fix'), status: 422);
@@ -202,7 +208,7 @@ class ArchivedLinks extends Check
     }
 
     /**
-     * The archive links in a string: the string itself when it is one, or each one written in its text.
+     * The archive links in a string: the string itself when it is one link with nothing around it, or each one written in its text.
      *
      * @return list<string>
      */
@@ -210,7 +216,7 @@ class ArchivedLinks extends Check
     {
         $value = trim($value);
 
-        if (self::archive($value) !== null) {
+        if (preg_match('~\s~', $value) !== 1 && self::archive($value) !== null) {
             return [$value];
         }
 
@@ -230,20 +236,28 @@ class ArchivedLinks extends Check
      */
     private static function archive(string $url): ?array
     {
+        if (preg_match(self::RELATIVE_WAYBACK, $url) === 1) {
+            return ['host' => 'web.archive.org', 'original' => self::wayback($url)];
+        }
+
         if (preg_match('~^https?://~i', $url) !== 1) {
             return null;
         }
 
-        $host = preg_replace('~^www\.~', '', strtolower((string) parse_url($url, PHP_URL_HOST)));
+        $host = self::bareHost($url);
         $rest = (string) preg_replace('~^https?://[^/?#]*~i', '', $url);
 
-        // On archive.org only the Wayback Machine's /web/ is an archived copy; its other pages are its own.
-        if ($host === 'archive.org' && preg_match('~^/web/~i', $rest) !== 1) {
+        // Only the Wayback Machine's /web/ is an archived copy; archive.org's other pages are its own.
+        if (in_array($host, self::WAYBACK, true)) {
+            return preg_match('~^/web/~i', $rest) === 1 ? ['host' => $host, 'original' => self::wayback($rest)] : null;
+        }
+
+        // The front page of an archive or a cache is not a copy of anything.
+        if (ltrim($rest, '/') === '') {
             return null;
         }
 
         return match (true) {
-            in_array($host, ['web.archive.org', 'wayback.archive.org', 'archive.org'], true) => ['host' => $host, 'original' => self::wayback($rest)],
             $host === 'webcache.googleusercontent.com' => ['host' => $host, 'original' => self::googleCache($url) ?? self::embedded($rest)],
             in_array($host, [...self::ARCHIVE_TODAY, ...self::CACHES], true) => ['host' => $host, 'original' => self::embedded($rest)],
             default => null,
@@ -301,11 +315,54 @@ class ArchivedLinks extends Check
         return null;
     }
 
+    /**
+     * The entry an archived address names, as own-url-links resolves a typed URL. An archive keeps the scheme and
+     * host the page had then, so an address on a site's host, with or without `www.`, is read again on the site's
+     * own scheme and host.
+     *
+     * @return array{entry: EntryContract, suffix: string}|null
+     */
+    private static function resolve(?string $original, string $site): ?array
+    {
+        if ($original === null) {
+            return null;
+        }
+
+        if (($resolved = SiteLinks::resolve($original, $site)) !== null) {
+            return $resolved;
+        }
+
+        $host = self::bareHost($original);
+
+        foreach (Site::all() as $candidate) {
+            $base = (string) $candidate->absoluteUrl();
+
+            if ($host === '' || self::bareHost($base) !== $host || preg_match('~^https?://[^/?#]*~i', $base, $m) !== 1) {
+                continue;
+            }
+
+            $resolved = SiteLinks::resolve((string) preg_replace('~^https?://[^/?#]*~i', $m[0], $original), $site);
+
+            if ($resolved !== null) {
+                return $resolved;
+            }
+        }
+
+        return null;
+    }
+
+    private static function bareHost(string $url): string
+    {
+        return (string) preg_replace('~^www\.~', '', strtolower((string) parse_url($url, PHP_URL_HOST)));
+    }
+
     /** @param  array{host: string, original: ?string}  $archive */
-    private static function message(array $archive, ?EntryContract $entry): string
+    private static function message(array $archive, ?EntryContract $entry, bool $fixable): string
     {
         if ($entry !== null) {
-            return "Links to an archived copy of “{$entry->value('title')}” on {$archive['host']}; point it at the entry.";
+            $action = $fixable ? 'point it at the entry' : 'link the page itself instead';
+
+            return "Links to an archived copy of “{$entry->value('title')}” on {$archive['host']}; {$action}.";
         }
 
         if ($archive['original'] !== null) {
