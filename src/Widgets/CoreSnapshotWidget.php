@@ -21,7 +21,7 @@ use Throwable;
  * yet queues its warm job and says so. Only snapshots
  * that declare a listing (Snapshot::listing()) can be shown.
  *
- *     ['type' => 'core_snapshot', 'snapshot' => 'staff', 'per_page' => 10, 'width' => 50]
+ *     ['type' => 'core_snapshot', 'snapshot' => 'staff', 'per_page' => 10, 'width' => 50, 'core_link' => '/employees']
  */
 class CoreSnapshotWidget extends Widget
 {
@@ -96,7 +96,22 @@ class CoreSnapshotWidget extends Widget
             'loaded' => $loaded,
             'pinned' => $loaded && $store->pinned($snapshot) !== null,
             'stale' => $stale,
+            'coreLink' => $this->coreLink($core),
+            'coreLinkText' => __((string) $this->config('core_link_text', 'Edit in Core')),
         ]);
+    }
+
+    /** The page in Core the header's button opens: `core_link`, a path under Core's address (docs/control-panel-widget.md). */
+    private function coreLink(CoreClient $core): ?string
+    {
+        $path = (string) $this->config('core_link', '');
+
+        // A path only, so the button never leaves Core's address for another host.
+        if ($core->baseUrl() === '' || ! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return null;
+        }
+
+        return $core->baseUrl().$path;
     }
 
     /**

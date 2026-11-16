@@ -11,6 +11,9 @@
         @if ($loaded)
             <ui-badge text="{{ trans_choice(':count item|:count items', $total, ['count' => $total]) }}"></ui-badge>
         @endif
+        @if ($coreLink)
+            <ui-button size="sm" href="{{ $coreLink }}" target="_blank" icon-append="external-link" text="{{ $coreLinkText }}"></ui-button>
+        @endif
     </template>
 
     @if (! $loaded)
