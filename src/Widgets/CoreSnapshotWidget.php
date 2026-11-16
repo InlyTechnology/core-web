@@ -106,7 +106,7 @@ class CoreSnapshotWidget extends Widget
     {
         $path = (string) $this->config('core_link', '');
 
-        // A path only, so the button never leaves Core's address for another host.
+        // A path on Core's address only: without the leading `/` the value would extend the host.
         if ($core->baseUrl() === '' || ! str_starts_with($path, '/') || str_starts_with($path, '//')) {
             return null;
         }

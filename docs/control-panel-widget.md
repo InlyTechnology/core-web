@@ -28,17 +28,16 @@ Options: `snapshot` (required), `title` (the type as a headline by default),
 `icon` (a Statamic CP icon name, `link` by default), `per_page` (10, at most
 100), `partition` (one partition; every partition by default), `core_link` (a
 path in Core, such as `/employees`: the widget's header gets a button to that
-page, opening in a new tab, so editors know where the records are changed),
-`core_link_text` (`Edit in Core` by default, through `__()`), and Statamic's
-own `width`, `can` and `sites`. The button needs Core's address
-(`core-web.client.base_url`) and a path starting with one `/`; anything else
-shows no button. Rows are sorted by
+page, opening in a new tab, so editors know where the records are changed; it
+needs Core's address, `core-web.client.base_url`, and a path starting with one
+`/`, and anything else shows no button), `core_link_text` (`Edit in Core` by
+default), and Statamic's own `width`, `can` and `sites`. Rows are sorted by
 title in the selected site's language (with intl). Each snapshot and partition
 pages on its own query parameter (`?core_{type}_page=2`,
 `?core_{type}_{partition}_page=2`), so several widgets sit on one dashboard. A
 badge says when the copy may be out of date or is a local `core:pull` copy. A
 document the `title` closure fails on is listed by its id, unlinked, and logged.
-Every label, the configured `title` included, goes through `__()`; core-web
+Every label, the configured `title` and `core_link_text` included, goes through `__()`; core-web
 ships Swedish in `lang/sv.json`, and a site adds its titles and any other
 locale in its own `lang/<locale>.json`.
 
