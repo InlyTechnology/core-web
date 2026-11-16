@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **The `archived-links` content check**: links into the Wayback Machine,
+  archive.today and search caches, in entries, globals and navigation trees,
+  each named with the address the archive copied. A link to an archived copy
+  of one of the site's own pages is fixed to the entry, in a draft or a
+  proposal; any other is left for an editor. It is in the default
+  `checks.checks`. See `docs/content-checks.md#archived-links`.
+
 ## v0.48.0
 
 - **The `core_snapshot` widget can link to Core**: `core_link` (a path in

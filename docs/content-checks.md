@@ -10,6 +10,7 @@ widget and for sources (Core AI) to read without running a check.
 | Check | Finds | Fix |
 |---|---|---|
 | `own-url-links` | Links to the site's own pages typed as URLs, in entries and navigation trees: they break when a slug changes | A Bard link (keeping its query and anchor) or a `link` field becomes an entry reference, in a draft; a menu item picks the entry, in a proposal. Other fields are named for an editor |
+| `archived-links` | Links into web archives and search caches instead of the pages themselves, in entries, globals and navigation trees (hosts in [Archived links](#archived-links)) | When the archived address is one of the site's own pages, fixed as `own-url-links` fixes it, and a global's link in a proposal. Another site's page, an own path with no entry, or an address written in text is named for an editor, with the address the archive copied |
 | `dead-targets` | Entry and asset references to things that no longer exist, and menu items whose entry is gone | None: which page or file takes their place is an editor's call |
 | `seo-gaps` | Published pages without a meta description, or with a title or description longer than a result shows (fields and lengths in `checks.seo`, Peak SEO's by default) | None generic; a source can draft the text |
 
@@ -20,9 +21,30 @@ $checks->fix('own-url-links', $findingId, $author); // a draft or a proposal
 ```
 
 A finding's `id` is stable across runs. A fix finds the finding afresh
-first, and fixes everything fixable in the same entry or tree at once. A site
-adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`) to
-`checks.checks`, or leaves one out.
+first, and fixes everything fixable in the same entry, tree or global at
+once. A site adds its own checks (subclasses of `Inly\CoreWeb\Checks\Check`)
+to `checks.checks`, or leaves one out.
+
+## Archived links
+
+Content pasted from an archived copy of a page keeps the archive's links: a
+site rebuilt from a Wayback Machine snapshot of its predecessor can serve
+them for a year before anyone notices. A link added in the control panel
+never passes through a site's CI, and a site that keeps its content in the
+database (on Laravel Cloud) has no files to search, so `archived-links` reads
+the stored content.
+
+It looks for `web.archive.org`, `wayback.archive.org` and `archive.org/web/`
+(archive.org's other pages are its own), `archive.today`, `archive.ph`,
+`archive.is`, `archive.li`, `archive.vn`, `archive.md`,
+`webcache.googleusercontent.com` and `cachedview.nl`, with or without `www.`:
+in a value that is the link, and in text that writes one out. Each finding's
+`details.original` is the address the archive copied, read from the archive
+URL (`https://web.archive.org/web/20250512152946if_/https://site.se/page/` is
+`https://site.se/page/`), and null when the URL does not carry it (an
+archive.today short link). The address is matched to an entry as
+`own-url-links` matches a typed URL, so it has to start with one of the
+site's URLs as configured, scheme included.
 
 ## Core reads checks and proposes (API v1.2)
 

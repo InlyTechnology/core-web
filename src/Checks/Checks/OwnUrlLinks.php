@@ -2,22 +2,15 @@
 
 namespace Inly\CoreWeb\Checks\Checks;
 
-use Illuminate\Support\Arr;
 use Inly\CoreWeb\Checks\Check;
 use Inly\CoreWeb\Checks\ContentWalk;
 use Inly\CoreWeb\Checks\Finding;
+use Inly\CoreWeb\Checks\PointsLinksAtEntries;
 use Inly\CoreWeb\Checks\SiteLinks;
 use Inly\CoreWeb\Drafts\DraftableCollections;
 use Inly\CoreWeb\Drafts\DraftAuthor;
-use Inly\CoreWeb\Drafts\DraftBase;
-use Inly\CoreWeb\Drafts\DraftRefused;
-use Inly\CoreWeb\Drafts\DraftWriter;
 use Inly\CoreWeb\Drafts\EntryFields;
-use Inly\CoreWeb\Drafts\StoredValues;
-use Inly\CoreWeb\Proposals\Proposals;
-use Inly\CoreWeb\Proposals\Targets\NavTarget;
 use Statamic\Contracts\Entries\Entry as EntryContract;
-use Statamic\Facades\Entry;
 use Statamic\Facades\Nav;
 
 /**
@@ -29,6 +22,8 @@ use Statamic\Facades\Nav;
  */
 class OwnUrlLinks extends Check
 {
+    use PointsLinksAtEntries;
+
     private const LINK_KEYS = ['url', 'href', 'link'];
 
     public function key(): string
@@ -70,7 +65,7 @@ class OwnUrlLinks extends Check
                 continue;
             }
 
-            $replacement = $this->replacement($draft, $string['path'], $resolved['entry']->id(), $resolved['suffix']);
+            $replacement = $this->replacement($draft->blueprint(), $string['path'], $resolved['entry']->id(), $resolved['suffix']);
 
             $findings[] = new Finding(
                 check: $this->key(),
@@ -86,21 +81,6 @@ class OwnUrlLinks extends Check
         }
 
         return $findings;
-    }
-
-    /** What the link becomes, when the field it sits in can hold an entry reference. */
-    private function replacement(EntryContract $entry, string $path, string $id, string $suffix): ?string
-    {
-        if (str_ends_with($path, '.attrs.href')) {
-            return "statamic://entry::{$id}{$suffix}";
-        }
-
-        // A link field stores `entry::{id}` and nothing after it.
-        if (! str_contains($path, '.') && $suffix === '' && $entry->blueprint()->field($path)?->type() === 'link') {
-            return "entry::{$id}";
-        }
-
-        return null;
     }
 
     /**
@@ -137,11 +117,6 @@ class OwnUrlLinks extends Check
         return $findings;
     }
 
-    private function navHolds(string $handle, EntryContract $entry): bool
-    {
-        return Nav::find($handle)?->collections()->contains(fn ($collection) => $collection->handle() === $entry->collectionHandle()) ?? false;
-    }
-
     public function fix(Finding $finding, DraftAuthor $author): array
     {
         if (str_starts_with($finding->subject, 'entry:')) {
@@ -151,59 +126,6 @@ class OwnUrlLinks extends Check
         [, $handle, $site] = explode(':', $finding->subject) + [null, null, null];
 
         return $this->fixTree((string) $handle, (string) $site, $author);
-    }
-
-    /** Every fixable link of the entry at once, as one draft. */
-    private function fixEntry(string $id, DraftAuthor $author): array
-    {
-        $entry = Entry::find($id) ?? abort(404);
-        $fixes = array_filter($this->inEntry($entry), fn (Finding $finding) => $finding->fixable);
-
-        if ($fixes === []) {
-            throw new DraftRefused('not_fixable', __('core-web::drafts.nothing_to_fix'), status: 422);
-        }
-
-        $live = EntryFields::stored($entry);
-        $data = EntryFields::stored(EntryFields::draftOf($entry));
-
-        foreach ($fixes as $fix) {
-            Arr::set($data, $fix->path, $fix->details['replacement']);
-        }
-
-        $tops = array_unique(array_map(fn (Finding $fix) => explode('.', $fix->path)[0], $fixes));
-        // The author's own working copy restates what it changed already, so nothing it holds is lost.
-        $restated = array_keys(array_filter($data, fn (mixed $value, string $key) => ($live[$key] ?? null) !== $value, ARRAY_FILTER_USE_BOTH));
-
-        return app(DraftWriter::class)->write($author, [
-            'collection' => $entry->collectionHandle(),
-            'entry_id' => (string) $entry->id(),
-            'site' => $entry->locale(),
-            'fields' => Arr::only($data, array_values(array_unique([...$tops, ...$restated]))),
-            'base_hash' => app(DraftBase::class)->hash($entry),
-        ], new StoredValues);
-    }
-
-    /** Every fixable branch of the tree at once, as one proposal. */
-    private function fixTree(string $handle, string $site, DraftAuthor $author): array
-    {
-        $target = NavTarget::make($handle, $site);
-        $tree = $target->current();
-        $fixes = array_filter($this->inTree($handle, $site, $tree), fn (Finding $finding) => $finding->fixable);
-
-        if ($fixes === []) {
-            throw new DraftRefused('not_fixable', __('core-web::drafts.nothing_to_fix'), status: 422);
-        }
-
-        $base = Proposals::base($target);
-
-        foreach ($fixes as $fix) {
-            $branch = Arr::get($tree, $fix->path);
-            unset($branch['url']);
-            $branch['entry'] = $fix->details['entry_id'];
-            Arr::set($tree, $fix->path, $branch);
-        }
-
-        return app(Proposals::class)->propose($author, $target, $tree, $base);
     }
 
     private static function linkKey(string $key): bool

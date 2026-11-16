@@ -1,5 +1,6 @@
 <?php
 
+use Inly\CoreWeb\Checks\Checks\ArchivedLinks;
 use Inly\CoreWeb\Checks\Checks\DeadTargets;
 use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
 use Inly\CoreWeb\Checks\Checks\SeoGaps;
@@ -671,6 +672,7 @@ return [
     'checks' => [
         'checks' => [
             OwnUrlLinks::class,
+            ArchivedLinks::class,
             DeadTargets::class,
             SeoGaps::class,
         ],
