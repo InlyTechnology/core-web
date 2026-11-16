@@ -249,6 +249,7 @@ class SiteCacheTest extends TestCase
 
         $cache->flush(Site::get('en'));
         $this->assertSame(['/'], $this->cached('http://default.test'));
+        $this->assertSame('en', SiteCache::siteOf('http://forged.test/en/a'), 'a hit is placed on the host serving it');
     }
 
     public function test_a_relative_site_forgets_on_its_host_what_an_invalidator_reports_on_the_request_s(): void
