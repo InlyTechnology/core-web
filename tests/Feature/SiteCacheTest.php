@@ -282,6 +282,15 @@ class SiteCacheTest extends TestCase
 
         $cache->flush(Site::get('default'));
         $this->assertSame([], $this->cached('http://shared.test'));
+
+        $this->cache('http://Shared.test', ['/c']);
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        $this->assertSame(1, $cache->refreshAll(), 'a domain cached in capitals is on the site\'s host');
+        $this->assertSame(['http://shared.test/c'], $this->warmed());
+
+        $cache->flush(Site::get('default'));
+        $this->assertSame([], $this->cached('http://Shared.test'));
     }
 
     public function test_refreshing_named_paths_queues_those_pages_with_their_query_strings_only(): void

@@ -215,12 +215,15 @@ cleared:
 - Each clear records when it ended, whether its pages were on the list or
   not: a flush of the whole cache, a path with every query string on it,
   and a wildcard (`/blog/*`, or `/search?q=*`) for the pages under it.
-  `SiteCache` records the paths and wildcards it forgets, leaving out those
-  another site owns, and a flush of a site records a clear of all the
-  site's pages. While `background_recache` is off, `refresh()` records what
-  `flush()` records, `refreshPaths()` what `flushPaths()` records, and
-  `refreshAll()` flushes the whole cache; with it on, `refreshAll()` records
-  a clear of every page on each host no site names, whose pages it forgets. A
+  `SiteCache` records the paths and wildcards it forgets on the site's host,
+  leaving out those another site owns, and a flush of a site records a clear
+  of all the site's pages, on any host for a site with a relative URL: a
+  cache hit places that site on the host serving the request, as Statamic's
+  `Sites::findByUrl()` does. While `background_recache` is off, `refresh()`
+  records what `flush()` records, `refreshPaths()` what `flushPaths()`
+  records, and `refreshAll()` flushes the whole cache; with it on,
+  `refreshAll()` records a clear of every page on each host no site names,
+  whose pages it forgets. A
   wildcard with another site under it (`/*` on a site at `/` beside `/en`)
   records a clear of all its own site's pages instead.
 - A cached page is stored with the time its request started

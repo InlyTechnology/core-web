@@ -167,17 +167,20 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   takes (`default`). Verify: after deploy, `php artisan config:show
   statamic.static_caching.warm_queue` there names a queue the worker takes.
 - **A cached page served at another address than its site's keeps its old copy
-  after a change kept to the sites it reaches, or a snapshot change.** A
-  site's address is its `url:` in `resources/sites.yaml`, on `APP_URL` when
-  that `url:` is relative (`/`, `/en/`) or reads it (`{{ config:app:url }}`).
-  Statamic's `all` rule, with `background_recache` off as it was by default,
-  cleared every address on any save. `SiteScopedInvalidator`, now the default
-  under that rule, on one site too, keeps an entry, global, collection tree or
-  deleted navigation tree change to the address of each site it reaches, on
-  that address's host under http and https, wherever it does not clear the
-  whole cache (`docs/static-cache.md`, A save under the `all` rule). A
-  snapshot change forgets a relative site's pages on `APP_URL`'s host inside a
-  request too, where it took the host the request named. Find it: on each
+  after a clear of single pages or a background render, and, where the site's
+  `url:` names a host, after any clear of the site.** A site's address is its
+  `url:` in `resources/sites.yaml`, on `APP_URL` when that `url:` is relative
+  (`/`, `/en/`) or reads it (`{{ config:app:url }}`, which names `APP_URL`'s
+  host). Statamic's `all` rule, with `background_recache` off as it was by
+  default, cleared every address on any save. Now an entry or global save
+  with `background_recache` on renders the site's pages again and forgets an
+  entry's own, and the copies of a saved entry in other languages and the
+  pages a snapshot change names are forgotten, all at the address of each
+  site they reach only, on that address's host under http and https
+  (`docs/static-cache.md`, A save under the `all` rule), inside a request
+  too, where a snapshot change took the host the request named. A clear of a
+  whole site reaches its pages at every address when its `url:` is relative
+  (`docs/static-cache.md`, Pages cached while a clear runs). Find it: on each
   server, `php artisan config:show app.url` and each site's `url:` beside the
   addresses visitors use (`APP_URL` left at `http://localhost` from
   `.env.example` or on a platform domain, a `www` alias that is not

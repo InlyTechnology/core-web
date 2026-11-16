@@ -110,8 +110,8 @@ class SiteCache
      * Forgets every cached page of the site, on whichever of its hosts it
      * was cached. Sites may share a host, each under its own path
      * (https://example.com and https://example.com/second): a cached page
-     * belongs to the site siteOf() names, so flushing one leaves the others'
-     * pages alone.
+     * belongs to the first site on the host, in placed() order, whose path it
+     * lies under, so flushing one leaves the others' pages alone.
      */
     public function flush(Site $site): void
     {
@@ -195,7 +195,7 @@ class SiteCache
                 $paths[strtok((string) $url, '?')] = true;
             }
 
-            $onSite = in_array(parse_url($domain, PHP_URL_HOST), $hosts, true);
+            $onSite = in_array(strtolower((string) parse_url($domain, PHP_URL_HOST)) ?: null, $hosts, true);
             $queued += $onSite ? count($paths) : 0;
 
             if (! $recache) {
@@ -546,7 +546,7 @@ class SiteCache
     {
         return array_values(array_filter(
             array_map(strval(...), $this->cacher->getDomains()->all()),
-            fn (string $domain) => parse_url($domain, PHP_URL_HOST) === $host,
+            fn (string $domain) => (strtolower((string) parse_url($domain, PHP_URL_HOST)) ?: null) === $host,
         ));
     }
 
@@ -591,7 +591,7 @@ class SiteCache
         return ! URL::isAbsolute($site->url()) && $host === strtolower((string) parse_url($site->absoluteUrl(), PHP_URL_HOST));
     }
 
-    /** The handle of the site a cached page belongs to: the first site on its host, in placed() order, whose path the page lies under. */
+    /** The handle of the site a cached page belongs to: the first site on its host, in placed() order with a relative site on the host serving the request, whose path the page lies under. */
     public static function siteOf(string $url): ?string
     {
         return self::owner(self::neighbours(strtolower((string) parse_url($url, PHP_URL_HOST)) ?: null, served: true), $url);
