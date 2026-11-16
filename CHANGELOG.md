@@ -8,6 +8,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **The `core_snapshot` widget can link to Core**: `core_link` (a path in
+  Core, such as `/schools`) puts an **Edit in Core** button in the widget's
+  header, and `core_link_text` renames it. See
+  `docs/control-panel-widget.md`.
 - **A save forgets the entry's copies on the other sites**: under
   `SiteScopedInvalidator`, a saved or deleted entry's origin and other
   localizations are forgotten on their own sites too. See

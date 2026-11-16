@@ -115,6 +115,37 @@ class SnapshotWidgetTest extends TestCase
         $this->assertMatchesRegularExpression('~<span[^>]*v-pre>\{\{ alert\(1\) \}\} &lt;b&gt;bold&lt;/b&gt;</span>~', $html);
     }
 
+    public function test_its_header_links_to_the_page_named_in_core(): void
+    {
+        $this->people(['a' => ['name' => 'Anna', 'core_id' => 1]]);
+
+        $html = $this->render(['snapshot' => 'staff', 'core_link' => '/employees']);
+
+        $this->assertStringContainsString('href="https://core.test/employees" target="_blank" icon-append="external-link" text="Edit in Core"', $html);
+    }
+
+    public function test_its_header_link_stays_on_core_s_address(): void
+    {
+        $this->people(['a' => ['name' => 'Anna', 'core_id' => 1]]);
+
+        foreach (['', 'employees', '//evil.test/x', 'https://evil.test/x'] as $link) {
+            $this->assertStringNotContainsString('Edit in Core', $this->render(['snapshot' => 'staff', 'core_link' => $link]), $link);
+        }
+
+        config(['core-web.client.base_url' => '']);
+        $this->assertStringNotContainsString('Edit in Core', $this->render(['snapshot' => 'staff', 'core_link' => '/employees']));
+    }
+
+    public function test_its_header_link_is_translated_and_may_be_renamed(): void
+    {
+        $this->people(['a' => ['name' => 'Anna', 'core_id' => 1]]);
+
+        $this->assertStringContainsString('text="Open the register"', $this->render(['snapshot' => 'staff', 'core_link' => '/employees', 'core_link_text' => 'Open the register']));
+
+        app()->setLocale('sv');
+        $this->assertStringContainsString('text="Redigera i Core"', $this->render(['snapshot' => 'staff', 'core_link' => '/employees']));
+    }
+
     public function test_its_labels_are_translated(): void
     {
         $this->people(['a' => ['name' => 'Anna', 'core_id' => 1], 'b' => ['name' => 'Bo', 'core_id' => 2]]);
