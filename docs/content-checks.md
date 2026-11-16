@@ -36,12 +36,15 @@ the stored content.
 
 It looks for the Wayback Machine's snapshots under `/web/` on
 `web.archive.org`, `wayback.archive.org` and `archive.org` (their other
-pages, such as `/save/` or the front page, are the archive's own), and for a
-link that is a snapshot path saved without its host
-(`/web/20250512152946/https://…`), which 404s on the site. It also looks for `archive.today`, `archive.ph`,
-`archive.is`, `archive.li`, `archive.vn`, `archive.md`,
-`webcache.googleusercontent.com` and `cachedview.nl`, past their front page.
-A leading `www.` is ignored. A value that is one link with nothing around it
+pages, such as `/save/`, the front page or `/web/` itself, are the archive's
+own), and for a value that is a snapshot path saved without its host
+(`/web/20250512152946/https://…`), which 404s on the site; inside text only
+full addresses are found. It also looks for `archive.today`, `archive.ph`,
+`archive.is`, `archive.li`, `archive.vn`, `archive.md` (past their front
+page and their own `submit`, `search` and `wip` pages),
+`webcache.googleusercontent.com` and `cachedview.nl` (past their front page).
+A leading `www.` is ignored, and so is punctuation that ends a sentence after
+a link. A value that is one link with nothing around it
 is that link; any other value is read as text, and each archive link written
 in it is a finding of its own. Each finding's `details.original` is the
 address the archive copied, read from the archive URL

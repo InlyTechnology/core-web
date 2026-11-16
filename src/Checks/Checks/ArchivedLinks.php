@@ -35,8 +35,14 @@ class ArchivedLinks extends Check
 
     private const CACHES = ['webcache.googleusercontent.com', 'cachedview.nl'];
 
-    /** A Wayback snapshot path saved without its host, which 404s on the site. */
-    private const RELATIVE_WAYBACK = '~^/web/\d{1,14}(?:\*|[a-z]{2}_)?/(?:https?:|[a-z0-9-]+\.[a-z])~i';
+    /** archive.today's own pages, which are no copy of anything. */
+    private const ARCHIVE_TODAY_PAGES = ['submit', 'search', 'wip'];
+
+    /** A Wayback snapshot path saved without its host, which 404s on the site: an address or a host and path follow the timestamp. */
+    private const RELATIVE_WAYBACK = '~^/web/\d{4,14}(?:\*|[a-z]{2}_)?/(?:https?:|[a-z0-9-]+(?:\.[a-z0-9-]+)+/)~i';
+
+    /** What ends a sentence after a link written in text, never part of the link. */
+    private const TRAILING = '.,;:!?)';
 
     public function key(): string
     {
@@ -117,7 +123,7 @@ class ArchivedLinks extends Check
             foreach (self::links($string['value']) as $found) {
                 $archive = self::archive($found);
                 $resolved = self::resolve($archive['original'], $site);
-                $replacement = $resolved !== null && $found === trim($string['value'])
+                $replacement = $resolved !== null && $found === rtrim(trim($string['value']), self::TRAILING)
                     ? $this->replacement($blueprint, $string['path'], (string) $resolved['entry']->id(), $resolved['suffix'])
                     : null;
                 $fixable = $writable && $inField && $replacement !== null;
@@ -215,16 +221,17 @@ class ArchivedLinks extends Check
     private static function links(string $value): array
     {
         $value = trim($value);
+        $whole = rtrim($value, self::TRAILING);
 
-        if (preg_match('~\s~', $value) !== 1 && self::archive($value) !== null) {
-            return [$value];
+        if (preg_match('~\s~', $whole) !== 1 && self::archive($whole) !== null) {
+            return [$whole];
         }
 
         if (preg_match_all('~https?://[^\s"\'<>\[\]{}|\\\\^`]+~i', $value, $m) === 0) {
             return [];
         }
 
-        $links = array_map(fn (string $url) => rtrim($url, '.,;:!?)'), $m[0]);
+        $links = array_map(fn (string $url) => rtrim($url, self::TRAILING), $m[0]);
 
         return array_values(array_unique(array_filter($links, fn (string $url) => self::archive($url) !== null)));
     }
@@ -247,13 +254,17 @@ class ArchivedLinks extends Check
         $host = self::bareHost($url);
         $rest = (string) preg_replace('~^https?://[^/?#]*~i', '', $url);
 
-        // Only the Wayback Machine's /web/ is an archived copy; archive.org's other pages are its own.
+        // Only what follows the Wayback Machine's /web/ is an archived copy; archive.org's other pages, and /web/ itself, are its own.
         if (in_array($host, self::WAYBACK, true)) {
-            return preg_match('~^/web/~i', $rest) === 1 ? ['host' => $host, 'original' => self::wayback($rest)] : null;
+            return preg_match('~^/web/[^?#]~i', $rest) === 1 ? ['host' => $host, 'original' => self::wayback($rest)] : null;
         }
 
         // The front page of an archive or a cache is not a copy of anything.
         if (ltrim($rest, '/') === '') {
+            return null;
+        }
+
+        if (in_array($host, self::ARCHIVE_TODAY, true) && self::archiveTodayPage($rest)) {
             return null;
         }
 
@@ -262,6 +273,14 @@ class ArchivedLinks extends Check
             in_array($host, [...self::ARCHIVE_TODAY, ...self::CACHES], true) => ['host' => $host, 'original' => self::embedded($rest)],
             default => null,
         };
+    }
+
+    /** Whether an archive.today address is the archive's own page: its front page with a query, or submit, search and wip. */
+    private static function archiveTodayPage(string $rest): bool
+    {
+        $segment = strtolower(explode('/', trim((string) parse_url('http://x'.$rest, PHP_URL_PATH), '/'))[0]);
+
+        return $segment === '' || in_array($segment, self::ARCHIVE_TODAY_PAGES, true);
     }
 
     /** `/web/20250512152946if_/https://site.se/page/` is `https://site.se/page/`. */

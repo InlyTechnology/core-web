@@ -151,6 +151,8 @@ class ArchivedLinksTest extends TestCase
             'google cache, no id' => ['https://webcache.googleusercontent.com/search?q=cache:site.example/a', 'http://site.example/a'],
             'cachedview' => ['https://cachedview.nl/#https://site.example/a', 'https://site.example/a'],
             'wayback path without its host' => ['/web/20250512152946/https://site.example/a', 'https://site.example/a'],
+            'wayback path without its host or scheme' => ['/web/2024/site.example/a', 'http://site.example/a'],
+            'a full stop after the link' => ['https://web.archive.org/web/2020/https://site.example/a/.', 'https://site.example/a/'],
         ];
     }
 
@@ -175,6 +177,13 @@ class ArchivedLinksTest extends TestCase
             'archive.ph home' => ['https://archive.ph/'],
             'google cache home' => ['https://webcache.googleusercontent.com'],
             'a path under /web/ that names no address' => ['/web/about'],
+            'a site file under /web/' => ['/web/2024/report.pdf'],
+            'archive.org /web/' => ['https://archive.org/web/'],
+            'wayback front page' => ['https://web.archive.org/web/'],
+            'archive.ph submit' => ['https://archive.ph/submit/'],
+            'archive.ph search' => ['https://archive.ph/search/?q=site.example'],
+            'archive.ph wip' => ['https://archive.ph/wip/AbCd1'],
+            'archive.ph query only' => ['https://archive.ph/?run=1'],
         ];
     }
 
