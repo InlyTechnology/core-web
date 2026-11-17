@@ -246,8 +246,8 @@ create its folders) in the CP. `--container` names the container
 (`assets`); `--dry-run` checks every file and sends nothing.
 
 - **Only into a bucket.** The container's disk must sign uploads, as a
-  bucket does. A container on the site's own disk is refused: commit its
-  files to git instead.
+  bucket does. A folder on the site's own disk and core-web's layer do not,
+  so their containers are refused.
 - **Straight to the bucket.** For each file the container lacks, the site
   signs an upload address for that file's MD5, valid for 15 minutes, and
   the checkout sends the file there; what it has not sent within 10 minutes

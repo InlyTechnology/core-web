@@ -293,10 +293,9 @@ class MediaPushCommand extends Command
                     $fresh = $signAgain();
                     $signedAt = now()->getTimestamp();
 
-                    // An earlier try did arrive after all: finishing it is all that is left.
+                    // A file of this size without meta is at the path now, perhaps from an earlier try: finishing on
+                    // this upload's own ticket compares it and still takes it out when it is this run's and refused.
                     if ($fresh['status'] === MediaPush::FINISH) {
-                        $answer = $fresh;
-
                         return true;
                     }
 

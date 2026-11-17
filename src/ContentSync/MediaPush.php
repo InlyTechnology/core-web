@@ -209,7 +209,7 @@ class MediaPush
 
         if ((int) $filesystem->size($path) !== $ticket['size']) {
             // The signed address takes only the ticket's bytes, so a file with their MD5 was sent with a size it did not declare.
-            if ($sent && self::checksum($filesystem, $path) === $ticket['md5']) {
+            if ($sent && ! $this->hasMeta($container, $path) && self::checksum($filesystem, $path) === $ticket['md5']) {
                 $filesystem->delete($path);
 
                 return ['status' => AssetPush::INVALID, 'message' => __('core-web::sync.media_push_size', ['path' => $path, 'size' => $ticket['size']])];

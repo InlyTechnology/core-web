@@ -91,7 +91,7 @@ class MediaPushTest extends TestCase
         Storage::disk('photos')->buildTemporaryUploadUrlsUsing(function (string $path, $expiration, array $options) use ($base, &$signed) {
             $signed[] = $options;
 
-            return ['url' => $base.$path.'?X-Amz-Signature=abc', 'headers' => ['Host' => ['bucket.test'], 'Content-MD5' => [$options['ContentMD5']]]];
+            return ['url' => $base.$path.'?X-Amz-Signature='.count($signed), 'headers' => ['Host' => ['bucket.test'], 'Content-MD5' => [$options['ContentMD5']]]];
         });
     }
 
@@ -251,7 +251,7 @@ class MediaPushTest extends TestCase
         $this->signNoUploads();
         $this->local('guide.pdf', self::PDF);
 
-        $this->mediaPush()->expectsOutputToContain('is not on a bucket')->assertFailed();
+        $this->mediaPush()->expectsOutputToContain('signs no uploads')->assertFailed();
 
         $this->assertFileDoesNotExist($this->disk.'/guide.pdf');
     }
@@ -263,7 +263,7 @@ class MediaPushTest extends TestCase
         $this->assertTrue(Storage::disk('photos')->providesTemporaryUploadUrls());
         $this->local('guide.pdf', self::PDF);
 
-        $this->mediaPush()->expectsOutputToContain('is not on a bucket')->assertFailed();
+        $this->mediaPush()->expectsOutputToContain('signs no uploads')->assertFailed();
 
         $this->assertSame([], Http::recorded(fn (Request $request) => $request->method() === 'PUT')->all());
     }
@@ -577,6 +577,39 @@ class MediaPushTest extends TestCase
         $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
 
         $this->assertCount(2, $this->signed, 'signed, then again before the second try.');
+        $this->assertSame(['X-Amz-Signature=1', 'X-Amz-Signature=2'], array_values(array_map(fn (Request $put) => parse_url($put->url(), PHP_URL_QUERY), $this->bucketPuts())));
+    }
+
+    public function test_a_try_that_arrived_although_its_answer_was_lost_is_still_judged_as_this_run_s(): void
+    {
+        AssetContainer::find('photos')->validationRules(['mimes:pdf'])->save();
+        $this->local('anna.png', base64_decode(self::PNG));
+        $this->bucketAnswers['anna.png'] = function (Request $request): array {
+            file_put_contents($this->disk.'/anna.png', $request->body());
+            $this->travel(11)->minutes();
+
+            return [503, '<Error><Code>SlowDown</Code></Error>'];
+        };
+
+        $this->mediaPush()
+            ->expectsOutputToContain('anna.png: The file field must be a file of type: pdf.')
+            ->doesntExpectOutputToContain('before this run')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist($this->disk.'/anna.png');
+    }
+
+    public function test_a_file_with_meta_is_never_deleted_for_its_size(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('ann@example.com', super: true));
+        $answer = $this->withToken($token)->postJson('/!/core-web/sync/media/uploads', ['container' => 'photos', 'files' => [['path' => 'guide.pdf', 'size' => 5, 'md5' => md5(self::PDF)]]])
+            ->assertOk()
+            ->json('files.0');
+        file_put_contents($this->disk.'/guide.pdf', self::PDF);
+        AssetContainer::find('photos')->makeAsset('guide.pdf')->set('alt', 'Theirs')->saveQuietly();
+
+        $this->assertSame('conflict', $this->finishWith($token, $answer['ticket'])['status']);
+        $this->assertSame(self::PDF, file_get_contents($this->disk.'/guide.pdf'));
     }
 
     public function test_the_site_asks_for_each_file_s_md5(): void
