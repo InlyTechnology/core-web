@@ -3,6 +3,8 @@
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Closure;
+use Illuminate\Filesystem\AwsS3V3Adapter;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -13,8 +15,10 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Illuminate\Testing\PendingCommand;
 use Inly\CoreWeb\ContentSync\AssetPush;
+use Inly\CoreWeb\ContentSync\MediaPush;
 use Inly\CoreWeb\ContentSync\RemoteSite;
 use Inly\CoreWeb\Tests\TestCase;
+use Mockery;
 use Statamic\Events\AssetSaved;
 use Statamic\Facades\AssetContainer;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
@@ -309,7 +313,7 @@ class MediaPushTest extends TestCase
         $theirs = strrev(self::PDF);
         file_put_contents($this->disk.'/guide.pdf', $theirs);
 
-        $this->mediaPush()->expectsOutputToContain('guide.pdf is not the one sent')->assertSuccessful();
+        $this->mediaPush()->expectsOutputToContain('guide.pdf is not this checkout\'s file')->assertSuccessful();
 
         $this->assertSame($theirs, file_get_contents($this->disk.'/guide.pdf'));
         $this->assertFileDoesNotExist($this->disk.'/.meta/guide.pdf.yaml');
@@ -322,7 +326,7 @@ class MediaPushTest extends TestCase
         file_put_contents($this->disk.'/anna.png', base64_decode(self::PNG));
 
         $this->mediaPush()
-            ->expectsOutputToContain('anna.png: The file field must be a file of type: pdf. The file was already in the container, so it was left as it is.')
+            ->expectsOutputToContain('anna.png: The file field must be a file of type: pdf. The file was in the container before this run, so it was left as it is.')
             ->assertFailed();
 
         $this->assertFileExists($this->disk.'/anna.png');
@@ -367,7 +371,7 @@ class MediaPushTest extends TestCase
             return null;
         };
 
-        $this->mediaPush()->expectsOutputToContain('guide.pdf is not the one sent')->assertSuccessful();
+        $this->mediaPush()->expectsOutputToContain('guide.pdf is not this checkout\'s file')->assertSuccessful();
 
         $this->assertSame($theirs, file_get_contents($this->disk.'/guide.pdf'));
     }
@@ -520,6 +524,78 @@ class MediaPushTest extends TestCase
             $this->assertSame($theirs, file_get_contents($this->disk.'/guide.pdf'));
             $this->assertFileDoesNotExist($this->disk.'/.meta/guide.pdf.yaml');
         }
+    }
+
+    public function test_a_file_sent_with_another_size_than_it_was_signed_for_is_deleted_again(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('ann@example.com', super: true));
+        $bytes = str_repeat('x', 5000);
+        $answer = $this->withToken($token)->postJson('/!/core-web/sync/media/uploads', ['container' => 'photos', 'files' => [['path' => 'guide.pdf', 'size' => 5, 'md5' => md5($bytes)]]])
+            ->assertOk()
+            ->json('files.0');
+        // What the signed address took: the MD5 it names, at a size the checkout did not declare.
+        file_put_contents($this->disk.'/guide.pdf', $bytes);
+
+        $result = $this->finishWith($token, $answer['ticket']);
+
+        $this->assertSame('invalid', $result['status']);
+        $this->assertStringContainsString('another size than the 5 bytes', $result['message']);
+        $this->assertFileDoesNotExist($this->disk.'/guide.pdf');
+    }
+
+    public function test_a_file_with_meta_that_reached_the_path_first_is_a_conflict(): void
+    {
+        $this->local('guide.pdf', self::PDF, alt: 'Ours');
+        $theirs = strrev(self::PDF);
+        $this->bucketAnswers['guide.pdf'] = function () use ($theirs): ?array {
+            file_put_contents($this->disk.'/guide.pdf', $theirs);
+            AssetContainer::find('photos')->makeAsset('guide.pdf')->set('alt', 'Theirs')->saveQuietly();
+
+            return null;
+        };
+
+        $this->mediaPush()->expectsOutputToContain('guide.pdf is not this checkout\'s file')->doesntExpectOutputToContain('after the copy')->assertSuccessful();
+
+        $this->assertSame($theirs, file_get_contents($this->disk.'/guide.pdf'));
+        $this->assertSame('Theirs', AssetContainer::find('photos')->asset('guide.pdf')->get('alt'));
+    }
+
+    public function test_a_try_made_after_ten_minutes_goes_to_a_fresh_address(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $tries = 0;
+        $this->bucketAnswers['guide.pdf'] = function () use (&$tries): ?array {
+            if (++$tries > 1) {
+                return null;
+            }
+
+            $this->travel(11)->minutes();
+
+            return [503, '<Error><Code>SlowDown</Code></Error>'];
+        };
+
+        $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
+
+        $this->assertCount(2, $this->signed, 'signed, then again before the second try.');
+    }
+
+    public function test_the_site_asks_for_each_file_s_md5(): void
+    {
+        $token = $this->tokenFor($this->cmsUser('ann@example.com', super: true));
+
+        foreach ([[], ['md5' => 'not-an-md5']] as $md5) {
+            $this->withToken($token)->postJson('/!/core-web/sync/media/uploads', ['container' => 'photos', 'files' => [['path' => 'guide.pdf', 'size' => 5, ...$md5]]])
+                ->assertUnprocessable();
+        }
+    }
+
+    public function test_an_s3_disk_takes_signed_uploads_where_laravel_says_it_does_not(): void
+    {
+        // Laravel 12, and 13 before 13.20, answer false for the S3 driver.
+        $s3 = Mockery::mock(AwsS3V3Adapter::class);
+        $s3->allows('providesTemporaryUploadUrls')->andReturn(false);
+
+        $this->assertTrue(Closure::bind(fn (FilesystemAdapter $disk) => MediaPush::signsUploads($disk), null, MediaPush::class)($s3));
     }
 
     public function test_it_runs_only_in_a_local_checkout(): void

@@ -214,7 +214,7 @@ class MediaPushCommand extends Command
 
                 $answer = $answers[$path];
                 $ready = match ($answer['status']) {
-                    MediaPush::UPLOAD => $this->put($path, $answer),
+                    MediaPush::UPLOAD => $this->put($path, $answer, $signedAt, fn () => $this->uploads($remote, [$path])[$path]),
                     MediaPush::FINISH => true,
                     MediaPush::DIRECT => $this->direct($remote, $path),
                     default => $this->count($answer),
@@ -276,36 +276,42 @@ class MediaPushCommand extends Command
 
     /**
      * Sends one file to the address the site signed. True once the bucket has a file at the path, which finishing
-     * then compares with this one.
+     * then compares with this one. A try after the address is old is made on a fresh one, which `$answer` then holds.
      *
      * @param  array<string, mixed>  $answer
+     * @param  Closure(): array<string, mixed>  $signAgain
      */
-    private function put(string $path, array $answer): bool
+    private function put(string $path, array &$answer, int $signedAt, Closure $signAgain): bool
     {
-        $url = (string) ($answer['url'] ?? '');
-
-        try {
-            RemoteSite::assertSecure($url);
-        } catch (RemoteSiteError) {
-            $this->tally['failed'][$path] = __('core-web::sync.media_push_https');
-
-            return false;
-        }
-
-        /** @var array<string, string> $headers */
-        $headers = array_map('strval', (array) ($answer['headers'] ?? []));
-        $named = array_change_key_case($headers);
-        $type = $named['content-type'] ?? 'application/octet-stream';
-        unset($headers['Content-Type'], $headers['content-type']);
-        // The bucket refuses a body whose MD5 differs (BadDigest); the site's signature names the same MD5.
-        isset($named['content-md5']) || $headers['Content-MD5'] = base64_encode((string) hex2bin($this->md5($path)));
-        // Asks the bucket not to replace a file that reached the path since the site looked.
-        $headers['If-None-Match'] = '*';
         $reason = '';
 
         for ($try = 1; $try <= self::PUT_TRIES; $try++) {
             if ($try > 1) {
                 Sleep::for(2 ** $try)->seconds();
+
+                if (now()->getTimestamp() - $signedAt > self::SIGN_AGAIN_AFTER) {
+                    $fresh = $signAgain();
+                    $signedAt = now()->getTimestamp();
+
+                    // An earlier try did arrive after all: finishing it is all that is left.
+                    if ($fresh['status'] === MediaPush::FINISH) {
+                        $answer = $fresh;
+
+                        return true;
+                    }
+
+                    if ($fresh['status'] !== MediaPush::UPLOAD) {
+                        return $this->count(['path' => $path, ...array_diff_key($fresh, ['path' => true])]);
+                    }
+
+                    $answer = $fresh;
+                }
+            }
+
+            $request = $this->putRequest($path, $answer);
+
+            if ($request === null) {
+                return false;
             }
 
             $stream = fopen($this->files[$path]['file'], 'rb');
@@ -318,11 +324,11 @@ class MediaPushCommand extends Command
 
             try {
                 $response = Http::withoutRedirecting()
-                    ->withHeaders($headers)
+                    ->withHeaders($request['headers'])
                     ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
                     ->timeout($this->uploadTimeout($this->files[$path]['size']))
-                    ->withBody(Utils::streamFor($stream), $type)
-                    ->put($url);
+                    ->withBody(Utils::streamFor($stream), $request['type'])
+                    ->put($request['url']);
             } catch (ConnectionException $e) {
                 $reason = $e->getMessage();
 
@@ -347,6 +353,36 @@ class MediaPushCommand extends Command
         $this->tally['failed'][$path] = "the bucket refused the upload: {$reason}.";
 
         return false;
+    }
+
+    /**
+     * The address and headers of one upload, or null (counted as failed) for an address that is not https.
+     *
+     * @param  array<string, mixed>  $answer
+     * @return array{url: string, type: string, headers: array<string, string>}|null
+     */
+    private function putRequest(string $path, array $answer): ?array
+    {
+        $url = (string) ($answer['url'] ?? '');
+
+        try {
+            RemoteSite::assertSecure($url);
+        } catch (RemoteSiteError) {
+            $this->tally['failed'][$path] = __('core-web::sync.media_push_https');
+
+            return null;
+        }
+
+        /** @var array<string, string> $headers */
+        $headers = array_map('strval', (array) ($answer['headers'] ?? []));
+        $named = array_change_key_case($headers);
+        unset($headers['Content-Type'], $headers['content-type']);
+        // The bucket refuses a body whose MD5 differs (BadDigest); the site's signature names the same MD5.
+        isset($named['content-md5']) || $headers['Content-MD5'] = base64_encode((string) hex2bin($this->md5($path)));
+        // Asks the bucket not to replace a file that reached the path since the site looked.
+        $headers['If-None-Match'] = '*';
+
+        return ['url' => $url, 'type' => $named['content-type'] ?? 'application/octet-stream', 'headers' => $headers];
     }
 
     /** Sends one file through the site, which stores and saves it in one request; never ready to finish. */

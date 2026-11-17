@@ -246,8 +246,8 @@ create its folders) in the CP. `--container` names the container
 (`assets`); `--dry-run` checks every file and sends nothing.
 
 - **Only into a bucket.** The container's disk must sign uploads, as a
-  bucket does. A container on the site's own disk is refused: its files
-  belong in git.
+  bucket does. A container on the site's own disk is refused: commit its
+  files to git instead.
 - **Straight to the bucket.** For each file the container lacks, the site
   signs an upload address for that file's MD5, valid for 15 minutes, and
   the checkout sends the file there; what it has not sent within 10 minutes
@@ -259,10 +259,10 @@ create its folders) in the CP. `--container` names the container
   file at the path is reported and left as it is. Each upload asks the
   bucket not to replace a file that reached the path since the site looked.
 - **Checked before it is saved.** The site saves the asset only once the
-  file at the path has the size and MD5 that were sent. A file this run sent
-  that breaks the container's file rules, or that the bucket stored as
-  another type than its extension's, is deleted again; a file that was there
-  before is left as it is.
+  file at the path has the size and MD5 that were signed for. A file this
+  run sent at another size, that breaks the container's file rules, or that
+  the bucket stored as another type than its extension's, is deleted again;
+  a file that was there before is left as it is.
 - **A run cut short is run again.** A file in the container that the site
   holds no meta for is saved with its alt text without being sent again.
 - **Saved without events.** The static cache is not refreshed and the

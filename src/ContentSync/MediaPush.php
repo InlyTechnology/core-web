@@ -20,6 +20,7 @@ use Statamic\Contracts\Assets\AssetFolder;
 use Statamic\Contracts\Auth\User;
 use Statamic\Eloquent\Assets\Asset as EloquentAsset;
 use Statamic\Facades\AssetContainer;
+use Throwable;
 
 /**
  * The site's half of `media:push` (docs/media.md, Copying files into a container): which of a checkout's files
@@ -105,7 +106,7 @@ class MediaPush
         $existing = [];
 
         foreach ($files as $file) {
-            $existing[$file['path']] = AssetPush::safePath($file['path']) && $filesystem->exists($file['path']) ? (int) $filesystem->size($file['path']) : null;
+            $existing[$file['path']] = AssetPush::safePath($file['path']) && $filesystem->fileExists($file['path']) ? (int) $filesystem->size($file['path']) : null;
         }
 
         $meta = $this->metaPaths($container, array_keys(array_filter($existing, fn (?int $size) => $size !== null)), null);
@@ -200,17 +201,21 @@ class MediaPush
         $path = $ticket['path'];
         $sent = $ticket['kind'] === self::UPLOAD;
         $filesystem = $container->disk()->filesystem();
+        $other = ['status' => AssetPush::CONFLICT, 'message' => __('core-web::sync.media_push_other_file', ['path' => "{$container->handle()}::{$path}"])];
 
-        if (! $filesystem->exists($path)) {
+        if (! $filesystem->fileExists($path)) {
             return ['status' => AssetPush::MISSING, 'message' => __('core-web::sync.media_push_not_arrived', ['path' => $path])];
         }
 
-        if ($this->hasMeta($container, $path)) {
-            return ['status' => AssetPush::SAME];
-        }
-
         if ((int) $filesystem->size($path) !== $ticket['size']) {
-            return ['status' => AssetPush::CONFLICT, 'message' => __('core-web::sync.media_push_other_file', ['path' => "{$container->handle()}::{$path}"])];
+            // The signed address takes only the ticket's bytes, so a file with their MD5 was sent with a size it did not declare.
+            if ($sent && self::checksum($filesystem, $path) === $ticket['md5']) {
+                $filesystem->delete($path);
+
+                return ['status' => AssetPush::INVALID, 'message' => __('core-web::sync.media_push_size', ['path' => $path, 'size' => $ticket['size']])];
+            }
+
+            return $other;
         }
 
         $copy = tempnam(sys_get_temp_dir(), 'core-web-media-push-');
@@ -223,7 +228,11 @@ class MediaPush
             }
 
             if (md5_file($copy) !== $ticket['md5']) {
-                return ['status' => AssetPush::CONFLICT, 'message' => __('core-web::sync.media_push_other_file', ['path' => "{$container->handle()}::{$path}"])];
+                return $other;
+            }
+
+            if ($this->hasMeta($container, $path)) {
+                return ['status' => AssetPush::SAME];
             }
 
             $refusal = $this->breaksRules($container, $copy, $path) ?? ($sent ? self::wrongType($filesystem, $path) : null);
@@ -254,6 +263,18 @@ class MediaPush
         $asset->saveQuietly();
 
         return ['status' => self::STORED];
+    }
+
+    /** The file's checksum on the disk: its MD5 on a local disk, its ETag on a bucket, which is the MD5 of a single PUT. */
+    private static function checksum(FilesystemAdapter $filesystem, string $path): ?string
+    {
+        try {
+            $checksum = $filesystem->checksum($path);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_string($checksum) ? strtolower($checksum) : null;
     }
 
     /** The first of the container's file rules the file breaks, read from its local copy; null when it breaks none. */
@@ -425,13 +446,17 @@ class MediaPush
     /** Whether the disk hands out signed upload addresses: a bucket does, a local folder or core-web's layer does not. */
     private static function signsUploads(FilesystemAdapter $filesystem): bool
     {
+        // Laravel 12, and 13 before 13.20, answer false to providesTemporaryUploadUrls() for the S3 driver, which signs them.
+        if ($filesystem instanceof AwsS3V3Adapter) {
+            return true;
+        }
+
         // A local disk with `serve` signs uploads to its own route, which reads the whole file into memory.
         if ($filesystem instanceof LocalFilesystemAdapter && ($filesystem->getConfig()['serve'] ?? false)) {
             return false;
         }
 
-        // Laravel 12 before providesTemporaryUploadUrls(): the S3 driver is the disk that signs uploads.
-        return method_exists($filesystem, 'providesTemporaryUploadUrls') ? $filesystem->providesTemporaryUploadUrls() : $filesystem instanceof AwsS3V3Adapter;
+        return method_exists($filesystem, 'providesTemporaryUploadUrls') && $filesystem->providesTemporaryUploadUrls();
     }
 
     private static function contentType(string $path): string

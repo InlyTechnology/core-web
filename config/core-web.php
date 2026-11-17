@@ -832,8 +832,7 @@ return [
     | timeout. A file with more assets goes alone.
     | push_bytes: the most content (all files together) one request carries.
     | push_asset_bytes: the largest asset file a push uploads.
-    | media_push_bytes: the largest file `media:push` copies (docs/media.md);
-    | an SVG, which goes through the site, takes push_asset_bytes.
+    | media_push_bytes: the largest file `media:push` copies (docs/media.md).
     |
     */
 

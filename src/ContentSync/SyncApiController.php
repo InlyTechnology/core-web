@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\Drafts\DraftAuthor;
 use Inly\CoreWeb\Drafts\DraftProvenance;
+use Inly\CoreWeb\Media\MissingAltText;
 use Inly\CoreWeb\Snapshots\SnapshotExport;
 use Inly\CoreWeb\Snapshots\SnapshotRegistry;
 use Statamic\Facades\User;
@@ -255,6 +256,11 @@ class SyncApiController
             'alt' => $request->input('alt'),
             'focus' => $request->input('focus'),
         ], fn (mixed $value) => is_string($value)), $quietly);
+
+        // The dashboard's count of images without alt text, which a quiet save leaves as it was.
+        if ($quietly && $result['status'] === 'stored') {
+            MissingAltText::forget($container);
+        }
 
         $status = match ($result['status']) {
             AssetPush::CONFLICT => 409,
