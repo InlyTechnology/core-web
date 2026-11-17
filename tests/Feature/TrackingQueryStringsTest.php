@@ -68,6 +68,34 @@ class TrackingQueryStringsTest extends TestCase
         $this->assertSame('/news?utm_source=newsletter&page=2', $this->nextPageUrl());
     }
 
+    public function test_with_background_recache_pagination_links_leave_out_the_render_token(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'full',
+            'statamic.static_caching.background_recache' => true,
+            'statamic.static_caching.recache_token_parameter' => '__recache',
+        ]);
+        TrackingQueryStrings::apply(config());
+        $this->app->instance('request', Request::create('/news?q=boats&__recache=secret&gclid=abc'));
+
+        $this->assertSame('/news?q=boats&gclid=abc&page=2', $this->nextPageUrl());
+    }
+
+    public function test_with_no_tracking_list_background_recache_still_leaves_out_the_render_token(): void
+    {
+        config([
+            'statamic.static_caching.strategy' => 'half',
+            'statamic.static_caching.background_recache' => true,
+            'statamic.static_caching.disallowed_query_strings' => ['campaign_ref'],
+            'core-web.static_cache.tracking_query_strings' => [],
+        ]);
+        TrackingQueryStrings::apply(config());
+        $this->app->instance('request', Request::create('/news?__recache=secret&utm_source=newsletter'));
+
+        $this->assertSame('/news?utm_source=newsletter&page=2', $this->nextPageUrl());
+        $this->assertSame(['campaign_ref'], config('statamic.static_caching.disallowed_query_strings'));
+    }
+
     public function test_the_full_strategy_is_left_alone(): void
     {
         config([

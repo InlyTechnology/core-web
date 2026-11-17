@@ -168,6 +168,9 @@ return [
     | clear on the `half` strategy; false keeps Statamic's own cacher. See
     | docs/static-cache.md#pages-cached-while-a-clear-runs.
     |
+    | background_recache: true or false in every environment, null for
+    | core-web's default (docs/static-cache.md).
+    |
     */
 
     'static_cache' => [
@@ -187,6 +190,7 @@ return [
             // HubSpot ads tracking, one combination per ad, keyword and network
             'hsa_acc', 'hsa_cam', 'hsa_grp', 'hsa_ad', 'hsa_src', 'hsa_tgt', 'hsa_kw', 'hsa_mt', 'hsa_net', 'hsa_ver',
         ],
+        'background_recache' => null,
     ],
 
     /*

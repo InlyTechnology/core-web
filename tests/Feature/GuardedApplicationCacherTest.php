@@ -407,6 +407,40 @@ class GuardedApplicationCacherTest extends TestCase
         $this->assertSame('b', $this->served($cacher, 'http://default.test/b'));
     }
 
+    public function test_rendering_every_site_again_forgets_a_page_cached_meanwhile_on_a_host_no_site_names(): void
+    {
+        Queue::fake();
+        config(['statamic.static_caching.background_recache' => true]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'http://default.test/a', 'a', at: 0);
+        $this->cache($cacher, 'http://alias.test/x', 'x', at: 0);
+        $this->unlist('http://alias.test');
+
+        $this->now += 10;
+        (new SiteCache($cacher))->refreshAll();
+
+        $this->assertNull($this->served($cacher, 'http://alias.test/x'));
+        $this->assertSame('a', $this->served($cacher, 'http://default.test/a'));
+    }
+
+    public function test_rendering_every_site_again_without_background_recache_forgets_every_page(): void
+    {
+        config(['statamic.static_caching.background_recache' => false]);
+        $cacher = $this->guarded();
+        $this->cache($cacher, 'http://default.test/a', 'a', at: 0);
+        $this->cache($cacher, 'http://alias.test/x', 'x', at: 0);
+        $this->unlist('http://default.test');
+        $this->unlist('http://alias.test');
+
+        $this->now += 10;
+        (new SiteCache($cacher))->refreshAll();
+        $this->cache($cacher, 'http://default.test/b', 'b', at: 1);
+
+        $this->assertNull($this->served($cacher, 'http://default.test/a'));
+        $this->assertNull($this->served($cacher, 'http://alias.test/x'));
+        $this->assertSame('b', $this->served($cacher, 'http://default.test/b'));
+    }
+
     public function test_of_two_sites_at_one_address_the_one_whose_url_names_its_host_owns_the_page(): void
     {
         Site::setSites([
