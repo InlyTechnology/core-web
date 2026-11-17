@@ -15,10 +15,9 @@ use Illuminate\Support\Sleep;
 /**
  * Copies a folder of files into an asset container on the remote site
  * (core-web.content_sync.remote_url), at the same paths, with their alt
- * text and focal points: straight to the site's bucket on signed uploads,
- * so neither a bucket key nor the files' size passes through this machine's
- * config or the site's memory. Never replaces or deletes a file
- * (docs/media.md, Copying files into a container).
+ * text and focal points, straight to the site's bucket on signed uploads, so
+ * this machine needs no bucket key (docs/media.md, Copying files into a
+ * container).
  */
 class MediaPushCommand extends Command
 {
@@ -31,17 +30,23 @@ class MediaPushCommand extends Command
 
     protected $description = 'Copy a folder of files into an asset container on the remote site (core-web.content_sync.remote_url)';
 
-    /** The most bytes one batch of signed uploads carries, so its last upload starts before the addresses expire. */
+    /** The most bytes one batch of signed uploads carries. */
     private const UPLOAD_BATCH_BYTES = 256 * 1024 * 1024;
 
-    /** The most bytes one finish request names, since the site reads each file to measure it. */
-    private const FINISH_BATCH_BYTES = 200 * 1024 * 1024;
+    /** The most bytes one finish request names, since the site reads each file back from the bucket. */
+    private const FINISH_BATCH_BYTES = 100 * 1024 * 1024;
+
+    /** Seconds after which the addresses not used yet are signed again, well inside MediaPush::URL_MINUTES. */
+    private const SIGN_AGAIN_AFTER = 600;
+
+    /** The slowest upload, in bytes a second (about 2 Mbit/s), a large file's timeout allows for. */
+    private const SLOWEST_UPLOAD = 256 * 1024;
 
     private const BUSY_RETRIES = 5;
 
     private const PUT_TRIES = 3;
 
-    /** @var array<string, array{file: string, size: int, alt?: string, focus?: string}> path => the file and what is sent for it */
+    /** @var array<string, array{file: string, size: int, md5?: string, alt?: string, focus?: string}> path => the file and what is sent for it */
     private array $files = [];
 
     /** @var array<string, string> path => why, for the files the folder holds that no container may name */
@@ -87,19 +92,21 @@ class MediaPushCommand extends Command
         }
 
         try {
-            return $this->copy($remote);
-        } catch (RemoteLoginNeeded) {
-            if (($remote = $this->signInAgain()) === null) {
-                return self::FAILURE;
-            }
-
             try {
-                // What the first run copied is now `same`, so it is not sent twice.
                 return $this->copy($remote);
             } catch (RemoteLoginNeeded) {
-                $this->refusedFreshLogin();
+                if (($remote = $this->signInAgain()) === null) {
+                    return self::FAILURE;
+                }
 
-                return self::FAILURE;
+                try {
+                    // What the first run copied is now `same`, so it is not sent twice.
+                    return $this->copy($remote);
+                } catch (RemoteLoginNeeded) {
+                    $this->refusedFreshLogin();
+
+                    return self::FAILURE;
+                }
             }
         } catch (RemoteSiteError $e) {
             $this->error($e->getMessage());
@@ -120,12 +127,11 @@ class MediaPushCommand extends Command
                 continue;
             }
 
-            // An SVG is stored sanitised, so the site compares the size it will have.
-            $size = strtolower($file->getExtension()) === 'svg'
-                ? strlen(AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname())))
-                : (int) $file->getSize();
+            // An SVG is stored sanitised, so the site compares the size and MD5 it will have.
+            $stored = strtolower($file->getExtension()) === 'svg' ? AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname())) : null;
+            $sizes = $stored === null ? ['size' => (int) $file->getSize()] : ['size' => strlen($stored), 'md5' => md5($stored)];
 
-            $this->files[$path] = ['file' => $file->getPathname(), 'size' => $size, ...AssetPush::localMeta($file)];
+            $this->files[$path] = ['file' => $file->getPathname(), ...$sizes, ...AssetPush::localMeta($file)];
         }
 
         ksort($this->files);
@@ -135,31 +141,36 @@ class MediaPushCommand extends Command
     {
         $this->tally = ['stored' => 0, 'same' => 0, 'conflicts' => [], 'refused' => $this->skipped, 'failed' => []];
         $missing = [];
+        $unfinished = [];
 
         foreach ($this->check($remote, array_keys($this->files)) as $result) {
             match ($result['status']) {
-                AssetPush::MISSING, MediaPush::UNFINISHED => $missing[] = $result['path'],
+                AssetPush::MISSING => $missing[] = $result['path'],
+                MediaPush::UNFINISHED => $unfinished[] = $result['path'],
                 default => $this->count($result),
             };
         }
 
         $bytes = array_sum(array_map(fn (string $path) => $this->files[$path]['size'], $missing));
-        $container = (string) $this->option('container');
 
         $this->line(sprintf(
-            '%s: %d file(s), %d to copy (%s), %d already there, %d conflicting, %d refused.',
-            $container,
+            '%s: %d file(s), %d to copy (%s), %d to finish, %d already there, %d conflicting, %d refused.',
+            (string) $this->option('container'),
             count($this->files) + count($this->skipped),
             count($missing),
             Number::fileSize($bytes),
+            count($unfinished),
             $this->tally['same'],
             count($this->tally['conflicts']),
             count($this->tally['refused']),
         ));
 
-        if (! $this->option('dry-run') && $missing !== []) {
-            $this->send($remote, $missing);
-            $this->recheck($remote, $missing);
+        $todo = [...$missing, ...$unfinished];
+        sort($todo);
+
+        if (! $this->option('dry-run') && $todo !== []) {
+            $this->send($remote, $todo);
+            $this->recheck($remote, $todo);
         }
 
         return $this->report();
@@ -191,12 +202,17 @@ class MediaPushCommand extends Command
 
         foreach ($this->uploadBatches($paths) as $batch) {
             $finish = [];
+            $answers = $this->uploads($remote, $batch);
+            $signedAt = now()->getTimestamp();
 
-            foreach ($this->batch($remote, 'media/uploads', array_map(fn (string $path) => [
-                'path' => $path,
-                'size' => $this->files[$path]['size'],
-            ], $batch)) as $answer) {
-                $path = (string) $answer['path'];
+            foreach ($batch as $i => $path) {
+                // Addresses expire: what is left of a batch slow to send is signed again before it is used.
+                if (now()->getTimestamp() - $signedAt > self::SIGN_AGAIN_AFTER && ($answers[$path]['status'] ?? null) === MediaPush::UPLOAD) {
+                    $answers = [...$answers, ...$this->uploads($remote, array_slice($batch, $i))];
+                    $signedAt = now()->getTimestamp();
+                }
+
+                $answer = $answers[$path];
                 $ready = match ($answer['status']) {
                     MediaPush::UPLOAD => $this->put($path, $answer),
                     MediaPush::FINISH => true,
@@ -212,11 +228,12 @@ class MediaPushCommand extends Command
             }
 
             foreach ($this->finishBatches($finish) as $items) {
+                // The site reads each file back from the bucket, which can take longer than an ordinary request.
                 foreach ($this->batch($remote, 'media/finish', array_map(fn (array $item) => array_filter([
                     'ticket' => $item['ticket'],
                     'alt' => $this->files[$item['path']]['alt'] ?? null,
                     'focus' => $this->files[$item['path']]['focus'] ?? null,
-                ], fn (mixed $value) => $value !== null), $items)) as $i => $result) {
+                ], fn (mixed $value) => $value !== null), $items), $this->uploadTimeout(0)) as $i => $result) {
                     // A refused ticket names no path, so the request's own order says which file it was.
                     $this->count(['path' => $items[$i]['path'], ...array_diff_key($result, ['path' => true])]);
                     $bar->advance();
@@ -229,7 +246,37 @@ class MediaPushCommand extends Command
     }
 
     /**
-     * Sends one file to the address the site signed. True once the bucket has it whole.
+     * The site's answer for each file of a batch, by path: how to send it, signed for the file's MD5.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, array<string, mixed>>
+     */
+    private function uploads(RemoteSite $remote, array $paths): array
+    {
+        $answers = $this->batch($remote, 'media/uploads', array_map(fn (string $path) => [
+            'path' => $path,
+            'size' => $this->files[$path]['size'],
+            'md5' => $this->md5($path),
+        ], $paths));
+
+        // The request's own order says which file each answer is for.
+        return array_combine($paths, $answers);
+    }
+
+    private function md5(string $path): string
+    {
+        return $this->files[$path]['md5'] ??= (string) md5_file($this->files[$path]['file']);
+    }
+
+    /** Seconds to wait for a file of this size to upload: `timeouts.upload`, or longer for a large file. */
+    private function uploadTimeout(int $size): int
+    {
+        return max(1, (int) config('core-web.content_sync.timeouts.upload', 600), (int) ceil($size / self::SLOWEST_UPLOAD));
+    }
+
+    /**
+     * Sends one file to the address the site signed. True once the bucket has a file at the path, which finishing
+     * then compares with this one.
      *
      * @param  array<string, mixed>  $answer
      */
@@ -247,12 +294,20 @@ class MediaPushCommand extends Command
 
         /** @var array<string, string> $headers */
         $headers = array_map('strval', (array) ($answer['headers'] ?? []));
-        $type = $headers['Content-Type'] ?? $headers['content-type'] ?? 'application/octet-stream';
-        // The bucket refuses a body whose MD5 differs (BadDigest), so a file is never stored half sent or changed.
-        $headers['Content-MD5'] = base64_encode((string) md5_file($this->files[$path]['file'], true));
+        $named = array_change_key_case($headers);
+        $type = $named['content-type'] ?? 'application/octet-stream';
+        unset($headers['Content-Type'], $headers['content-type']);
+        // The bucket refuses a body whose MD5 differs (BadDigest); the site's signature names the same MD5.
+        isset($named['content-md5']) || $headers['Content-MD5'] = base64_encode((string) hex2bin($this->md5($path)));
+        // Asks the bucket not to replace a file that reached the path since the site looked.
+        $headers['If-None-Match'] = '*';
         $reason = '';
 
         for ($try = 1; $try <= self::PUT_TRIES; $try++) {
+            if ($try > 1) {
+                Sleep::for(2 ** $try)->seconds();
+            }
+
             $stream = fopen($this->files[$path]['file'], 'rb');
 
             if ($stream === false) {
@@ -265,7 +320,7 @@ class MediaPushCommand extends Command
                 $response = Http::withoutRedirecting()
                     ->withHeaders($headers)
                     ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
-                    ->timeout(max(1, (int) config('core-web.content_sync.timeouts.upload', 600)))
+                    ->timeout($this->uploadTimeout($this->files[$path]['size']))
                     ->withBody(Utils::streamFor($stream), $type)
                     ->put($url);
             } catch (ConnectionException $e) {
@@ -276,7 +331,8 @@ class MediaPushCommand extends Command
                 is_resource($stream) && fclose($stream);
             }
 
-            if ($response->successful()) {
+            // 412: a file is at the path already, perhaps this one from a try whose answer was lost.
+            if ($response->successful() || $response->status() === 412) {
                 return true;
             }
 
@@ -334,12 +390,12 @@ class MediaPushCommand extends Command
      * @param  list<array<string, mixed>>  $files
      * @return list<array<string, mixed>>
      */
-    private function batch(RemoteSite $remote, string $endpoint, array $files): array
+    private function batch(RemoteSite $remote, string $endpoint, array $files, ?int $timeout = null): array
     {
         $response = $this->whenNotBusy(fn () => $remote->post($endpoint, [
             'container' => (string) $this->option('container'),
             'files' => $files,
-        ]));
+        ], $timeout));
 
         if ($response->status() === 404 && $response->json('error') === null) {
             throw new RemoteSiteError("{$remote->url()} takes no media:push: its core-web predates it.");

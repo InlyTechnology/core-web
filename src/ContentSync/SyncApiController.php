@@ -217,6 +217,7 @@ class SyncApiController
         return $this->mediaBatch($request, MediaPush::UPLOAD_FILES, [
             'files.*.path' => ['required', 'string', 'max:500'],
             'files.*.size' => ['required', 'integer', 'min:0'],
+            'files.*.md5' => ['required', 'string', 'regex:/^[0-9a-fA-F]{32}$/'],
         ], fn (string $container, array $files) => $media->uploads(User::current(), $container, $files));
     }
 
