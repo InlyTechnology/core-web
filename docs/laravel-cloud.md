@@ -136,6 +136,10 @@ will not adopt one it did not make), keeps `users/` out, and `--fresh`
 never empties the table. A users import that fails only warns: the
 content is in, so run `statamic:eloquent:import-users` by hand.
 
+Files that are not in git, such as an old site's uploads, go into the bucket
+from a checkout with `php artisan media:push <folder>`, signed in to the
+site: see [Media → Copying files into a container](media.md#copying-files-into-a-container).
+
 The order is the point. The driver's own `import-collections` saves the
 trees before the entries exist, and saving a tree drops every id the
 entries table doesn't hold yet, so the trees come out empty. So entries go

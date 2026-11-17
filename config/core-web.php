@@ -804,7 +804,8 @@ return [
     | items (or snapshot documents) a request.
     |
     | timeouts: seconds the checkout waits to connect to the live site and
-    | for each answer, and for each file it reads from the site's assets.
+    | for each answer, and for each file it reads from the site's assets;
+    | `upload` for each file `media:push` sends straight to the bucket.
     |
     | pull_assets: with `features.media` on a local checkout without the
     | bucket's key, the asset disks list the live site's files as last
@@ -830,6 +831,10 @@ return [
     | timeout. A file with more assets goes alone.
     | push_bytes: the most content (all files together) one request carries.
     | push_asset_bytes: the largest asset file a push uploads.
+    | media_push_bytes: the largest file `media:push` copies into a
+    | container, sent straight to the bucket on a signed upload (docs/media.md).
+    | Where a file goes through the site instead (a disk that is not a
+    | bucket, an SVG), push_asset_bytes is its limit.
     |
     */
 
@@ -850,6 +855,7 @@ return [
         'timeouts' => [
             'connect' => 5,
             'request' => 30,
+            'upload' => 600,
         ],
         'pull_assets' => true,
         'push' => true,
@@ -859,6 +865,7 @@ return [
         'push_batch_assets' => 15,
         'push_bytes' => 10 * 1024 * 1024,
         'push_asset_bytes' => 20 * 1024 * 1024,
+        'media_push_bytes' => 1024 * 1024 * 1024,
     ],
 
     /*

@@ -221,7 +221,53 @@ environment that shares production's bucket sets `CORE_MEDIA_LAYER=true`.
   `media:check` reports a bucket that does not.
 - The first deploy copies the git-tracked images into the bucket with
   `php artisan media:sync push --force`, on the Cloud credentials like any
-  other key.
+  other key. Files that are not in git go in from a checkout with
+  `media:push` ([Copying files into a container](#copying-files-into-a-container)).
+
+## Copying files into a container
+
+`php artisan media:push <folder>` copies a folder of files from a checkout
+into an asset container on the live site (`content_sync.remote_url`), each
+at its path below the folder, with the alt text and focal point from the
+`.meta` beside it. It is how files that are not in git reach a site, such as
+an old site's `public/assets` going into a new site on Laravel Cloud, with no
+bucket key on the machine that sends them:
+
+```bash
+php artisan media:push ../old-site/public/assets --dry-run
+php artisan media:push ../old-site/public/assets
+```
+
+It runs where `APP_ENV` is `local`, with `content_sync` on both sides, and
+signs in as `content:pull` does (`content:login`). The person signed in
+needs the "Push content" permission and may upload to the container (and
+create its folders) in the CP. `--container` names the container
+(`assets`); `--dry-run` checks every file and sends nothing.
+
+- **Straight to the bucket.** For each file the container lacks, the site
+  signs an upload address valid for 15 minutes, and the checkout sends the
+  file there, so its size never passes through the site's memory. The site
+  then saves the asset. A disk that signs no uploads (a local folder,
+  core-web's layer) and every SVG, which the site sanitises as it stores it,
+  go through the site instead, up to `content_sync.push_asset_bytes`.
+- **Never over another file.** Files are compared by path and size, from one
+  listing per folder. A file the container has at that size is left; another
+  file at the same path is reported and left as it is; nothing is deleted. A
+  run cut short is run again: a file that arrived but was not saved is saved
+  without being sent again.
+- **Checked on arrival.** A file is at most `content_sync.media_push_bytes`
+  (1 GB). Each file sent to the bucket carries its MD5 (`Content-MD5`), which
+  the bucket checks, and the site checks the size that arrived and the
+  container's file rules before it saves the asset; a file the rules refuse
+  is deleted again.
+- **No page renders per file.** Assets are saved without their events, so
+  the static cache is not refreshed once per file, and a page it holds from
+  before the copy keeps what it showed: copy before the site is visited, or
+  clear the static cache after (`php please static:clear`).
+- **On Laravel Cloud** the alt text and focal point are saved in the
+  database. `content:import --fresh` empties them with the rest of the asset
+  meta; running `media:push` again then saves each file's meta without
+  sending the file.
 
 ## Control panel thumbnails
 
@@ -266,6 +312,9 @@ meta field than `alt`, `title` the widget's heading.
   those). It asks first; `--force` skips the question. `pull` refreshes the
   committed folder from the bucket. Neither touches a layer. Dry run first; a
   second dry run after a push finds nothing.
+- **`media:push <folder> [--container=assets] [--dry-run]`** copies a
+  checkout's folder into a container on the live site, never over another
+  file: see [Copying files into a container](#copying-files-into-a-container).
 - **`media:check [path] [--disk=assets]`** says what the disk is here and, with
   a key, checks a file (the first image when no path is given): its URL is
   under a CDN origin, the raw file answers with `Cache-Control` and CORS, and a

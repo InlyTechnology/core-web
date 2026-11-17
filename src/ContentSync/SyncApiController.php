@@ -199,6 +199,45 @@ class SyncApiController
     /** One asset file a push names, stored at its path when the site has none there (AssetPush). */
     public function pushAsset(Request $request, AssetPush $assets): JsonResponse
     {
+        return $this->storeAsset($request, $assets, false);
+    }
+
+    /** Which of a checkout's files a container lacks, for media:push (MediaPush). */
+    public function mediaCheck(Request $request, MediaPush $media): JsonResponse
+    {
+        return $this->mediaBatch($request, MediaPush::CHECK_FILES, [
+            'files.*.path' => ['required', 'string', 'max:500'],
+            'files.*.size' => ['required', 'integer', 'min:0'],
+        ], fn (string $container, array $files) => $media->check(User::current(), $container, $files));
+    }
+
+    /** How media:push sends each file the container lacks: a signed upload straight to the bucket, or through media/file. */
+    public function mediaUploads(Request $request, MediaPush $media): JsonResponse
+    {
+        return $this->mediaBatch($request, MediaPush::UPLOAD_FILES, [
+            'files.*.path' => ['required', 'string', 'max:500'],
+            'files.*.size' => ['required', 'integer', 'min:0'],
+        ], fn (string $container, array $files) => $media->uploads(User::current(), $container, $files));
+    }
+
+    /** The assets for files media:push uploaded, saved once each is in the container. */
+    public function mediaFinish(Request $request, MediaPush $media): JsonResponse
+    {
+        return $this->mediaBatch($request, MediaPush::FINISH_FILES, [
+            'files.*.ticket' => ['required', 'string', 'max:4000'],
+            'files.*.alt' => ['nullable', 'string', 'max:1000'],
+            'files.*.focus' => ['nullable', 'string', 'max:100'],
+        ], fn (string $container, array $files) => $media->finish(User::current(), $container, $files));
+    }
+
+    /** One file media:push sends through the site, stored as push/asset stores it but saved quietly. */
+    public function mediaFile(Request $request, AssetPush $assets): JsonResponse
+    {
+        return $this->storeAsset($request, $assets, true);
+    }
+
+    private function storeAsset(Request $request, AssetPush $assets, bool $quietly): JsonResponse
+    {
         if ($refusal = self::pushRefusal()) {
             return $refusal;
         }
@@ -214,7 +253,7 @@ class SyncApiController
         $result = $assets->store(User::current(), $container, $path, $file, array_filter([
             'alt' => $request->input('alt'),
             'focus' => $request->input('focus'),
-        ], fn (mixed $value) => is_string($value)));
+        ], fn (mixed $value) => is_string($value)), $quietly);
 
         $status = match ($result['status']) {
             AssetPush::CONFLICT => 409,
@@ -224,6 +263,30 @@ class SyncApiController
         };
 
         return new JsonResponse(['container' => $container, 'path' => $path, ...$result], $status);
+    }
+
+    /**
+     * @param  array<string, list<string>>  $rules  the rules for each file
+     * @param  callable(string, list<array<string, mixed>>): list<array<string, mixed>>  $answer
+     */
+    private function mediaBatch(Request $request, int $max, array $rules, callable $answer): JsonResponse
+    {
+        if ($refusal = self::pushRefusal()) {
+            return $refusal;
+        }
+
+        $validator = Validator::make($request->all(), [
+            'container' => ['required', 'string', 'max:100'],
+            'files' => ['required', 'array', 'list', 'max:'.$max],
+            'files.*' => ['array'],
+            ...$rules,
+        ]);
+
+        if ($validator->fails()) {
+            return new JsonResponse(['error' => 'invalid_request', 'message' => $validator->errors()->first(), 'errors' => $validator->errors()->toArray()], 422);
+        }
+
+        return new JsonResponse(['container' => $request->input('container'), 'files' => $answer((string) $request->input('container'), array_values((array) $request->input('files')))]);
     }
 
     private static function pushRefusal(): ?JsonResponse
