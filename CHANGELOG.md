@@ -10,8 +10,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 - **`content:import` steps run with the import's memory limit**, so
   `php -d memory_limit=1G artisan content:import` reaches each step, where
-  every step had php.ini's limit. A step that runs out of memory says so, and
-  a failed step shows FAIL where it showed DONE. See `docs/laravel-cloud.md`
+  every step had php.ini's limit. A step that runs out of memory names how to
+  give it more, and a failed step shows FAIL where it showed DONE. See `docs/laravel-cloud.md`
   (First deploy).
 
 ## v0.50.0

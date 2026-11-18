@@ -105,6 +105,11 @@ class ImportContentCommand extends Command
 
         foreach ($steps as $label => $command) {
             if (! $this->step($label, $command)) {
+                // The import refuses to run again over the entries this run wrote.
+                if ($db->table($prefix.'entries')->exists()) {
+                    $this->line('To run it again over the entries this run wrote: php artisan content:import --fresh --force.');
+                }
+
                 return self::FAILURE;
             }
         }
@@ -288,16 +293,6 @@ class ImportContentCommand extends Command
         return in_array($limit, [false, ''], true) ? [] : ['-d', 'memory_limit='.$limit];
     }
 
-    /** Where Laravel has TaskResult, its task component shows anything but TaskResult::Failure as done, false included. */
-    private static function taskResult(bool $successful): bool|int
-    {
-        if (! enum_exists(TaskResult::class)) {
-            return $successful;
-        }
-
-        return $successful ? TaskResult::Success->value : TaskResult::Failure->value;
-    }
-
     private function step(string $label, array $command, int $timeout = 600, bool $quiet = true, bool $search = false): bool
     {
         $result = null;
@@ -308,7 +303,8 @@ class ImportContentCommand extends Command
                 $result = $e->result;
             }
 
-            return self::taskResult($result->successful());
+            // The task component matches TaskResult's values strictly, so a plain false would show DONE.
+            return $result->successful() ? TaskResult::Success->value : TaskResult::Failure->value;
         });
 
         if (! $quiet && $result->successful()) {
@@ -323,7 +319,7 @@ class ImportContentCommand extends Command
             $this->line(trim($result->errorOutput()));
 
             if (str_contains($result->output().$result->errorOutput(), 'Allowed memory size of')) {
-                $this->warn(sprintf('  PHP ran out of memory at its limit of %s. Run the import, or a command named below, again as php -d memory_limit=1G artisan …: a step takes the limit of the command that starts it.', ini_get('memory_limit')));
+                $this->warn(sprintf('  PHP ran out of memory at its limit of %s. Run the next command with a higher one, such as php -d memory_limit=1G artisan …: a step takes the limit of the command that starts it.', ini_get('memory_limit')));
             }
         }
 

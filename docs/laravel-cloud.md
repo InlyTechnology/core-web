@@ -123,9 +123,9 @@ On a new, empty database, load `content/` once from Cloud's commands tab:
 php artisan content:import
 ```
 
-Each step runs in a PHP process of its own with the memory limit the import
-itself has. A site with a few thousand entries outgrows the command line's
-256 MB on Cloud, so give it what the instance can spare:
+Each step takes the memory limit the import runs with. Cloud sets PHP's limit
+as a share of the instance's memory; when a step runs out of it, the import
+says so. Give it what the instance can spare:
 
 ```bash
 php -d memory_limit=1G artisan content:import

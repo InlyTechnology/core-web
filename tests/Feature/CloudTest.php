@@ -775,6 +775,40 @@ class CloudTest extends TestCase
 
     public function test_a_step_that_runs_out_of_memory_fails_and_says_how_to_give_it_more(): void
     {
+        $this->createContentTables();
+
+        // The entry import writes rows one by one, so it can die with some of them in.
+        Process::fake(function () {
+            Schema::getConnection()->table('entries')->insert(['id' => 'home']);
+
+            return Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted', exitCode: 255);
+        });
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('FAIL')
+            ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
+            ->expectsOutputToContain('php -d memory_limit=1G artisan')
+            ->expectsOutputToContain('php artisan content:import --fresh --force')
+            ->doesntExpectOutputToContain('DONE')
+            ->assertFailed();
+
+        Process::assertRanTimes(fn ($process): bool => true, 1);
+    }
+
+    public function test_a_step_that_fails_otherwise_gives_no_memory_advice(): void
+    {
+        $this->createContentTables();
+        Process::fake(['*' => Process::result(errorOutput: 'SQLSTATE[23505]: Unique violation', exitCode: 1)]);
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('FAIL')
+            ->doesntExpectOutputToContain('memory_limit')
+            ->doesntExpectOutputToContain('--fresh --force')
+            ->assertFailed();
+    }
+
+    private function createContentTables(): void
+    {
         config(['statamic.eloquent-driver.entries.driver' => 'eloquent']);
 
         foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
@@ -782,17 +816,6 @@ class CloudTest extends TestCase
                 $blueprint->string('id');
             });
         }
-
-        Process::fake(['*' => Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted', exitCode: 255)]);
-
-        $this->artisan('content:import')
-            ->expectsOutputToContain('FAIL')
-            ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
-            ->expectsOutputToContain('php -d memory_limit=1G artisan')
-            ->doesntExpectOutputToContain('DONE')
-            ->assertFailed();
-
-        Process::assertRanTimes(fn ($process): bool => true, 1);
     }
 
     public function test_only_indexes_that_outlive_the_container_are_rebuilt_after_an_import(): void
