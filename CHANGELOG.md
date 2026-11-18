@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`<x-core-img>` on the CDN gets a srcset by default**: an image the CDN
+  serves, rendered with neither `widths` nor `width`, offers the widths in
+  `media.images.widths` (320 to 1920px), where it sent every screen the
+  full original. A call that wants one fixed image passes `width`, or
+  `:widths="[]"`. See `docs/media.md`.
+
 ## v0.51.0
 
 - **The `archived-links` content check**: links into the Wayback Machine,

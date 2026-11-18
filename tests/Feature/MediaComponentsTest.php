@@ -37,6 +37,30 @@ class MediaComponentsTest extends TestCase
         $this->assertStringContainsString('class="w-full"', $html);
     }
 
+    public function test_a_cdn_image_without_widths_or_a_width_gets_the_default_srcset(): void
+    {
+        $html = Blade::render('<x-core-img :src="$src" sizes="100vw" placeholder="none" />', ['src' => self::CDN.'/hero.jpg']);
+
+        $this->assertStringContainsString('src="'.e(self::CDN.'/hero.jpg?format=auto').'"', $html);
+        $this->assertStringContainsString(e(self::CDN.'/hero.jpg?width=320&format=auto').' 320w, ', $html);
+        $this->assertStringContainsString(e(self::CDN.'/hero.jpg?width=1920&format=auto').' 1920w"', $html);
+        $this->assertStringContainsString('sizes="100vw"', $html);
+    }
+
+    public function test_a_cdn_image_with_one_width_or_no_widths_gets_no_srcset(): void
+    {
+        config(['core-web.media.images.widths' => [400, 800]]);
+
+        $fixed = Blade::render('<x-core-img :src="$src" width="300" placeholder="none" />', ['src' => self::CDN.'/a.jpg']);
+        $off = Blade::render('<x-core-img :src="$src" :widths="[]" placeholder="none" />', ['src' => self::CDN.'/a.jpg']);
+        $configured = Blade::render('<x-core-img :src="$src" placeholder="none" />', ['src' => self::CDN.'/a.jpg']);
+
+        $this->assertStringContainsString('src="'.e(self::CDN.'/a.jpg?width=300&format=auto').'"', $fixed);
+        $this->assertStringNotContainsString('srcset', $fixed);
+        $this->assertStringNotContainsString('srcset', $off);
+        $this->assertStringContainsString(e(self::CDN.'/a.jpg?width=800&format=auto').' 800w"', $configured);
+    }
+
     public function test_a_url_the_cdn_does_not_serve_renders_as_is(): void
     {
         $html = Blade::render('<x-core-img src="https://example.com/a.jpg" width="400" />');
@@ -216,7 +240,7 @@ class MediaComponentsTest extends TestCase
         $this->withLocalAssets(function (callable $asset): void {
             File::put(config('filesystems.disks.local_assets.root').'/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>');
 
-            $html = Blade::render('<x-core-img :src="$svg" /><x-core-img src="/assets/photo.jpg" /><x-core-img :src="$cdn" placeholder="none" />', [
+            $html = Blade::render('<x-core-img :src="$svg" /><x-core-img src="/assets/photo.jpg" /><x-core-img :src="$cdn" :widths="[]" placeholder="none" />', [
                 'svg' => $asset('logo.svg'),
                 'cdn' => Asset::make()->container(AssetContainer::make('cdn_assets')->disk('cdn_assets'))->path('photo.jpg'),
             ]);

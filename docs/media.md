@@ -16,7 +16,9 @@ field (its Value, Collection or query builder), a URL, or a file from Core
 
 - **`<x-core-img>`**: an image under a CDN origin gets `format=auto` (the CDN
   picks AVIF, WebP or the original per browser), the `width`, `height`,
-  `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
+  `quality`, `fit` and `trim` you pass, a srcset from `widths` (with neither
+  `widths` nor `width` passed, from `media.images.widths`: 320 to 1920px,
+  `[]` for none), and a 24px
   blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
   the box and bounds each rendition's height. Anything else (a local file, a
   foreign host, an SVG) renders as is, without CDN transforms. A local

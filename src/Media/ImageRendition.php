@@ -15,6 +15,9 @@ final class ImageRendition
 
     private const PLACEHOLDER_QUALITY = 30;
 
+    /** Phone, tablet and desktop widths at 1x and 2x, up to a full-width 1920px screen. */
+    public const DEFAULT_WIDTHS = [320, 480, 640, 828, 1080, 1440, 1920];
+
     /** @param  array<string, string>  $attributes */
     private function __construct(
         public readonly string $src,
@@ -36,7 +39,7 @@ final class ImageRendition
 
         if ($scheme->serves($source->url) && ! $source->isSvg()) {
             $params = self::params($options, $aspect);
-            $widths = self::widths($options['widths'] ?? null);
+            $widths = self::widths($options['widths'] ?? (blank($options['width'] ?? null) ? config('core-web.media.images.widths', self::DEFAULT_WIDTHS) : null));
             $box = fn (int $width): array => $aspect
                 ? ['width' => $width, 'height' => (int) round($width / $aspect)]
                 : ['width' => $width];

@@ -5,6 +5,7 @@ use Inly\CoreWeb\Checks\Checks\DeadTargets;
 use Inly\CoreWeb\Checks\Checks\OwnUrlLinks;
 use Inly\CoreWeb\Checks\Checks\SeoGaps;
 use Inly\CoreWeb\Media\CoreCdnScheme;
+use Inly\CoreWeb\Media\ImageRendition;
 use Statamic\StaticCaching\Middleware\Cache as StaticCache;
 
 return [
@@ -908,7 +909,9 @@ return [
     | false to write the bucket directly, and drops it at go-live. Unset, a
     | Laravel Cloud bucket (attached per environment) gets no layer.
     |
-    | images: the defaults <x-core-img> renders with.
+    | images: the defaults <x-core-img> renders with. `widths` is the srcset
+    | an image the CDN serves gets when the call names neither `widths` nor
+    | `width`, so a phone is never sent the full original ([] turns it off).
     |
     | videos: the widths <x-core-video> asks the CDN for, `small_width` for
     | phones, and the second of the frame it shows as the poster when none is
@@ -946,6 +949,7 @@ return [
         'images' => [
             'format' => 'auto',
             'placeholder' => 'blur',
+            'widths' => ImageRendition::DEFAULT_WIDTHS,
         ],
         'videos' => [
             'width' => 1280,
