@@ -22,7 +22,7 @@ class ImportStepCommand extends Command
         config([
             'queue.default' => 'sync',
             'statamic.search.queue_connection' => 'sync',
-            // The trees import saves every entry the full way to set its order, a pass core-web:entry-order makes afterwards without events (docs/laravel-cloud.md, First deploy): Laravel's `null` connection drops it.
+            // The trees import queues a full save of every entry to set its order, which core-web:entry-order writes afterwards without events (docs/laravel-cloud.md, First deploy): Laravel's `null` connection drops the jobs.
             'statamic.eloquent-driver.collections.update_entry_order_connection' => 'null',
             'statamic.eloquent-driver.collections.update_entry_parent_connection' => 'sync',
         ]);

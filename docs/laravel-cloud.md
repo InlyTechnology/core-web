@@ -155,13 +155,13 @@ import also runs in its own process: in one process the entry import leaves
 the still-empty database trees cached, and the tree import would save those
 instead of the files.
 
-Entry URIs, order and parents are written after the rows from the trees,
+Entry URIs, order and parents are written after the rows and the trees,
 one collection per process (up to an hour each), so a large site's set
-neither runs out of memory nor stops without a word. Each row is written as
-a full save would write it, without the save's events and its saves of each
+neither runs out of memory nor stops without a word. Each row goes straight
+to the entry repository, without the save's events and its saves of each
 localization again, which took seconds an entry on Cloud; the import clears
-the static cache and the cache at the end. If one fails or runs out of time, the
-rows are in: the command names the
+the static cache and the cache at the end. If one fails or runs out of
+time, the rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
 Asset meta is imported the same way, one container per process (up to an
@@ -177,10 +177,10 @@ Nothing is left on the queue. Each step runs through the hidden
 so an environment variable handed to the step would not reach it) and
 with search indexing off (the indexes, Statamic's `cp` one included, are
 swapped for a null index), which would otherwise update them once per saved
-entry. The tree import saves every entry the full way to set its order,
-which `core-web:entry-order` writes afterwards, so the steps send that pass
-to Laravel's `null` queue, which drops it. When an index's driver keeps it off the container
-(any but `local` and `null`), every index is rebuilt once at the end with
+entry. The tree import queues a full save of every entry to set its order,
+which `core-web:entry-order` writes afterwards, so the steps send those jobs
+to Laravel's `null` connection, which drops them. When an index's driver
+keeps it off the container (any but `local` and `null`), every index is rebuilt once at the end with
 `statamic:search:update --all`; a site with only `local` indexes skips it,
 since such an index is a file on one container's disk and builds itself on
 its first search.

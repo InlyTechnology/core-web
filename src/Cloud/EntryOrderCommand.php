@@ -13,7 +13,7 @@ class EntryOrderCommand extends Command
 {
     protected $signature = 'core-web:entry-order {collection}';
 
-    protected $description = 'Write one collection\'s entry URIs, order and parents from its tree (content:import runs it)';
+    protected $description = 'Write one collection\'s entry URIs, order and parents (content:import runs it)';
 
     protected $hidden = true;
 
@@ -27,7 +27,7 @@ class EntryOrderCommand extends Command
             return self::FAILURE;
         }
 
-        // The repository writes the row a full save writes, without the save's events and its saves of each localization again (docs/laravel-cloud.md, First deploy).
+        // Straight to the entry repository, without the save's events and its saves of each localization again (docs/laravel-cloud.md, First deploy).
         $collection->queryEntries()->get()->each(fn ($entry) => Entry::save($entry));
 
         return self::SUCCESS;

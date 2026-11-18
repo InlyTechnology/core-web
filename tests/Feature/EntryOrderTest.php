@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Queue;
 use Inly\CoreWeb\Tests\TestCase;
 use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\ServiceProvider as EloquentDriverServiceProvider;
@@ -56,12 +57,14 @@ class EntryOrderTest extends TestCase
             Entry::make()->collection($collection)->locale('other')->id("{$slug}-other")->origin($slug)->slug($localized)->saveQuietly();
         }
 
-        $collection->structure()->in('default')->tree([['entry' => 'about', 'children' => [['entry' => 'team']]], ['entry' => 'contact']])->save();
-        $collection->structure()->in('other')->tree([['entry' => 'about-other', 'children' => [['entry' => 'team-other']]], ['entry' => 'contact-other']])->save();
+        // Without events, as the trees import writes them: a tree save's listener would set each entry's order and parent itself.
+        $collection->structure()->in('default')->tree([['entry' => 'about', 'children' => [['entry' => 'team']]], ['entry' => 'contact']])->saveQuietly();
+        $collection->structure()->in('other')->tree([['entry' => 'about-other', 'children' => [['entry' => 'team-other']]], ['entry' => 'contact-other']])->saveQuietly();
         // As the entries import leaves the rows, written before there was a tree.
         DB::table('entries')->update(['order' => null, 'uri' => null]);
         Blink::flush();
 
+        Queue::fake();
         $saved = 0;
         Event::listen(EntrySaved::class, function () use (&$saved): void {
             $saved++;
@@ -71,6 +74,7 @@ class EntryOrderTest extends TestCase
 
         $rows = DB::table('entries')->get()->keyBy('id');
         $this->assertSame(0, $saved);
+        Queue::assertNothingPushed();
         $this->assertSame([1, 2, 3], [(int) $rows['about']->order, (int) $rows['team']->order, (int) $rows['contact']->order]);
         $this->assertSame('/about/team', $rows['team']->uri);
         $this->assertSame(2, (int) $rows['team-other']->order);
