@@ -94,6 +94,10 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 
 - **Render pictures and videos with `<x-core-img>`, `<x-core-video>` or `<x-core-media>`**, given the Asset (or
   the field) rather than a URL, so the focal point and alt text come along. Never hand-build CDN query strings.
+- **Every picture says which sizes it needs**: `:widths` read off the layout (with a `sizes` that matches it), or
+  one fixed `width`. Without them a picture under a CDN origin has no srcset, `sizes` does nothing, and every screen
+  downloads it at its uploaded size. Site-ci's gate fails a tag that has neither; `:widths="[]"` marks one that
+  needs none, such as an SVG (`docs/site-rules.md`).
 - **The asset disks are core-web's** (`media.disks`): remove a site-defined disk of the same name from
   `config/filesystems.php`. Outside production writes land in a layer and production's files cannot be deleted
   or moved; `CORE_MEDIA_LAYER=false` only on a server built before go-live, removed at launch.

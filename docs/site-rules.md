@@ -11,6 +11,7 @@ feature does not use. To run them on a site by hand:
 | Rule | Fails when |
 |---|---|
 | media disks are core-web's own | `features.media` is on and the site still defines a disk in `media.disks` itself (see [The disks](media.md#the-disks)) |
+| pictures say which sizes they need | `features.media` is on and an `<x-core-img>` or `<x-core-media>` in `resources/views` has neither `widths` nor `width` (`:$widths` counts): under a CDN origin such a picture has no srcset (see [The components](media.md#the-components)). `:widths="[]"` passes, for a picture that needs none, such as an SVG logo; a tag forwarding its component's `$attributes` is a wrapper and is skipped |
 
 A new rule can turn a site's deploy red, so run it against the sites on the
 gate before releasing it.
