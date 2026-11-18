@@ -39,7 +39,8 @@ final class ImageRendition
 
         if ($scheme->serves($source->url) && ! $source->isSvg()) {
             $params = self::params($options, $aspect);
-            $widths = self::widths($options['widths'] ?? (blank($options['width'] ?? null) ? config('core-web.media.images.widths', self::DEFAULT_WIDTHS) : null));
+            $sized = filled($options['width'] ?? null) || filled($options['height'] ?? null);
+            $widths = self::widths($options['widths'] ?? ($sized ? null : self::defaultWidths($source)));
             $box = fn (int $width): array => $aspect
                 ? ['width' => $width, 'height' => (int) round($width / $aspect)]
                 : ['width' => $width];
@@ -49,6 +50,8 @@ final class ImageRendition
                 fn (int $width) => $scheme->image($source->url, array_merge(Arr::except($params, ['width', 'height']), $box($width))).' '.$width.'w',
                 $widths,
             )) : null;
+
+            $sizes ??= $srcset ? '100vw' : null;
 
             if (($options['placeholder'] ?? config('core-web.media.images.placeholder', 'blur')) === 'blur') {
                 $placeholder = self::placeholder($scheme, $source, $params, $aspect, $position);
@@ -120,6 +123,23 @@ final class ImageRendition
         }
 
         return $params;
+    }
+
+    /**
+     * The configured widths, cut at the picture's own width when it is known (the CDN never upscales), so
+     * an image with no CSS width keeps its natural size.
+     *
+     * @return list<int>
+     */
+    private static function defaultWidths(MediaSource $source): array
+    {
+        $widths = self::widths(config('core-web.media.images.widths', self::DEFAULT_WIDTHS));
+
+        if ($source->width === null || $widths === [] || $source->width >= max($widths)) {
+            return $widths;
+        }
+
+        return [...array_filter($widths, fn (int $width) => $width < $source->width), $source->width];
     }
 
     /** @return list<int> */

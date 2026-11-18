@@ -16,9 +16,7 @@ field (its Value, Collection or query builder), a URL, or a file from Core
 
 - **`<x-core-img>`**: an image under a CDN origin gets `format=auto` (the CDN
   picks AVIF, WebP or the original per browser), the `width`, `height`,
-  `quality`, `fit` and `trim` you pass, a srcset from `widths` (with neither
-  `widths` nor `width` passed, from `media.images.widths`: 320 to 1920px,
-  `[]` for none), and a 24px
+  `quality`, `fit` and `trim` you pass, a srcset from `widths`, and a 24px
   blurred placeholder (`placeholder="none"` turns it off). `ratio` reserves
   the box and bounds each rendition's height. Anything else (a local file, a
   foreign host, an SVG) renders as is, without CDN transforms. A local
@@ -33,6 +31,11 @@ field (its Value, Collection or query builder), a URL, or a file from Core
   preset fails to render, the image has no srcset. The editor's focal point (an
   Asset's `focus`, Core's `focalPoint`) becomes `object-position` unless you
   pass a `style`, and `alt` defaults to the file's own.
+  With neither `widths`, `width` nor `height` passed, the srcset is
+  `media.images.widths` (320 to 1920px, `[]` for none), cut at the file's own
+  width when Core sends it, and `sizes` defaults to `100vw`: pass a real
+  `sizes` for anything narrower than the screen, or the browser downloads a
+  screen-wide rendition. `width` or `height` alone asks for one fixed image.
 - **`<x-core-video>`**: a video under a CDN origin plays CDN versions, 1280px
   wide and 720px on phones (`width`, `small-width`), silent when it plays
   muted (`audio=false` makes them smaller), with a frame of the video as its

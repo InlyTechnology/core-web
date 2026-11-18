@@ -61,6 +61,26 @@ class MediaComponentsTest extends TestCase
         $this->assertStringContainsString(e(self::CDN.'/a.jpg?width=800&format=auto').' 800w"', $configured);
     }
 
+    public function test_a_height_alone_keeps_one_image_of_that_height(): void
+    {
+        $html = Blade::render('<x-core-img :src="$src" height="400" fit="crop" placeholder="none" />', ['src' => self::CDN.'/a.jpg']);
+
+        $this->assertStringContainsString('src="'.e(self::CDN.'/a.jpg?height=400&fit=crop&format=auto').'"', $html);
+        $this->assertStringNotContainsString('srcset', $html);
+    }
+
+    public function test_the_default_srcset_keeps_the_ratio_and_stops_at_a_known_width(): void
+    {
+        $ratio = Blade::render('<x-core-img :src="$src" width="" ratio="4/3" placeholder="none" />', ['src' => self::CDN.'/a.jpg']);
+        $small = Blade::render('<x-core-img :src="$src" placeholder="none" />', ['src' => ['url' => self::CDN.'/logo.png', 'width' => 700]]);
+
+        $this->assertStringContainsString(e(self::CDN.'/a.jpg?width=828&height=621&format=auto').' 828w', $ratio);
+        $this->assertStringContainsString('sizes="100vw"', $ratio);
+        $this->assertStringContainsString(e(self::CDN.'/logo.png?width=640&format=auto').' 640w, ', $small);
+        $this->assertStringContainsString(e(self::CDN.'/logo.png?width=700&format=auto').' 700w"', $small);
+        $this->assertStringNotContainsString('828w', $small);
+    }
+
     public function test_a_url_the_cdn_does_not_serve_renders_as_is(): void
     {
         $html = Blade::render('<x-core-img src="https://example.com/a.jpg" width="400" />');

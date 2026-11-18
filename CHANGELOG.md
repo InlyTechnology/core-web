@@ -9,10 +9,25 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 ## Unreleased
 
 - **`<x-core-img>` on the CDN gets a srcset by default**: an image the CDN
-  serves, rendered with neither `widths` nor `width`, offers the widths in
-  `media.images.widths` (320 to 1920px), where it sent every screen the
-  full original. A call that wants one fixed image passes `width`, or
-  `:widths="[]"`. See `docs/media.md`.
+  serves, rendered with no `widths`, `width` or `height`, offers the widths
+  in `media.images.widths` (320 to 1920px) with `sizes` defaulting to
+  `100vw`, where it sent every screen the full original. See
+  `docs/media.md`.
+
+### Upgrade notes
+
+- **CDN images without `widths`, `width` or `height` now carry a srcset.**
+  - What changes: a picture shown narrower than the screen without a real
+    `sizes` downloads a screen-wide rendition (still never more than the
+    original), and a picture with no CSS width whose original is wider than
+    its slot can render at a different size.
+  - Find: `grep -rn "<x-core-img\|<x-core-media" resources/views` and look
+    at the calls that pass none of `widths`, `width` or `height`.
+  - Migrate: give each a real `sizes` (`sizes="(min-width: 1024px) 33vw,
+    100vw"`); a picture that must stay one file passes `width` or
+    `:widths="[]"`.
+  - Verify: in the browser's network panel a card or thumbnail loads a
+    rendition near its rendered width, and logos and icons keep their size.
 
 ## v0.51.0
 
