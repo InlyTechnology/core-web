@@ -42,14 +42,20 @@ class MediaPush
 
     public const STORED = 'stored';
 
+    /** Not finished in this request, which ran out of its time: finish it again with the same `ticket`. */
+    public const LATER = 'later';
+
     /** The most files one check request names. */
     public const CHECK_FILES = 500;
 
     /** The most files one uploads request names: the site asks the bucket about each before signing it. */
     public const UPLOAD_FILES = 50;
 
-    /** The most files one finish request names: finishing reads each file from the bucket. */
+    /** The most files one finish request names: saving an image's asset reads it from the bucket. */
     public const FINISH_FILES = 10;
+
+    /** Seconds after which a finish request starts no other file, well inside the 20 seconds Laravel Cloud gives a request. */
+    private const FINISH_SECONDS = 8;
 
     /** How long a signed upload address is valid; the checkout signs again for what it has not sent within it. */
     public const URL_MINUTES = 15;
@@ -154,8 +160,10 @@ class MediaPush
     public function finish(User $user, string $handle, array $items): array
     {
         $target = $this->target($user, $handle);
+        $deadline = now()->addSeconds(self::FINISH_SECONDS);
+        $finished = 0;
 
-        $results = array_map(function (array $item) use ($user, $handle, $target): array {
+        $results = array_map(function (array $item) use ($user, $handle, $target, $deadline, &$finished): array {
             $ticket = self::readTicket($user, $handle, (string) $item['ticket']);
 
             if ($ticket === null) {
@@ -165,6 +173,13 @@ class MediaPush
             if (isset($target['status'])) {
                 return ['path' => $ticket['path'], ...$target];
             }
+
+            // The first file is always finished, so each request gets further.
+            if ($finished > 0 && now()->isAfter($deadline)) {
+                return ['path' => $ticket['path'], 'status' => self::LATER];
+            }
+
+            $finished++;
 
             return ['path' => $ticket['path'], ...$this->finishOne($target['container'], $ticket, $item)];
         }, $items);
@@ -218,16 +233,23 @@ class MediaPush
             return $other;
         }
 
-        $copy = tempnam(sys_get_temp_dir(), 'core-web-media-push-');
+        $rules = self::rules($container);
+        // A bucket's ETag for a file uploaded in one piece is its MD5, so a match needs no read back.
+        $matches = self::checksum($filesystem, $path) === $ticket['md5'];
+        $copy = $matches && $rules === [] ? null : tempnam(sys_get_temp_dir(), 'core-web-media-push-');
 
         try {
-            $stream = $filesystem->readStream($path);
+            if ($copy !== null) {
+                $stream = $filesystem->readStream($path);
 
-            if (! is_resource($stream) || file_put_contents($copy, $stream) === false) {
-                return ['status' => AssetPush::MISSING, 'message' => __('core-web::sync.media_push_not_arrived', ['path' => $path])];
+                if (! is_resource($stream) || file_put_contents($copy, $stream) === false) {
+                    return ['status' => AssetPush::MISSING, 'message' => __('core-web::sync.media_push_not_arrived', ['path' => $path])];
+                }
+
+                $matches = $matches || md5_file($copy) === $ticket['md5'];
             }
 
-            if (md5_file($copy) !== $ticket['md5']) {
+            if (! $matches) {
                 return $other;
             }
 
@@ -235,10 +257,10 @@ class MediaPush
                 return ['status' => AssetPush::SAME];
             }
 
-            $refusal = $this->breaksRules($container, $copy, $path) ?? ($sent ? self::wrongType($filesystem, $path) : null);
+            $refusal = ($copy === null ? null : self::breaksRules($rules, $copy, $path)) ?? ($sent ? self::wrongType($filesystem, $path) : null);
         } finally {
             isset($stream) && is_resource($stream) && fclose($stream);
-            @unlink($copy);
+            $copy === null || @unlink($copy);
         }
 
         if ($refusal !== null) {
@@ -277,11 +299,19 @@ class MediaPush
         return is_string($checksum) ? strtolower($checksum) : null;
     }
 
-    /** The first of the container's file rules the file breaks, read from its local copy; null when it breaks none. */
-    private function breaksRules(Container $container, string $copy, string $path): ?string
+    /** @return list<mixed> the container's file rules, as a validator takes them */
+    private static function rules(Container $container): array
     {
-        $rules = collect($container->validationRules())->map(fn ($rule) => FieldValidator::parse($rule))->all();
+        return collect($container->validationRules())->map(fn ($rule) => FieldValidator::parse($rule))->values()->all();
+    }
 
+    /**
+     * The first of the container's file rules the file breaks, read from its local copy; null when it breaks none.
+     *
+     * @param  list<mixed>  $rules
+     */
+    private static function breaksRules(array $rules, string $copy, string $path): ?string
+    {
         if ($rules === []) {
             return null;
         }

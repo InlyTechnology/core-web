@@ -23,10 +23,18 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   each entry the full way**, and skips the tree import's own pass, so the
   collection trees step no longer runs out of its ten minutes on a site with
   a few thousand entries. See `docs/laravel-cloud.md` (First deploy).
+- **`media:push` finishes its files on Laravel Cloud**, where a finish request
+  ran past the 20 seconds Cloud gives a request (HTTP 504) and stopped the
+  run. A finish request starts no other file after 8 seconds and the checkout
+  sends the rest again, and the site no longer reads a file back from the
+  bucket to compare it when the bucket's checksum is the one signed for and
+  the container has no file rules. The checkout needs this version too: an
+  older one reports the files a request had no time for as failed, and
+  finishes them only over further runs.
 - **`media:push` says when it is checking files on the site**, before the
-  copy and after it, where it showed nothing until the site had answered for
-  every file, and its progress bar moves as each file is sent, where it moved
-  once a batch of up to 50 files was finished.
+  copy and after it, where it was silent until the site had answered for
+  every file. Its progress bar moves as each file is sent, where it moved
+  only after a whole batch of up to 50 files had been sent.
 
 ## v0.50.0
 

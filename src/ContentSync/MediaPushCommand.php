@@ -33,7 +33,7 @@ class MediaPushCommand extends Command
     /** The most bytes one batch of signed uploads carries. */
     private const UPLOAD_BATCH_BYTES = 256 * 1024 * 1024;
 
-    /** The most bytes one finish request names, since the site reads each file back from the bucket. */
+    /** The most bytes one finish request names, since saving an image's asset reads it back from the bucket. */
     private const FINISH_BATCH_BYTES = 100 * 1024 * 1024;
 
     /** Seconds after which the addresses not used yet are signed again, well inside MediaPush::URL_MINUTES. */
@@ -143,7 +143,7 @@ class MediaPushCommand extends Command
         $missing = [];
         $unfinished = [];
 
-        // One request per 500 files, with nothing else to show until the last answers.
+        // The site answers for every file before anything else is shown.
         $this->line(sprintf('Checking %d file(s) on %s.', count($this->files), $remote->url()));
 
         foreach ($this->check($remote, array_keys($this->files)) as $result) {
@@ -230,21 +230,42 @@ class MediaPushCommand extends Command
                 $bar->advance();
             }
 
-            foreach ($this->finishBatches($finish) as $items) {
-                // The site reads each file back from the bucket, which can take longer than an ordinary request.
-                foreach ($this->batch($remote, 'media/finish', array_map(fn (array $item) => array_filter([
-                    'ticket' => $item['ticket'],
-                    'alt' => $this->files[$item['path']]['alt'] ?? null,
-                    'focus' => $this->files[$item['path']]['focus'] ?? null,
-                ], fn (mixed $value) => $value !== null), $items), $this->uploadTimeout(0)) as $i => $result) {
-                    // A refused ticket names no path, so the request's own order says which file it was.
-                    $this->count(['path' => $items[$i]['path'], ...array_diff_key($result, ['path' => true])]);
-                }
-            }
+            $this->finish($remote, $finish);
         }
 
         $bar->finish();
         $this->newLine();
+    }
+
+    /**
+     * Saves the asset of each file sent, sending again the files a request ran out of time for. The site finishes
+     * at least the first file of each request, so every round leaves fewer.
+     *
+     * @param  list<array{path: string, ticket: string}>  $items
+     */
+    private function finish(RemoteSite $remote, array $items): void
+    {
+        while ($items !== []) {
+            $later = [];
+
+            foreach ($this->finishBatches($items) as $batch) {
+                // The site may read each file back from the bucket, which can take longer than an ordinary request.
+                foreach ($this->batch($remote, 'media/finish', array_map(fn (array $item) => array_filter([
+                    'ticket' => $item['ticket'],
+                    'alt' => $this->files[$item['path']]['alt'] ?? null,
+                    'focus' => $this->files[$item['path']]['focus'] ?? null,
+                ], fn (mixed $value) => $value !== null), $batch), $this->uploadTimeout(0)) as $i => $result) {
+                    // A refused ticket names no path, so the request's own order says which file it was.
+                    if (($result['status'] ?? null) === MediaPush::LATER) {
+                        $later[] = $batch[$i];
+                    } else {
+                        $this->count(['path' => $batch[$i]['path'], ...array_diff_key($result, ['path' => true])]);
+                    }
+                }
+            }
+
+            $items = $later;
+        }
     }
 
     /**
@@ -415,7 +436,7 @@ class MediaPushCommand extends Command
         $copied = array_values(array_diff($paths, array_keys($this->tally['failed']), array_keys($this->tally['conflicts']), array_keys($this->tally['refused'])));
 
         if ($copied !== []) {
-            $this->line(sprintf('Checking the %d copied file(s) on %s.', count($copied), $remote->url()));
+            $this->line(sprintf('Checking %d file(s) on %s again.', count($copied), $remote->url()));
         }
 
         foreach ($copied === [] ? [] : $this->check($remote, $copied) as $result) {
