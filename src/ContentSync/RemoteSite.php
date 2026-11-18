@@ -222,7 +222,10 @@ final class RemoteSite
             $bodies,
         ));
 
-        return array_map(function (mixed $result) use ($endpoint): Response|RemoteSiteBusy {
+        // A pool can fill its results in the order the requests finished; the keys say which request each answers.
+        return array_map(function (int $key) use ($results, $endpoint): Response|RemoteSiteBusy {
+            $result = $results[$key];
+
             if ($result instanceof Throwable) {
                 throw new RemoteSiteError("Could not reach {$this->url}: {$result->getMessage()}", previous: $result);
             }
@@ -232,7 +235,7 @@ final class RemoteSite
             } catch (RemoteSiteBusy $busy) {
                 return $busy;
             }
-        }, array_values($results));
+        }, array_keys($bodies));
     }
 
     /**

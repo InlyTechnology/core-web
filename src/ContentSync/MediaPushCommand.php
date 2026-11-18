@@ -278,8 +278,8 @@ class MediaPushCommand extends Command
     }
 
     /**
-     * Sends a finish request for each batch at the same time, answering in the batches' order. A request the site
-     * turned away as too many is sent again on its own, after waiting.
+     * Sends a finish request for each batch at the same time, answering in the batches' order. The requests the site
+     * turned away as too many are sent again one by one, after waiting the longest it asked for.
      *
      * @param  list<list<array{path: string, ticket: string}>>  $batches
      * @return list<list<array<string, mixed>>>
@@ -298,15 +298,15 @@ class MediaPushCommand extends Command
             'files' => $batch,
         ], $files), $timeout);
 
-        return array_map(function (Response|RemoteSiteBusy $response, array $batch) use ($remote, $timeout): array {
-            if ($response instanceof RemoteSiteBusy) {
-                $this->wait($response);
+        $busy = array_filter($responses, fn (Response|RemoteSiteBusy $response) => $response instanceof RemoteSiteBusy);
 
-                return $this->batch($remote, 'media/finish', $batch, $timeout);
-            }
+        if ($busy !== []) {
+            $this->wait(max(array_map(fn (RemoteSiteBusy $refusal) => $refusal->retryAfter ?? 30, $busy)));
+        }
 
-            return $this->answers($remote, 'media/finish', $response, count($batch));
-        }, $responses, $files);
+        return array_map(fn (Response|RemoteSiteBusy $response, array $batch) => $response instanceof RemoteSiteBusy
+            ? $this->batch($remote, 'media/finish', $batch, $timeout)
+            : $this->answers($remote, 'media/finish', $response, count($batch)), $responses, $files);
     }
 
     /**
@@ -534,14 +534,15 @@ class MediaPushCommand extends Command
                     throw $e;
                 }
 
-                $this->wait($e);
+                $this->wait($e->retryAfter);
             }
         }
     }
 
-    private function wait(RemoteSiteBusy $busy): void
+    /** Waits the seconds a site that rate limited this machine asked for, within reason. */
+    private function wait(?int $retryAfter): void
     {
-        Sleep::for(max(1, min(120, $busy->retryAfter ?? 30)))->seconds();
+        Sleep::for(max(1, min(120, $retryAfter ?? 30)))->seconds();
     }
 
     /**

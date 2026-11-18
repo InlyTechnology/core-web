@@ -3,9 +3,11 @@
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Closure;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
@@ -449,18 +451,29 @@ class MediaPushTest extends TestCase
         $this->assertSame([3, 2, 1], $finishes, 'Each request finishes its first file and leaves the rest.');
     }
 
-    public function test_finish_requests_go_out_together_and_one_turned_away_is_sent_again(): void
+    public function test_finish_requests_go_out_together_and_those_turned_away_are_sent_again_after_one_wait(): void
     {
         foreach (range(1, 25) as $n) {
             $this->local("doc-{$n}.pdf", self::PDF.str_repeat(' ', $n));
         }
-        $this->busyFinishes = 1;
+        $this->busyFinishes = 2;
 
         $this->mediaPush()->expectsOutputToContain('Copied 25 file(s).')->assertSuccessful();
 
         $finishes = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/media/finish'))->map(fn (array $pair) => count($pair[0]['files']))->values()->all();
-        $this->assertSame([10, 10, 5, 10], $finishes, 'Three requests together, then the one turned away on its own.');
+        $this->assertSame([10, 10, 5, 10, 10], $finishes, 'Three requests together, then the two turned away one by one.');
         Sleep::assertSlept(fn ($duration) => (int) $duration->totalSeconds === 7, 1);
+    }
+
+    public function test_answers_that_come_back_in_another_order_are_matched_to_their_requests(): void
+    {
+        // A pool fills its results in the order the requests finished; a fake answers in the order they were sent.
+        $answer = fn (int $n) => new Response(new Psr7Response(200, ['Content-Type' => 'application/json'], json_encode(['n' => $n])));
+        Http::shouldReceive('pool')->once()->andReturn([2 => $answer(2), 0 => $answer(0), 1 => $answer(1)]);
+
+        $responses = RemoteSite::stored()->postAtOnce('media/finish', [['n' => 0], ['n' => 1], ['n' => 2]]);
+
+        $this->assertSame([0, 1, 2], array_map(fn ($response) => $response->json('n'), $responses));
     }
 
     public function test_a_finish_request_that_cannot_reach_the_site_stops_the_run(): void
