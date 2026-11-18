@@ -155,11 +155,12 @@ block keeps the package's defaults for what it leaves out, one group deep
 ],
 ```
 
-Peak's `favicons` and `social_images` containers keep their handles but
-write through their disks, so they can be media disks too: list them and
-remove their `local` definitions from `config/filesystems.php`. On Laravel
-Cloud the `cloud` feature does that for them, and for any `local` disk in
-`media.disks`. For R2, set `endpoint` to the account's R2 endpoint and
+The `favicons` and `social_images` containers (core-web's favicons and SEO
+fieldsets upload to them, as Peak's addons did on older sites) keep their
+handles but write through their disks, so they can be media disks too:
+list them and remove their `local` definitions from
+`config/filesystems.php`. On Laravel Cloud the `cloud` feature does that for
+them, and for any `local` disk in `media.disks`. For R2, set `endpoint` to the account's R2 endpoint and
 `acl` to `false`: R2 has no object ACLs, so the bucket itself is public.
 
 ## Moving a site's own bucket disk onto these
