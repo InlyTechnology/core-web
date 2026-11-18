@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Sleep;
 use Illuminate\Testing\PendingCommand;
 use Inly\CoreWeb\ContentSync\AssetPush;
@@ -197,7 +198,9 @@ class MediaPushTest extends TestCase
         });
 
         $this->mediaPush()
+            ->expectsOutputToContain('Checking 2 file(s) on https://remote.test.')
             ->expectsOutputToContain('photos: 2 file(s), 2 to copy')
+            ->expectsOutputToContain('Checking 2 file(s) on https://remote.test again.')
             ->expectsOutputToContain('Copied 2 file(s).')
             ->assertSuccessful();
 
@@ -412,6 +415,56 @@ class MediaPushTest extends TestCase
         $this->assertFileDoesNotExist($this->disk.'/anna.png');
     }
 
+    public function test_a_finish_request_that_runs_out_of_time_leaves_the_rest_for_the_next_one(): void
+    {
+        // Each file takes nine seconds to check, past a finish request's eight.
+        Validator::extend('slow', function (): bool {
+            $this->travel(9)->seconds();
+
+            return true;
+        });
+        AssetContainer::find('photos')->validationRules(['slow'])->save();
+        $this->local('a.pdf', self::PDF);
+        $this->local('b.pdf', self::PDF.' ');
+        $this->local('c.pdf', self::PDF.'  ');
+
+        $this->mediaPush()->expectsOutputToContain('3/3')->expectsOutputToContain('Copied 3 file(s).')->assertSuccessful();
+
+        $finishes = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/media/finish'))->map(fn (array $pair) => count($pair[0]['files']))->values()->all();
+        $this->assertSame([3, 2, 1], $finishes, 'Each request finishes its first file and leaves the rest.');
+    }
+
+    public function test_a_file_whose_checksum_matches_is_not_read_back_from_the_bucket(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $disk = Mockery::mock(Storage::disk('photos'))->makePartial();
+        $disk->shouldNotReceive('readStream');
+        Storage::set('photos', $disk);
+
+        $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
+    }
+
+    public function test_a_file_whose_checksum_is_not_its_md5_is_read_back_and_compared(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $disk = Mockery::mock(Storage::disk('photos'))->makePartial();
+        $disk->shouldReceive('checksum')->andReturn(md5(self::PDF).'-2');
+        $disk->shouldReceive('readStream')->once()->andReturnUsing(fn (string $path) => fopen($this->disk.'/'.$path, 'rb'));
+        Storage::set('photos', $disk);
+
+        $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
+    }
+
+    public function test_a_site_that_finishes_nothing_in_a_round_is_not_asked_again(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $media = Mockery::mock(MediaPush::class)->makePartial();
+        $media->shouldReceive('finish')->once()->andReturn([['path' => 'guide.pdf', 'status' => MediaPush::LATER]]);
+        $this->app->instance(MediaPush::class, $media);
+
+        $this->mediaPush()->expectsOutputToContain('guide.pdf: the site had no time to finish it')->assertFailed();
+    }
+
     public function test_a_file_stored_as_another_type_than_its_extension_names_is_deleted_again(): void
     {
         $this->local('anna.png', '<html><body><script>alert(1)</script></body></html>');
@@ -462,7 +515,12 @@ class MediaPushTest extends TestCase
     {
         $this->local('guide.pdf', self::PDF);
 
-        $this->mediaPush(['--dry-run' => true])->expectsOutputToContain('1 to copy')->expectsOutputToContain('Dry run: nothing was sent.')->assertSuccessful();
+        $this->mediaPush(['--dry-run' => true])
+            ->expectsOutputToContain('Checking 1 file(s) on https://remote.test.')
+            ->expectsOutputToContain('1 to copy')
+            ->doesntExpectOutputToContain('again.')
+            ->expectsOutputToContain('Dry run: nothing was sent.')
+            ->assertSuccessful();
 
         $this->assertFileDoesNotExist($this->disk.'/guide.pdf');
         $this->assertSame([], $this->bucketPuts());
