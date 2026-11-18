@@ -173,6 +173,10 @@ With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and
 succeed, so one first-deploy list fits every site.
 
+Files that are not in git, such as an old site's uploads, go into the bucket
+from a checkout with `php artisan media:push <folder>`, signed in to the
+site: see [Media → Copying files into a container](media.md#copying-files-into-a-container).
+
 ## Deploy commands
 
 Cloud's deploy commands are one line:

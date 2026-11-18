@@ -6,6 +6,16 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`php artisan media:push <folder>`** copies a folder of files from a
+  checkout into an asset container on a bucket of the site
+  `content_sync.remote_url` names, with no bucket key on the checkout and
+  never over a file that is there. See `docs/media.md` (Copying files into a
+  container).
+- **`content:push` uploads an asset into a container with validation rules**,
+  where the site answered with a server error.
+
 ## v0.49.0
 
 - **`SiteCache::refreshAll()`** renders again the pages cached on every

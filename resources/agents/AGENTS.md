@@ -109,6 +109,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
 - **A file uploaded locally stays local** (`public/media-layer/`, never committed) until `content:push` sends it
   with the content that names it, at the same path and never over another file. Content that names a local-only
   file and is not pushed renders a missing image in production.
+- **Files in a checkout that are not in git reach a live site's bucket with `php artisan media:push <folder>`**,
+  signed in with `content:login` (`--dry-run` first). Never copy a checkout's files into a site's bucket with a key
+  or a tool such as rclone.
 - `php artisan media:check` checks the disks, the bucket's headers and a CDN rendition, and says on a checkout
   whether the asset index has been pulled.
 

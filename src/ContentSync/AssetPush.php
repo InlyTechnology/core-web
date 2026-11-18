@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\ContentSync;
 
+use Facades\Statamic\Fields\Validator as FieldValidator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
@@ -10,9 +11,11 @@ use Statamic\Contracts\Assets\AssetContainer as Container;
 use Statamic\Contracts\Assets\AssetFolder;
 use Statamic\Contracts\Auth\User;
 use Statamic\Facades\AssetContainer;
-use Statamic\Fields\Validator as FieldValidator;
+use Statamic\Facades\YAML;
 use Statamic\Rules\AllowedFile;
 use Statamic\Support\Svg;
+use Symfony\Component\Finder\SplFileInfo;
+use Throwable;
 
 /**
  * The asset half of a push: a file the checkout uploaded locally that a
@@ -68,11 +71,12 @@ class AssetPush
 
     /**
      * Writes an uploaded file at its path, with its alt text and focal point, when the site has nothing there.
+     * `$quietly` saves the asset without its events, so a bulk copy does not refresh the static cache once per file.
      *
      * @param  array<string, mixed>  $meta
      * @return array{status: string, message?: string}
      */
-    public function store(User $user, string $container, string $path, UploadedFile $file, array $meta): array
+    public function store(User $user, string $container, string $path, UploadedFile $file, array $meta, bool $quietly = false): array
     {
         $found = $this->container($user, $container, $path);
 
@@ -124,7 +128,7 @@ class AssetPush
             }
         }
 
-        $asset->save();
+        $quietly ? $asset->saveQuietly() : $asset->save();
 
         return ['status' => 'stored'];
     }
@@ -175,8 +179,22 @@ class AssetPush
         return true;
     }
 
+    /** @return array{alt?: string, focus?: string} the editable meta of a file in a checkout, from its `.meta` beside it */
+    public static function localMeta(SplFileInfo $file): array
+    {
+        $meta = $file->getPath().'/.meta/'.$file->getFilename().'.yaml';
+
+        try {
+            $data = is_file($meta) ? (array) (YAML::parse((string) file_get_contents($meta))['data'] ?? []) : [];
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_filter(array_intersect_key($data, array_flip(self::META_KEYS)), fn (mixed $value) => is_string($value) && $value !== '');
+    }
+
     /** Whether the CP would take an upload with the path's extension (Statamic's AllowedFile list). */
-    private static function allowedExtension(string $path): bool
+    public static function allowedExtension(string $path): bool
     {
         $named = new UploadedFile('/dev/null', basename($path), null, UPLOAD_ERR_NO_FILE, true);
 
