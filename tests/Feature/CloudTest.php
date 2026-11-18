@@ -4,9 +4,13 @@ namespace Inly\CoreWeb\Tests\Feature;
 
 use Closure;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Queue\NullQueue;
 use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
@@ -18,6 +22,7 @@ use LogicException;
 use Redis;
 use ReflectionClass;
 use Statamic\Eloquent\Entries\UuidEntryModel;
+use Statamic\Eloquent\Jobs\UpdateCollectionEntryOrder;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 use Statamic\Events\UserDeleted;
 use Statamic\Facades\Search;
@@ -25,10 +30,15 @@ use Statamic\Facades\User;
 use Statamic\Search\InsertMultipleJob;
 use Statamic\Search\Null\NullIndex;
 use Statamic\Search\UpdateItemIndexes;
+use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
+use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyTimeoutException;
+use Symfony\Component\Process\Process as SymfonyProcess;
 use Throwable;
 
 class CloudTest extends TestCase
 {
+    use PreventsSavingStacheItemsToDisk;
+
     protected array $features = ['cloud'];
 
     /** @var array<string, string|false> env values a test changed, as they were before */
@@ -712,6 +722,20 @@ class CloudTest extends TestCase
         $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
     }
 
+    public function test_the_trees_import_leaves_entry_order_to_core_web(): void
+    {
+        $this->assertInstanceOf(NullQueue::class, Queue::connection('null'));
+        Queue::fake();
+        config(['queue.default' => 'database']);
+        Artisan::command('core-web-test:order', function (): void {
+            dispatch(new UpdateCollectionEntryOrder('home'))->onConnection(config('statamic.eloquent-driver.collections.update_entry_order_connection'));
+        });
+
+        $this->artisan('core-web:import-step', ['line' => 'core-web-test:order'])->assertSuccessful();
+
+        Queue::assertPushed(UpdateCollectionEntryOrder::class, fn (UpdateCollectionEntryOrder $job): bool => $job->connection === 'null');
+    }
+
     public function test_asset_meta_refuses_an_unknown_container(): void
     {
         $this->artisan('core-web:asset-meta', ['container' => 'nope'])->assertFailed();
@@ -734,7 +758,7 @@ class CloudTest extends TestCase
         });
 
         $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe --flag --no-interaction'])->assertSuccessful();
-        $this->assertSame(['sync', 'sync', 'sync', 'sync', ['cp' => ['driver' => 'null']], true], $seen);
+        $this->assertSame(['sync', 'sync', 'null', 'sync', ['cp' => ['driver' => 'null']], true], $seen);
 
         config(['statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
         $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe', '--with-search' => true])->assertSuccessful();
@@ -754,9 +778,119 @@ class CloudTest extends TestCase
     {
         $process = ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']);
 
-        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 2));
+        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 4));
         $this->assertContains('--with-search', ImportContentCommand::stepProcess(['statamic:search:update', '--all'], search: true));
-        $this->assertSame("core-web:entry-order 'a b' --no-interaction", ImportContentCommand::stepProcess(['core-web:entry-order', 'a b'])[3]);
+        $this->assertSame("core-web:entry-order 'a b' --no-interaction", ImportContentCommand::stepProcess(['core-web:entry-order', 'a b'])[5]);
+    }
+
+    public function test_an_import_step_runs_with_the_imports_memory_limit(): void
+    {
+        $limit = ini_get('memory_limit');
+
+        try {
+            ini_set('memory_limit', '1G');
+
+            $this->assertSame([PHP_BINARY, '-d', 'memory_limit=1G', base_path('artisan')], array_slice(ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']), 0, 4));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+    }
+
+    public function test_a_step_that_runs_out_of_memory_fails_and_says_how_to_give_it_more(): void
+    {
+        $this->createContentTables();
+
+        // The entry import writes rows one by one, so it can die with some of them in.
+        Process::fake(function () {
+            Schema::getConnection()->table('entries')->insert(['id' => 'home']);
+
+            return Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted', exitCode: 255);
+        });
+
+        $limit = ini_get('memory_limit');
+
+        try {
+            ini_set('memory_limit', '256M');
+
+            $this->artisan('content:import')
+                ->expectsOutputToContain('FAIL')
+                ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
+                ->expectsOutputToContain('php -d memory_limit=1G artisan')
+                ->expectsOutputToContain('`php artisan content:import --fresh --force`')
+                ->doesntExpectOutputToContain('DONE')
+                ->assertFailed();
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+
+        Process::assertRanTimes(fn ($process): bool => true, 1);
+    }
+
+    public function test_the_memory_advice_names_a_limit_above_the_one_that_ran_out(): void
+    {
+        $this->createContentTables();
+        Process::fake(['*' => Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted', exitCode: 255)]);
+        $limit = ini_get('memory_limit');
+
+        try {
+            ini_set('memory_limit', '1G');
+
+            $this->artisan('content:import')->expectsOutputToContain('php -d memory_limit=2G artisan')->assertFailed();
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+    }
+
+    public function test_a_step_that_leaves_no_entries_table_names_both_reruns(): void
+    {
+        $this->createContentTables();
+        Process::fake(function () {
+            Schema::getConnection()->getSchemaBuilder()->drop('entries');
+
+            return Process::result(errorOutput: 'SQLSTATE[42P01]: Undefined table', exitCode: 1);
+        });
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('To run it again: `php artisan content:import`, with `--fresh --force` if it says the database already holds entries.')
+            ->assertFailed();
+    }
+
+    public function test_a_step_that_fails_otherwise_names_the_plain_rerun_and_no_memory_advice(): void
+    {
+        $this->createContentTables();
+        Process::fake(['*' => Process::result(errorOutput: 'SQLSTATE[23505]: Unique violation', exitCode: 1)]);
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('FAIL')
+            ->expectsOutputToContain('No entries were written. To run it again: `php artisan content:import`.')
+            ->doesntExpectOutputToContain('memory_limit')
+            ->doesntExpectOutputToContain('--fresh --force')
+            ->assertFailed();
+    }
+
+    public function test_a_step_that_runs_out_of_time_says_so(): void
+    {
+        $this->createContentTables();
+        Process::fake(function () {
+            throw new ProcessTimedOutException(new SymfonyTimeoutException(new SymfonyProcess(['true']), SymfonyTimeoutException::TYPE_GENERAL), Process::result(exitCode: -1));
+        });
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('FAIL')
+            ->expectsOutputToContain('statamic:eloquent:import-entries ran out of time after 10 minutes.')
+            ->doesntExpectOutputToContain('exited with code')
+            ->assertFailed();
+    }
+
+    private function createContentTables(): void
+    {
+        config(['statamic.eloquent-driver.entries.driver' => 'eloquent']);
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            Schema::create($table, function (Blueprint $blueprint): void {
+                $blueprint->string('id');
+            });
+        }
     }
 
     public function test_only_indexes_that_outlive_the_container_are_rebuilt_after_an_import(): void

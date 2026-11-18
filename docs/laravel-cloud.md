@@ -123,12 +123,23 @@ On a new, empty database, load `content/` once from Cloud's commands tab:
 php artisan content:import
 ```
 
+The import runs in steps, each a PHP process of its own with the memory
+limit the import runs with. Cloud sets PHP's limit as a share of the
+instance's memory; when a step runs out of it, the import says so. Give it
+what the instance can spare:
+
+```bash
+php -d memory_limit=1G artisan content:import
+```
+
 It refuses while the database holds entries or misses one of the driver's
 tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work
 included, so it is for a first deploy or a rebuild only; form submissions,
 revisions and tokens exist only in the database and are kept. Run it whole:
-an asset without its meta row renders no image. Last, with users on the
+an asset without its meta row renders no image. A content step that fails
+or runs out of time stops the import, which names the commands that finish
+it or run it again. Last, with users on the
 eloquent repository, it imports `users/` (`statamic:eloquent:import-users`)
 while the users table is empty. A table that holds an account, or a site
 with `cms_sign_in` on (Core makes each account at its first sign-in and
@@ -144,10 +155,13 @@ import also runs in its own process: in one process the entry import leaves
 the still-empty database trees cached, and the tree import would save those
 instead of the files.
 
-Entry URIs and order are recomputed after the rows, one collection per
-process (up to an hour each), so a large site's set neither runs out of
-memory nor stops without a word. If one fails or runs out of time, the
-rows are in: the command names the
+Entry URIs, order and parents are written after the rows and the trees,
+one collection per process (up to an hour each), so a large site's set
+neither runs out of memory nor stops without a word. Each row goes straight
+to the entry repository, without the save's events and its saves of each
+localization again, which took seconds an entry on Cloud; the import clears
+the static cache and the cache at the end. If one fails or runs out of
+time, the rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
 Asset meta is imported the same way, one container per process (up to an
@@ -163,11 +177,13 @@ Nothing is left on the queue. Each step runs through the hidden
 so an environment variable handed to the step would not reach it) and
 with search indexing off (the indexes, Statamic's `cp` one included, are
 swapped for a null index), which would otherwise update them once per saved
-entry. When an index's driver keeps it off the container (any but `local`
-and `null`), every index is rebuilt once at the end with
-`statamic:search:update --all`; a site with only `local` indexes skips it,
-since such an index is a file on one container's disk and builds itself on
-its first search.
+entry. The tree import queues a full save of every entry to set its order,
+which `core-web:entry-order` writes afterwards, so the steps send those jobs
+to Laravel's `null` connection, which drops them. When an index's driver
+keeps it off the container (any but `local` and `null`), every index is
+rebuilt once at the end with `statamic:search:update --all`; a site with
+only `local` indexes skips it, since such an index is a file on one
+container's disk and builds itself on its first search.
 
 With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and
