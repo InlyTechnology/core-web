@@ -44,7 +44,7 @@ token, the `APP_URL` host as `X-Core-Environment` and the Message-ID as
 `Idempotency-Key`: the same call as Core's own `core` mailer. core-services
 sends it with the key restricted to the domain the message is from, so the
 site never holds a Resend key, and a From on a domain Core Cloud did not set
-up for the site is refused with a 403.
+up for the site is refused by the gateway.
 
 A send fails when `CORE_TOKEN` is empty, when the gateway refuses the
 message, or when it cannot be reached in two attempts. A message needs a To
