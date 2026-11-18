@@ -6,6 +6,15 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`media:push` sends up to four finish requests at the same time**, where
+  it sent one and waited for its answer. Saving a file's asset makes the site
+  read the file back from the bucket, so a copy of a few thousand files
+  spent most of its time waiting on one request at a time. A request the
+  site turns away for sending too many is sent again after the wait it asks
+  for.
+
 ## v0.51.0
 
 - **The `archived-links` content check**: links into the Wayback Machine,
