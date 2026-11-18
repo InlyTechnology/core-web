@@ -10,7 +10,7 @@ class CloudMediaTest extends TestCase
 {
     protected array $features = ['cloud', 'media'];
 
-    /** As a Peak site's config/filesystems.php ships them, loaded before the providers register. */
+    /** As a site's config/filesystems.php ships them, loaded before the providers register. */
     protected function resolveApplicationConfiguration($app): void
     {
         parent::resolveApplicationConfiguration($app);
@@ -39,9 +39,9 @@ class CloudMediaTest extends TestCase
         $this->assertSame(['s3', 'fls-site'], [config('filesystems.disks.files.driver'), config('filesystems.disks.files.bucket')]);
     }
 
-    public function test_on_cloud_peaks_local_disks_are_media_disks_on_the_bucket(): void
+    public function test_on_cloud_local_favicon_and_social_disks_are_media_disks_on_the_bucket(): void
     {
-        foreach (CloudDefaults::PEAK_DISKS as $disk) {
+        foreach (CloudDefaults::FAVICON_AND_SOCIAL_DISKS as $disk) {
             $this->assertTrue(MediaDisks::defines($disk));
             $this->assertSame($disk, config("core-web.media.disks.{$disk}"));
             $this->assertSame(['s3', 'fls-site'], [config("filesystems.disks.{$disk}.driver"), config("filesystems.disks.{$disk}.bucket")]);

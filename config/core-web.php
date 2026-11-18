@@ -896,8 +896,10 @@ return [
     | an asset can read the bucket.
     |
     | disks: each Statamic asset disk core-web defines, by name, with the
-    | folder it lives in, in the bucket and locally (public/<folder>). Leave
-    | out disks Statamic addons hardcode as local (favicons, social_images).
+    | folder it lives in, in the bucket and locally (public/<folder>). A site
+    | using the favicons or SEO features lists `favicons` and `social_images`
+    | too: their fieldsets upload to those containers (docs/media.md, "The
+    | disks").
     |
     | layer: outside production a disk never writes the bucket's own files.
     | Writes, edits and deletes land in a layer in front of it, and reads try
