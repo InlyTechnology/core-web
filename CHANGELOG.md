@@ -27,7 +27,8 @@ one it moves to. Before 1.0 such a release bumps the minor version.
     100vw"`); a picture that must stay one file passes `width` or
     `:widths="[]"`.
   - Verify: in the browser's network panel a card or thumbnail loads a
-    rendition near its rendered width, and logos and icons keep their size.
+    rendition near its rendered width, and a logo or icon with no CSS width
+    has one, or passes `width` or `:widths="[]"`.
 
 ## v0.51.0
 

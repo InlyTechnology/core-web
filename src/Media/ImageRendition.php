@@ -126,8 +126,8 @@ final class ImageRendition
     }
 
     /**
-     * The configured widths, cut at the picture's own width when it is known (the CDN never upscales), so
-     * an image with no CSS width keeps its natural size.
+     * The configured widths, cut at the picture's own width when it is known: the CDN never upscales, so a
+     * wider entry would be another copy of the original.
      *
      * @return list<int>
      */

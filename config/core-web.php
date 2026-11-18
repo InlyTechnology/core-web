@@ -910,8 +910,9 @@ return [
     | Laravel Cloud bucket (attached per environment) gets no layer.
     |
     | images: the defaults <x-core-img> renders with. `widths` is the srcset
-    | an image the CDN serves gets when the call names neither `widths` nor
-    | `width`, so a phone is never sent the full original ([] turns it off).
+    | an image the CDN serves gets when the call names no `widths`, `width`
+    | or `height`, so a phone is never sent the full original ([] turns it
+    | off).
     |
     | videos: the widths <x-core-video> asks the CDN for, `small_width` for
     | phones, and the second of the frame it shows as the poster when none is
