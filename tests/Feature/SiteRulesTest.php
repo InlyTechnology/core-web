@@ -82,9 +82,26 @@ class SiteRulesTest extends TestCase
             '<x-core-img {{ $attributes->merge([\'class\' => \'w-full\']) }} />',
             '{{-- <x-core-img :src="$e" /> --}}',
             '<x-core-video :src="$f" />',
+            '<x-core-img :$src :$widths sizes="100vw" />',
+            '<x-core-img :src="$g" :$width />',
+            '<x-core-img :src="$h" @class([\'rounded\' => $round]) :widths="[320, 640]" />',
+            '<x-core-img-card :src="$i" />',
+            '<x-core-media-gallery :items="$j" />',
         ]));
 
         $this->assertSame([], $this->rule('coreImagesWithoutWidths')[0]);
+    }
+
+    public function test_a_width_only_inside_a_value_or_another_attribute_is_reported(): void
+    {
+        $this->siteView('words.blade.php', implode("\n", [
+            '<x-core-img :src="$a" alt="Set width = 3m" />',
+            '<x-core-img :src="$b" x-bind:width="w" />',
+            '<x-core-img :src="$c" @style([\'opacity: .5\' => $dim]) class="[&[width=1]]:block" />',
+            '<x:core-img :src="$d" />',
+        ]));
+
+        $this->assertCount(4, $this->rule('coreImagesWithoutWidths')[0]);
     }
 
     public function test_pictures_are_not_checked_without_the_media_feature(): void

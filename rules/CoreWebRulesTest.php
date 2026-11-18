@@ -57,10 +57,11 @@ class CoreWebRulesTest extends TestCase
     }
 
     /**
-     * Without `widths` an <x-core-img> has no srcset, so `sizes` does nothing and
-     * every screen gets the picture at its uploaded size. A tag says which files
-     * it needs: `widths`, or one fixed `width`. A tag that forwards its
-     * component's `$attributes` is a site's wrapper, whose callers pass them.
+     * Without `widths` an <x-core-img> of a picture under a CDN origin has no
+     * srcset, so `sizes` does nothing and every screen gets the picture at its
+     * uploaded size. A tag says which files it needs: `widths`, or one fixed
+     * `width`. A tag that forwards its component's `$attributes` is a site's
+     * wrapper and is skipped.
      *
      * @return array{list<string>, string}
      */
@@ -82,10 +83,21 @@ class CoreWebRulesTest extends TestCase
             // Comments become blank lines, so a commented-out tag is skipped and line numbers stay true.
             $code = (string) preg_replace_callback('/\{\{--.*?--\}\}/s', fn (array $m) => str_repeat("\n", substr_count($m[0], "\n")), (string) file_get_contents($file->getPathname()));
 
-            preg_match_all('/<x-core-(?:img|media)\b((?:[^"\'>]|"[^"]*"|\'[^\']*\')*)>/s', $code, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+            // A tag ends at the first `>` outside a quoted value and outside a directive's parentheses (`@class([... => ...])`).
+            preg_match_all('/<x[-:]core-(?:img|media)(?=[\s\/>])((?:@\w+(\((?:[^()"\']|"[^"]*"|\'[^\']*\'|(?2))*\))|"[^"]*"|\'[^\']*\'|[^"\'>])*)>/s', $code, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
 
-            foreach ($tags as [[$tag, $offset], [$attributes]]) {
-                if (preg_match('/(?<![\w-]):?widths?\s*=/', $attributes) || str_contains($attributes, '$attributes')) {
+            foreach ($tags as $match) {
+                [$tag, $offset] = $match[0];
+                $attributes = $match[1][0];
+
+                if (str_contains($attributes, '$attributes')) {
+                    continue;
+                }
+
+                // Attribute names only: `widths="…"`, `:widths="…"` or Blade's `:$widths`, never a word inside a value.
+                $names = (string) preg_replace('/"[^"]*"|\'[^\']*\'|@\w+(\((?:[^()"\']|"[^"]*"|\'[^\']*\'|(?1))*\))/s', '""', $attributes);
+
+                if (preg_match('/(?:^|\s):?\$?widths?(?=[\s=\/]|$)/', $names)) {
                     continue;
                 }
 
@@ -96,7 +108,7 @@ class CoreWebRulesTest extends TestCase
 
         return [
             $hits,
-            'Give each <x-core-img> / <x-core-media> the sizes it needs: `:widths` for a srcset that fits the layout, or one fixed `width` (inly/core-web docs/media.md, "The components"). `:widths="[]"` says on purpose that a picture needs none.',
+            'Give each <x-core-img> / <x-core-media> the sizes it needs: `:widths` for a srcset that fits the layout, or one fixed `width` (inly/core-web docs/media.md, "The components"). `:widths="[]"` says on purpose that a picture needs none, such as an SVG, which the CDN serves as is.',
         ];
     }
 }
