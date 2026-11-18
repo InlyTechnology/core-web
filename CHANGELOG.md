@@ -12,14 +12,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   `php -d memory_limit=1G artisan content:import` reaches each step, where
   every step had php.ini's limit. A step that runs out of memory names how to
   give it more. A failed step shows FAIL where it showed DONE, says when it
-  ran out of time where it named exit code -1, and is followed by the command
-  that runs the import again. See `docs/laravel-cloud.md` (First deploy).
-- **`content:import` renders no cached page again while it runs**, and skips
-  the tree import's own pass over every entry, which `core-web:entry-order`
-  repeats per collection. With `background_recache` on and pages cached,
-  each entry the pass saved rendered its site's cached pages first, so the
-  collection trees step ran out of its ten minutes on a site with a few
-  thousand entries.
+  ran out of time where it named exit code -1, and is followed by the
+  commands that finish the import or run it again. See
+  `docs/laravel-cloud.md` (First deploy).
+- **`content:import` writes entry URIs, order and parents without saving
+  each entry the full way**, and skips the tree import's own pass, so the
+  collection trees step no longer runs out of its ten minutes on a site with
+  a few thousand entries. See `docs/laravel-cloud.md` (First deploy).
 
 ## v0.50.0
 

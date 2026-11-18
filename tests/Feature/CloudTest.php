@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\Tests\Feature;
 use Closure;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Queue\NullQueue;
 use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -14,7 +15,6 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\Cloud\ImportContentCommand;
-use Inly\CoreWeb\Cloud\ImportStepCommand;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
 use Inly\CoreWeb\Tests\TestCase;
@@ -25,7 +25,6 @@ use Statamic\Eloquent\Entries\UuidEntryModel;
 use Statamic\Eloquent\Jobs\UpdateCollectionEntryOrder;
 use Statamic\Eloquent\ServiceProvider as EloquentDriver;
 use Statamic\Events\UserDeleted;
-use Statamic\Facades\Collection;
 use Statamic\Facades\Search;
 use Statamic\Facades\User;
 use Statamic\Search\InsertMultipleJob;
@@ -723,19 +722,9 @@ class CloudTest extends TestCase
         $this->artisan('core-web:entry-order', ['collection' => 'nope'])->assertFailed();
     }
 
-    public function test_entry_order_renders_no_cached_page_again(): void
-    {
-        config(['statamic.static_caching.background_recache' => true]);
-        Collection::make('pages')->save();
-
-        $this->artisan('core-web:entry-order', ['collection' => 'pages'])->assertSuccessful();
-
-        $this->assertFalse(config('statamic.static_caching.background_recache'));
-        $this->assertSame('sync', config('statamic.eloquent-driver.collections.update_entry_order_connection'));
-    }
-
     public function test_the_trees_import_leaves_entry_order_to_core_web(): void
     {
+        $this->assertInstanceOf(NullQueue::class, Queue::connection('null'));
         Queue::fake();
         config(['queue.default' => 'database']);
         Artisan::command('core-web-test:order', function (): void {
@@ -744,7 +733,7 @@ class CloudTest extends TestCase
 
         $this->artisan('core-web:import-step', ['line' => 'core-web-test:order'])->assertSuccessful();
 
-        Queue::assertPushed(UpdateCollectionEntryOrder::class, fn (UpdateCollectionEntryOrder $job): bool => $job->connection === ImportStepCommand::DISCARD);
+        Queue::assertPushed(UpdateCollectionEntryOrder::class, fn (UpdateCollectionEntryOrder $job): bool => $job->connection === 'null');
     }
 
     public function test_asset_meta_refuses_an_unknown_container(): void
@@ -765,14 +754,11 @@ class CloudTest extends TestCase
                 config('statamic.eloquent-driver.collections.update_entry_parent_connection'),
                 config('statamic.search.indexes'),
                 $this->option('flag'),
-                config('statamic.static_caching.background_recache'),
-                config('queue.connections.'.ImportStepCommand::DISCARD.'.driver'),
             ];
         });
-        config(['statamic.static_caching.background_recache' => true]);
 
         $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe --flag --no-interaction'])->assertSuccessful();
-        $this->assertSame(['sync', 'sync', ImportStepCommand::DISCARD, 'sync', ['cp' => ['driver' => 'null']], true, false, 'null'], $seen);
+        $this->assertSame(['sync', 'sync', 'null', 'sync', ['cp' => ['driver' => 'null']], true], $seen);
 
         config(['statamic.search.indexes' => ['default' => ['driver' => 'local']]]);
         $this->artisan('core-web:import-step', ['line' => 'core-web-test:probe', '--with-search' => true])->assertSuccessful();
@@ -821,13 +807,21 @@ class CloudTest extends TestCase
             return Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted', exitCode: 255);
         });
 
-        $this->artisan('content:import')
-            ->expectsOutputToContain('FAIL')
-            ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
-            ->expectsOutputToContain('php -d memory_limit=1G artisan')
-            ->expectsOutputToContain('`php artisan content:import --fresh --force`')
-            ->doesntExpectOutputToContain('DONE')
-            ->assertFailed();
+        $limit = ini_get('memory_limit');
+
+        try {
+            ini_set('memory_limit', '256M');
+
+            $this->artisan('content:import')
+                ->expectsOutputToContain('FAIL')
+                ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
+                ->expectsOutputToContain('php -d memory_limit=1G artisan')
+                ->expectsOutputToContain('`php artisan content:import --fresh --force`')
+                ->doesntExpectOutputToContain('DONE')
+                ->assertFailed();
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
 
         Process::assertRanTimes(fn ($process): bool => true, 1);
     }
@@ -845,6 +839,20 @@ class CloudTest extends TestCase
         } finally {
             ini_set('memory_limit', $limit);
         }
+    }
+
+    public function test_a_step_that_leaves_no_entries_table_names_both_reruns(): void
+    {
+        $this->createContentTables();
+        Process::fake(function () {
+            Schema::getConnection()->getSchemaBuilder()->drop('entries');
+
+            return Process::result(errorOutput: 'SQLSTATE[42P01]: Undefined table', exitCode: 1);
+        });
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('To run it again: `php artisan content:import`, with `--fresh --force` if it says the database already holds entries.')
+            ->assertFailed();
     }
 
     public function test_a_step_that_fails_otherwise_names_the_plain_rerun_and_no_memory_advice(): void

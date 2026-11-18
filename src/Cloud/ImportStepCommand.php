@@ -17,20 +17,14 @@ class ImportStepCommand extends Command
 
     protected $hidden = true;
 
-    /** A queue that drops what it is given. */
-    public const DISCARD = 'core-web-discard';
-
     public function handle(): int
     {
         config([
             'queue.default' => 'sync',
-            'queue.connections.'.self::DISCARD => ['driver' => 'null'],
             'statamic.search.queue_connection' => 'sync',
-            // The trees import saves every entry again to set its order, and core-web:entry-order does the same per collection afterwards.
-            'statamic.eloquent-driver.collections.update_entry_order_connection' => self::DISCARD,
+            // The trees import saves every entry the full way to set its order, a pass core-web:entry-order makes afterwards without events (docs/laravel-cloud.md, First deploy): Laravel's `null` connection drops it.
+            'statamic.eloquent-driver.collections.update_entry_order_connection' => 'null',
             'statamic.eloquent-driver.collections.update_entry_parent_connection' => 'sync',
-            // On the sync queue, a save that renders the site's cached pages again would render them all before the next row; content:import clears them at the end.
-            'statamic.static_caching.background_recache' => false,
         ]);
 
         // Every entry the steps save would otherwise update the indexes one by one; content:import builds them once at the end where they outlive the container.

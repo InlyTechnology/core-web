@@ -117,7 +117,7 @@ class ImportContentCommand extends Command
 
             foreach ($containers as $i => $handle) {
                 if (! $this->step("asset meta: {$handle}", ['core-web:asset-meta', $handle], timeout: 3600)) {
-                    $this->line('The other rows are in. To finish, run `php artisan core-web:asset-meta <container>` for '.implode(', ', array_slice($containers, $i)).' (a run again skips what is already in), then `php artisan core-web:entry-order <collection>` for '.Collection::handles()->implode(', ').', then statamic:static:clear and cache:clear.');
+                    $this->line('The other rows are in. To finish, run `php artisan core-web:asset-meta <container>` for '.implode(', ', array_slice($containers, $i)).' (a run again skips what is already in), then `php artisan core-web:entry-order <collection>` for '.Collection::handles()->implode(', ').', then `php artisan statamic:static:clear` and `php artisan cache:clear`.');
 
                     return self::FAILURE;
                 }
@@ -128,7 +128,7 @@ class ImportContentCommand extends Command
 
         foreach ($handles as $i => $handle) {
             if (! $this->step("entry URIs and order: {$handle}", ['core-web:entry-order', $handle], timeout: 3600)) {
-                $this->line('The rows are in. To finish, run `php artisan core-web:entry-order <collection>` for '.implode(', ', array_slice($handles, $i)).', then statamic:static:clear and cache:clear.');
+                $this->line('The rows are in. To finish, run `php artisan core-web:entry-order <collection>` for '.implode(', ', array_slice($handles, $i)).', then `php artisan statamic:static:clear` and `php artisan cache:clear`.');
 
                 return self::FAILURE;
             }
@@ -195,7 +195,7 @@ class ImportContentCommand extends Command
         $users = $this->usersTable();
 
         if ($users === null) {
-            return 'the users table does not exist yet, so users/ was not imported. Run migrate, then statamic:eloquent:import-users.';
+            return 'the users table does not exist yet, so users/ was not imported. Run `php artisan migrate`, then `php artisan statamic:eloquent:import-users`.';
         }
 
         return $users->exists() ? 'the users table already holds accounts, so users/ was not imported.' : null;
