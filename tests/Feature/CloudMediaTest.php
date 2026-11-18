@@ -39,7 +39,7 @@ class CloudMediaTest extends TestCase
         $this->assertSame(['s3', 'fls-site'], [config('filesystems.disks.files.driver'), config('filesystems.disks.files.bucket')]);
     }
 
-    public function test_on_cloud_peaks_local_disks_are_media_disks_on_the_bucket(): void
+    public function test_on_cloud_local_favicon_and_social_disks_are_media_disks_on_the_bucket(): void
     {
         foreach (CloudDefaults::FAVICON_AND_SOCIAL_DISKS as $disk) {
             $this->assertTrue(MediaDisks::defines($disk));
