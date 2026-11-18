@@ -65,7 +65,7 @@ final class CloudDefaults
     public const WARM_QUEUE = 'low';
 
     /** The disks behind the `favicons` and `social_images` containers, which core-web's fieldsets (and Peak's addons on older sites) upload to by handle. */
-    public const PEAK_DISKS = ['favicons', 'social_images'];
+    public const FAVICON_AND_SOCIAL_DISKS = ['favicons', 'social_images'];
 
     /** Whether this process runs on Laravel Cloud (core-web.cloud.detected forces an answer, for tests). */
     public static function onCloud(): bool
@@ -169,16 +169,16 @@ final class CloudDefaults
     }
 
     /**
-     * Peak's local disks, and a media disk the site keeps local for another host, become media disks on the bucket
-     * before MediaDisks defines the disks: a file written to Cloud's disk is gone at the next deploy and seen by one
-     * replica only. A disk the site points elsewhere is left alone.
+     * The local favicons and social_images disks, and a media disk the site keeps local for another host, become
+     * media disks on the bucket before MediaDisks defines the disks: a file written to Cloud's disk is gone at the next
+     * deploy and seen by one replica only. A disk the site points elsewhere is left alone.
      */
     public static function moveLocalDisksToBucket(Repository $config): void
     {
         $disks = (array) $config->get('filesystems.disks', []);
         $media = (array) $config->get('core-web.media.disks', []);
 
-        foreach ([...self::PEAK_DISKS, ...array_keys($media)] as $disk) {
+        foreach ([...self::FAVICON_AND_SOCIAL_DISKS, ...array_keys($media)] as $disk) {
             if (($disks[$disk]['driver'] ?? null) !== 'local') {
                 continue;
             }
