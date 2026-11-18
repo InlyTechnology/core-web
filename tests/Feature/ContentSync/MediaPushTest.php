@@ -444,6 +444,27 @@ class MediaPushTest extends TestCase
         $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
     }
 
+    public function test_a_file_whose_checksum_is_not_its_md5_is_read_back_and_compared(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $disk = Mockery::mock(Storage::disk('photos'))->makePartial();
+        $disk->shouldReceive('checksum')->andReturn(md5(self::PDF).'-2');
+        $disk->shouldReceive('readStream')->once()->andReturnUsing(fn (string $path) => fopen($this->disk.'/'.$path, 'rb'));
+        Storage::set('photos', $disk);
+
+        $this->mediaPush()->expectsOutputToContain('Copied 1 file(s).')->assertSuccessful();
+    }
+
+    public function test_a_site_that_finishes_nothing_in_a_round_is_not_asked_again(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $media = Mockery::mock(MediaPush::class)->makePartial();
+        $media->shouldReceive('finish')->once()->andReturn([['path' => 'guide.pdf', 'status' => MediaPush::LATER]]);
+        $this->app->instance(MediaPush::class, $media);
+
+        $this->mediaPush()->expectsOutputToContain('guide.pdf: the site had no time to finish it')->assertFailed();
+    }
+
     public function test_a_file_stored_as_another_type_than_its_extension_names_is_deleted_again(): void
     {
         $this->local('anna.png', '<html><body><script>alert(1)</script></body></html>');

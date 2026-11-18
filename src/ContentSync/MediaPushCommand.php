@@ -33,7 +33,7 @@ class MediaPushCommand extends Command
     /** The most bytes one batch of signed uploads carries. */
     private const UPLOAD_BATCH_BYTES = 256 * 1024 * 1024;
 
-    /** The most bytes one finish request names, since saving an image's asset reads it back from the bucket. */
+    /** The most bytes one finish request names, since saving an asset can read the file back from the bucket. */
     private const FINISH_BATCH_BYTES = 100 * 1024 * 1024;
 
     /** Seconds after which the addresses not used yet are signed again, well inside MediaPush::URL_MINUTES. */
@@ -262,6 +262,15 @@ class MediaPushCommand extends Command
                         $this->count(['path' => $batch[$i]['path'], ...array_diff_key($result, ['path' => true])]);
                     }
                 }
+            }
+
+            // A site that finished nothing in a round would never finish these.
+            if (count($later) === count($items)) {
+                foreach ($later as $item) {
+                    $this->tally['failed'][$item['path']] = 'the site had no time to finish it; run media:push again.';
+                }
+
+                return;
             }
 
             $items = $later;

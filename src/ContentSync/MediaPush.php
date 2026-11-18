@@ -51,7 +51,7 @@ class MediaPush
     /** The most files one uploads request names: the site asks the bucket about each before signing it. */
     public const UPLOAD_FILES = 50;
 
-    /** The most files one finish request names: saving an image's asset reads it from the bucket. */
+    /** The most files one finish request names: saving an asset can read the file back from the bucket. */
     public const FINISH_FILES = 10;
 
     /** Seconds after which a finish request starts no other file, well inside the 20 seconds Laravel Cloud gives a request. */
