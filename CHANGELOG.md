@@ -9,8 +9,9 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 ## Unreleased
 
 - **A `core` mailer that sends through core-gateway** with the site's
-  `CORE_TOKEN`, so a site sends mail without a Resend key of its own. Used only when `MAIL_MAILER=core`. See
-  `docs/mail-sender.md` (Sending through core-gateway).
+  `CORE_TOKEN`, so a site sends mail without a Resend key of its own. Used
+  only when `MAIL_MAILER=core`. See `docs/mail-sender.md` (Sending through
+  core-gateway).
 
 ## v0.50.0
 

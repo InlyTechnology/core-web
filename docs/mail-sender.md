@@ -30,14 +30,14 @@ defaults to `APP_NAME`.
 
 A site can send through core-gateway instead of holding a Resend key in its
 environment. core-web registers a `core` mailer beside the site's own; a site
-sends through it only when its environment names it and holds a Core token:
+sends through it only when `MAIL_MAILER` names it, and it needs `CORE_TOKEN`
+to send:
 
 ```env
 MAIL_MAILER=core
 CORE_TOKEN=…
 ```
 
-The From address must be on a sending domain Core Cloud set up for the site.
 The mailer posts each message as Resend's JSON to
 `https://gateway.inlycore.com/mail/emails` with `CORE_TOKEN` as the bearer
 token, the `APP_URL` host as `X-Core-Environment` and the Message-ID as
