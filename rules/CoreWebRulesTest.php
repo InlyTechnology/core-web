@@ -80,11 +80,17 @@ class CoreWebRulesTest extends TestCase
                 continue;
             }
 
+            $path = ltrim(substr($file->getPathname(), strlen(base_path())), '/');
+
             // Comments become blank lines, so a commented-out tag is skipped and line numbers stay true.
             $code = (string) preg_replace_callback('/\{\{--.*?--\}\}/s', fn (array $m) => str_repeat("\n", substr_count($m[0], "\n")), (string) file_get_contents($file->getPathname()));
 
             // A tag ends at the first `>` outside a quoted value and outside a directive's parentheses (`@class([... => ...])`).
-            preg_match_all('/<x[-:]core-(?:img|media)(?=[\s\/>])((?:@\w+(\((?:[^()"\']|"[^"]*"|\'[^\']*\'|(?2))*\))|"[^"]*"|\'[^\']*\'|[^"\'>])*)>/s', $code, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+            if (preg_match_all('/<x[-:]core-(?:img|media)(?=[\s\/>])((?:@\w+(\((?:[^()"\']|"[^"]*"|\'[^\']*\'|(?2))*\))|"[^"]*"|\'[^\']*\'|[^"\'>])*+)>/s', $code, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE) === false) {
+                $hits[] = $path.'  could not be read: '.preg_last_error_msg();
+
+                continue;
+            }
 
             foreach ($tags as $match) {
                 [$tag, $offset] = $match[0];
@@ -101,7 +107,7 @@ class CoreWebRulesTest extends TestCase
                     continue;
                 }
 
-                $hits[] = ltrim(substr($file->getPathname(), strlen(base_path())), '/').':'.(substr_count($code, "\n", 0, $offset) + 1)
+                $hits[] = $path.':'.(substr_count($code, "\n", 0, $offset) + 1)
                     .'  '.mb_strimwidth((string) preg_replace('/\s+/', ' ', $tag), 0, 100, '…');
             }
         }
