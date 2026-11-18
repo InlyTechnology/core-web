@@ -5,6 +5,7 @@ namespace Inly\CoreWeb\ContentSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -97,9 +98,14 @@ final class RemoteSite
      */
     public static function anonymous(string $url): PendingRequest
     {
+        return self::configure(Http::acceptJson(), $url);
+    }
+
+    private static function configure(PendingRequest $request, string $url): PendingRequest
+    {
         self::assertSecure($url);
 
-        return Http::baseUrl(rtrim($url, '/'))
+        return $request->baseUrl(rtrim($url, '/'))
             ->withoutRedirecting()
             ->acceptJson()
             ->connectTimeout(max(1, (int) config('core-web.content_sync.timeouts.connect', 5)))
@@ -197,6 +203,42 @@ final class RemoteSite
     }
 
     /**
+     * POSTs each body to one endpoint at the same time, answering in the bodies' order. A slot holds the refusal
+     * where the site was rate limiting this machine: that request did nothing, and the caller sends it again.
+     *
+     * @param  list<array<string, mixed>>  $bodies
+     * @return list<Response|RemoteSiteBusy>
+     *
+     * @throws RemoteLoginNeeded|RemoteSiteError
+     */
+    public function postAtOnce(string $path, array $bodies, ?int $timeout = null): array
+    {
+        $endpoint = $this->path($path);
+        $results = Http::pool(fn (Pool $pool) => array_map(
+            fn (array $body) => self::configure($pool->newRequest(), $this->url)
+                ->withToken($this->token)
+                ->when($timeout !== null, fn (PendingRequest $request) => $request->timeout($timeout))
+                ->post($endpoint, $body),
+            $bodies,
+        ));
+
+        // A pool can fill its results in the order the requests finished; the keys say which request each answers.
+        return array_map(function (int $key) use ($results, $endpoint): Response|RemoteSiteBusy {
+            $result = $results[$key];
+
+            if ($result instanceof Throwable) {
+                throw new RemoteSiteError("Could not reach {$this->url}: {$result->getMessage()}", previous: $result);
+            }
+
+            try {
+                return $this->checked($result, $endpoint);
+            } catch (RemoteSiteBusy $busy) {
+                return $busy;
+            }
+        }, array_keys($bodies));
+    }
+
+    /**
      * POSTs a file as multipart form data, beside the fields given.
      *
      * @param  array<string, string>  $data
@@ -240,6 +282,12 @@ final class RemoteSite
             throw new RemoteSiteError("Could not reach {$this->url}: {$e->getMessage()}", previous: $e);
         }
 
+        return $this->checked($response, $endpoint);
+    }
+
+    /** @throws RemoteLoginNeeded|RemoteSiteBusy|RemoteSiteError */
+    private function checked(Response $response, string $endpoint): Response
+    {
         self::assertUsable($this->url, $response, $endpoint);
 
         if ($response->status() === 401 && $response->json('error') === AuthenticateSyncToken::REFUSED) {

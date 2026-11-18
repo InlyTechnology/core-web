@@ -3,9 +3,11 @@
 namespace Inly\CoreWeb\Tests\Feature\ContentSync;
 
 use Closure;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
@@ -45,6 +47,11 @@ class MediaPushTest extends TestCase
 
     /** What the fake bucket answers a signed upload with, by path, before it stores anything: [status, body], or a closure returning one or null to go on. */
     private array $bucketAnswers = [];
+
+    /** Finish requests the site turns away as too many before it takes one. */
+    private int $busyFinishes = 0;
+
+    private bool $finishUnreachable = false;
 
     /** @var list<array<string, mixed>> the options each signed upload was made with */
     private array $signed = [];
@@ -126,6 +133,16 @@ class MediaPushTest extends TestCase
                 file_put_contents($this->disk.'/'.$path, $request->body());
 
                 return Http::response('', 200);
+            }
+
+            if ($this->finishUnreachable && str_ends_with($request->url(), '/media/finish')) {
+                return Http::failedConnection('Connection timed out');
+            }
+
+            if ($this->busyFinishes > 0 && str_ends_with($request->url(), '/media/finish')) {
+                $this->busyFinishes--;
+
+                return Http::response(['message' => 'Too Many Attempts.'], 429, ['Retry-After' => '7']);
             }
 
             $server = ['HTTP_ACCEPT' => 'application/json'];
@@ -432,6 +449,39 @@ class MediaPushTest extends TestCase
 
         $finishes = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/media/finish'))->map(fn (array $pair) => count($pair[0]['files']))->values()->all();
         $this->assertSame([3, 2, 1], $finishes, 'Each request finishes its first file and leaves the rest.');
+    }
+
+    public function test_finish_requests_go_out_together_and_those_turned_away_are_sent_again_after_one_wait(): void
+    {
+        foreach (range(1, 25) as $n) {
+            $this->local("doc-{$n}.pdf", self::PDF.str_repeat(' ', $n));
+        }
+        $this->busyFinishes = 2;
+
+        $this->mediaPush()->expectsOutputToContain('Copied 25 file(s).')->assertSuccessful();
+
+        $finishes = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/media/finish'))->map(fn (array $pair) => count($pair[0]['files']))->values()->all();
+        $this->assertSame([10, 10, 5, 10, 10], $finishes, 'Three requests together, then the two turned away one by one.');
+        Sleep::assertSlept(fn ($duration) => (int) $duration->totalSeconds === 7, 1);
+    }
+
+    public function test_answers_that_come_back_in_another_order_are_matched_to_their_requests(): void
+    {
+        // A pool fills its results in the order the requests finished; a fake answers in the order they were sent.
+        $answer = fn (int $n) => new Response(new Psr7Response(200, ['Content-Type' => 'application/json'], json_encode(['n' => $n])));
+        Http::shouldReceive('pool')->once()->andReturn([2 => $answer(2), 0 => $answer(0), 1 => $answer(1)]);
+
+        $responses = RemoteSite::stored()->postAtOnce('media/finish', [['n' => 0], ['n' => 1], ['n' => 2]]);
+
+        $this->assertSame([0, 1, 2], array_map(fn ($response) => $response->json('n'), $responses));
+    }
+
+    public function test_a_finish_request_that_cannot_reach_the_site_stops_the_run(): void
+    {
+        $this->local('guide.pdf', self::PDF);
+        $this->finishUnreachable = true;
+
+        $this->mediaPush()->expectsOutputToContain('Could not reach https://remote.test: Connection timed out')->assertFailed();
     }
 
     public function test_a_file_whose_checksum_matches_is_not_read_back_from_the_bucket(): void
