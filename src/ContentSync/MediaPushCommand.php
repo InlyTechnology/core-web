@@ -36,6 +36,9 @@ class MediaPushCommand extends Command
     /** The most bytes one finish request names, since saving an asset can read the file back from the bucket. */
     private const FINISH_BATCH_BYTES = 100 * 1024 * 1024;
 
+    /** The finish requests sent at the same time: the site spends most of one reading files from the bucket. */
+    private const FINISH_AT_ONCE = 4;
+
     /** Seconds after which the addresses not used yet are signed again, well inside MediaPush::URL_MINUTES. */
     private const SIGN_AGAIN_AFTER = 600;
 
@@ -248,18 +251,15 @@ class MediaPushCommand extends Command
         while ($items !== []) {
             $later = [];
 
-            foreach ($this->finishBatches($items) as $batch) {
-                // The site may read each file back from the bucket, which can take longer than an ordinary request.
-                foreach ($this->batch($remote, 'media/finish', array_map(fn (array $item) => array_filter([
-                    'ticket' => $item['ticket'],
-                    'alt' => $this->files[$item['path']]['alt'] ?? null,
-                    'focus' => $this->files[$item['path']]['focus'] ?? null,
-                ], fn (mixed $value) => $value !== null), $batch), $this->uploadTimeout(0)) as $i => $result) {
-                    // A refused ticket names no path, so the request's own order says which file it was.
-                    if (($result['status'] ?? null) === MediaPush::LATER) {
-                        $later[] = $batch[$i];
-                    } else {
-                        $this->count(['path' => $batch[$i]['path'], ...array_diff_key($result, ['path' => true])]);
+            foreach (array_chunk($this->finishBatches($items), self::FINISH_AT_ONCE) as $batches) {
+                foreach ($this->finishAtOnce($remote, $batches) as $b => $results) {
+                    foreach ($results as $i => $result) {
+                        // A refused ticket names no path, so the request's own order says which file it was.
+                        if (($result['status'] ?? null) === MediaPush::LATER) {
+                            $later[] = $batches[$b][$i];
+                        } else {
+                            $this->count(['path' => $batches[$b][$i]['path'], ...array_diff_key($result, ['path' => true])]);
+                        }
                     }
                 }
             }
@@ -275,6 +275,38 @@ class MediaPushCommand extends Command
 
             $items = $later;
         }
+    }
+
+    /**
+     * Sends a finish request for each batch at the same time, answering in the batches' order. A request the site
+     * turned away as too many is sent again on its own, after waiting.
+     *
+     * @param  list<list<array{path: string, ticket: string}>>  $batches
+     * @return list<list<array<string, mixed>>>
+     */
+    private function finishAtOnce(RemoteSite $remote, array $batches): array
+    {
+        $files = array_map(fn (array $batch) => array_map(fn (array $item) => array_filter([
+            'ticket' => $item['ticket'],
+            'alt' => $this->files[$item['path']]['alt'] ?? null,
+            'focus' => $this->files[$item['path']]['focus'] ?? null,
+        ], fn (mixed $value) => $value !== null), $batch), $batches);
+        // The site may read each file back from the bucket, which can take longer than an ordinary request.
+        $timeout = $this->uploadTimeout(0);
+        $responses = $remote->postAtOnce('media/finish', array_map(fn (array $batch) => [
+            'container' => (string) $this->option('container'),
+            'files' => $batch,
+        ], $files), $timeout);
+
+        return array_map(function (Response|RemoteSiteBusy $response, array $batch) use ($remote, $timeout): array {
+            if ($response instanceof RemoteSiteBusy) {
+                $this->wait($response);
+
+                return $this->batch($remote, 'media/finish', $batch, $timeout);
+            }
+
+            return $this->answers($remote, 'media/finish', $response, count($batch));
+        }, $responses, $files);
     }
 
     /**
@@ -468,13 +500,23 @@ class MediaPushCommand extends Command
             'files' => $files,
         ], $timeout));
 
+        return $this->answers($remote, $endpoint, $response, count($files));
+    }
+
+    /**
+     * The site's answer for each file a batch named, in its order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function answers(RemoteSite $remote, string $endpoint, Response $response, int $count): array
+    {
         if ($response->status() === 404 && $response->json('error') === null) {
             throw new RemoteSiteError("{$remote->url()} takes no media:push: its core-web predates it.");
         }
 
         $answers = $response->json('files');
 
-        if (! $response->successful() || ! is_array($answers) || count($answers) !== count($files)) {
+        if (! $response->successful() || ! is_array($answers) || count($answers) !== $count) {
             throw new RemoteSiteError("{$remote->url()} answered HTTP {$response->status()} to {$endpoint}: ".($response->json('message') ?? $response->json('error') ?? 'no reason given').'.');
         }
 
@@ -492,9 +534,14 @@ class MediaPushCommand extends Command
                     throw $e;
                 }
 
-                Sleep::for(max(1, min(120, $e->retryAfter ?? 30)))->seconds();
+                $this->wait($e);
             }
         }
+    }
+
+    private function wait(RemoteSiteBusy $busy): void
+    {
+        Sleep::for(max(1, min(120, $busy->retryAfter ?? 30)))->seconds();
     }
 
     /**
