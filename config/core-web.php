@@ -169,6 +169,9 @@ return [
     | clear on the `half` strategy; false keeps Statamic's own cacher. See
     | docs/static-cache.md#pages-cached-while-a-clear-runs.
     |
+    | background_recache: true or false in every environment, null for
+    | core-web's default (docs/static-cache.md).
+    |
     */
 
     'static_cache' => [
@@ -188,6 +191,7 @@ return [
             // HubSpot ads tracking, one combination per ad, keyword and network
             'hsa_acc', 'hsa_cam', 'hsa_grp', 'hsa_ad', 'hsa_src', 'hsa_tgt', 'hsa_kw', 'hsa_mt', 'hsa_net', 'hsa_ver',
         ],
+        'background_recache' => null,
     ],
 
     /*
@@ -802,7 +806,9 @@ return [
     | items (or snapshot documents) a request.
     |
     | timeouts: seconds the checkout waits to connect to the live site and
-    | for each answer, and for each file it reads from the site's assets.
+    | for each answer, and for each file it reads from the site's assets;
+    | `upload` the least `media:push` waits for a file to reach the bucket
+    | (longer for a large one) and for the site to save a batch of them.
     |
     | pull_assets: with `features.media` on a local checkout without the
     | bucket's key, the asset disks list the live site's files as last
@@ -828,6 +834,7 @@ return [
     | timeout. A file with more assets goes alone.
     | push_bytes: the most content (all files together) one request carries.
     | push_asset_bytes: the largest asset file a push uploads.
+    | media_push_bytes: the largest file `media:push` copies (docs/media.md).
     |
     */
 
@@ -848,6 +855,7 @@ return [
         'timeouts' => [
             'connect' => 5,
             'request' => 30,
+            'upload' => 600,
         ],
         'pull_assets' => true,
         'push' => true,
@@ -857,6 +865,7 @@ return [
         'push_batch_assets' => 15,
         'push_bytes' => 10 * 1024 * 1024,
         'push_asset_bytes' => 20 * 1024 * 1024,
+        'media_push_bytes' => 1024 * 1024 * 1024,
     ],
 
     /*

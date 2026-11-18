@@ -11,22 +11,24 @@ use Statamic\Console\Commands\StaticWarmJob;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Globals\Variables as VariablesContract;
+use Statamic\Facades\Asset;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Form;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
 use Statamic\StaticCaching\Cachers\ApplicationCacher;
+use Statamic\StaticCaching\DefaultInvalidator;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
 
 /**
- * A save on one site of a multisite install under the `all` rule: that
- * site's pages flushed, or with background_recache the saved page forgotten
- * at once (under http and https) and the site's other pages rendered again
- * in the background, never another site's but for the entry's copies there;
- * a global reaches the sites whose copy inherits it, directly or through
- * another copy.
+ * A save on one site under the `all` rule: that site's pages flushed, or with
+ * background_recache the saved page forgotten at once (under http and https)
+ * and the site's other pages rendered again in the background, never another
+ * site's but for the entry's copies there; a global reaches the sites whose
+ * copy inherits it, directly or through another copy.
  */
 class SiteScopedInvalidatorTest extends TestCase
 {
@@ -63,6 +65,24 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame(['/', '/b'], $this->cached('http://default.test'), 'the other pages served as cached until rendered again');
         $this->assertSame(['/', '/a'], $this->cached('http://other.test'));
         $this->assertSame(['http://default.test/', 'http://default.test/b'], $this->warmed());
+    }
+
+    public function test_a_single_site_under_a_path_renders_its_pages_again_where_statamic_s_rule_renders_none(): void
+    {
+        Site::setSites(['default' => ['name' => 'Default', 'url' => 'http://single.test/sv/', 'locale' => 'sv_SE']]);
+        config(['statamic.static_caching.background_recache' => true]);
+        Queue::fake();
+        $entry = $this->entry('a');
+        $this->cache('http://single.test', ['/sv', '/sv/a', '/sv/b']);
+
+        (new DefaultInvalidator($this->cacher, 'all'))->refresh($entry);
+
+        $this->assertSame([], $this->warmed(), 'Statamic looks the pages up under the base URL, path included');
+
+        $this->invalidator()->refresh($entry);
+
+        $this->assertSame(['/sv', '/sv/b'], $this->cached('http://single.test'));
+        $this->assertSame(['http://single.test/sv', 'http://single.test/sv/b'], $this->warmed());
     }
 
     public function test_a_localized_page_forgets_its_copies_on_the_other_sites(): void
@@ -275,13 +295,34 @@ class SiteScopedInvalidatorTest extends TestCase
         $this->assertSame(['http://shared.test/'], $this->warmed());
     }
 
-    public function test_a_navigation_keeps_statamic_s_own_rule(): void
+    public function test_with_background_recache_a_save_without_a_site_renders_every_host_s_pages_again(): void
     {
         $this->backgroundRecache();
+        $this->cache('https://other.test', ['/c']);
+
+        foreach (['navigation' => Nav::make('main'), 'asset' => Asset::make(), 'form' => Form::make('contact')] as $kind => $item) {
+            Queue::fake();
+
+            $this->invalidator()->refresh($item);
+
+            $this->assertSame([
+                'http://default.test/', 'http://default.test/a', 'http://default.test/b',
+                'http://other.test/', 'http://other.test/a',
+                'https://other.test/c',
+            ], $this->warmed(), "a {$kind} save: Statamic's rule renders again only the base URL's pages");
+        }
+
+        $this->assertSame(['/', '/a', '/b'], $this->cached('http://default.test'));
+    }
+
+    public function test_a_save_without_a_site_clears_every_site(): void
+    {
+        $this->cacheBothSites();
 
         $this->invalidator()->refresh(Nav::make('main'));
 
-        $this->assertSame(['http://default.test/', 'http://default.test/a', 'http://default.test/b'], $this->warmed(), "only the base URL's pages, as Statamic refreshes them");
+        $this->assertSame([], $this->cached('http://default.test'));
+        $this->assertSame([], $this->cached('http://other.test'));
     }
 
     public function test_other_rules_keep_statamic_s_own_invalidation(): void

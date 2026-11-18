@@ -13,11 +13,11 @@ use Statamic\Sites\Site;
 use Statamic\StaticCaching\Cacher;
 use Statamic\StaticCaching\Cachers\AbstractCacher;
 
-/** The static cache of one site of a multisite install, whose sites share no cached pages. */
+/** The static cache of one site, taking the install's sites to share no cached pages. */
 class SiteCache
 {
-    /** @var array{root: string, sites: Collection<array-key, Site>, placed: list<array{string, ?string, string}>}|null */
-    private static ?array $placed = null;
+    /** @var array<'app'|'served', array{key: string, sites: Collection<array-key, Site>, placed: list<array{string, ?string, string}>}> */
+    private static array $placed = [];
 
     public function __construct(private Cacher $cacher) {}
 
@@ -107,11 +107,11 @@ class SiteCache
     }
 
     /**
-     * Forgets every cached page of the site, on whichever of its hosts it
-     * was cached. Sites may share a host, each under its own path
+     * Forgets every cached page of the site, on its host under http and
+     * https. Sites may share a host, each under its own path
      * (https://example.com and https://example.com/second): a cached page
-     * belongs to the site siteOf() names, so flushing one leaves the others'
-     * pages alone.
+     * belongs to the first site on the host, in placed() order, whose path it
+     * lies under, so flushing one leaves the others' pages alone.
      */
     public function flush(Site $site): void
     {
@@ -139,8 +139,7 @@ class SiteCache
     }
 
     /**
-     * Renders every cached page of the site again in the background, one
-     * queued request per page, owned as flush() owns them
+     * Refreshes the site's cached pages, owned as flush() owns them
      * (docs/static-cache.md). Returns how many paths were handed on.
      */
     public function refresh(Site $site): int
@@ -170,6 +169,55 @@ class SiteCache
 
         if (! config('statamic.static_caching.background_recache')) {
             $this->recordSite($site);
+        }
+
+        return $queued;
+    }
+
+    /**
+     * refresh() for every cached page on each site's host
+     * (docs/static-cache.md). Returns how many paths were handed on.
+     */
+    public function refreshAll(): int
+    {
+        if (! $this->cacher instanceof AbstractCacher) {
+            return 0;
+        }
+
+        $recache = (bool) config('statamic.static_caching.background_recache');
+        $queued = 0;
+        $hosts = array_unique(array_filter(Sites::all()->map(fn (Site $site) => self::host($site))->values()->all()));
+
+        foreach (array_map(strval(...), $this->cacher->getDomains()->all()) as $domain) {
+            $paths = [];
+
+            foreach ($this->cacher->getUrls($domain)->all() as $url) {
+                $paths[strtok((string) $url, '?')] = true;
+            }
+
+            $onSite = in_array(strtolower((string) parse_url($domain, PHP_URL_HOST)) ?: null, $hosts, true);
+            $queued += $onSite ? count($paths) : 0;
+
+            if (! $recache) {
+                continue;
+            }
+
+            // A request names its own host (a forged Host header), so a render goes only to a site's, each carrying Statamic's recache token.
+            if (! $onSite) {
+                $this->invalidate(array_keys($paths), $domain);
+                $this->recordDomain($domain);
+
+                continue;
+            }
+
+            foreach (array_keys($paths) as $path) {
+                $this->renderAgain($path, $domain);
+            }
+        }
+
+        // Every page on every host goes, so the whole cache at once: page by page rewrites the URL list for each page.
+        if (! $recache) {
+            $this->cacher->flush();
         }
 
         return $queued;
@@ -236,9 +284,9 @@ class SiteCache
     }
 
     /**
-     * Renders the site's cached pages at these paths again in the background,
-     * as refresh() renders the whole site (docs/static-cache.md). Returns how
-     * many paths were handed on.
+     * refresh() for the site's cached pages at these paths, named as
+     * flushPaths() names them (docs/static-cache.md). Returns how many paths
+     * were handed on.
      *
      * @param  iterable<string>  $paths
      */
@@ -288,7 +336,7 @@ class SiteCache
                 $wildcard = str_ends_with($url, '*');
                 $address = $wildcard ? substr($url, 0, -1) : $url;
 
-                if (parse_url($address, PHP_URL_HOST) !== $host) {
+                if (! self::onHost($site, $address)) {
                     continue;
                 }
 
@@ -369,6 +417,14 @@ class SiteCache
 
         if ($whole) {
             $this->recordSite($site);
+        }
+    }
+
+    /** Records the clear of every page on the domain for the guarded cacher, listed or not: docs/static-cache.md#pages-cached-while-a-clear-runs. */
+    private function recordDomain(string $domain): void
+    {
+        if ($this->cacher instanceof GuardedApplicationCacher) {
+            $this->cacher->recordClears($domain, [], ['/']);
         }
     }
 
@@ -490,7 +546,7 @@ class SiteCache
     {
         return array_values(array_filter(
             array_map(strval(...), $this->cacher->getDomains()->all()),
-            fn (string $domain) => parse_url($domain, PHP_URL_HOST) === $host,
+            fn (string $domain) => (strtolower((string) parse_url($domain, PHP_URL_HOST)) ?: null) === $host,
         ));
     }
 
@@ -508,22 +564,37 @@ class SiteCache
         return false;
     }
 
-    /** Whether an absolute URL is on the site: on its host, and on a shared host under its path, as flush() decides. */
+    /** Whether an absolute URL is on the site: on its host as onHost() takes it, and on a shared host under its path, as flush() decides. */
     public function owns(Site $site, string $url): bool
     {
-        $host = self::host($site);
-
-        if (parse_url($url, PHP_URL_HOST) !== $host) {
+        if (! self::onHost($site, $url)) {
             return false;
         }
 
-        return self::owner(self::neighbours($host), $url) === self::handle($site);
+        return self::owner(self::neighbours(self::host($site)), $url) === self::handle($site);
     }
 
-    /** The handle of the site a cached page belongs to: the first site on its host, in placed() order, whose path the page lies under. */
+    /**
+     * Whether an absolute URL is on the site's host. A site with a relative
+     * URL also takes the host Statamic made its URLs on (the request's), as
+     * an invalidator reports them there: the page is still forgotten on the
+     * site's host, and forgetting sends no request.
+     */
+    private static function onHost(Site $site, string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if ($host === self::host($site)) {
+            return true;
+        }
+
+        return ! URL::isAbsolute($site->url()) && $host === strtolower((string) parse_url($site->absoluteUrl(), PHP_URL_HOST));
+    }
+
+    /** The handle of the site a cached page belongs to: the first site on its host, in placed() order with a relative site on the host serving the request, whose path the page lies under. */
     public static function siteOf(string $url): ?string
     {
-        return self::owner(self::neighbours(parse_url($url, PHP_URL_HOST) ?: null), $url);
+        return self::owner(self::neighbours(strtolower((string) parse_url($url, PHP_URL_HOST)) ?: null, served: true), $url);
     }
 
     /**
@@ -531,51 +602,42 @@ class SiteCache
      *
      * @return list<array{string, ?string, string}>
      */
-    private static function neighbours(?string $host): array
+    private static function neighbours(?string $host, bool $served = false): array
     {
-        return array_values(array_filter(self::placed(), fn (array $placed) => $placed[1] === $host));
+        return array_values(array_filter(self::placed($served), fn (array $placed) => $placed[1] === $host));
     }
 
     /**
      * The handle, host and path of every site, in the order Statamic's Sites::findByUrl() takes: a site whose URL
      * names its host first, then the longest path. Unlike findByUrl(), a site's scheme is not compared, so a site at an
-     * http:// URL comes first for its host's https:// pages too. A relative URL is placed on one resolved root, as each
-     * site's absoluteUrl() would be most of what a cache hit costs. Kept while the request's root stays the same and
+     * http:// URL comes first for its host's https:// pages too. A relative URL is placed on APP_URL, as host()
+     * places it, or with $served on the request's root, the host serving the page, as findByUrl() places it; resolved once,
+     * as each site's absoluteUrl() would be most of what a cache hit costs. Kept while that root stays the same and
      * Sites::all() is the same collection, which setSites() replaces; a site changed in place is not seen.
      *
      * @return list<array{string, ?string, string}>
      */
-    private static function placed(): array
+    private static function placed(bool $served = false): array
     {
-        $root = url()->to('/');
+        $slot = $served ? 'served' : 'app';
+        $key = $served ? url()->to('/') : (string) config('app.url');
         $sites = Sites::all();
+        $memo = self::$placed[$slot] ?? null;
 
-        if (self::$placed === null || self::$placed['root'] !== $root || self::$placed['sites'] !== $sites) {
-            $base = URL::makeAbsolute('/');
-            $baseHost = parse_url($base, PHP_URL_HOST) ?: null;
-            $basePath = rtrim((string) parse_url($base, PHP_URL_PATH), '/');
+        if ($memo === null || $memo['key'] !== $key || $memo['sites'] !== $sites) {
+            $base = $served ? URL::makeAbsolute('/') : $key;
 
             $placed = $sites
-                ->map(function (Site $site) use ($baseHost, $basePath): array {
-                    $url = $site->url();
-                    $relative = str_starts_with($url, '/');
-
-                    return [
-                        self::handle($site),
-                        $relative ? $baseHost : (parse_url($url, PHP_URL_HOST) ?: null),
-                        rtrim($relative ? $basePath.$url : (string) parse_url($url, PHP_URL_PATH), '/'),
-                        ! $relative,
-                    ];
-                })
+                ->map(fn (Site $site): array => [self::handle($site), ...self::locate($site->url(), $base), URL::isAbsolute($site->url())])
                 ->sortByDesc(fn (array $placed) => [(int) $placed[3], strlen($placed[2])])
                 ->map(fn (array $placed) => [$placed[0], $placed[1], $placed[2]])
                 ->values()
                 ->all();
 
-            self::$placed = ['root' => $root, 'sites' => $sites, 'placed' => $placed];
+            self::$placed[$slot] = ['key' => $key, 'sites' => $sites, 'placed' => $placed];
         }
 
-        return self::$placed['placed'];
+        return self::$placed[$slot]['placed'];
     }
 
     /**
@@ -624,14 +686,27 @@ class SiteCache
         return '/'.trim(substr('/'.trim((string) parse_url($url, PHP_URL_PATH), '/'), strlen($prefix)), '/');
     }
 
-    private static function host(Site $site): ?string
+    /**
+     * A site URL's host, lowercased, and the path it sits under ('/second', '' at the root), a relative URL on $base.
+     *
+     * @return array{?string, string}
+     */
+    private static function locate(string $url, string $base): array
     {
-        return parse_url($site->absoluteUrl(), PHP_URL_HOST) ?: null;
+        $absolute = URL::isAbsolute($url) ? $url : rtrim($base, '/').$url;
+
+        return [strtolower((string) parse_url($absolute, PHP_URL_HOST)) ?: null, rtrim((string) parse_url($absolute, PHP_URL_PATH), '/')];
     }
 
-    /** The path a site sits under on its host ('/second'), '' at the root. */
+    /** As Statamic's cacher reads its base URL: a relative site is on APP_URL's host, never the one a request names. */
+    private static function host(Site $site): ?string
+    {
+        return self::locate($site->url(), (string) config('app.url'))[0];
+    }
+
+    /** The path a site sits under on its host ('/second'), '' at the root, on APP_URL for a relative site as host() places it. */
     private static function prefix(Site $site): string
     {
-        return rtrim((string) parse_url($site->absoluteUrl(), PHP_URL_PATH), '/');
+        return self::locate($site->url(), (string) config('app.url'))[1];
     }
 }

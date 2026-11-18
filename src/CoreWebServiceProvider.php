@@ -60,6 +60,7 @@ use Inly\CoreWeb\ContentSync\ContentStatusCommand;
 use Inly\CoreWeb\ContentSync\DeviceAuthorizations;
 use Inly\CoreWeb\ContentSync\GuardSyncRequests;
 use Inly\CoreWeb\ContentSync\LocalContent;
+use Inly\CoreWeb\ContentSync\MediaPushCommand;
 use Inly\CoreWeb\ContentSync\SyncLimits;
 use Inly\CoreWeb\ContentSync\SyncTokens;
 use Inly\CoreWeb\ControlPanel\CoreNavLink;
@@ -100,6 +101,7 @@ use Inly\CoreWeb\Snapshots\WarmSnapshotsCommand;
 use Inly\CoreWeb\StaticCaching\DefaultStrategy;
 use Inly\CoreWeb\StaticCaching\GuardedApplicationCacher;
 use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
 use Inly\CoreWeb\StaticCaching\TrackingQueryStrings;
 use Inly\CoreWeb\Support\ClientAddress;
 use Inly\CoreWeb\Support\DoctorCommand;
@@ -224,6 +226,8 @@ class CoreWebServiceProvider extends ServiceProvider
                 DefaultStrategy::apply($this->app);
             }
 
+            StaticCacheDefaults::applyRecache($this->app);
+
             if (self::enabled('cloud') && CloudDefaults::onCloud()) {
                 CloudDefaults::keepUploadsInPrivateBucket($this->app['config']);
                 CloudDefaults::keepProposalsInPrivateBucket($this->app['config']);
@@ -283,6 +287,9 @@ class CoreWebServiceProvider extends ServiceProvider
             }
         };
         $this->app->isBooted() ? $merge() : $this->app->booting($merge);
+
+        // Statamic reads the invalidator's class each time it makes one, so set after boot it still applies.
+        $this->app->booted(fn () => StaticCacheDefaults::scopeInvalidation($this->app));
 
         $this->app->singleton(SnapshotRegistry::class);
 
@@ -704,7 +711,7 @@ class CoreWebServiceProvider extends ServiceProvider
         if (self::enabled('forms') && $this->app->environment(['local', 'testing'])) {
             $this->loadRoutesFrom(__DIR__.'/../routes/forms-relay.php');
         }
-        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class, ContentStatusCommand::class]);
+        $this->commands([ContentLoginCommand::class, ContentLogoutCommand::class, ContentPullCommand::class, ContentPushCommand::class, ContentStatusCommand::class, MediaPushCommand::class]);
         SyncLimits::register();
 
         Permission::extend(fn () => Permission::group('core_web', 'Core Web', function (): void {

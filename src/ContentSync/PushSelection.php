@@ -9,9 +9,7 @@ use Inly\CoreWeb\Media\MediaDisks;
 use InvalidArgumentException;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Site;
-use Statamic\Facades\YAML;
 use Symfony\Component\Finder\SplFileInfo;
-use Throwable;
 
 /**
  * Which files of content/ a push sends: those changed since the last pull or
@@ -195,7 +193,7 @@ final class PushSelection
                     'path' => $path,
                     'file' => $file->getPathname(),
                     ...self::fingerprint($file),
-                    ...self::meta($file),
+                    ...AssetPush::localMeta($file),
                 ];
             }
         }
@@ -321,19 +319,5 @@ final class PushSelection
         $bytes = AssetPush::stored($file->getFilename(), (string) file_get_contents($file->getPathname()));
 
         return ['hash' => hash('sha256', $bytes), 'size' => strlen($bytes)];
-    }
-
-    /** @return array{alt?: string, focus?: string} the editable meta of a file uploaded here, from its `.meta` beside it */
-    private static function meta(SplFileInfo $file): array
-    {
-        $meta = $file->getPath().'/.meta/'.$file->getFilename().'.yaml';
-
-        try {
-            $data = is_file($meta) ? (array) (YAML::parse((string) file_get_contents($meta))['data'] ?? []) : [];
-        } catch (Throwable) {
-            return [];
-        }
-
-        return array_filter(array_intersect_key($data, array_flip(AssetPush::META_KEYS)), fn (mixed $value) => is_string($value) && $value !== '');
     }
 }

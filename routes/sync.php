@@ -23,6 +23,10 @@ Route::prefix(trim((string) config('statamic.routes.action', '!'), '/').'/core-w
         Route::get('export', 'export')->middleware(AuthenticateSyncToken::ALIAS)->name('export');
         Route::post('push', 'push')->middleware(AuthenticateSyncToken::ALIAS)->name('push');
         Route::post('push/asset', 'pushAsset')->middleware(AuthenticateSyncToken::ALIAS)->name('push.asset');
+        Route::post('media/check', 'mediaCheck')->middleware(AuthenticateSyncToken::ALIAS)->name('media.check');
+        Route::post('media/uploads', 'mediaUploads')->middleware(AuthenticateSyncToken::ALIAS)->name('media.uploads');
+        Route::post('media/finish', 'mediaFinish')->middleware(AuthenticateSyncToken::ALIAS)->name('media.finish');
+        Route::post('media/file', 'mediaFile')->middleware(AuthenticateSyncToken::ALIAS)->name('media.file');
         Route::get('snapshots/{type}', 'snapshot')->middleware(AuthenticateSyncToken::ALIAS)->where('type', '[A-Za-z0-9_.-]+')->name('snapshot');
 
         // A local checkout's Core forms, relayed to this site's Core (FormRelay).

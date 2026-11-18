@@ -187,12 +187,13 @@ final class RemoteSite
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  ?int  $timeout  seconds to wait for an answer that takes longer than `timeouts.request`
      *
      * @throws RemoteLoginNeeded|RemoteSiteError
      */
-    public function post(string $path, array $data = []): Response
+    public function post(string $path, array $data = [], ?int $timeout = null): Response
     {
-        return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => $request->post($endpoint, $data));
+        return $this->send($this->path($path), fn (PendingRequest $request, string $endpoint) => ($timeout === null ? $request : $request->timeout($timeout))->post($endpoint, $data));
     }
 
     /**

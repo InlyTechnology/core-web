@@ -7,10 +7,15 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Inly\CoreWeb\Cloud\CloudDefaults;
 use Inly\CoreWeb\CoreWebServiceProvider;
+use Inly\CoreWeb\StaticCaching\DefaultStrategy;
+use Inly\CoreWeb\StaticCaching\SiteScopedInvalidator;
+use Inly\CoreWeb\StaticCaching\StaticCacheDefaults;
+use Statamic\StaticCaching\Invalidator;
 
 /**
  * What the switched-on features need from this environment that a site's own setup can get wrong: the Core
- * client, a real queue, the scheduler. Runs offline, so a deploy or a launch check can call it anywhere.
+ * client, a real queue, the scheduler, how a save reaches the static cache. Runs offline, so a deploy or a launch
+ * check can call it anywhere.
  */
 class DoctorCommand extends Command
 {
@@ -48,6 +53,7 @@ class DoctorCommand extends Command
         $this->checkPingSecret($features);
         $this->checkCmsAccounts($features);
         $this->checkProposals($features);
+        $this->checkStaticCache();
 
         if (in_array('media', $features, true)) {
             $this->line('media: run `php artisan media:check` for the disks and the bucket.');
@@ -242,6 +248,55 @@ class DoctorCommand extends Command
         }
 
         return [$disk, is_array($config) ? $config : null];
+    }
+
+    /** How a save reaches the static cache here, by docs/static-cache.md's defaults or the site's own choice. */
+    private function checkStaticCache(): void
+    {
+        $config = $this->laravel['config'];
+
+        if (blank($config->get('statamic.static_caching.strategy'))) {
+            if (! $this->laravel->environment(DefaultStrategy::UNCACHED_ENVIRONMENTS)) {
+                $this->warning('Static cache: off, as STATAMIC_STATIC_CACHING_STRATEGY or the site\'s config chose');
+            }
+
+            return;
+        }
+
+        $connection = StaticCacheDefaults::workerConnection($config);
+
+        if (! $config->get('statamic.static_caching.background_recache')) {
+            $this->ok('Static cache: a save forgets its pages, and each one\'s next visitor renders it');
+        } elseif ($connection === '') {
+            $warm = StaticCacheDefaults::warmConnection($config);
+            $this->warning($warm === ''
+                ? 'Static cache: background_recache is on, but neither warm_queue_connection nor queue.default names a connection to put the renders on'
+                : "Static cache: background_recache is on, but the {$warm} failover connection names no connection to put the renders on");
+        } elseif (StaticCacheDefaults::warmsOnAWorker($config)) {
+            $queue = StaticCacheDefaults::warmQueue($config);
+            $this->ok("Static cache: a save renders its pages again on the {$connection} connection's {$queue} queue (needs a worker on that queue)");
+        } elseif (blank($driver = $config->get("queue.connections.{$connection}.driver"))) {
+            $this->warning("Static cache: background_recache is on, but the {$connection} connection it puts the renders on is not defined in config/queue.php");
+        } else {
+            $this->warning("Static cache: background_recache is on, but the {$connection} connection ({$driver}) runs its jobs without a worker: in the request that saves, after it, or never");
+        }
+
+        if ($config->get('statamic.static_caching.invalidation.rules') !== 'all') {
+            return;
+        }
+
+        $class = $config->get('statamic.static_caching.invalidation.class');
+
+        if ($class === SiteScopedInvalidator::class) {
+            $this->ok('Static cache: SiteScopedInvalidator keeps the `all` rule to the site of what was saved (docs/static-cache.md, A save under the `all` rule)');
+        } elseif ($class === null) {
+            $this->warning('Static cache: statamic.static_caching.invalidation.class names no class, so Statamic\'s own `all` rule applies: a save clears every site\'s pages, or renders again only those cached on the static cache\'s base URL (docs/static-cache.md)');
+        } elseif (is_string($class) && class_exists($class) && is_a($class, Invalidator::class, true)) {
+            $this->ok("Static cache: a save is invalidated by {$class}, the site's own choice");
+        } else {
+            $named = is_string($class) && $class !== '' ? $class : var_export($class, true);
+            $this->warning("Static cache: statamic.static_caching.invalidation.class names {$named}, which is no Statamic invalidator class");
+        }
     }
 
     private function ok(string $message): void

@@ -22,6 +22,7 @@ live in `content/`. With `features.cloud` on, a site on Cloud (Cloud sets
 | Draft proposals (`drafts.proposals.disk`), when Cloud attaches a private bucket as `cloud.uploads_disk` (`private`) | that private bucket: on the default disk, the public bucket, anyone could read a staged change by its path | none; a disk the site chose is kept |
 | Revisions, Statamic Pro | on (each collection still sets `revisions: true`); revisions off when `STATAMIC_PRO_ENABLED=false` and `STATAMIC_REVISIONS_ENABLED` is unset | `STATAMIC_REVISIONS_ENABLED`, `STATAMIC_PRO_ENABLED` |
 | Statamic's every-minute scheduled-entries job | off, `core-web:scheduled-entries` every 15 minutes instead | `STATAMIC_HANDLE_SCHEDULED_ENTRIES` |
+| The queue Statamic renders pages on (`statamic.static_caching.warm_queue`: a save's renders and `static:warm --queue`) | `low`: a save queues a render for each page it reaches, which on the default queue would hold up the site's other jobs (a ping's refresh, form mail). With [background recache](static-cache.md#rendering-pages-again-after-a-save) on and no worker taking it, those pages keep their old copy | `STATAMIC_STATIC_WARM_QUEUE`, an empty value included; a queue the site's config sets is kept |
 | The queue Statamic builds search indexes on (`statamic.search.queue_connection`), while a `local` index exists (Statamic's own `cp` index counts while the config names none) | `sync`: a local index is built in the request that first searches it, on the disk of the container that reads it, and a save updates the index in the request that saves (on Laravel 13, which routes Statamic's queued `UpdateItemIndexes` listener to `sync`; on Laravel 12 it keeps its queue) | `STATAMIC_SEARCH_QUEUE_CONNECTION` set to a connection name (an empty value or `null` still gets `sync`); a connection the site's config sets is kept |
 
 Static caching is on (`half`) here as on any server, with or without the
@@ -75,9 +76,11 @@ The site does its half once:
   above the CP login; set it to the site's name.
 - Mail: commit the site's `mail.from.local_part` ([Mail sender](mail-sender.md))
   rather than a `MAIL_FROM_ADDRESS` per environment.
-- The feature leaves the queue alone. With no worker and no Cloud queue
-  attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail, the
-  snapshot and sign-in jobs) never runs.
+- The feature leaves `QUEUE_CONNECTION` alone. With no worker and no Cloud
+  queue attached, keep `QUEUE_CONNECTION=sync`, or queued work (form mail,
+  the snapshot and sign-in jobs) never runs. A worker in an environment
+  with background recache on, or that runs `static:warm --queue`, also takes
+  the `low` queue (the table above).
 - With `features.cms_sign_in`: run `php please auth:migration` (the
   `role_user` and `group_user` tables eloquent users write roles and groups
   to), keep the CP provider on the `statamic` driver with its `model` set,
@@ -120,12 +123,23 @@ On a new, empty database, load `content/` once from Cloud's commands tab:
 php artisan content:import
 ```
 
+The import runs in steps, each a PHP process of its own with the memory
+limit the import runs with. Cloud sets PHP's limit as a share of the
+instance's memory; when a step runs out of it, the import says so. Give it
+what the instance can spare:
+
+```bash
+php -d memory_limit=1G artisan content:import
+```
+
 It refuses while the database holds entries or misses one of the driver's
 tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work
 included, so it is for a first deploy or a rebuild only; form submissions,
 revisions and tokens exist only in the database and are kept. Run it whole:
-an asset without its meta row renders no image. Last, with users on the
+an asset without its meta row renders no image. A content step that fails
+or runs out of time stops the import, which names the commands that finish
+it or run it again. Last, with users on the
 eloquent repository, it imports `users/` (`statamic:eloquent:import-users`)
 while the users table is empty. A table that holds an account, or a site
 with `cms_sign_in` on (Core makes each account at its first sign-in and
@@ -141,10 +155,13 @@ import also runs in its own process: in one process the entry import leaves
 the still-empty database trees cached, and the tree import would save those
 instead of the files.
 
-Entry URIs and order are recomputed after the rows, one collection per
-process (up to an hour each), so a large site's set neither runs out of
-memory nor stops without a word. If one fails or runs out of time, the
-rows are in: the command names the
+Entry URIs, order and parents are written after the rows and the trees,
+one collection per process (up to an hour each), so a large site's set
+neither runs out of memory nor stops without a word. Each row goes straight
+to the entry repository, without the save's events and its saves of each
+localization again, which took seconds an entry on Cloud; the import clears
+the static cache and the cache at the end. If one fails or runs out of
+time, the rows are in: the command names the
 `php artisan core-web:entry-order <collection>` runs that finish it.
 
 Asset meta is imported the same way, one container per process (up to an
@@ -160,15 +177,21 @@ Nothing is left on the queue. Each step runs through the hidden
 so an environment variable handed to the step would not reach it) and
 with search indexing off (the indexes, Statamic's `cp` one included, are
 swapped for a null index), which would otherwise update them once per saved
-entry. When an index's driver keeps it off the container (any but `local`
-and `null`), every index is rebuilt once at the end with
-`statamic:search:update --all`; a site with only `local` indexes skips it,
-since such an index is a file on one container's disk and builds itself on
-its first search.
+entry. The tree import queues a full save of every entry to set its order,
+which `core-web:entry-order` writes afterwards, so the steps send those jobs
+to Laravel's `null` connection, which drops them. When an index's driver
+keeps it off the container (any but `local` and `null`), every index is
+rebuilt once at the end with `statamic:search:update --all`; a site with
+only `local` indexes skips it, since such an index is a file on one
+container's disk and builds itself on its first search.
 
 With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and
 succeed, so one first-deploy list fits every site.
+
+Files that are not in git, such as an old site's uploads, go into the bucket
+from a checkout with `php artisan media:push <folder>`, signed in to the
+site: see [Media → Copying files into a container](media.md#copying-files-into-a-container).
 
 ## Deploy commands
 

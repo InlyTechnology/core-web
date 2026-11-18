@@ -34,6 +34,7 @@ shares with the backoffice under the backoffice's own names:
 | `snapshots.database.connection` | `null` | The `database` store's connection (null: the default connection) |
 | `snapshots.database.table` / `.lock_table` | `core_snapshots_cache` / `core_snapshots_cache_locks` | The `database` store's own tables |
 | `snapshots.warm_schedule` | `15 3 * * *` | When `core:warm` runs; `null` schedules nothing. See [Schedule](schedule.md) |
+| `static_cache.background_recache` | `null` | `true` or `false` sets Statamic's `background_recache` in every environment that does not name `STATAMIC_BACKGROUND_RECACHE`; `null` keeps core-web's default. See [Static cache](static-cache.md#rendering-pages-again-after-a-save) |
 | `static_cache.tracking_query_strings` | `utm_*`, `gclid`, `fbclid`, `hsa_*`, … | Added to Statamic's `disallowed_query_strings` beside the site's own, so ad clicks share the cached page; `[]` adds none; not on the `full` strategy. See [Static cache](static-cache.md#ad-and-analytics-parameters) |
 | `snapshots.targeted_flush.enabled` | `true` | Flush only the pages a change names (see [Static cache](static-cache.md)); `false` flushes the whole site on every change |
 | `snapshots.targeted_flush.max_documents` | `20` | A change to more documents than this at once flushes the whole site |
