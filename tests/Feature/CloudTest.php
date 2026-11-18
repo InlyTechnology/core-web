@@ -802,6 +802,7 @@ class CloudTest extends TestCase
 
         $this->artisan('content:import')
             ->expectsOutputToContain('FAIL')
+            ->expectsOutputToContain('No entries were written. To run it again: php artisan content:import.')
             ->doesntExpectOutputToContain('memory_limit')
             ->doesntExpectOutputToContain('--fresh --force')
             ->assertFailed();

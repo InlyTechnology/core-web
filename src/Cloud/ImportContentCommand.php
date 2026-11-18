@@ -106,9 +106,9 @@ class ImportContentCommand extends Command
         foreach ($steps as $label => $command) {
             if (! $this->step($label, $command)) {
                 // The import refuses to run again over the entries this run wrote.
-                if ($db->table($prefix.'entries')->exists()) {
-                    $this->line('To run it again over the entries this run wrote: php artisan content:import --fresh --force.');
-                }
+                $this->line($db->table($prefix.'entries')->exists()
+                    ? 'To run it again over the entries this run wrote: php artisan content:import --fresh --force.'
+                    : 'No entries were written. To run it again: php artisan content:import.');
 
                 return self::FAILURE;
             }
