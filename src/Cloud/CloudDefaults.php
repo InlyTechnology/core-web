@@ -64,7 +64,7 @@ final class CloudDefaults
     /** The queue Statamic renders a page again on, where neither the env nor the site's config names one. */
     public const WARM_QUEUE = 'low';
 
-    /** Disks Peak's addons write favicons and generated social images to: they hardcode the container handles, not a local path. */
+    /** The disks behind the `favicons` and `social_images` containers, which core-web's fieldsets (and Peak's addons on older sites) upload to by handle. */
     public const PEAK_DISKS = ['favicons', 'social_images'];
 
     /** Whether this process runs on Laravel Cloud (core-web.cloud.detected forces an answer, for tests). */
