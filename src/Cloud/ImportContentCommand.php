@@ -3,6 +3,7 @@
 namespace Inly\CoreWeb\Cloud;
 
 use Illuminate\Console\Command;
+use Illuminate\Console\View\TaskResult;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
@@ -267,12 +268,34 @@ class ImportContentCommand extends Command
     public static function stepProcess(array $command, bool $search = false): array
     {
         return [
-            PHP_BINARY, base_path('artisan'), 'core-web:import-step', implode(' ', array_map(
+            PHP_BINARY, ...self::memoryLimit(), base_path('artisan'), 'core-web:import-step', implode(' ', array_map(
                 fn (string $part): string => preg_match('/^[\w:=.-]+$/', $part) === 1 ? $part : escapeshellarg($part),
                 [...$command, '--no-interaction'],
             )),
             ...($search ? ['--with-search'] : []), '--no-interaction',
         ];
+    }
+
+    /**
+     * The import's own memory limit, for a step's process, which would otherwise start at php.ini's.
+     *
+     * @return list<string>
+     */
+    private static function memoryLimit(): array
+    {
+        $limit = ini_get('memory_limit');
+
+        return in_array($limit, [false, ''], true) ? [] : ['-d', 'memory_limit='.$limit];
+    }
+
+    /** Where Laravel has TaskResult, its task component shows anything but TaskResult::Failure as done, false included. */
+    private static function taskResult(bool $successful): bool|int
+    {
+        if (! enum_exists(TaskResult::class)) {
+            return $successful;
+        }
+
+        return $successful ? TaskResult::Success->value : TaskResult::Failure->value;
     }
 
     private function step(string $label, array $command, int $timeout = 600, bool $quiet = true, bool $search = false): bool
@@ -285,7 +308,7 @@ class ImportContentCommand extends Command
                 $result = $e->result;
             }
 
-            return $result->successful();
+            return self::taskResult($result->successful());
         });
 
         if (! $quiet && $result->successful()) {
@@ -298,6 +321,10 @@ class ImportContentCommand extends Command
             $this->error(sprintf('%s %s.', $command[0], $result->exitCode() === null ? 'ran out of time' : 'exited with code '.$result->exitCode()));
             $this->line(trim($result->output()));
             $this->line(trim($result->errorOutput()));
+
+            if (str_contains($result->output().$result->errorOutput(), 'Allowed memory size of')) {
+                $this->warn(sprintf('  PHP ran out of memory at its limit of %s. Run the import, or a command named below, again as php -d memory_limit=1G artisan …: a step takes the limit of the command that starts it.', ini_get('memory_limit')));
+            }
         }
 
         return $result->successful();

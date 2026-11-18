@@ -123,6 +123,14 @@ On a new, empty database, load `content/` once from Cloud's commands tab:
 php artisan content:import
 ```
 
+Each step runs in a PHP process of its own with the memory limit the import
+itself has. A site with a few thousand entries outgrows the command line's
+256 MB on Cloud, so give it what the instance can spare:
+
+```bash
+php -d memory_limit=1G artisan content:import
+```
+
 It refuses while the database holds entries or misses one of the driver's
 tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work

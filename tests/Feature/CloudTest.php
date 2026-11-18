@@ -7,6 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Queue\QueueRoutes;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Inly\CoreWeb\Cloud\CloudDefaults;
@@ -754,9 +755,44 @@ class CloudTest extends TestCase
     {
         $process = ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']);
 
-        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 2));
+        $this->assertSame(['core-web:import-step', 'statamic:eloquent:import-entries --no-interaction', '--no-interaction'], array_slice($process, 4));
         $this->assertContains('--with-search', ImportContentCommand::stepProcess(['statamic:search:update', '--all'], search: true));
-        $this->assertSame("core-web:entry-order 'a b' --no-interaction", ImportContentCommand::stepProcess(['core-web:entry-order', 'a b'])[3]);
+        $this->assertSame("core-web:entry-order 'a b' --no-interaction", ImportContentCommand::stepProcess(['core-web:entry-order', 'a b'])[5]);
+    }
+
+    public function test_an_import_step_runs_with_the_imports_memory_limit(): void
+    {
+        $limit = ini_get('memory_limit');
+
+        try {
+            ini_set('memory_limit', '1G');
+
+            $this->assertSame([PHP_BINARY, '-d', 'memory_limit=1G', base_path('artisan')], array_slice(ImportContentCommand::stepProcess(['statamic:eloquent:import-entries']), 0, 4));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+    }
+
+    public function test_a_step_that_runs_out_of_memory_fails_and_says_how_to_give_it_more(): void
+    {
+        config(['statamic.eloquent-driver.entries.driver' => 'eloquent']);
+
+        foreach (['entries', 'trees', 'global_set_variables', 'taxonomy_terms', 'assets_meta', 'form_submissions', 'revisions', 'tokens'] as $table) {
+            Schema::create($table, function (Blueprint $blueprint): void {
+                $blueprint->string('id');
+            });
+        }
+
+        Process::fake(['*' => Process::result(errorOutput: 'PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted', exitCode: 255)]);
+
+        $this->artisan('content:import')
+            ->expectsOutputToContain('FAIL')
+            ->expectsOutputToContain('statamic:eloquent:import-entries exited with code 255.')
+            ->expectsOutputToContain('php -d memory_limit=1G artisan')
+            ->doesntExpectOutputToContain('DONE')
+            ->assertFailed();
+
+        Process::assertRanTimes(fn ($process): bool => true, 1);
     }
 
     public function test_only_indexes_that_outlive_the_container_are_rebuilt_after_an_import(): void

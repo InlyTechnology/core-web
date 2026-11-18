@@ -6,6 +6,14 @@ saying what breaks, how to find the affected code, how to migrate and how to
 verify. Read the notes of every version between the one a site had and the
 one it moves to. Before 1.0 such a release bumps the minor version.
 
+## Unreleased
+
+- **`content:import` steps run with the import's memory limit**, so
+  `php -d memory_limit=1G artisan content:import` reaches each step, where
+  every step had php.ini's limit. A step that runs out of memory says so, and
+  a failed step shows FAIL where it showed DONE. See `docs/laravel-cloud.md`
+  (First deploy).
+
 ## v0.50.0
 
 - **`php artisan media:push <folder>`** copies a folder of files from a
