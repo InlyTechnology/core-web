@@ -27,7 +27,12 @@ class EntryOrderCommand extends Command
         }
 
         // The driver hands entry ordering to a queued job; here it runs in-process, whatever queue the environment (or a cached config) names.
-        config(['queue.default' => 'sync', 'statamic.eloquent-driver.collections.update_entry_order_connection' => 'sync']);
+        // Each job saves an entry, which would then render every cached page of its site before the next (ImportStepCommand).
+        config([
+            'queue.default' => 'sync',
+            'statamic.eloquent-driver.collections.update_entry_order_connection' => 'sync',
+            'statamic.static_caching.background_recache' => false,
+        ]);
 
         $collection->updateEntryUris();
         $collection->updateEntryOrder();

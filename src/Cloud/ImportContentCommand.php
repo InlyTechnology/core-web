@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Process;
 use Inly\CoreWeb\CoreWebServiceProvider;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
+use Throwable;
 
 /**
  * Loads content/ into an empty database for an environment on the eloquent content driver; why the order and the separate processes matter is in docs/laravel-cloud.md.
@@ -105,10 +106,7 @@ class ImportContentCommand extends Command
 
         foreach ($steps as $label => $command) {
             if (! $this->step($label, $command)) {
-                // The import refuses to run again over the entries this run wrote.
-                $this->line($db->table($prefix.'entries')->exists()
-                    ? 'To run it again over the entries this run wrote: php artisan content:import --fresh --force.'
-                    : 'No entries were written. To run it again: php artisan content:import.');
+                $this->line($this->rerun($db->table($prefix.'entries')));
 
                 return self::FAILURE;
             }
@@ -218,7 +216,7 @@ class ImportContentCommand extends Command
 
         // The command exits 0 when it imported nothing (a model without HasUuids, say), so the table is what tells.
         if (! $this->step('users', ['statamic:eloquent:import-users'], quiet: false) || ! $this->usersTable()?->exists()) {
-            $this->warn('  users/ was not imported. Fix what the output above names, then run php artisan statamic:eloquent:import-users.');
+            $this->warn('  users/ was not imported. Fix what the output above names, then run `php artisan statamic:eloquent:import-users`.');
         }
     }
 
@@ -243,7 +241,7 @@ class ImportContentCommand extends Command
         }
 
         if (! $this->step('search indexes', ['statamic:search:update', '--all'], timeout: 3600, search: true)) {
-            $this->warn('  The search indexes were not rebuilt. Fix what the output above names, then run php artisan statamic:search:update --all.');
+            $this->warn('  The search indexes were not rebuilt. Fix what the output above names, then run `php artisan statamic:search:update --all`.');
         }
     }
 
@@ -293,14 +291,30 @@ class ImportContentCommand extends Command
         return in_array($limit, [false, ''], true) ? [] : ['-d', 'memory_limit='.$limit];
     }
 
+    /** The import refuses to run again over the entries a failed run wrote, so the command to run next depends on them. */
+    private function rerun(Builder $entries): string
+    {
+        try {
+            $written = $entries->exists();
+        } catch (Throwable) {
+            return 'To run it again: `php artisan content:import`, with `--fresh --force` if it says the database already holds entries.';
+        }
+
+        return $written
+            ? 'To run it again over the entries this run wrote: `php artisan content:import --fresh --force`.'
+            : 'No entries were written. To run it again: `php artisan content:import`.';
+    }
+
     private function step(string $label, array $command, int $timeout = 600, bool $quiet = true, bool $search = false): bool
     {
         $result = null;
-        $this->components->task($label, function () use ($command, $timeout, $search, &$result) {
+        $timedOut = false;
+        $this->components->task($label, function () use ($command, $timeout, $search, &$result, &$timedOut) {
             try {
                 $result = Process::timeout($timeout)->run(self::stepProcess($command, $search));
             } catch (ProcessTimedOutException $e) {
                 $result = $e->result;
+                $timedOut = true;
             }
 
             // The task component matches TaskResult's values strictly, so a plain false would show DONE.
@@ -314,16 +328,24 @@ class ImportContentCommand extends Command
         // Both streams: the import commands draw their progress bars on stderr, so stderr alone
         // can be nothing but a bar while the exception went to stdout.
         if ($result->failed()) {
-            $this->error(sprintf('%s %s.', $command[0], $result->exitCode() === null ? 'ran out of time' : 'exited with code '.$result->exitCode()));
+            $this->error(sprintf('%s %s.', $command[0], $timedOut ? sprintf('ran out of time after %d minutes', intdiv($timeout, 60)) : 'exited with code '.$result->exitCode()));
             $this->line(trim($result->output()));
             $this->line(trim($result->errorOutput()));
 
             if (str_contains($result->output().$result->errorOutput(), 'Allowed memory size of')) {
-                $this->warn(sprintf('  PHP ran out of memory at its limit of %s. Run the next command with a higher one, such as php -d memory_limit=1G artisan …: a step takes the limit of the command that starts it.', ini_get('memory_limit')));
+                $this->warn(sprintf('  PHP ran out of memory at its limit of %s. Run the next command with a higher one, such as `php -d memory_limit=%s artisan …`: a step takes the limit of the command that starts it.', ini_get('memory_limit'), self::higherMemoryLimit()));
             }
         }
 
         return $result->successful();
+    }
+
+    /** Twice the limit a step ran out of memory at, and at least 1G. */
+    private static function higherMemoryLimit(): string
+    {
+        $gigabytes = (int) ceil(2 * max(0, ini_parse_quantity((string) ini_get('memory_limit'))) / 1024 ** 3);
+
+        return max(1, $gigabytes).'G';
     }
 
     private function connection(): Connection

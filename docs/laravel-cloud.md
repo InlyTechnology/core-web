@@ -123,9 +123,10 @@ On a new, empty database, load `content/` once from Cloud's commands tab:
 php artisan content:import
 ```
 
-Each step takes the memory limit the import runs with. Cloud sets PHP's limit
-as a share of the instance's memory; when a step runs out of it, the import
-says so. Give it what the instance can spare:
+The import runs in steps, each a PHP process of its own with the memory
+limit the import runs with. Cloud sets PHP's limit as a share of the
+instance's memory; when a step runs out of it, the import says so. Give it
+what the instance can spare:
 
 ```bash
 php -d memory_limit=1G artisan content:import
@@ -135,7 +136,9 @@ It refuses while the database holds entries or misses one of the driver's
 tables. `--fresh` (with `--force`, or a yes to its question) empties
 entries, trees, globals, terms and asset meta first, editors' work
 included, so it is for a first deploy or a rebuild only; form submissions,
-revisions and tokens exist only in the database and are kept. Run it whole:
+revisions and tokens exist only in the database and are kept. A step that
+fails or runs out of time stops the import, which names the commands that
+finish it or run it again. Run it whole:
 an asset without its meta row renders no image. Last, with users on the
 eloquent repository, it imports `users/` (`statamic:eloquent:import-users`)
 while the users table is empty. A table that holds an account, or a site
@@ -171,8 +174,13 @@ Nothing is left on the queue. Each step runs through the hidden
 so an environment variable handed to the step would not reach it) and
 with search indexing off (the indexes, Statamic's `cp` one included, are
 swapped for a null index), which would otherwise update them once per saved
-entry. When an index's driver keeps it off the container (any but `local`
-and `null`), every index is rebuilt once at the end with
+entry. On the `sync` queue each saved entry would also render every cached
+page of its site again before the next, so the steps forget cached pages
+instead (`background_recache` off) and the import clears the static cache at
+the end. The tree import saves every entry once more to set its order, which
+`core-web:entry-order` does again per collection, so the steps send that pass
+to a queue that drops it. When an index's driver keeps it off the container
+(any but `local` and `null`), every index is rebuilt once at the end with
 `statamic:search:update --all`; a site with only `local` indexes skips it,
 since such an index is a file on one container's disk and builds itself on
 its first search.
