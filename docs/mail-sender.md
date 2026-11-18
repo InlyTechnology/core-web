@@ -25,34 +25,3 @@ the package's domain when it sets only the local part. Change the domain only
 together with the key: Resend refuses a From address on a domain the key is
 not restricted to. The sender's name stays Laravel's `MAIL_FROM_NAME`, which
 defaults to `APP_NAME`.
-
-## Sending through core-gateway
-
-A site can send through core-gateway instead of holding a Resend key in its
-environment. core-web registers a `core` mailer beside the site's own; a site
-sends through it only when `MAIL_MAILER` names it, and it needs `CORE_TOKEN`
-to send:
-
-```env
-MAIL_MAILER=core
-CORE_TOKEN=…
-```
-
-The mailer posts each message as Resend's JSON to
-`https://gateway.inlycore.com/mail/emails` with `CORE_TOKEN` as the bearer
-token, the `APP_URL` host as `X-Core-Environment` and the Message-ID as
-`Idempotency-Key`: the same call as Core's own `core` mailer. core-services
-sends it with the key restricted to the domain the message is from, so the
-site never holds a Resend key, and a From on a domain Core Cloud did not set
-up for the site is refused by the gateway.
-
-A send fails when `CORE_TOKEN` is empty, when the gateway refuses the
-message, or when it cannot be reached in two attempts. A message needs a To
-address; copies and blind copies go with it.
-
-| Config | Default | Env var that overrides it |
-|---|---|---|
-| `core-web.mail.gateway.url` | `https://gateway.inlycore.com` | none |
-| `core-web.mail.gateway.token` | none | `CORE_TOKEN` |
-
-A site that declares its own `core` mailer in `config/mail.php` keeps it.
