@@ -197,7 +197,9 @@ class MediaPushTest extends TestCase
         });
 
         $this->mediaPush()
+            ->expectsOutputToContain('Checking 2 file(s) on https://remote.test.')
             ->expectsOutputToContain('photos: 2 file(s), 2 to copy')
+            ->expectsOutputToContain('Checking the 2 copied file(s) on https://remote.test.')
             ->expectsOutputToContain('Copied 2 file(s).')
             ->assertSuccessful();
 

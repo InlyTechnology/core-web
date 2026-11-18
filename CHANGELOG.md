@@ -23,6 +23,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
   each entry the full way**, and skips the tree import's own pass, so the
   collection trees step no longer runs out of its ten minutes on a site with
   a few thousand entries. See `docs/laravel-cloud.md` (First deploy).
+- **`media:push` says when it is checking files on the site**, before the
+  copy and after it, where it showed nothing until the site had answered for
+  every file, and its progress bar moves as each file is sent, where it moved
+  once a batch of up to 50 files was finished.
 
 ## v0.50.0
 

@@ -143,6 +143,9 @@ class MediaPushCommand extends Command
         $missing = [];
         $unfinished = [];
 
+        // One request per 500 files, with nothing else to show until the last answers.
+        $this->line(sprintf('Checking %d file(s) on %s.', count($this->files), $remote->url()));
+
         foreach ($this->check($remote, array_keys($this->files)) as $result) {
             match ($result['status']) {
                 AssetPush::MISSING => $missing[] = $result['path'],
@@ -222,9 +225,9 @@ class MediaPushCommand extends Command
 
                 if ($ready === true) {
                     $finish[] = ['path' => $path, 'ticket' => (string) $answer['ticket']];
-                } else {
-                    $bar->advance();
                 }
+
+                $bar->advance();
             }
 
             foreach ($this->finishBatches($finish) as $items) {
@@ -236,7 +239,6 @@ class MediaPushCommand extends Command
                 ], fn (mixed $value) => $value !== null), $items), $this->uploadTimeout(0)) as $i => $result) {
                     // A refused ticket names no path, so the request's own order says which file it was.
                     $this->count(['path' => $items[$i]['path'], ...array_diff_key($result, ['path' => true])]);
-                    $bar->advance();
                 }
             }
         }
@@ -411,6 +413,10 @@ class MediaPushCommand extends Command
     private function recheck(RemoteSite $remote, array $paths): void
     {
         $copied = array_values(array_diff($paths, array_keys($this->tally['failed']), array_keys($this->tally['conflicts']), array_keys($this->tally['refused'])));
+
+        if ($copied !== []) {
+            $this->line(sprintf('Checking the %d copied file(s) on %s.', count($copied), $remote->url()));
+        }
 
         foreach ($copied === [] ? [] : $this->check($remote, $copied) as $result) {
             if ($result['status'] !== AssetPush::SAME) {
