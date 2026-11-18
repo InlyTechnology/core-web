@@ -139,12 +139,20 @@ return [
     | mail.from.address while that is unset or Laravel's `hello@example.com`;
     | MAIL_FROM_ADDRESS still wins. No local part leaves mail.from alone.
     |
+    | gateway: where the `core` mailer sends, with the site's CORE_TOKEN. Only
+    | MAIL_MAILER=core sends through it. See docs/mail-sender.md (Sending
+    | through core-gateway).
+    |
     */
 
     'mail' => [
         'from' => [
             'local_part' => env('MAIL_FROM_LOCAL_PART'),
             'domain' => env('MAIL_FROM_DOMAIN', 'transactional.inly.dev'),
+        ],
+        'gateway' => [
+            'url' => 'https://gateway.inlycore.com',
+            'token' => env('CORE_TOKEN'),
         ],
     ],
 

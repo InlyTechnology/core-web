@@ -74,6 +74,7 @@ use Inly\CoreWeb\Drafts\StoredValues;
 use Inly\CoreWeb\Favicons\CpFavicon;
 use Inly\CoreWeb\Forms\CoreForms;
 use Inly\CoreWeb\Live\CoreLive;
+use Inly\CoreWeb\Mail\MailGateway;
 use Inly\CoreWeb\Mail\MailSender;
 use Inly\CoreWeb\Media\CheckMediaCommand;
 use Inly\CoreWeb\Media\CpThumbnailController;
@@ -234,6 +235,7 @@ class CoreWebServiceProvider extends ServiceProvider
             }
 
             MailSender::apply($this->app);
+            MailGateway::register($this->app);
 
             TrackingQueryStrings::apply($this->app['config']);
 
