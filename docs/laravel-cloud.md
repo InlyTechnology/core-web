@@ -180,10 +180,10 @@ swapped for a null index), which would otherwise update them once per saved
 entry. The tree import queues a full save of every entry to set its order,
 which `core-web:entry-order` writes afterwards, so the steps send those jobs
 to Laravel's `null` connection, which drops them. When an index's driver
-keeps it off the container (any but `local` and `null`), every index is rebuilt once at the end with
-`statamic:search:update --all`; a site with only `local` indexes skips it,
-since such an index is a file on one container's disk and builds itself on
-its first search.
+keeps it off the container (any but `local` and `null`), every index is
+rebuilt once at the end with `statamic:search:update --all`; a site with
+only `local` indexes skips it, since such an index is a file on one
+container's disk and builds itself on its first search.
 
 With `cloud` on, `media:sync`, `media:check` and `content:check` exist on
 every site: while their feature (`media`, `checks`) is off they say so and

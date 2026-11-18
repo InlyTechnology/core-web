@@ -78,7 +78,7 @@ class EntryOrderTest extends TestCase
         $this->assertSame([1, 2, 3], [(int) $rows['about']->order, (int) $rows['team']->order, (int) $rows['contact']->order]);
         $this->assertSame('/about/team', $rows['team']->uri);
         $this->assertSame(2, (int) $rows['team-other']->order);
-        $this->assertSame('about', json_decode($rows['team']->data, true)['parent']);
-        $this->assertSame('about-other', json_decode($rows['team-other']->data, true)['parent']);
+        $this->assertSame('about', json_decode($rows['team']->data, true)['parent'] ?? null);
+        $this->assertSame('about-other', json_decode($rows['team-other']->data, true)['parent'] ?? null);
     }
 }
