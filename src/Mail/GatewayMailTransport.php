@@ -18,8 +18,8 @@ use Throwable;
 
 /**
  * The `core` mail transport: each message goes to core-gateway as Resend's JSON with the site's CORE_TOKEN, and
- * core-services sends it with the key restricted to the From domain, so the site holds no Resend key. The same wire
- * format as Core's own `core` mailer. See docs/mail-sender.md (Sending through core-gateway).
+ * core-services sends it with the key restricted to the From domain, so the site holds no Resend key. Mirrors Core's
+ * Inly\Core\Mail\GatewayMailTransport, so a change to the wire format lands in both. See docs/mail-sender.md.
  */
 final class GatewayMailTransport extends AbstractTransport
 {

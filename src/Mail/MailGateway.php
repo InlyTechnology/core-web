@@ -14,7 +14,7 @@ final class MailGateway
         $config = $app['config'];
 
         // A site's published `mail` block replaces the package's whole key; read the gateway it leaves out.
-        if (blank($config->get('core-web.mail.gateway.url'))) {
+        if (blank($config->get('core-web.mail.gateway.url')) || blank($config->get('core-web.mail.gateway.token'))) {
             $config->set('core-web.mail.gateway', array_replace(
                 (array) (require __DIR__.'/../../config/core-web.php')['mail']['gateway'],
                 array_filter((array) $config->get('core-web.mail.gateway'), fn (mixed $value): bool => ! blank($value)),
