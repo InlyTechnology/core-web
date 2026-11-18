@@ -8,6 +8,23 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **A site rule: pictures say which sizes they need.** Site-ci's gate fails
+  an `<x-core-img>` or `<x-core-media>` in `resources/views` that has
+  neither `widths` nor `width`: without them it has no srcset, `sizes` does
+  nothing, and every screen downloads the picture at its uploaded size (a
+  migrated site served a 425 KB hero where a phone needed 44 KB). See
+  `docs/site-rules.md`.
+
+### Upgrade notes
+
+- **A tag without `widths` or `width` now fails the gate.** Find them by
+  running the rule (`cp vendor/inly/core-web/rules/*.php tests/Central/ &&
+  php artisan test tests/Central`), which lists each `file:line`. Give each
+  one `:widths` read off the layout, with a `sizes` that matches it, or one
+  fixed `width` for a picture shown at a single size; `:widths="[]"` for one
+  that needs no srcset on purpose. Verify by running the rule again: it
+  passes.
+
 - **`media:push` sends up to four finish requests at the same time**, where
   it sent one and waited for its answer: saving an asset can make the site
   read the file back from the bucket, and a copy of a few thousand files

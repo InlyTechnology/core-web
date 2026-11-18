@@ -2,6 +2,7 @@
 
 namespace Inly\CoreWeb\Tests\Feature;
 
+use Illuminate\Support\Facades\File;
 use Inly\CoreWeb\Tests\TestCase;
 use Tests\Central\CoreWebRulesTest;
 
@@ -52,6 +53,59 @@ class SiteRulesTest extends TestCase
         config(['core-web.features.media' => false]);
 
         $this->assertSame([], $this->rule('siteDefinedMediaDisks')[0]);
+    }
+
+    public function test_a_picture_without_widths_is_reported(): void
+    {
+        $this->siteView('cards/card.blade.php', "<div>\n    <x-core-img :src=\"\$image\" sizes=\"(min-width: 1024px) 33vw, 100vw\"\n        class=\"object-cover\" />\n</div>\n");
+
+        $this->assertSame(
+            ['resources/views/rule-fixtures/cards/card.blade.php:2  <x-core-img :src="$image" sizes="(min-width: 1024px) 33vw, 100vw" class="object-cover" />'],
+            $this->rule('coreImagesWithoutWidths')[0],
+        );
+    }
+
+    public function test_a_media_tag_without_widths_is_reported(): void
+    {
+        $this->siteView('media.blade.php', '<x-core-media :src="$media" :small-width="480" />');
+
+        $this->assertCount(1, $this->rule('coreImagesWithoutWidths')[0]);
+    }
+
+    public function test_pictures_that_say_their_sizes_pass(): void
+    {
+        $this->siteView('ok.blade.php', implode("\n", [
+            '<x-core-img :src="$a" :widths="[320, 640]" sizes="100vw" />',
+            '<x-core-img :src="$b" widths="320,640" />',
+            '<x-core-img :src="$c" :width="120" alt="a > b" />',
+            '<x-core-img :src="$d" :widths="[]" />',
+            '<x-core-img {{ $attributes->merge([\'class\' => \'w-full\']) }} />',
+            '{{-- <x-core-img :src="$e" /> --}}',
+            '<x-core-video :src="$f" />',
+        ]));
+
+        $this->assertSame([], $this->rule('coreImagesWithoutWidths')[0]);
+    }
+
+    public function test_pictures_are_not_checked_without_the_media_feature(): void
+    {
+        $this->siteView('off.blade.php', '<x-core-img :src="$a" />');
+        config(['core-web.features.media' => false]);
+
+        $this->assertSame([], $this->rule('coreImagesWithoutWidths')[0]);
+    }
+
+    protected function tearDown(): void
+    {
+        File::deleteDirectory(resource_path('views/rule-fixtures'));
+
+        parent::tearDown();
+    }
+
+    private function siteView(string $path, string $code): void
+    {
+        File::ensureDirectoryExists(dirname(resource_path("views/rule-fixtures/{$path}")));
+        File::put(resource_path("views/rule-fixtures/{$path}"), $code);
     }
 
     /** @return array{list<string>, string} */
