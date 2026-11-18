@@ -9,11 +9,10 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 ## Unreleased
 
 - **`media:push` sends up to four finish requests at the same time**, where
-  it sent one and waited for its answer. Saving a file's asset makes the site
-  read the file back from the bucket, so a copy of a few thousand files
-  spent most of its time waiting on one request at a time. A request the
-  site turns away for sending too many is sent again after the wait it asks
-  for.
+  it sent one and waited for its answer: saving an asset can make the site
+  read the file back from the bucket, and a copy of a few thousand files took
+  over an hour. A request the site turns away for sending too many is sent
+  again after the wait it asks for.
 
 ## v0.51.0
 
