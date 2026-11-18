@@ -3,20 +3,23 @@
 namespace Inly\CoreWeb\Checks;
 
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Globals\Variables;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 
 /**
  * The content a check reads: every entry of the checked collections
  * (core-web.checks.collections, all of them when null) as a draft would
- * build on it, and every navigation tree, each walked to its strings.
+ * build on it, every navigation tree and every global set's values on each
+ * site, each walked to its strings.
  */
 final class ContentWalk
 {
     private static ?string $subject = null;
 
     /**
-     * Runs a walk over one subject only (`entry:{id}`, `nav:{handle}:{site}`), so fixing a finding re-reads its own page, not the site.
+     * Runs a walk over one subject only (`entry:{id}`, `nav:{handle}:{site}`, `global:{handle}:{site}`), so fixing a finding re-reads its own page, not the site.
      *
      * @template T
      *
@@ -65,6 +68,20 @@ final class ContentWalk
                 }
 
                 yield ['handle' => $nav->handle(), 'site' => (string) $site, 'tree' => $tree->tree()];
+            }
+        }
+    }
+
+    /** @return iterable<array{handle: string, site: string, variables: Variables}> */
+    public static function globals(): iterable
+    {
+        foreach (GlobalSet::all() as $set) {
+            foreach ($set->localizations() as $site => $variables) {
+                if (self::$subject !== null && self::$subject !== "global:{$set->handle()}:{$site}") {
+                    continue;
+                }
+
+                yield ['handle' => $set->handle(), 'site' => (string) $site, 'variables' => $variables];
             }
         }
     }

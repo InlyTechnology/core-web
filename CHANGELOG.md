@@ -8,6 +8,13 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **The `archived-links` content check**: links into the Wayback Machine,
+  archive.today and search caches, in entries, globals and navigation trees,
+  each named with the address the archive copied. A link to an archived copy
+  of one of the site's own pages is fixed to the entry, in a draft or a
+  proposal; any other is left for an editor. It is in the default
+  `checks.checks`; a site whose `config/core-web.php` sets `checks` keeps
+  its own list and adds `ArchivedLinks::class` to it. See `docs/content-checks.md#archived-links`.
 - **`content:import` steps run with the import's memory limit**, so
   `php -d memory_limit=1G artisan content:import` reaches each step, where
   every step had php.ini's limit. A step that runs out of memory names how to
