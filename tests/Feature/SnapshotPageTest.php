@@ -184,6 +184,21 @@ class SnapshotPageTest extends TestCase
         $this->assertSame(200, Cascade::instance()->get('response_code'));
     }
 
+    public function test_a_page_at_the_root_of_a_site_under_a_path_is_not_redirected_to_itself(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://default.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $snapshot = Snapshot::make('roots')
+            ->pull(fn () => ['r' => ['id' => 'r', 'site' => 'other']])
+            ->partitionBy(fn (array $doc) => $doc['site'], ['default', 'other'])
+            ->pages(fn () => '/');
+        app(SnapshotRegistry::class)->register($snapshot);
+
+        $this->assertNull(SnapshotPage::for('roots', 'other')->canonical(Request::create('http://default.test/other/'), ['id' => 'r', 'site' => 'other']));
+    }
+
     public function test_the_canonical_path_is_on_a_site_under_a_path_of_a_shared_host(): void
     {
         Site::setSites([

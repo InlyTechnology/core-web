@@ -97,7 +97,8 @@ final class SnapshotPage
     public function canonical(Request $request, array $document, bool $keepQuery = true): ?RedirectResponse
     {
         $path = $this->path($document);
-        $trailingSlash = $request->getPathInfo() !== '/' && str_ends_with($request->getPathInfo(), '/');
+        // A page at '/' ends in a slash itself, on a site under a path too.
+        $trailingSlash = $path !== '/' && str_ends_with($request->getPathInfo(), '/');
 
         if ($path === null || (! $trailingSlash && rawurldecode($this->requestPath($request)) === rawurldecode($path))) {
             return null;

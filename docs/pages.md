@@ -30,9 +30,9 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
   cascade and fails.
 - `canonical($request, $doc)` answers a request that reached the document at
   another path (an old slug, a renamed brand, the same path with a trailing
-  slash) with a 301 to its page on the site, under the site's own path on a shared host, percent-encoding a
-  non-ASCII path. The query string goes
-  along (campaign tags, filters); `keepQuery: false` drops it.
+  slash) with a 301 to its page on the site, under the site's own path on a
+  shared host, percent-encoding a non-ASCII path. The query string goes along
+  (campaign tags, filters); `keepQuery: false` drops it.
 - `render($template, $data, $cascade)` is Statamic's View, with `$cascade`
   (an entry, say the listing's) as the cascade's content when the layout
   should read its title or SEO fields.
@@ -61,13 +61,15 @@ return $pages->canonical($request, $car)
 
 Never a 200: a sold record that answers 200 stays indexed, and its old
 addresses turn up in Search Console as duplicates ("Alternate page with
-proper canonical tag"). Never a redirect of every gone record to one page or
-to a filtered listing either: Google reads a redirect to an unrelated page as
-a soft 404, so it drops the old address no faster, and the visitor is never
-told that the record they followed is gone.
+proper canonical tag"). Never a redirect of every gone record to one page
+either: Google may treat a redirect to an unrelated page, such as the home
+page, as a soft 404, and the visitor is never told that the record they
+followed is gone.
 
 The [static cache](static-cache.md) never stores a 410 (Statamic caches a
-200, and under `half` a 404 too), so each visit renders the page.
+200, and under `half` a 404 too), so each visit renders the page. The page's
+copy cached while it answered 200 is forgotten as any changed page is, see
+[Rendering pages again after a save](static-cache.md#rendering-pages-again-after-a-save).
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
