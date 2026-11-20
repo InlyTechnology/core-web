@@ -66,9 +66,8 @@ to a filtered listing either: Google reads a redirect to an unrelated page as
 a soft 404, so it drops the old address no faster, and the visitor is never
 told that the record they followed is gone.
 
-The status survives the `half` [static cache](static-cache.md), which serves
-cached pages through PHP. A `full` cache, served by the web server without
-PHP, would serve a 200 instead.
+The [static cache](static-cache.md) never stores a 410 (Statamic caches a
+200, and under `half` a 404 too), so each visit renders the page.
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
