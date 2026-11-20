@@ -68,8 +68,9 @@ followed is gone.
 
 The [static cache](static-cache.md) never stores a 410 (Statamic caches a
 200, and under `half` a 404 too), so each visit renders the page. The page's
-copy cached while it answered 200 is forgotten as any changed page is, see
-[Rendering pages again after a save](static-cache.md#rendering-pages-again-after-a-save).
+copy cached while it answered 200 goes when the snapshot's change listener
+flushes that page: see
+[Pages a snapshot change touches](static-cache.md#pages-a-snapshot-change-touches).
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 
