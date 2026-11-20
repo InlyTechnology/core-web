@@ -5,8 +5,10 @@ namespace Inly\CoreWeb\Snapshots;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use LogicException;
 use Statamic\Exceptions\NotFoundHttpException;
+use Statamic\Facades\Cascade;
 use Statamic\Facades\Site;
 use Statamic\View\View;
 
@@ -85,17 +87,19 @@ final class SnapshotPage
 
     /**
      * A 301 to the document's own page when the request reached it at
-     * another path (an old slug, a renamed brand). The query string goes
-     * along unless `$keepQuery` is false: it carries campaign tags and
-     * filters, and the page's canonical link already ignores it.
+     * another path (an old slug, a renamed brand, a trailing slash). The
+     * query string goes along unless `$keepQuery` is false: it carries
+     * campaign tags and filters, and the page's canonical link already
+     * ignores it.
      *
      * @param  array<string, mixed>  $document
      */
     public function canonical(Request $request, array $document, bool $keepQuery = true): ?RedirectResponse
     {
         $path = $this->path($document);
+        $trailingSlash = $request->getPathInfo() !== '/' && str_ends_with($request->getPathInfo(), '/');
 
-        if ($path === null || rawurldecode($this->requestPath($request)) === rawurldecode($path)) {
+        if ($path === null || (! $trailingSlash && rawurldecode($this->requestPath($request)) === rawurldecode($path))) {
             return null;
         }
 
@@ -114,6 +118,21 @@ final class SnapshotPage
     public function render(string $template, array $data = [], mixed $cascade = null): View
     {
         return View::make($template, $data)->cascadeContent($cascade);
+    }
+
+    /**
+     * The page of a document that is kept for the visitors who still follow
+     * links to it (a sold car, an ended campaign), answered with a 410 so
+     * search engines drop it. The cascade's `response_code` is 410 while it
+     * renders, so the SEO head noindexes it and leaves out its canonical.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function gone(string $template, array $data = [], mixed $cascade = null): Response
+    {
+        Cascade::instance()->hydratedOnce(fn ($hydrated) => $hydrated->set('response_code', 410));
+
+        return response($this->render($template, $data, $cascade)->render(), 410);
     }
 
     /** The request's path on the site, without the path a site under a shared host lives at. */

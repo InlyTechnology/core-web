@@ -29,14 +29,46 @@ Route::get('locations/{slug}', function (Request $request, string $slug) {
   otherwise: `abort(404)` renders Laravel's error view, whose layout lacks the
   cascade and fails.
 - `canonical($request, $doc)` answers a request that reached the document at
-  another path (an old slug, a renamed brand) with a 301 to its page on the
-  site, under the site's own path on a shared host, percent-encoding a
+  another path (an old slug, a renamed brand, the same path with a trailing
+  slash) with a 301 to its page on the site, under the site's own path on a shared host, percent-encoding a
   non-ASCII path. The query string goes
   along (campaign tags, filters); `keepQuery: false` drops it.
 - `render($template, $data, $cascade)` is Statamic's View, with `$cascade`
   (an entry, say the listing's) as the cascade's content when the layout
   should read its title or SEO fields.
+- `gone($template, $data, $cascade)` renders like `render()` and answers
+  **410**, with the cascade's `response_code` at 410 for that render, so the
+  [SEO head](seo.md) noindexes the page and leaves out its canonical. See
+  [Records that leave the catalogue](#records-that-leave-the-catalogue).
 - `path($doc)` is the document's page path on the site, for links.
+
+## Records that leave the catalogue
+
+A record that is gone (a sold car, an ended campaign) answers either:
+
+- **404**, by leaving it out of the snapshot: `find()` throws Statamic's
+  not-found exception.
+- **410 with its page kept**, when visitors still arrive from old links and
+  the page has something to offer them ("this car is sold" and similar
+  ones): the snapshot keeps the document, the page renders through
+  `gone()`, and the snapshot's [`->sitemap()`](sitemaps.md) closure gives no
+  URL for it.
+
+```php
+return $pages->canonical($request, $car)
+    ?? ($car['sold_at'] ? $pages->gone('cars.sold', ['car' => $car]) : $pages->render('cars.show', ['car' => $car]));
+```
+
+Never a 200: a sold record that answers 200 stays indexed, and its old
+addresses turn up in Search Console as duplicates ("Alternate page with
+proper canonical tag"). Never a redirect of every gone record to one page or
+to a filtered listing either: Google reads a redirect to an unrelated page as
+a soft 404, so it drops the old address no faster, and the visitor is never
+told that the record they followed is gone.
+
+The status survives the `half` [static cache](static-cache.md), which serves
+cached pages through PHP. A `full` cache, served by the web server without
+PHP, would serve a 200 instead.
 
 `SnapshotPage::for()` on a snapshot without `->pages()` throws a `LogicException`.
 

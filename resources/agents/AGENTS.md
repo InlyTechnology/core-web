@@ -52,6 +52,9 @@ types, which Core each environment pairs with) is in the site's own `CLAUDE.md` 
   `->details([...])` on the snapshot, read on that page with `SnapshotPage::find()` or
   `SnapshotStore::document()`. Never a second snapshot or a live read of the same object for it. A field a
   listing, card, search, filter or sitemap uses stays on the row.
+- **A record that has left the catalogue (sold, ended) is a 404 or, when its page is kept for old links, a 410
+  through `SnapshotPage::gone()`.** Never a 200, and never every such record redirected to one page or a
+  filtered listing. See `docs/pages.md#records-that-leave-the-catalogue`.
 - Snapshot sitemaps are listed in the robots view with `{{ core_sitemaps }}`.
 - **Locally, data comes from the live site, not from production Core**: `content:pull` (with `content_sync`)
   brings the content and `core:pull` the snapshots, on one `content:login`. No developer needs a Core secret.
