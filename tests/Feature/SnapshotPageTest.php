@@ -12,6 +12,7 @@ use Inly\CoreWeb\Tests\TestCase;
 use LogicException;
 use RuntimeException;
 use Statamic\Exceptions\NotFoundHttpException;
+use Statamic\Facades\Cascade;
 use Statamic\Facades\Site;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -154,7 +155,48 @@ class SnapshotPageTest extends TestCase
             SnapshotPage::for('things')->canonical($request, $this->documents['a'], keepQuery: false)->getTargetUrl(),
         );
 
-        $this->assertNull(SnapshotPage::for('things')->canonical(Request::create('http://default.test/things/first/'), $this->documents['a']));
+        $this->assertNull(SnapshotPage::for('things')->canonical(Request::create('http://default.test/things/first'), $this->documents['a']));
+    }
+
+    public function test_a_trailing_slash_is_sent_to_the_page_without_one(): void
+    {
+        $this->things();
+
+        $this->assertSame(
+            'http://default.test/things/first?utm_source=mail',
+            SnapshotPage::for('things')->canonical(Request::create('http://default.test/things/first/?utm_source=mail'), $this->documents['a'])->getTargetUrl(),
+        );
+    }
+
+    public function test_a_gone_page_renders_with_a_410_and_an_error_cascade(): void
+    {
+        $this->things();
+        $pages = SnapshotPage::for('things');
+
+        $response = $pages->gone('snapshot-page', ['title' => 'Sold']);
+
+        $this->assertSame(410, $response->getStatusCode());
+        $this->assertStringContainsString('|Sold|default', $response->getContent());
+        $this->assertSame(410, Cascade::instance()->get('response_code'));
+
+        // The 410 is for that one render: the next page is a 200 again.
+        $pages->render('snapshot-page', ['title' => 'Live'])->render();
+        $this->assertSame(200, Cascade::instance()->get('response_code'));
+    }
+
+    public function test_a_page_at_the_root_of_a_site_under_a_path_is_not_redirected_to_itself(): void
+    {
+        Site::setSites([
+            'default' => ['name' => 'Default', 'url' => 'http://default.test/', 'locale' => 'sv_SE'],
+            'other' => ['name' => 'Other', 'url' => 'http://default.test/other/', 'locale' => 'sv_SE'],
+        ]);
+        $snapshot = Snapshot::make('roots')
+            ->pull(fn () => ['r' => ['id' => 'r', 'site' => 'other']])
+            ->partitionBy(fn (array $doc) => $doc['site'], ['default', 'other'])
+            ->pages(fn () => '/');
+        app(SnapshotRegistry::class)->register($snapshot);
+
+        $this->assertNull(SnapshotPage::for('roots', 'other')->canonical(Request::create('http://default.test/other/'), ['id' => 'r', 'site' => 'other']));
     }
 
     public function test_the_canonical_path_is_on_a_site_under_a_path_of_a_shared_host(): void

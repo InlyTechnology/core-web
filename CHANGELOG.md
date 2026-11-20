@@ -8,6 +8,12 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ## Unreleased
 
+- **`SnapshotPage::gone()`** renders a kept page of a record that has left
+  the catalogue (a sold car) with a 410 and a noindexed head. See
+  `docs/pages.md#records-that-leave-the-catalogue`.
+- **`SnapshotPage::canonical()` sends a trailing-slash address to the page
+  without one** (301), where it rendered the page there too. See
+  `docs/pages.md`.
 - **A site rule: pictures say which sizes they need.** Site-ci's gate fails
   an `<x-core-img>` or `<x-core-media>` in `resources/views` that has
   neither `widths` nor `width`: under a CDN origin such a picture has no
@@ -22,6 +28,15 @@ one it moves to. Before 1.0 such a release bumps the minor version.
 
 ### Upgrade notes
 
+- **A trailing-slash address of a snapshot page now redirects.** Nothing
+  to migrate: a route that returns `canonical()` before rendering, as
+  `docs/pages.md` shows, answers `/things/first/` with a 301 to
+  `/things/first`. Find the routes with `grep -rn "SnapshotPage::for"
+  routes app`; one that renders without asking `canonical()` keeps
+  serving both. A trailing-slash address already in the static cache keeps
+  its 200 until the cache is cleared: `core-web:deploy` clears it on Laravel
+  Cloud, and elsewhere run `php please static:clear` after the deploy.
+  Verify with `curl -I` on a page's address plus `/`.
 - **A tag without `widths` or `width` now fails the gate.** Find them by
   running the rule (`cp vendor/inly/core-web/rules/*.php tests/Central/ &&
   php artisan test tests/Central`), which lists each `file:line`. Give each
